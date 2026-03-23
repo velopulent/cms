@@ -1,0 +1,184 @@
+use axum::{
+    Json,
+    extract::Extension,
+    http::StatusCode,
+    response::{IntoResponse, Response},
+};
+use bcrypt::{hash, verify, DEFAULT_COST};
+use serde_json::json;
+use sqlx::SqlitePool;
+
+use crate::middleware::auth::{AuthenticatedUser, create_token};
+use crate::models::user::{AuthResponse, CreateUser, LoginRequest, User, UserPublic};
+
+pub async fn register(
+    Extension(pool): Extension<SqlitePool>,
+    Json(payload): Json<CreateUser>,
+) -> Response {
+    if payload.username.trim().is_empty() || payload.password.trim().is_empty() {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(json!({"error": "Username and password are required"})),
+        )
+            .into_response();
+    }
+
+    let password_hash = match hash(&payload.password, DEFAULT_COST) {
+        Ok(h) => h,
+        Err(e) => {
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({"error": format!("Hash error: {}", e)})),
+            )
+                .into_response()
+        }
+    };
+
+    let result = sqlx::query(
+        "INSERT INTO users (username, email, password_hash) VALUES (?, ?, ?)",
+    )
+    .bind(&payload.username)
+    .bind(&payload.email)
+    .bind(&password_hash)
+    .execute(&pool)
+    .await;
+
+    match result {
+        Ok(res) => {
+            let id = res.last_insert_rowid();
+
+            let token = match create_token(id) {
+                Ok(t) => t,
+                Err(e) => {
+                    return (
+                        StatusCode::INTERNAL_SERVER_ERROR,
+                        Json(json!({"error": format!("Token error: {}", e)})),
+                    )
+                        .into_response()
+                }
+            };
+
+            (
+                StatusCode::CREATED,
+                Json(AuthResponse {
+                    token,
+                    user: UserPublic {
+                        id,
+                        username: payload.username,
+                        email: payload.email,
+                    },
+                }),
+            )
+                .into_response()
+        }
+        Err(sqlx::Error::Database(ref db_err)) if db_err.is_unique_violation() => (
+            StatusCode::CONFLICT,
+            Json(json!({"error": "Username or email already exists"})),
+        )
+            .into_response(),
+        Err(err) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({"error": err.to_string()})),
+        )
+            .into_response(),
+    }
+}
+
+pub async fn login(
+    Extension(pool): Extension<SqlitePool>,
+    Json(payload): Json<LoginRequest>,
+) -> Response {
+    let user = sqlx::query_as::<_, User>(
+        "SELECT id, username, email, password_hash, created_at, updated_at FROM users WHERE username = ?",
+    )
+    .bind(&payload.username)
+    .fetch_optional(&pool)
+    .await;
+
+    let user = match user {
+        Ok(Some(u)) => u,
+        Ok(None) => {
+            return (
+                StatusCode::UNAUTHORIZED,
+                Json(json!({"error": "Invalid username or password"})),
+            )
+                .into_response()
+        }
+        Err(err) => {
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({"error": err.to_string()})),
+            )
+                .into_response()
+        }
+    };
+
+    match verify(&payload.password, &user.password_hash) {
+        Ok(true) => {}
+        _ => {
+            return (
+                StatusCode::UNAUTHORIZED,
+                Json(json!({"error": "Invalid username or password"})),
+            )
+                .into_response()
+        }
+    }
+
+    let token = match create_token(user.id) {
+        Ok(t) => t,
+        Err(e) => {
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({"error": format!("Token error: {}", e)})),
+            )
+                .into_response()
+        }
+    };
+
+    (
+        StatusCode::OK,
+        Json(AuthResponse {
+            token,
+            user: UserPublic {
+                id: user.id,
+                username: user.username,
+                email: user.email,
+            },
+        }),
+    )
+        .into_response()
+}
+
+pub async fn me(
+    auth: AuthenticatedUser,
+    Extension(pool): Extension<SqlitePool>,
+) -> Response {
+    let user = sqlx::query_as::<_, User>(
+        "SELECT id, username, email, password_hash, created_at, updated_at FROM users WHERE id = ?",
+    )
+    .bind(auth.user_id)
+    .fetch_optional(&pool)
+    .await;
+
+    match user {
+        Ok(Some(u)) => (
+            StatusCode::OK,
+            Json(UserPublic {
+                id: u.id,
+                username: u.username,
+                email: u.email,
+            }),
+        )
+            .into_response(),
+        Ok(None) => (
+            StatusCode::NOT_FOUND,
+            Json(json!({"error": "User not found"})),
+        )
+            .into_response(),
+        Err(err) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({"error": err.to_string()})),
+        )
+            .into_response(),
+    }
+}
