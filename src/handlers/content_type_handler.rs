@@ -101,14 +101,14 @@ pub async fn create_content_type(
 
 pub async fn update_content_type(
     _auth: AuthenticatedUser,
-    Path(id): Path<i64>,
+    Path(slug): Path<String>,
     Extension(pool): Extension<SqlitePool>,
     Json(payload): Json<UpdateContentType>,
 ) -> Response {
     let existing = sqlx::query_as::<_, ContentType>(
-        "SELECT id, name, slug, schema_json, created_at, updated_at FROM content_types WHERE id = ?",
+        "SELECT id, name, slug, schema_json, created_at, updated_at FROM content_types WHERE slug = ?",
     )
-    .bind(id)
+    .bind(&slug)
     .fetch_optional(&pool)
     .await;
 
@@ -131,7 +131,7 @@ pub async fn update_content_type(
     };
 
     let name = payload.name.unwrap_or(existing.name);
-    let slug = payload.slug.unwrap_or(existing.slug);
+    let new_slug = payload.slug.unwrap_or(existing.slug);
     let schema_str = payload
         .schema_json
         .map(|s: serde_json::Value| s.to_string())
@@ -141,9 +141,9 @@ pub async fn update_content_type(
         "UPDATE content_types SET name = ?, slug = ?, schema_json = ?, updated_at = datetime('now') WHERE id = ?",
     )
     .bind(&name)
-    .bind(&slug)
+    .bind(&new_slug)
     .bind(&schema_str)
-    .bind(id)
+    .bind(existing.id)
     .execute(&pool)
     .await;
 
@@ -152,7 +152,7 @@ pub async fn update_content_type(
             let ct = sqlx::query_as::<_, ContentType>(
                 "SELECT id, name, slug, schema_json, created_at, updated_at FROM content_types WHERE id = ?",
             )
-            .bind(id)
+            .bind(existing.id)
             .fetch_one(&pool)
             .await
             .unwrap();
@@ -169,11 +169,11 @@ pub async fn update_content_type(
 
 pub async fn delete_content_type(
     _auth: AuthenticatedUser,
-    Path(id): Path<i64>,
+    Path(slug): Path<String>,
     Extension(pool): Extension<SqlitePool>,
 ) -> Response {
-    let result = sqlx::query("DELETE FROM content_types WHERE id = ?")
-        .bind(id)
+    let result = sqlx::query("DELETE FROM content_types WHERE slug = ?")
+        .bind(&slug)
         .execute(&pool)
         .await;
 

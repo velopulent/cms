@@ -32,8 +32,8 @@ pub fn create_router(pool: SqlitePool) -> Router {
         .route("/api/content-types", get(list_content_types))
         .route("/api/content-types", post(create_content_type))
         .route("/api/content-types/{slug}", get(get_content_type))
-        .route("/api/content-types/{id}", put(update_content_type))
-        .route("/api/content-types/{id}", delete(delete_content_type))
+        .route("/api/content-types/{slug}", put(update_content_type))
+        .route("/api/content-types/{slug}", delete(delete_content_type))
         // Content
         .route("/api/content", get(list_content))
         .route("/api/content", post(create_content))

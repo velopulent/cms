@@ -192,7 +192,7 @@ function ContentTypesPage() {
                             <ContentTypeForm
                               initialData={ct}
                               onSubmit={(data) => {
-                                updateContentType(ct.id, {
+                                updateContentType(ct.slug, {
                                   name: data.name,
                                   slug: data.slug,
                                   schema_json: data.schema_json,
@@ -214,7 +214,7 @@ function ContentTypesPage() {
                         <Button
                           variant="ghost"
                           size="icon"
-                          onClick={() => deleteMutation.mutate(ct.id)}
+                          onClick={() => deleteMutation.mutate(ct.slug)}
                           disabled={deleteMutation.isPending}
                         >
                           <Trash2 />

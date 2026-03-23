@@ -141,17 +141,17 @@ export async function createContentType(data: {
 }
 
 export async function updateContentType(
-  id: number,
+  slug: string,
   data: { name?: string; slug?: string; schema_json?: ContentTypeSchema },
 ) {
-  return api<ContentType>(`/content-types/${id}`, {
+  return api<ContentType>(`/content-types/${slug}`, {
     method: "PUT",
     body: JSON.stringify(data),
   });
 }
 
-export async function deleteContentType(id: number) {
-  return api<void>(`/content-types/${id}`, { method: "DELETE" });
+export async function deleteContentType(slug: string) {
+  return api<void>(`/content-types/${slug}`, { method: "DELETE" });
 }
 
 // --- Content API ---
