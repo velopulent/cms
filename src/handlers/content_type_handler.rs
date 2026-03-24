@@ -8,16 +8,22 @@ use serde_json::json;
 use sqlx::SqlitePool;
 use uuid::Uuid;
 
-use crate::middleware::auth::AuthenticatedUser;
+use crate::middleware::auth::{AuthenticatedUser, check_site_access};
 use crate::models::content_type::{ContentType, CreateContentType, UpdateContentType};
 
 pub async fn list_content_types(
-    _auth: AuthenticatedUser,
+    auth: AuthenticatedUser,
+    Path(site_id): Path<String>,
     Extension(pool): Extension<SqlitePool>,
 ) -> Response {
+    if let Err((status, err)) = check_site_access(&pool, &auth.user_id, &site_id, "viewer").await {
+        return (status, Json(err)).into_response();
+    }
+
     let result = sqlx::query_as::<_, ContentType>(
-        "SELECT id, name, slug, schema_json, created_at, updated_at FROM content_types ORDER BY name",
+        "SELECT id, site_id, name, slug, schema_json, created_at, updated_at FROM content_types WHERE site_id = ? ORDER BY name",
     )
+    .bind(&site_id)
     .fetch_all(&pool)
     .await;
 
@@ -32,14 +38,19 @@ pub async fn list_content_types(
 }
 
 pub async fn get_content_type(
-    _auth: AuthenticatedUser,
-    Path(slug): Path<String>,
+    auth: AuthenticatedUser,
+    Path((site_id, ct_slug)): Path<(String, String)>,
     Extension(pool): Extension<SqlitePool>,
 ) -> Response {
+    if let Err((status, err)) = check_site_access(&pool, &auth.user_id, &site_id, "viewer").await {
+        return (status, Json(err)).into_response();
+    }
+
     let result = sqlx::query_as::<_, ContentType>(
-        "SELECT id, name, slug, schema_json, created_at, updated_at FROM content_types WHERE slug = ?",
+        "SELECT id, site_id, name, slug, schema_json, created_at, updated_at FROM content_types WHERE site_id = ? AND slug = ?",
     )
-    .bind(&slug)
+    .bind(&site_id)
+    .bind(&ct_slug)
     .fetch_optional(&pool)
     .await;
 
@@ -59,17 +70,23 @@ pub async fn get_content_type(
 }
 
 pub async fn create_content_type(
-    _auth: AuthenticatedUser,
+    auth: AuthenticatedUser,
+    Path(site_id): Path<String>,
     Extension(pool): Extension<SqlitePool>,
     Json(payload): Json<CreateContentType>,
 ) -> Response {
+    if let Err((status, err)) = check_site_access(&pool, &auth.user_id, &site_id, "editor").await {
+        return (status, Json(err)).into_response();
+    }
+
     let schema_str = payload.schema_json.to_string();
     let id = Uuid::now_v7().to_string();
 
     let result = sqlx::query(
-        "INSERT INTO content_types (id, name, slug, schema_json) VALUES (?, ?, ?, ?)",
+        "INSERT INTO content_types (id, site_id, name, slug, schema_json) VALUES (?, ?, ?, ?, ?)",
     )
     .bind(&id)
+    .bind(&site_id)
     .bind(&payload.name)
     .bind(&payload.slug)
     .bind(&schema_str)
@@ -79,7 +96,7 @@ pub async fn create_content_type(
     match result {
         Ok(_) => {
             let ct = sqlx::query_as::<_, ContentType>(
-                "SELECT id, name, slug, schema_json, created_at, updated_at FROM content_types WHERE id = ?",
+                "SELECT id, site_id, name, slug, schema_json, created_at, updated_at FROM content_types WHERE id = ?",
             )
             .bind(&id)
             .fetch_one(&pool)
@@ -102,15 +119,20 @@ pub async fn create_content_type(
 }
 
 pub async fn update_content_type(
-    _auth: AuthenticatedUser,
-    Path(slug): Path<String>,
+    auth: AuthenticatedUser,
+    Path((site_id, ct_slug)): Path<(String, String)>,
     Extension(pool): Extension<SqlitePool>,
     Json(payload): Json<UpdateContentType>,
 ) -> Response {
+    if let Err((status, err)) = check_site_access(&pool, &auth.user_id, &site_id, "editor").await {
+        return (status, Json(err)).into_response();
+    }
+
     let existing = sqlx::query_as::<_, ContentType>(
-        "SELECT id, name, slug, schema_json, created_at, updated_at FROM content_types WHERE slug = ?",
+        "SELECT id, site_id, name, slug, schema_json, created_at, updated_at FROM content_types WHERE site_id = ? AND slug = ?",
     )
-    .bind(&slug)
+    .bind(&site_id)
+    .bind(&ct_slug)
     .fetch_optional(&pool)
     .await;
 
@@ -152,7 +174,7 @@ pub async fn update_content_type(
     match result {
         Ok(_) => {
             let ct = sqlx::query_as::<_, ContentType>(
-                "SELECT id, name, slug, schema_json, created_at, updated_at FROM content_types WHERE id = ?",
+                "SELECT id, site_id, name, slug, schema_json, created_at, updated_at FROM content_types WHERE id = ?",
             )
             .bind(&existing.id)
             .fetch_one(&pool)
@@ -170,12 +192,17 @@ pub async fn update_content_type(
 }
 
 pub async fn delete_content_type(
-    _auth: AuthenticatedUser,
-    Path(slug): Path<String>,
+    auth: AuthenticatedUser,
+    Path((site_id, ct_slug)): Path<(String, String)>,
     Extension(pool): Extension<SqlitePool>,
 ) -> Response {
-    let result = sqlx::query("DELETE FROM content_types WHERE slug = ?")
-        .bind(&slug)
+    if let Err((status, err)) = check_site_access(&pool, &auth.user_id, &site_id, "editor").await {
+        return (status, Json(err)).into_response();
+    }
+
+    let result = sqlx::query("DELETE FROM content_types WHERE site_id = ? AND slug = ?")
+        .bind(&site_id)
+        .bind(&ct_slug)
         .execute(&pool)
         .await;
 

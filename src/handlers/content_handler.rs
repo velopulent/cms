@@ -9,7 +9,7 @@ use serde_json::json;
 use sqlx::SqlitePool;
 use uuid::Uuid;
 
-use crate::middleware::auth::AuthenticatedUser;
+use crate::middleware::auth::{AuthenticatedUser, check_site_access};
 use crate::models::content::{Content, CreateContent, UpdateContent};
 
 #[derive(Deserialize)]
@@ -20,35 +20,44 @@ pub struct ListParams {
 }
 
 pub async fn list_content(
-    _auth: AuthenticatedUser,
+    auth: AuthenticatedUser,
+    Path(site_id): Path<String>,
     Query(params): Query<ListParams>,
     Extension(pool): Extension<SqlitePool>,
 ) -> Response {
+    if let Err((status, err)) = check_site_access(&pool, &auth.user_id, &site_id, "viewer").await {
+        return (status, Json(err)).into_response();
+    }
+
     let mut query = String::from(
-        "SELECT c.id, c.type_id, c.data, c.slug, c.status, c.created_at, c.updated_at, c.published_at
+        "SELECT c.id, c.site_id, c.type_id, c.data, c.slug, c.status, c.created_at, c.updated_at, c.published_at
          FROM content c
          JOIN content_types ct ON c.type_id = ct.id
-         WHERE 1=1",
+         WHERE c.site_id = ?",
     );
 
+    let mut bindings: Vec<String> = vec![site_id];
+
     if let Some(type_slug) = &params.r#type {
-        query.push_str(&format!(" AND ct.slug = '{}'", type_slug.replace('\'', "''")));
+        query.push_str(" AND ct.slug = ?");
+        bindings.push(type_slug.clone());
     }
     if let Some(status) = &params.status {
-        query.push_str(&format!(" AND c.status = '{}'", status.replace('\'', "''")));
+        query.push_str(" AND c.status = ?");
+        bindings.push(status.clone());
     }
     if let Some(search) = &params.search {
-        let escaped = search.replace('\'', "''");
-        query.push_str(&format!(
-            " AND c.data LIKE '%{}%'",
-            escaped
-        ));
+        query.push_str(" AND c.data LIKE ?");
+        bindings.push(format!("%{}%", search));
     }
     query.push_str(" ORDER BY c.updated_at DESC");
 
-    let result = sqlx::query_as::<_, Content>(&query)
-        .fetch_all(&pool)
-        .await;
+    let mut q = sqlx::query_as::<_, Content>(&query);
+    for b in &bindings {
+        q = q.bind(b);
+    }
+
+    let result = q.fetch_all(&pool).await;
 
     match result {
         Ok(items) => (StatusCode::OK, Json(items)).into_response(),
@@ -61,14 +70,19 @@ pub async fn list_content(
 }
 
 pub async fn get_content(
-    _auth: AuthenticatedUser,
-    Path(id): Path<String>,
+    auth: AuthenticatedUser,
+    Path((site_id, id)): Path<(String, String)>,
     Extension(pool): Extension<SqlitePool>,
 ) -> Response {
+    if let Err((status, err)) = check_site_access(&pool, &auth.user_id, &site_id, "viewer").await {
+        return (status, Json(err)).into_response();
+    }
+
     let result = sqlx::query_as::<_, Content>(
-        "SELECT id, type_id, data, slug, status, created_at, updated_at, published_at FROM content WHERE id = ?",
+        "SELECT id, site_id, type_id, data, slug, status, created_at, updated_at, published_at FROM content WHERE id = ? AND site_id = ?",
     )
-    .bind(id)
+    .bind(&id)
+    .bind(&site_id)
     .fetch_optional(&pool)
     .await;
 
@@ -88,17 +102,23 @@ pub async fn get_content(
 }
 
 pub async fn create_content(
-    _auth: AuthenticatedUser,
+    auth: AuthenticatedUser,
+    Path(site_id): Path<String>,
     Extension(pool): Extension<SqlitePool>,
     Json(payload): Json<CreateContent>,
 ) -> Response {
+    if let Err((status, err)) = check_site_access(&pool, &auth.user_id, &site_id, "editor").await {
+        return (status, Json(err)).into_response();
+    }
+
     let data_str = payload.data.to_string();
     let id = Uuid::now_v7().to_string();
 
     let result = sqlx::query(
-        "INSERT INTO content (id, type_id, data, slug) VALUES (?, ?, ?, ?)",
+        "INSERT INTO content (id, site_id, type_id, data, slug) VALUES (?, ?, ?, ?, ?)",
     )
     .bind(&id)
+    .bind(&site_id)
     .bind(&payload.type_id)
     .bind(&data_str)
     .bind(&payload.slug)
@@ -108,7 +128,7 @@ pub async fn create_content(
     match result {
         Ok(_) => {
             let item = sqlx::query_as::<_, Content>(
-                "SELECT id, type_id, data, slug, status, created_at, updated_at, published_at FROM content WHERE id = ?",
+                "SELECT id, site_id, type_id, data, slug, status, created_at, updated_at, published_at FROM content WHERE id = ?",
             )
             .bind(&id)
             .fetch_one(&pool)
@@ -131,15 +151,20 @@ pub async fn create_content(
 }
 
 pub async fn update_content(
-    _auth: AuthenticatedUser,
-    Path(id): Path<String>,
+    auth: AuthenticatedUser,
+    Path((site_id, id)): Path<(String, String)>,
     Extension(pool): Extension<SqlitePool>,
     Json(payload): Json<UpdateContent>,
 ) -> Response {
+    if let Err((status, err)) = check_site_access(&pool, &auth.user_id, &site_id, "editor").await {
+        return (status, Json(err)).into_response();
+    }
+
     let existing = sqlx::query_as::<_, Content>(
-        "SELECT id, type_id, data, slug, status, created_at, updated_at, published_at FROM content WHERE id = ?",
+        "SELECT id, site_id, type_id, data, slug, status, created_at, updated_at, published_at FROM content WHERE id = ? AND site_id = ?",
     )
     .bind(&id)
+    .bind(&site_id)
     .fetch_optional(&pool)
     .await;
 
@@ -181,7 +206,7 @@ pub async fn update_content(
     match result {
         Ok(_) => {
             let item = sqlx::query_as::<_, Content>(
-                "SELECT id, type_id, data, slug, status, created_at, updated_at, published_at FROM content WHERE id = ?",
+                "SELECT id, site_id, type_id, data, slug, status, created_at, updated_at, published_at FROM content WHERE id = ?",
             )
             .bind(&id)
             .fetch_one(&pool)
@@ -204,12 +229,17 @@ pub async fn update_content(
 }
 
 pub async fn delete_content(
-    _auth: AuthenticatedUser,
-    Path(id): Path<String>,
+    auth: AuthenticatedUser,
+    Path((site_id, id)): Path<(String, String)>,
     Extension(pool): Extension<SqlitePool>,
 ) -> Response {
-    let result = sqlx::query("DELETE FROM content WHERE id = ?")
-        .bind(id)
+    if let Err((status, err)) = check_site_access(&pool, &auth.user_id, &site_id, "editor").await {
+        return (status, Json(err)).into_response();
+    }
+
+    let result = sqlx::query("DELETE FROM content WHERE id = ? AND site_id = ?")
+        .bind(&id)
+        .bind(&site_id)
         .execute(&pool)
         .await;
 
@@ -224,14 +254,19 @@ pub async fn delete_content(
 }
 
 pub async fn publish_content(
-    _auth: AuthenticatedUser,
-    Path(id): Path<String>,
+    auth: AuthenticatedUser,
+    Path((site_id, id)): Path<(String, String)>,
     Extension(pool): Extension<SqlitePool>,
 ) -> Response {
+    if let Err((status, err)) = check_site_access(&pool, &auth.user_id, &site_id, "editor").await {
+        return (status, Json(err)).into_response();
+    }
+
     let result = sqlx::query(
-        "UPDATE content SET status = 'published', published_at = datetime('now'), updated_at = datetime('now') WHERE id = ?",
+        "UPDATE content SET status = 'published', published_at = datetime('now'), updated_at = datetime('now') WHERE id = ? AND site_id = ?",
     )
     .bind(&id)
+    .bind(&site_id)
     .execute(&pool)
     .await;
 
@@ -243,7 +278,7 @@ pub async fn publish_content(
             .into_response(),
         Ok(_) => {
             let item = sqlx::query_as::<_, Content>(
-                "SELECT id, type_id, data, slug, status, created_at, updated_at, published_at FROM content WHERE id = ?",
+                "SELECT id, site_id, type_id, data, slug, status, created_at, updated_at, published_at FROM content WHERE id = ?",
             )
             .bind(&id)
             .fetch_one(&pool)
@@ -261,14 +296,19 @@ pub async fn publish_content(
 }
 
 pub async fn unpublish_content(
-    _auth: AuthenticatedUser,
-    Path(id): Path<String>,
+    auth: AuthenticatedUser,
+    Path((site_id, id)): Path<(String, String)>,
     Extension(pool): Extension<SqlitePool>,
 ) -> Response {
+    if let Err((status, err)) = check_site_access(&pool, &auth.user_id, &site_id, "editor").await {
+        return (status, Json(err)).into_response();
+    }
+
     let result = sqlx::query(
-        "UPDATE content SET status = 'draft', updated_at = datetime('now') WHERE id = ?",
+        "UPDATE content SET status = 'draft', updated_at = datetime('now') WHERE id = ? AND site_id = ?",
     )
     .bind(&id)
+    .bind(&site_id)
     .execute(&pool)
     .await;
 
@@ -280,7 +320,7 @@ pub async fn unpublish_content(
             .into_response(),
         Ok(_) => {
             let item = sqlx::query_as::<_, Content>(
-                "SELECT id, type_id, data, slug, status, created_at, updated_at, published_at FROM content WHERE id = ?",
+                "SELECT id, site_id, type_id, data, slug, status, created_at, updated_at, published_at FROM content WHERE id = ?",
             )
             .bind(&id)
             .fetch_one(&pool)
