@@ -7,6 +7,7 @@ use axum::{
 use bcrypt::{hash, verify, DEFAULT_COST};
 use serde_json::json;
 use sqlx::SqlitePool;
+use uuid::Uuid;
 
 use crate::middleware::auth::{AuthenticatedUser, create_token};
 use crate::models::user::{AuthResponse, CreateUser, LoginRequest, User, UserPublic};
@@ -34,9 +35,12 @@ pub async fn register(
         }
     };
 
+    let id = Uuid::now_v7().to_string();
+
     let result = sqlx::query(
-        "INSERT INTO users (username, email, password_hash) VALUES (?, ?, ?)",
+        "INSERT INTO users (id, username, email, password_hash) VALUES (?, ?, ?, ?)",
     )
+    .bind(&id)
     .bind(&payload.username)
     .bind(&payload.email)
     .bind(&password_hash)
@@ -44,10 +48,8 @@ pub async fn register(
     .await;
 
     match result {
-        Ok(res) => {
-            let id = res.last_insert_rowid();
-
-            let token = match create_token(id) {
+        Ok(_) => {
+            let token = match create_token(id.clone()) {
                 Ok(t) => t,
                 Err(e) => {
                     return (
@@ -124,7 +126,7 @@ pub async fn login(
         }
     }
 
-    let token = match create_token(user.id) {
+    let token = match create_token(user.id.clone()) {
         Ok(t) => t,
         Err(e) => {
             return (

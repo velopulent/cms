@@ -6,6 +6,7 @@ use axum::{
 };
 use serde_json::json;
 use sqlx::SqlitePool;
+use uuid::Uuid;
 
 use crate::middleware::auth::AuthenticatedUser;
 use crate::models::content_type::{ContentType, CreateContentType, UpdateContentType};
@@ -63,10 +64,12 @@ pub async fn create_content_type(
     Json(payload): Json<CreateContentType>,
 ) -> Response {
     let schema_str = payload.schema_json.to_string();
+    let id = Uuid::now_v7().to_string();
 
     let result = sqlx::query(
-        "INSERT INTO content_types (name, slug, schema_json) VALUES (?, ?, ?)",
+        "INSERT INTO content_types (id, name, slug, schema_json) VALUES (?, ?, ?, ?)",
     )
+    .bind(&id)
     .bind(&payload.name)
     .bind(&payload.slug)
     .bind(&schema_str)
@@ -74,12 +77,11 @@ pub async fn create_content_type(
     .await;
 
     match result {
-        Ok(res) => {
-            let id = res.last_insert_rowid();
+        Ok(_) => {
             let ct = sqlx::query_as::<_, ContentType>(
                 "SELECT id, name, slug, schema_json, created_at, updated_at FROM content_types WHERE id = ?",
             )
-            .bind(id)
+            .bind(&id)
             .fetch_one(&pool)
             .await
             .unwrap();
@@ -143,7 +145,7 @@ pub async fn update_content_type(
     .bind(&name)
     .bind(&new_slug)
     .bind(&schema_str)
-    .bind(existing.id)
+    .bind(&existing.id)
     .execute(&pool)
     .await;
 
@@ -152,7 +154,7 @@ pub async fn update_content_type(
             let ct = sqlx::query_as::<_, ContentType>(
                 "SELECT id, name, slug, schema_json, created_at, updated_at FROM content_types WHERE id = ?",
             )
-            .bind(existing.id)
+            .bind(&existing.id)
             .fetch_one(&pool)
             .await
             .unwrap();

@@ -17,6 +17,7 @@ mod router;
 
 use std::net::SocketAddr;
 use bcrypt::{hash, DEFAULT_COST};
+use uuid::Uuid;
 use router::create_router;
 use database::init_db;
 
@@ -40,14 +41,16 @@ async fn main() {
 }
 
 async fn seed_admin(pool: &sqlx::SqlitePool) {
-    let exists: Option<(i64,)> = sqlx::query_as("SELECT id FROM users WHERE username = 'admin'")
+    let exists: Option<(String,)> = sqlx::query_as("SELECT id FROM users WHERE username = 'admin'")
         .fetch_optional(pool)
         .await
         .unwrap_or(None);
 
     if exists.is_none() {
+        let id = Uuid::now_v7().to_string();
         let password_hash = hash("admin", DEFAULT_COST).expect("Failed to hash password");
-        sqlx::query("INSERT INTO users (username, email, password_hash) VALUES (?, ?, ?)")
+        sqlx::query("INSERT INTO users (id, username, email, password_hash) VALUES (?, ?, ?, ?)")
+            .bind(&id)
             .bind("admin")
             .bind("admin@cms.local")
             .bind(&password_hash)

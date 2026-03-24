@@ -7,6 +7,7 @@ use axum::{
 use serde::Deserialize;
 use serde_json::json;
 use sqlx::SqlitePool;
+use uuid::Uuid;
 
 use crate::middleware::auth::AuthenticatedUser;
 use crate::models::content::{Content, CreateContent, UpdateContent};
@@ -61,7 +62,7 @@ pub async fn list_content(
 
 pub async fn get_content(
     _auth: AuthenticatedUser,
-    Path(id): Path<i64>,
+    Path(id): Path<String>,
     Extension(pool): Extension<SqlitePool>,
 ) -> Response {
     let result = sqlx::query_as::<_, Content>(
@@ -92,23 +93,24 @@ pub async fn create_content(
     Json(payload): Json<CreateContent>,
 ) -> Response {
     let data_str = payload.data.to_string();
+    let id = Uuid::now_v7().to_string();
 
     let result = sqlx::query(
-        "INSERT INTO content (type_id, data, slug) VALUES (?, ?, ?)",
+        "INSERT INTO content (id, type_id, data, slug) VALUES (?, ?, ?, ?)",
     )
-    .bind(payload.type_id)
+    .bind(&id)
+    .bind(&payload.type_id)
     .bind(&data_str)
     .bind(&payload.slug)
     .execute(&pool)
     .await;
 
     match result {
-        Ok(res) => {
-            let id = res.last_insert_rowid();
+        Ok(_) => {
             let item = sqlx::query_as::<_, Content>(
                 "SELECT id, type_id, data, slug, status, created_at, updated_at, published_at FROM content WHERE id = ?",
             )
-            .bind(id)
+            .bind(&id)
             .fetch_one(&pool)
             .await
             .unwrap();
@@ -130,14 +132,14 @@ pub async fn create_content(
 
 pub async fn update_content(
     _auth: AuthenticatedUser,
-    Path(id): Path<i64>,
+    Path(id): Path<String>,
     Extension(pool): Extension<SqlitePool>,
     Json(payload): Json<UpdateContent>,
 ) -> Response {
     let existing = sqlx::query_as::<_, Content>(
         "SELECT id, type_id, data, slug, status, created_at, updated_at, published_at FROM content WHERE id = ?",
     )
-    .bind(id)
+    .bind(&id)
     .fetch_optional(&pool)
     .await;
 
@@ -172,7 +174,7 @@ pub async fn update_content(
     .bind(&data_str)
     .bind(&slug)
     .bind(&status)
-    .bind(id)
+    .bind(&id)
     .execute(&pool)
     .await;
 
@@ -181,7 +183,7 @@ pub async fn update_content(
             let item = sqlx::query_as::<_, Content>(
                 "SELECT id, type_id, data, slug, status, created_at, updated_at, published_at FROM content WHERE id = ?",
             )
-            .bind(id)
+            .bind(&id)
             .fetch_one(&pool)
             .await
             .unwrap();
@@ -203,7 +205,7 @@ pub async fn update_content(
 
 pub async fn delete_content(
     _auth: AuthenticatedUser,
-    Path(id): Path<i64>,
+    Path(id): Path<String>,
     Extension(pool): Extension<SqlitePool>,
 ) -> Response {
     let result = sqlx::query("DELETE FROM content WHERE id = ?")
@@ -223,13 +225,13 @@ pub async fn delete_content(
 
 pub async fn publish_content(
     _auth: AuthenticatedUser,
-    Path(id): Path<i64>,
+    Path(id): Path<String>,
     Extension(pool): Extension<SqlitePool>,
 ) -> Response {
     let result = sqlx::query(
         "UPDATE content SET status = 'published', published_at = datetime('now'), updated_at = datetime('now') WHERE id = ?",
     )
-    .bind(id)
+    .bind(&id)
     .execute(&pool)
     .await;
 
@@ -243,7 +245,7 @@ pub async fn publish_content(
             let item = sqlx::query_as::<_, Content>(
                 "SELECT id, type_id, data, slug, status, created_at, updated_at, published_at FROM content WHERE id = ?",
             )
-            .bind(id)
+            .bind(&id)
             .fetch_one(&pool)
             .await
             .unwrap();
@@ -260,13 +262,13 @@ pub async fn publish_content(
 
 pub async fn unpublish_content(
     _auth: AuthenticatedUser,
-    Path(id): Path<i64>,
+    Path(id): Path<String>,
     Extension(pool): Extension<SqlitePool>,
 ) -> Response {
     let result = sqlx::query(
         "UPDATE content SET status = 'draft', updated_at = datetime('now') WHERE id = ?",
     )
-    .bind(id)
+    .bind(&id)
     .execute(&pool)
     .await;
 
@@ -280,7 +282,7 @@ pub async fn unpublish_content(
             let item = sqlx::query_as::<_, Content>(
                 "SELECT id, type_id, data, slug, status, created_at, updated_at, published_at FROM content WHERE id = ?",
             )
-            .bind(id)
+            .bind(&id)
             .fetch_one(&pool)
             .await
             .unwrap();
