@@ -15,6 +15,7 @@ import { Route as AdminRouteImport } from './routes/_admin'
 import { Route as AdminIndexRouteImport } from './routes/_admin/index'
 import { Route as AdminContentTypesRouteImport } from './routes/_admin/content-types'
 import { Route as AdminContentTypeSlugRouteImport } from './routes/_admin/content.$typeSlug'
+import { Route as AdminContentTypeSlugIndexRouteImport } from './routes/_admin/content.$typeSlug.index'
 import { Route as AdminContentTypeSlugNewRouteImport } from './routes/_admin/content.$typeSlug.new'
 import { Route as AdminContentTypeSlugIdEditRouteImport } from './routes/_admin/content.$typeSlug.$id.edit'
 
@@ -47,6 +48,12 @@ const AdminContentTypeSlugRoute = AdminContentTypeSlugRouteImport.update({
   path: '/content/$typeSlug',
   getParentRoute: () => AdminRoute,
 } as any)
+const AdminContentTypeSlugIndexRoute =
+  AdminContentTypeSlugIndexRouteImport.update({
+    id: '/',
+    path: '/',
+    getParentRoute: () => AdminContentTypeSlugRoute,
+  } as any)
 const AdminContentTypeSlugNewRoute = AdminContentTypeSlugNewRouteImport.update({
   id: '/new',
   path: '/new',
@@ -66,6 +73,7 @@ export interface FileRoutesByFullPath {
   '/content-types': typeof AdminContentTypesRoute
   '/content/$typeSlug': typeof AdminContentTypeSlugRouteWithChildren
   '/content/$typeSlug/new': typeof AdminContentTypeSlugNewRoute
+  '/content/$typeSlug/': typeof AdminContentTypeSlugIndexRoute
   '/content/$typeSlug/$id/edit': typeof AdminContentTypeSlugIdEditRoute
 }
 export interface FileRoutesByTo {
@@ -73,8 +81,8 @@ export interface FileRoutesByTo {
   '/register': typeof RegisterRoute
   '/content-types': typeof AdminContentTypesRoute
   '/': typeof AdminIndexRoute
-  '/content/$typeSlug': typeof AdminContentTypeSlugRouteWithChildren
   '/content/$typeSlug/new': typeof AdminContentTypeSlugNewRoute
+  '/content/$typeSlug': typeof AdminContentTypeSlugIndexRoute
   '/content/$typeSlug/$id/edit': typeof AdminContentTypeSlugIdEditRoute
 }
 export interface FileRoutesById {
@@ -86,6 +94,7 @@ export interface FileRoutesById {
   '/_admin/': typeof AdminIndexRoute
   '/_admin/content/$typeSlug': typeof AdminContentTypeSlugRouteWithChildren
   '/_admin/content/$typeSlug/new': typeof AdminContentTypeSlugNewRoute
+  '/_admin/content/$typeSlug/': typeof AdminContentTypeSlugIndexRoute
   '/_admin/content/$typeSlug/$id/edit': typeof AdminContentTypeSlugIdEditRoute
 }
 export interface FileRouteTypes {
@@ -97,6 +106,7 @@ export interface FileRouteTypes {
     | '/content-types'
     | '/content/$typeSlug'
     | '/content/$typeSlug/new'
+    | '/content/$typeSlug/'
     | '/content/$typeSlug/$id/edit'
   fileRoutesByTo: FileRoutesByTo
   to:
@@ -104,8 +114,8 @@ export interface FileRouteTypes {
     | '/register'
     | '/content-types'
     | '/'
-    | '/content/$typeSlug'
     | '/content/$typeSlug/new'
+    | '/content/$typeSlug'
     | '/content/$typeSlug/$id/edit'
   id:
     | '__root__'
@@ -116,6 +126,7 @@ export interface FileRouteTypes {
     | '/_admin/'
     | '/_admin/content/$typeSlug'
     | '/_admin/content/$typeSlug/new'
+    | '/_admin/content/$typeSlug/'
     | '/_admin/content/$typeSlug/$id/edit'
   fileRoutesById: FileRoutesById
 }
@@ -169,6 +180,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AdminContentTypeSlugRouteImport
       parentRoute: typeof AdminRoute
     }
+    '/_admin/content/$typeSlug/': {
+      id: '/_admin/content/$typeSlug/'
+      path: '/'
+      fullPath: '/content/$typeSlug/'
+      preLoaderRoute: typeof AdminContentTypeSlugIndexRouteImport
+      parentRoute: typeof AdminContentTypeSlugRoute
+    }
     '/_admin/content/$typeSlug/new': {
       id: '/_admin/content/$typeSlug/new'
       path: '/new'
@@ -188,11 +206,13 @@ declare module '@tanstack/react-router' {
 
 interface AdminContentTypeSlugRouteChildren {
   AdminContentTypeSlugNewRoute: typeof AdminContentTypeSlugNewRoute
+  AdminContentTypeSlugIndexRoute: typeof AdminContentTypeSlugIndexRoute
   AdminContentTypeSlugIdEditRoute: typeof AdminContentTypeSlugIdEditRoute
 }
 
 const AdminContentTypeSlugRouteChildren: AdminContentTypeSlugRouteChildren = {
   AdminContentTypeSlugNewRoute: AdminContentTypeSlugNewRoute,
+  AdminContentTypeSlugIndexRoute: AdminContentTypeSlugIndexRoute,
   AdminContentTypeSlugIdEditRoute: AdminContentTypeSlugIdEditRoute,
 }
 
