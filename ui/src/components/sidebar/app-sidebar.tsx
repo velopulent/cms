@@ -18,6 +18,7 @@ import {
   SidebarRail,
 } from "@/components/ui/sidebar"
 import { NavMain } from "@/components/sidebar/nav-main"
+import { NavProjects } from "@/components/sidebar/nav-projects"
 import { NavUser } from "@/components/sidebar/nav-user"
 import { TeamSwitcher } from "@/components/sidebar/team-switcher"
 import { useAuth } from "@/contexts/auth-context"
@@ -57,17 +58,25 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
       url: `/sites/${siteId}`,
       icon: <LayoutDashboard />,
       isActive: true,
+      items: [
+        { title: "Overview", url: `/sites/${siteId}` },
+      ],
     },
     {
       title: "Content Types",
       url: `/sites/${siteId}/content-types`,
       icon: <Layers />,
+      items: (contentTypes ?? []).map((ct) => ({
+        title: ct.name,
+        url: `/sites/${siteId}/content-types`,
+      })),
     },
   ]
 
   const contentNavItems = (contentTypes ?? []).map((ct) => ({
     title: ct.name,
     url: `/sites/${siteId}/content/${ct.slug}`,
+    icon: <FileText />,
   }))
 
   if (contentNavItems.length > 0) {
@@ -93,6 +102,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
       </SidebarHeader>
       <SidebarContent>
         <NavMain items={navMain} />
+        <NavProjects projects={[]} />
       </SidebarContent>
       <SidebarFooter>
         <NavUser user={navUser} />
