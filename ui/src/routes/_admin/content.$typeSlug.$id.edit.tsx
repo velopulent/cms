@@ -22,7 +22,6 @@ export const Route = createFileRoute("/_admin/content/$typeSlug/$id/edit")({
 
 function EditContentPage() {
   const { typeSlug, id } = Route.useParams();
-  const contentId = Number(id);
   const navigate = useNavigate();
   const [data, setData] = useState<Record<string, unknown>>({});
   const [slug, setSlug] = useState("");
@@ -34,9 +33,9 @@ function EditContentPage() {
   });
 
   const { data: content, isLoading: contentLoading } = useQuery({
-    queryKey: ["content", contentId],
-    queryFn: () => getContentById(contentId),
-    enabled: !Number.isNaN(contentId),
+    queryKey: ["content", id],
+    queryFn: () => getContentById(id),
+    enabled: !!id,
   });
 
   useEffect(() => {
@@ -53,7 +52,7 @@ function EditContentPage() {
 
   const updateMutation = useMutation({
     mutationFn: () =>
-      updateContent(contentId, {
+      updateContent(id, {
         data,
         slug,
       }),
@@ -118,7 +117,7 @@ function EditContentPage() {
             </Badge>
           </div>
           <p className="text-sm text-muted-foreground">
-            Edit {contentType.name.toLowerCase()} #{content.id}
+            Edit {contentType.name.toLowerCase()} #{content.id.slice(0, 8)}
           </p>
         </div>
       </div>

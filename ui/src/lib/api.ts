@@ -54,7 +54,7 @@ export function clearToken() {
 // --- Types ---
 
 export interface UserPublic {
-  id: number;
+  id: string;
   username: string;
   email: string;
 }
@@ -65,7 +65,7 @@ export interface AuthResponse {
 }
 
 export interface ContentType {
-  id: number;
+  id: string;
   name: string;
   slug: string;
   schema_json: string;
@@ -85,8 +85,8 @@ export interface ContentField {
 }
 
 export interface Content {
-  id: number;
-  type_id: number;
+  id: string;
+  type_id: string;
   data: string;
   slug: string;
   status: string;
@@ -169,12 +169,12 @@ export async function getContent(params: {
   return api<Content[]>(`/content${qs ? `?${qs}` : ""}`);
 }
 
-export async function getContentById(id: number) {
+export async function getContentById(id: string) {
   return api<Content>(`/content/${id}`);
 }
 
 export async function createContent(data: {
-  type_id: number;
+  type_id: string;
   data: Record<string, unknown>;
   slug: string;
 }) {
@@ -185,7 +185,7 @@ export async function createContent(data: {
 }
 
 export async function updateContent(
-  id: number,
+  id: string,
   data: {
     data?: Record<string, unknown>;
     slug?: string;
@@ -198,14 +198,14 @@ export async function updateContent(
   });
 }
 
-export async function deleteContent(id: number) {
+export async function deleteContent(id: string) {
   return api<void>(`/content/${id}`, { method: "DELETE" });
 }
 
-export async function publishContent(id: number) {
+export async function publishContent(id: string) {
   return api<Content>(`/content/${id}/publish`, { method: "POST" });
 }
 
-export async function unpublishContent(id: number) {
+export async function unpublishContent(id: string) {
   return api<Content>(`/content/${id}/unpublish`, { method: "POST" });
 }

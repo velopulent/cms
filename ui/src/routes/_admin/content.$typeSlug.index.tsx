@@ -207,7 +207,7 @@ function ContentListPage() {
                         render={
                           <Link
                             to="/content/$typeSlug/$id/edit"
-                            params={{ typeSlug, id: String(item.id) }}
+                            params={{ typeSlug, id: item.id }}
                           />
                         }
                       >
