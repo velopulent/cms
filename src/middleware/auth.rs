@@ -81,3 +81,46 @@ where
         })
     }
 }
+
+pub async fn check_site_access(
+    pool: &sqlx::SqlitePool,
+    user_id: &str,
+    site_id: &str,
+    min_role: &str,
+) -> Result<(), (StatusCode, serde_json::Value)> {
+    let role_order = |r: &str| match r {
+        "owner" => 4,
+        "admin" => 3,
+        "editor" => 2,
+        "viewer" => 1,
+        _ => 0,
+    };
+
+    let min_level = role_order(min_role);
+
+    let result: Option<(String,)> = sqlx::query_as(
+        "SELECT sm.role FROM site_members sm WHERE sm.user_id = ? AND sm.site_id = ?",
+    )
+    .bind(user_id)
+    .bind(site_id)
+    .fetch_optional(pool)
+    .await
+    .map_err(|e| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            serde_json::json!({"error": e.to_string()}),
+        )
+    })?;
+
+    match result {
+        Some((role,)) if role_order(&role) >= min_level => Ok(()),
+        Some(_) => Err((
+            StatusCode::FORBIDDEN,
+            serde_json::json!({"error": "Insufficient permissions"}),
+        )),
+        None => Err((
+            StatusCode::NOT_FOUND,
+            serde_json::json!({"error": "Site not found"}),
+        )),
+    }
+}
