@@ -43,25 +43,27 @@ import {
   unpublishContent,
 } from "@/lib/api";
 
-export const Route = createFileRoute("/_admin/content/$typeSlug/")({
+export const Route = createFileRoute(
+  "/_admin/sites/$siteId/content/$typeSlug/",
+)({
   component: ContentListPage,
 });
 
 function ContentListPage() {
-  const { typeSlug } = Route.useParams();
+  const { siteId, typeSlug } = Route.useParams();
   const queryClient = useQueryClient();
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("");
 
   const { data: contentType, isLoading: typeLoading } = useQuery({
-    queryKey: ["content-type", typeSlug],
-    queryFn: () => getContentType(typeSlug),
+    queryKey: ["content-type", siteId, typeSlug],
+    queryFn: () => getContentType(siteId, typeSlug),
   });
 
   const { data: items, isLoading: itemsLoading } = useQuery({
-    queryKey: ["content", typeSlug, statusFilter, search],
+    queryKey: ["content", siteId, typeSlug, statusFilter, search],
     queryFn: () =>
-      getContent({
+      getContent(siteId, {
         type: typeSlug,
         status: statusFilter || undefined,
         search: search || undefined,
@@ -69,27 +71,27 @@ function ContentListPage() {
   });
 
   const deleteMutation = useMutation({
-    mutationFn: deleteContent,
+    mutationFn: (id: string) => deleteContent(siteId, id),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["content", typeSlug] });
+      queryClient.invalidateQueries({ queryKey: ["content", siteId, typeSlug] });
       toast.success("Content deleted");
     },
     onError: (err: Error) => toast.error(err.message),
   });
 
   const publishMutation = useMutation({
-    mutationFn: publishContent,
+    mutationFn: (id: string) => publishContent(siteId, id),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["content", typeSlug] });
+      queryClient.invalidateQueries({ queryKey: ["content", siteId, typeSlug] });
       toast.success("Published");
     },
     onError: (err: Error) => toast.error(err.message),
   });
 
   const unpublishMutation = useMutation({
-    mutationFn: unpublishContent,
+    mutationFn: (id: string) => unpublishContent(siteId, id),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["content", typeSlug] });
+      queryClient.invalidateQueries({ queryKey: ["content", siteId, typeSlug] });
       toast.success("Unpublished");
     },
     onError: (err: Error) => toast.error(err.message),
@@ -108,7 +110,12 @@ function ContentListPage() {
           </p>
         </div>
         <Button
-          render={<Link to="/content/$typeSlug/new" params={{ typeSlug }} />}
+          render={
+            <Link
+              to="/sites/$siteId/content/$typeSlug/new"
+              params={{ siteId, typeSlug }}
+            />
+          }
         >
           <Plus data-icon="inline-start" />
           New {typeName}
@@ -206,8 +213,8 @@ function ContentListPage() {
                         size="icon"
                         render={
                           <Link
-                            to="/content/$typeSlug/$id/edit"
-                            params={{ typeSlug, id: item.id }}
+                            to="/sites/$siteId/content/$typeSlug/$id/edit"
+                            params={{ siteId, typeSlug, id: item.id }}
                           />
                         }
                       >

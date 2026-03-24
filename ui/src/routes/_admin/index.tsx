@@ -1,174 +1,22 @@
-import { useQuery } from "@tanstack/react-query";
-import { createFileRoute, Link } from "@tanstack/react-router";
-import { FileText, Plus } from "lucide-react";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Skeleton } from "@/components/ui/skeleton";
-import {
-  type Content,
-  type ContentType,
-  getContent,
-  getContentTypes,
-} from "@/lib/api";
+import { createFileRoute, redirect } from "@tanstack/react-router";
+import { getSites } from "@/lib/api";
 
 export const Route = createFileRoute("/_admin/")({
-  component: DashboardPage,
+  beforeLoad: async () => {
+    try {
+      const sites = await getSites();
+      if (sites.length > 0) {
+        throw redirect({
+          to: "/sites/$siteId",
+          params: { siteId: sites[0].id },
+        });
+      } else {
+        throw redirect({ to: "/sites" });
+      }
+    } catch (e: any) {
+      if (e?.redirect) throw e;
+      throw redirect({ to: "/sites" });
+    }
+  },
+  component: () => null,
 });
-
-function DashboardPage() {
-  const { data: contentTypes, isLoading: typesLoading } = useQuery({
-    queryKey: ["content-types"],
-    queryFn: getContentTypes,
-  });
-
-  const { data: allContent, isLoading: contentLoading } = useQuery({
-    queryKey: ["content", "all"],
-    queryFn: () => getContent({}),
-  });
-
-  const publishedCount =
-    allContent?.filter((c: Content) => c.status === "published").length ?? 0;
-  const draftCount =
-    allContent?.filter((c: Content) => c.status === "draft").length ?? 0;
-
-  return (
-    <div className="flex flex-col gap-6 p-6">
-      <div>
-        <h1 className="text-2xl font-semibold">Dashboard</h1>
-        <p className="text-sm text-muted-foreground">
-          Overview of your content
-        </p>
-      </div>
-
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-sm font-medium text-muted-foreground">
-              Content Types
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            {typesLoading ? (
-              <Skeleton className="h-8 w-12" />
-            ) : (
-              <p className="text-3xl font-semibold">
-                {contentTypes?.length ?? 0}
-              </p>
-            )}
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-sm font-medium text-muted-foreground">
-              Total Content
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            {contentLoading ? (
-              <Skeleton className="h-8 w-12" />
-            ) : (
-              <p className="text-3xl font-semibold">
-                {allContent?.length ?? 0}
-              </p>
-            )}
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-sm font-medium text-muted-foreground">
-              Published
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            {contentLoading ? (
-              <Skeleton className="h-8 w-12" />
-            ) : (
-              <p className="text-3xl font-semibold">{publishedCount}</p>
-            )}
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-sm font-medium text-muted-foreground">
-              Drafts
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            {contentLoading ? (
-              <Skeleton className="h-8 w-12" />
-            ) : (
-              <p className="text-3xl font-semibold">{draftCount}</p>
-            )}
-          </CardContent>
-        </Card>
-      </div>
-
-      {contentTypes && contentTypes.length > 0 && (
-        <div className="flex flex-col gap-4">
-          <h2 className="text-lg font-semibold">Quick Create</h2>
-          <div className="flex flex-wrap gap-2">
-            {contentTypes.map((ct: ContentType) => (
-              <Button
-                key={ct.id}
-                variant="outline"
-                render={
-                  <Link
-                    to="/content/$typeSlug/new"
-                    params={{ typeSlug: ct.slug }}
-                  />
-                }
-              >
-                <Plus data-icon="inline-start" />
-                New {ct.name}
-              </Button>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {allContent && allContent.length > 0 && (
-        <div className="flex flex-col gap-4">
-          <h2 className="text-lg font-semibold">Recently Updated</h2>
-          <div className="flex flex-col gap-2">
-            {allContent.slice(0, 5).map((item: Content) => {
-              const typeName = contentTypes?.find(
-                (ct: ContentType) => ct.id === item.type_id,
-              )?.name;
-              let title: string;
-              try {
-                const data = JSON.parse(item.data);
-                title = data.title || data.name || item.slug;
-              } catch {
-                title = item.slug;
-              }
-              return (
-                <div
-                  key={item.id}
-                  className="flex items-center justify-between rounded-lg border p-3"
-                >
-                  <div className="flex items-center gap-3">
-                    <FileText className="size-4 text-muted-foreground" />
-                    <div>
-                      <p className="text-sm font-medium">{title}</p>
-                      <p className="text-xs text-muted-foreground">
-                        {typeName} · {item.slug}
-                      </p>
-                    </div>
-                  </div>
-                  <Badge
-                    variant={
-                      item.status === "published" ? "default" : "secondary"
-                    }
-                  >
-                    {item.status}
-                  </Badge>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
