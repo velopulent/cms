@@ -4,6 +4,7 @@ use sqlx::FromRow;
 #[derive(Serialize, FromRow)]
 pub struct Content {
     pub id: String,
+    pub site_id: String,
     pub type_id: String,
     pub data: String,
     pub slug: String,

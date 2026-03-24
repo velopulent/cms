@@ -24,10 +24,28 @@ pub async fn init_db() -> SqlitePool {
             updated_at TEXT NOT NULL DEFAULT (datetime('now'))
         );
 
+        CREATE TABLE IF NOT EXISTS sites (
+            id TEXT PRIMARY KEY NOT NULL,
+            name TEXT NOT NULL,
+            created_by TEXT NOT NULL REFERENCES users(id),
+            created_at TEXT NOT NULL DEFAULT (datetime('now')),
+            updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+        );
+
+        CREATE TABLE IF NOT EXISTS site_members (
+            id TEXT PRIMARY KEY NOT NULL,
+            site_id TEXT NOT NULL REFERENCES sites(id) ON DELETE CASCADE,
+            user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            role TEXT NOT NULL CHECK(role IN ('owner', 'admin', 'editor', 'viewer')),
+            created_at TEXT NOT NULL DEFAULT (datetime('now')),
+            UNIQUE(site_id, user_id)
+        );
+
         CREATE TABLE IF NOT EXISTS content_types (
             id TEXT PRIMARY KEY NOT NULL,
-            name TEXT UNIQUE NOT NULL,
-            slug TEXT UNIQUE NOT NULL,
+            site_id TEXT NOT NULL REFERENCES sites(id) ON DELETE CASCADE,
+            name TEXT NOT NULL,
+            slug TEXT NOT NULL,
             schema_json JSON NOT NULL,
             created_at TEXT NOT NULL DEFAULT (datetime('now')),
             updated_at TEXT NOT NULL DEFAULT (datetime('now'))
@@ -35,6 +53,7 @@ pub async fn init_db() -> SqlitePool {
 
         CREATE TABLE IF NOT EXISTS content (
             id TEXT PRIMARY KEY NOT NULL,
+            site_id TEXT NOT NULL REFERENCES sites(id) ON DELETE CASCADE,
             type_id TEXT NOT NULL REFERENCES content_types(id) ON DELETE CASCADE,
             data JSON NOT NULL,
             slug TEXT NOT NULL,
@@ -44,6 +63,12 @@ pub async fn init_db() -> SqlitePool {
             published_at TEXT
         );
 
+        CREATE INDEX IF NOT EXISTS idx_site_members_user ON site_members(user_id);
+        CREATE INDEX IF NOT EXISTS idx_site_members_site ON site_members(site_id);
+        CREATE INDEX IF NOT EXISTS idx_content_types_site ON content_types(site_id);
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_content_types_site_name ON content_types(site_id, name);
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_content_types_site_slug ON content_types(site_id, slug);
+        CREATE INDEX IF NOT EXISTS idx_content_site ON content(site_id);
         CREATE INDEX IF NOT EXISTS idx_content_slug ON content(slug);
         CREATE INDEX IF NOT EXISTS idx_content_type ON content(type_id);
         CREATE INDEX IF NOT EXISTS idx_content_status ON content(status);
