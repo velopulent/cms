@@ -56,7 +56,7 @@ During development, the React dev server can proxy API requests to the Rust back
 
 ```bash
 cargo build --release
-./target/release/rusty-react
+./target/release/cms
 ```
 
 This will:
