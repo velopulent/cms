@@ -7,6 +7,7 @@ import { ChevronsUpDown, Plus, GalleryVerticalEnd } from "lucide-react"
 import {
   DropdownMenu,
   DropdownMenuContent,
+  DropdownMenuGroup,
   DropdownMenuItem,
   DropdownMenuLabel,
   DropdownMenuSeparator,
@@ -64,35 +65,39 @@ export function TeamSwitcher({ teams }: { teams: Team[] }) {
             side={isMobile ? "bottom" : "right"}
             sideOffset={4}
           >
-            <DropdownMenuLabel className="text-xs text-muted-foreground">
-              Sites
-            </DropdownMenuLabel>
-            {teams.map((team) => (
-              <DropdownMenuItem
-                key={team.id}
-                onClick={() =>
-                  navigate({ to: "/sites/$siteId", params: { siteId: team.id } })
-                }
-                className="gap-2 p-2"
-              >
-                <div className="flex size-6 items-center justify-center rounded-md border">
-                  {team.icon}
-                </div>
-                {team.name}
-              </DropdownMenuItem>
-            ))}
+            <DropdownMenuGroup>
+              <DropdownMenuLabel className="text-xs text-muted-foreground">
+                Sites
+              </DropdownMenuLabel>
+              {teams.map((team) => (
+                <DropdownMenuItem
+                  key={team.id}
+                  onClick={() =>
+                    navigate({ to: "/sites/$siteId", params: { siteId: team.id } })
+                  }
+                  className="gap-2 p-2"
+                >
+                  <div className="flex size-6 items-center justify-center rounded-md border">
+                    <GalleryVerticalEnd className="size-4" />
+                  </div>
+                  {team.name}
+                </DropdownMenuItem>
+              ))}
+            </DropdownMenuGroup>
             <DropdownMenuSeparator />
-            <DropdownMenuItem
-              className="gap-2 p-2"
-              onClick={() => navigate({ to: "/sites" })}
-            >
-              <div className="flex size-6 items-center justify-center rounded-md border bg-transparent">
-                <Plus className="size-4" />
-              </div>
-              <div className="font-medium text-muted-foreground">
-                Add site
-              </div>
-            </DropdownMenuItem>
+            <DropdownMenuGroup>
+              <DropdownMenuItem
+                className="gap-2 p-2"
+                onClick={() => navigate({ to: "/sites" })}
+              >
+                <div className="flex size-6 items-center justify-center rounded-md border bg-transparent">
+                  <Plus className="size-4" />
+                </div>
+                <div className="font-medium text-muted-foreground">
+                  Add site
+                </div>
+              </DropdownMenuItem>
+            </DropdownMenuGroup>
           </DropdownMenuContent>
         </DropdownMenu>
       </SidebarMenuItem>
