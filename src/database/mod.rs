@@ -16,7 +16,7 @@ pub async fn init_db() -> SqlitePool {
     sqlx::query(
         r#"
         CREATE TABLE IF NOT EXISTS users (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            id TEXT PRIMARY KEY NOT NULL,
             username TEXT UNIQUE NOT NULL,
             email TEXT UNIQUE NOT NULL,
             password_hash TEXT NOT NULL,
@@ -25,7 +25,7 @@ pub async fn init_db() -> SqlitePool {
         );
 
         CREATE TABLE IF NOT EXISTS content_types (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            id TEXT PRIMARY KEY NOT NULL,
             name TEXT UNIQUE NOT NULL,
             slug TEXT UNIQUE NOT NULL,
             schema_json JSON NOT NULL,
@@ -34,8 +34,8 @@ pub async fn init_db() -> SqlitePool {
         );
 
         CREATE TABLE IF NOT EXISTS content (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            type_id INTEGER NOT NULL REFERENCES content_types(id) ON DELETE CASCADE,
+            id TEXT PRIMARY KEY NOT NULL,
+            type_id TEXT NOT NULL REFERENCES content_types(id) ON DELETE CASCADE,
             data JSON NOT NULL,
             slug TEXT NOT NULL,
             status TEXT NOT NULL DEFAULT 'draft' CHECK(status IN ('draft', 'published')),

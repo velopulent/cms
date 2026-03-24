@@ -9,10 +9,10 @@ use crate::models::user::Claims;
 const JWT_SECRET: &str = "cms-jwt-secret-change-in-production";
 
 pub struct AuthenticatedUser {
-    pub user_id: i64,
+    pub user_id: String,
 }
 
-pub fn create_token(user_id: i64) -> Result<String, jsonwebtoken::errors::Error> {
+pub fn create_token(user_id: String) -> Result<String, jsonwebtoken::errors::Error> {
     let expiration = chrono::Utc::now()
         .checked_add_signed(chrono::Duration::hours(24))
         .expect("valid timestamp")

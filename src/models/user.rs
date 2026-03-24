@@ -3,7 +3,7 @@ use sqlx::FromRow;
 
 #[derive(Serialize, FromRow)]
 pub struct User {
-    pub id: i64,
+    pub id: String,
     pub username: String,
     pub email: String,
     #[serde(skip_serializing)]
@@ -27,7 +27,7 @@ pub struct LoginRequest {
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Claims {
-    pub sub: i64,
+    pub sub: String,
     pub exp: usize,
 }
 
@@ -39,7 +39,7 @@ pub struct AuthResponse {
 
 #[derive(Serialize)]
 pub struct UserPublic {
-    pub id: i64,
+    pub id: String,
     pub username: String,
     pub email: String,
 }

@@ -3,8 +3,8 @@ use sqlx::FromRow;
 
 #[derive(Serialize, FromRow)]
 pub struct Content {
-    pub id: i64,
-    pub type_id: i64,
+    pub id: String,
+    pub type_id: String,
     pub data: String,
     pub slug: String,
     pub status: String,
@@ -15,7 +15,7 @@ pub struct Content {
 
 #[derive(Deserialize)]
 pub struct CreateContent {
-    pub type_id: i64,
+    pub type_id: String,
     pub data: serde_json::Value,
     pub slug: String,
 }

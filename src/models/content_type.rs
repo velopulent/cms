@@ -3,7 +3,7 @@ use sqlx::FromRow;
 
 #[derive(Serialize, FromRow)]
 pub struct ContentType {
-    pub id: i64,
+    pub id: String,
     pub name: String,
     pub slug: String,
     pub schema_json: String,
