@@ -10,9 +10,8 @@ use crate::handlers::content_handler::{
     create_content, delete_content, get_content, list_content, publish_content, unpublish_content,
     update_content,
 };
-use crate::handlers::content_type_handler::{
-    create_content_type, delete_content_type, get_content_type, list_content_types,
-    update_content_type,
+use crate::handlers::schema_handler::{
+    create_schema, delete_schema, get_schema, list_schemas, update_schema,
 };
 use crate::handlers::site_handler::{
     create_site, delete_site, get_site, invite_member, list_members, list_sites, remove_member,
@@ -49,26 +48,26 @@ pub fn create_router(pool: SqlitePool) -> Router {
             "/api/sites/{site_id}/members/{user_id}",
             delete(remove_member),
         )
-        // Content Types (site-scoped)
+        // Schemas (site-scoped)
         .route(
-            "/api/sites/{site_id}/content-types",
-            get(list_content_types),
+            "/api/sites/{site_id}/schemas",
+            get(list_schemas),
         )
         .route(
-            "/api/sites/{site_id}/content-types",
-            post(create_content_type),
+            "/api/sites/{site_id}/schemas",
+            post(create_schema),
         )
         .route(
-            "/api/sites/{site_id}/content-types/{ct_slug}",
-            get(get_content_type),
+            "/api/sites/{site_id}/schemas/{schema_slug}",
+            get(get_schema),
         )
         .route(
-            "/api/sites/{site_id}/content-types/{ct_slug}",
-            put(update_content_type),
+            "/api/sites/{site_id}/schemas/{schema_slug}",
+            put(update_schema),
         )
         .route(
-            "/api/sites/{site_id}/content-types/{ct_slug}",
-            delete(delete_content_type),
+            "/api/sites/{site_id}/schemas/{schema_slug}",
+            delete(delete_schema),
         )
         // Content (site-scoped)
         .route("/api/sites/{site_id}/content", get(list_content))

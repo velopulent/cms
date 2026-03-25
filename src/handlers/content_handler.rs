@@ -30,17 +30,17 @@ pub async fn list_content(
     }
 
     let mut query = String::from(
-        "SELECT c.id, c.site_id, c.type_id, c.data, c.slug, c.status, c.created_at, c.updated_at, c.published_at
+        "SELECT c.id, c.site_id, c.schema_id, c.data, c.slug, c.status, c.created_at, c.updated_at, c.published_at
          FROM content c
-         JOIN content_types ct ON c.type_id = ct.id
+         JOIN schemas s ON c.schema_id = s.id
          WHERE c.site_id = ?",
     );
 
     let mut bindings: Vec<String> = vec![site_id];
 
-    if let Some(type_slug) = &params.r#type {
-        query.push_str(" AND ct.slug = ?");
-        bindings.push(type_slug.clone());
+    if let Some(schema_slug) = &params.r#type {
+        query.push_str(" AND s.slug = ?");
+        bindings.push(schema_slug.clone());
     }
     if let Some(status) = &params.status {
         query.push_str(" AND c.status = ?");
@@ -79,7 +79,7 @@ pub async fn get_content(
     }
 
     let result = sqlx::query_as::<_, Content>(
-        "SELECT id, site_id, type_id, data, slug, status, created_at, updated_at, published_at FROM content WHERE id = ? AND site_id = ?",
+        "SELECT id, site_id, schema_id, data, slug, status, created_at, updated_at, published_at FROM content WHERE id = ? AND site_id = ?",
     )
     .bind(&id)
     .bind(&site_id)
@@ -115,11 +115,11 @@ pub async fn create_content(
     let id = Uuid::now_v7().to_string();
 
     let result = sqlx::query(
-        "INSERT INTO content (id, site_id, type_id, data, slug) VALUES (?, ?, ?, ?, ?)",
+        "INSERT INTO content (id, site_id, schema_id, data, slug) VALUES (?, ?, ?, ?, ?)",
     )
     .bind(&id)
     .bind(&site_id)
-    .bind(&payload.type_id)
+    .bind(&payload.schema_id)
     .bind(&data_str)
     .bind(&payload.slug)
     .execute(&pool)
@@ -128,7 +128,7 @@ pub async fn create_content(
     match result {
         Ok(_) => {
             let item = sqlx::query_as::<_, Content>(
-                "SELECT id, site_id, type_id, data, slug, status, created_at, updated_at, published_at FROM content WHERE id = ?",
+                "SELECT id, site_id, schema_id, data, slug, status, created_at, updated_at, published_at FROM content WHERE id = ?",
             )
             .bind(&id)
             .fetch_one(&pool)
@@ -139,7 +139,7 @@ pub async fn create_content(
         }
         Err(sqlx::Error::Database(ref db_err)) if db_err.is_unique_violation() => (
             StatusCode::CONFLICT,
-            Json(json!({"error": "Content with this slug already exists for this content type"})),
+            Json(json!({"error": "Content with this slug already exists for this schema"})),
         )
             .into_response(),
         Err(err) => (
@@ -161,7 +161,7 @@ pub async fn update_content(
     }
 
     let existing = sqlx::query_as::<_, Content>(
-        "SELECT id, site_id, type_id, data, slug, status, created_at, updated_at, published_at FROM content WHERE id = ? AND site_id = ?",
+        "SELECT id, site_id, schema_id, data, slug, status, created_at, updated_at, published_at FROM content WHERE id = ? AND site_id = ?",
     )
     .bind(&id)
     .bind(&site_id)
@@ -206,7 +206,7 @@ pub async fn update_content(
     match result {
         Ok(_) => {
             let item = sqlx::query_as::<_, Content>(
-                "SELECT id, site_id, type_id, data, slug, status, created_at, updated_at, published_at FROM content WHERE id = ?",
+                "SELECT id, site_id, schema_id, data, slug, status, created_at, updated_at, published_at FROM content WHERE id = ?",
             )
             .bind(&id)
             .fetch_one(&pool)
@@ -217,7 +217,7 @@ pub async fn update_content(
         }
         Err(sqlx::Error::Database(ref db_err)) if db_err.is_unique_violation() => (
             StatusCode::CONFLICT,
-            Json(json!({"error": "Content with this slug already exists for this content type"})),
+            Json(json!({"error": "Content with this slug already exists for this schema"})),
         )
             .into_response(),
         Err(err) => (
@@ -278,7 +278,7 @@ pub async fn publish_content(
             .into_response(),
         Ok(_) => {
             let item = sqlx::query_as::<_, Content>(
-                "SELECT id, site_id, type_id, data, slug, status, created_at, updated_at, published_at FROM content WHERE id = ?",
+                "SELECT id, site_id, schema_id, data, slug, status, created_at, updated_at, published_at FROM content WHERE id = ?",
             )
             .bind(&id)
             .fetch_one(&pool)
@@ -320,7 +320,7 @@ pub async fn unpublish_content(
             .into_response(),
         Ok(_) => {
             let item = sqlx::query_as::<_, Content>(
-                "SELECT id, site_id, type_id, data, slug, status, created_at, updated_at, published_at FROM content WHERE id = ?",
+                "SELECT id, site_id, schema_id, data, slug, status, created_at, updated_at, published_at FROM content WHERE id = ?",
             )
             .bind(&id)
             .fetch_one(&pool)
