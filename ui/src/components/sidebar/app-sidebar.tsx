@@ -2,12 +2,13 @@
 
 import * as React from "react"
 import { useQuery } from "@tanstack/react-query"
-import { useParams } from "@tanstack/react-router"
+import { useParams, Link } from "@tanstack/react-router"
 import {
   LayoutDashboard,
   Layers,
   FileText,
   GalleryVerticalEnd,
+  Settings,
 } from "lucide-react"
 
 import {
@@ -15,6 +16,9 @@ import {
   SidebarContent,
   SidebarFooter,
   SidebarHeader,
+  SidebarMenu,
+  SidebarMenuButton,
+  SidebarMenuItem,
   SidebarRail,
 } from "@/components/ui/sidebar"
 import { NavMain } from "@/components/sidebar/nav-main"
@@ -46,48 +50,26 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
     icon: <GalleryVerticalEnd className="size-4" />,
   }))
 
-  const navMain: {
-    title: string
-    url: string
-    icon: React.ReactNode
-    isActive?: boolean
-    items?: { title: string; url: string }[]
-  }[] = [
+  const navMain = [
     {
       title: "Dashboard",
       url: `/sites/${siteId}`,
       icon: <LayoutDashboard />,
-      isActive: true,
-      items: [
-        { title: "Overview", url: `/sites/${siteId}` },
-      ],
     },
     {
       title: "Schemas",
       url: `/sites/${siteId}/schemas`,
       icon: <Layers />,
-      items: (schemas ?? []).map((s) => ({
-        title: s.name,
-        url: `/sites/${siteId}/schemas`,
-      })),
     },
   ]
 
   const contentNavItems = (schemas ?? []).map((s) => ({
-    title: s.name,
+    name: s.name,
     url: `/sites/${siteId}/content/${s.slug}`,
-    icon: <FileText />,
+    icon: <FileText className="size-4" />,
   }))
 
-  if (contentNavItems.length > 0) {
-    navMain.push({
-      title: "Content",
-      url: "#",
-      icon: <FileText />,
-      isActive: false,
-      items: contentNavItems,
-    })
-  }
+  const settingsUrl = `/sites/${siteId}/settings`
 
   const navUser = {
     name: auth.user?.username ?? "User",
@@ -102,9 +84,20 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
       </SidebarHeader>
       <SidebarContent>
         <NavMain items={navMain} />
-        <NavProjects projects={[]} />
+        <NavProjects projects={contentNavItems} />
       </SidebarContent>
       <SidebarFooter>
+        <SidebarMenu>
+          <SidebarMenuItem>
+            <SidebarMenuButton
+              tooltip="Settings"
+              render={<Link to={settingsUrl} />}
+            >
+              <Settings />
+              <span>Settings</span>
+            </SidebarMenuButton>
+          </SidebarMenuItem>
+        </SidebarMenu>
         <NavUser user={navUser} />
       </SidebarFooter>
       <SidebarRail />
