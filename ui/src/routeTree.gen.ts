@@ -17,6 +17,7 @@ import { Route as AdminSitesRouteImport } from './routes/_admin/sites'
 import { Route as AdminSitesIndexRouteImport } from './routes/_admin/sites/index'
 import { Route as AdminSitesSiteIdRouteImport } from './routes/_admin/sites.$siteId'
 import { Route as AdminSitesSiteIdIndexRouteImport } from './routes/_admin/sites.$siteId/index'
+import { Route as AdminSitesSiteIdSettingsRouteImport } from './routes/_admin/sites.$siteId/settings'
 import { Route as AdminSitesSiteIdSchemasRouteImport } from './routes/_admin/sites.$siteId/schemas'
 import { Route as AdminSitesSiteIdContentSchemaSlugRouteImport } from './routes/_admin/sites.$siteId/content.$schemaSlug'
 import { Route as AdminSitesSiteIdContentSchemaSlugIndexRouteImport } from './routes/_admin/sites.$siteId/content.$schemaSlug/index'
@@ -62,6 +63,12 @@ const AdminSitesSiteIdIndexRoute = AdminSitesSiteIdIndexRouteImport.update({
   path: '/',
   getParentRoute: () => AdminSitesSiteIdRoute,
 } as any)
+const AdminSitesSiteIdSettingsRoute =
+  AdminSitesSiteIdSettingsRouteImport.update({
+    id: '/settings',
+    path: '/settings',
+    getParentRoute: () => AdminSitesSiteIdRoute,
+  } as any)
 const AdminSitesSiteIdSchemasRoute = AdminSitesSiteIdSchemasRouteImport.update({
   id: '/schemas',
   path: '/schemas',
@@ -100,6 +107,7 @@ export interface FileRoutesByFullPath {
   '/sites/$siteId': typeof AdminSitesSiteIdRouteWithChildren
   '/sites/': typeof AdminSitesIndexRoute
   '/sites/$siteId/schemas': typeof AdminSitesSiteIdSchemasRoute
+  '/sites/$siteId/settings': typeof AdminSitesSiteIdSettingsRoute
   '/sites/$siteId/': typeof AdminSitesSiteIdIndexRoute
   '/sites/$siteId/content/$schemaSlug': typeof AdminSitesSiteIdContentSchemaSlugRouteWithChildren
   '/sites/$siteId/content/$schemaSlug/new': typeof AdminSitesSiteIdContentSchemaSlugNewRoute
@@ -112,6 +120,7 @@ export interface FileRoutesByTo {
   '/': typeof AdminIndexRoute
   '/sites': typeof AdminSitesIndexRoute
   '/sites/$siteId/schemas': typeof AdminSitesSiteIdSchemasRoute
+  '/sites/$siteId/settings': typeof AdminSitesSiteIdSettingsRoute
   '/sites/$siteId': typeof AdminSitesSiteIdIndexRoute
   '/sites/$siteId/content/$schemaSlug/new': typeof AdminSitesSiteIdContentSchemaSlugNewRoute
   '/sites/$siteId/content/$schemaSlug': typeof AdminSitesSiteIdContentSchemaSlugIndexRoute
@@ -127,6 +136,7 @@ export interface FileRoutesById {
   '/_admin/sites/$siteId': typeof AdminSitesSiteIdRouteWithChildren
   '/_admin/sites/': typeof AdminSitesIndexRoute
   '/_admin/sites/$siteId/schemas': typeof AdminSitesSiteIdSchemasRoute
+  '/_admin/sites/$siteId/settings': typeof AdminSitesSiteIdSettingsRoute
   '/_admin/sites/$siteId/': typeof AdminSitesSiteIdIndexRoute
   '/_admin/sites/$siteId/content/$schemaSlug': typeof AdminSitesSiteIdContentSchemaSlugRouteWithChildren
   '/_admin/sites/$siteId/content/$schemaSlug/new': typeof AdminSitesSiteIdContentSchemaSlugNewRoute
@@ -143,6 +153,7 @@ export interface FileRouteTypes {
     | '/sites/$siteId'
     | '/sites/'
     | '/sites/$siteId/schemas'
+    | '/sites/$siteId/settings'
     | '/sites/$siteId/'
     | '/sites/$siteId/content/$schemaSlug'
     | '/sites/$siteId/content/$schemaSlug/new'
@@ -155,6 +166,7 @@ export interface FileRouteTypes {
     | '/'
     | '/sites'
     | '/sites/$siteId/schemas'
+    | '/sites/$siteId/settings'
     | '/sites/$siteId'
     | '/sites/$siteId/content/$schemaSlug/new'
     | '/sites/$siteId/content/$schemaSlug'
@@ -169,6 +181,7 @@ export interface FileRouteTypes {
     | '/_admin/sites/$siteId'
     | '/_admin/sites/'
     | '/_admin/sites/$siteId/schemas'
+    | '/_admin/sites/$siteId/settings'
     | '/_admin/sites/$siteId/'
     | '/_admin/sites/$siteId/content/$schemaSlug'
     | '/_admin/sites/$siteId/content/$schemaSlug/new'
@@ -240,6 +253,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AdminSitesSiteIdIndexRouteImport
       parentRoute: typeof AdminSitesSiteIdRoute
     }
+    '/_admin/sites/$siteId/settings': {
+      id: '/_admin/sites/$siteId/settings'
+      path: '/settings'
+      fullPath: '/sites/$siteId/settings'
+      preLoaderRoute: typeof AdminSitesSiteIdSettingsRouteImport
+      parentRoute: typeof AdminSitesSiteIdRoute
+    }
     '/_admin/sites/$siteId/schemas': {
       id: '/_admin/sites/$siteId/schemas'
       path: '/schemas'
@@ -301,12 +321,14 @@ const AdminSitesSiteIdContentSchemaSlugRouteWithChildren =
 
 interface AdminSitesSiteIdRouteChildren {
   AdminSitesSiteIdSchemasRoute: typeof AdminSitesSiteIdSchemasRoute
+  AdminSitesSiteIdSettingsRoute: typeof AdminSitesSiteIdSettingsRoute
   AdminSitesSiteIdIndexRoute: typeof AdminSitesSiteIdIndexRoute
   AdminSitesSiteIdContentSchemaSlugRoute: typeof AdminSitesSiteIdContentSchemaSlugRouteWithChildren
 }
 
 const AdminSitesSiteIdRouteChildren: AdminSitesSiteIdRouteChildren = {
   AdminSitesSiteIdSchemasRoute: AdminSitesSiteIdSchemasRoute,
+  AdminSitesSiteIdSettingsRoute: AdminSitesSiteIdSettingsRoute,
   AdminSitesSiteIdIndexRoute: AdminSitesSiteIdIndexRoute,
   AdminSitesSiteIdContentSchemaSlugRoute:
     AdminSitesSiteIdContentSchemaSlugRouteWithChildren,
