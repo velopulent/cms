@@ -38,33 +38,33 @@ import {
   type Content,
   deleteContent,
   getContent,
-  getContentType,
+  getSchema,
   publishContent,
   unpublishContent,
 } from "@/lib/api";
 
 export const Route = createFileRoute(
-  "/_admin/sites/$siteId/content/$typeSlug/",
+  "/_admin/sites/$siteId/content/$schemaSlug/",
 )({
   component: ContentListPage,
 });
 
 function ContentListPage() {
-  const { siteId, typeSlug } = Route.useParams();
+  const { siteId, schemaSlug } = Route.useParams();
   const queryClient = useQueryClient();
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("");
 
-  const { data: contentType, isLoading: typeLoading } = useQuery({
-    queryKey: ["content-type", siteId, typeSlug],
-    queryFn: () => getContentType(siteId, typeSlug),
+  const { data: schema, isLoading: schemaLoading } = useQuery({
+    queryKey: ["schema", siteId, schemaSlug],
+    queryFn: () => getSchema(siteId, schemaSlug),
   });
 
   const { data: items, isLoading: itemsLoading } = useQuery({
-    queryKey: ["content", siteId, typeSlug, statusFilter, search],
+    queryKey: ["content", siteId, schemaSlug, statusFilter, search],
     queryFn: () =>
       getContent(siteId, {
-        type: typeSlug,
+        type: schemaSlug,
         status: statusFilter || undefined,
         search: search || undefined,
       }),
@@ -73,7 +73,7 @@ function ContentListPage() {
   const deleteMutation = useMutation({
     mutationFn: (id: string) => deleteContent(siteId, id),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["content", siteId, typeSlug] });
+      queryClient.invalidateQueries({ queryKey: ["content", siteId, schemaSlug] });
       toast.success("Content deleted");
     },
     onError: (err: Error) => toast.error(err.message),
@@ -82,7 +82,7 @@ function ContentListPage() {
   const publishMutation = useMutation({
     mutationFn: (id: string) => publishContent(siteId, id),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["content", siteId, typeSlug] });
+      queryClient.invalidateQueries({ queryKey: ["content", siteId, schemaSlug] });
       toast.success("Published");
     },
     onError: (err: Error) => toast.error(err.message),
@@ -91,34 +91,34 @@ function ContentListPage() {
   const unpublishMutation = useMutation({
     mutationFn: (id: string) => unpublishContent(siteId, id),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["content", siteId, typeSlug] });
+      queryClient.invalidateQueries({ queryKey: ["content", siteId, schemaSlug] });
       toast.success("Unpublished");
     },
     onError: (err: Error) => toast.error(err.message),
   });
 
-  const isLoading = typeLoading || itemsLoading;
-  const typeName = contentType?.name ?? typeSlug;
+  const isLoading = schemaLoading || itemsLoading;
+  const schemaName = schema?.name ?? schemaSlug;
 
   return (
     <div className="flex flex-col gap-6 p-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-semibold">{typeName}</h1>
+          <h1 className="text-2xl font-semibold">{schemaName}</h1>
           <p className="text-sm text-muted-foreground">
-            Manage your {typeName.toLowerCase()} content
+            Manage your {schemaName.toLowerCase()} content
           </p>
         </div>
         <Button
           render={
             <Link
-              to="/sites/$siteId/content/$typeSlug/new"
-              params={{ siteId, typeSlug }}
+              to="/sites/$siteId/content/$schemaSlug/new"
+              params={{ siteId, schemaSlug }}
             />
           }
         >
           <Plus data-icon="inline-start" />
-          New {typeName}
+          New {schemaName}
         </Button>
       </div>
 
@@ -164,7 +164,7 @@ function ContentListPage() {
         <div className="flex flex-col items-center justify-center py-12">
           <p className="text-lg font-medium">No content yet</p>
           <p className="text-sm text-muted-foreground">
-            Create your first {typeName.toLowerCase()} to get started.
+            Create your first {schemaName.toLowerCase()} to get started.
           </p>
         </div>
       ) : (
@@ -213,8 +213,8 @@ function ContentListPage() {
                         size="icon"
                         render={
                           <Link
-                            to="/sites/$siteId/content/$typeSlug/$id/edit"
-                            params={{ siteId, typeSlug, id: item.id }}
+                            to="/sites/$siteId/content/$schemaSlug/$id/edit"
+                            params={{ siteId, schemaSlug, id: item.id }}
                           />
                         }
                       >

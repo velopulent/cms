@@ -7,9 +7,9 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   type Content,
-  type ContentType,
+  type Schema,
   getContent,
-  getContentTypes,
+  getSchemas,
 } from "@/lib/api";
 
 export const Route = createFileRoute("/_admin/sites/$siteId/")({
@@ -19,9 +19,9 @@ export const Route = createFileRoute("/_admin/sites/$siteId/")({
 function DashboardPage() {
   const { siteId } = Route.useParams();
 
-  const { data: contentTypes, isLoading: typesLoading } = useQuery({
-    queryKey: ["content-types", siteId],
-    queryFn: () => getContentTypes(siteId),
+  const { data: schemas, isLoading: schemasLoading } = useQuery({
+    queryKey: ["schemas", siteId],
+    queryFn: () => getSchemas(siteId),
   });
 
   const { data: allContent, isLoading: contentLoading } = useQuery({
@@ -47,15 +47,15 @@ function DashboardPage() {
         <Card>
           <CardHeader>
             <CardTitle className="text-sm font-medium text-muted-foreground">
-              Content Types
+              Schemas
             </CardTitle>
           </CardHeader>
           <CardContent>
-            {typesLoading ? (
+            {schemasLoading ? (
               <Skeleton className="h-8 w-12" />
             ) : (
               <p className="text-3xl font-semibold">
-                {contentTypes?.length ?? 0}
+                {schemas?.length ?? 0}
               </p>
             )}
           </CardContent>
@@ -106,23 +106,23 @@ function DashboardPage() {
         </Card>
       </div>
 
-      {contentTypes && contentTypes.length > 0 && (
+      {schemas && schemas.length > 0 && (
         <div className="flex flex-col gap-4">
           <h2 className="text-lg font-semibold">Quick Create</h2>
           <div className="flex flex-wrap gap-2">
-            {contentTypes.map((ct: ContentType) => (
+            {schemas.map((s: Schema) => (
               <Button
-                key={ct.id}
+                key={s.id}
                 variant="outline"
                 render={
                   <Link
-                    to="/sites/$siteId/content/$typeSlug/new"
-                    params={{ siteId, typeSlug: ct.slug }}
+                    to="/sites/$siteId/content/$schemaSlug/new"
+                    params={{ siteId, schemaSlug: s.slug }}
                   />
                 }
               >
                 <Plus data-icon="inline-start" />
-                New {ct.name}
+                New {s.name}
               </Button>
             ))}
           </div>
@@ -134,8 +134,8 @@ function DashboardPage() {
           <h2 className="text-lg font-semibold">Recently Updated</h2>
           <div className="flex flex-col gap-2">
             {allContent.slice(0, 5).map((item: Content) => {
-              const typeName = contentTypes?.find(
-                (ct: ContentType) => ct.id === item.type_id,
+              const schemaName = schemas?.find(
+                (s: Schema) => s.id === item.schema_id,
               )?.name;
               let title: string;
               try {
@@ -154,7 +154,7 @@ function DashboardPage() {
                     <div>
                       <p className="text-sm font-medium">{title}</p>
                       <p className="text-xs text-muted-foreground">
-                        {typeName} · {item.slug}
+                        {schemaName} · {item.slug}
                       </p>
                     </div>
                   </div>
