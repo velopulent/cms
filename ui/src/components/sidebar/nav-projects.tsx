@@ -1,4 +1,4 @@
-"use client"
+"use client";
 
 import {
   SidebarGroup,
@@ -6,18 +6,17 @@ import {
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
-} from "@/components/ui/sidebar"
-import { MoreHorizontal } from "lucide-react"
-import { Link } from "@tanstack/react-router"
+} from "@/components/ui/sidebar";
+import { Link } from "@tanstack/react-router";
 
 export function NavProjects({
   projects,
 }: {
   projects: {
-    name: string
-    url: string
-    icon: React.ReactNode
-  }[]
+    name: string;
+    url: string;
+    icon: React.ReactNode;
+  }[];
 }) {
   return (
     <SidebarGroup className="group-data-[collapsible=icon]:hidden">
@@ -31,13 +30,7 @@ export function NavProjects({
             </SidebarMenuButton>
           </SidebarMenuItem>
         ))}
-        <SidebarMenuItem>
-          <SidebarMenuButton className="text-sidebar-foreground/70">
-            <MoreHorizontal className="text-sidebar-foreground/70" />
-            <span>More</span>
-          </SidebarMenuButton>
-        </SidebarMenuItem>
       </SidebarMenu>
     </SidebarGroup>
-  )
+  );
 }
