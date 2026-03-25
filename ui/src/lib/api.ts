@@ -86,17 +86,17 @@ export interface SiteMember {
   created_at: string;
 }
 
-export interface ContentType {
+export interface Schema {
   id: string;
   site_id: string;
   name: string;
   slug: string;
-  schema_json: string;
+  definition: string;
   created_at: string;
   updated_at: string;
 }
 
-export interface ContentTypeSchema {
+export interface SchemaDefinition {
   fields: ContentField[];
 }
 
@@ -110,7 +110,7 @@ export interface ContentField {
 export interface Content {
   id: string;
   site_id: string;
-  type_id: string;
+  schema_id: string;
   data: string;
   slug: string;
   status: string;
@@ -205,43 +205,43 @@ export async function removeMember(siteId: string, userId: string) {
   });
 }
 
-// --- Content Types API (site-scoped) ---
+// --- Schemas API (site-scoped) ---
 
-export async function getContentTypes(siteId: string) {
-  return api<ContentType[]>(`/sites/${siteId}/content-types`);
+export async function getSchemas(siteId: string) {
+  return api<Schema[]>(`/sites/${siteId}/schemas`);
 }
 
-export async function getContentType(siteId: string, slug: string) {
-  return api<ContentType>(`/sites/${siteId}/content-types/${slug}`);
+export async function getSchema(siteId: string, slug: string) {
+  return api<Schema>(`/sites/${siteId}/schemas/${slug}`);
 }
 
-export async function createContentType(
+export async function createSchema(
   siteId: string,
   data: {
     name: string;
     slug: string;
-    schema_json: ContentTypeSchema;
+    definition: SchemaDefinition;
   },
 ) {
-  return api<ContentType>(`/sites/${siteId}/content-types`, {
+  return api<Schema>(`/sites/${siteId}/schemas`, {
     method: "POST",
     body: JSON.stringify(data),
   });
 }
 
-export async function updateContentType(
+export async function updateSchema(
   siteId: string,
   slug: string,
-  data: { name?: string; slug?: string; schema_json?: ContentTypeSchema },
+  data: { name?: string; slug?: string; definition?: SchemaDefinition },
 ) {
-  return api<ContentType>(`/sites/${siteId}/content-types/${slug}`, {
+  return api<Schema>(`/sites/${siteId}/schemas/${slug}`, {
     method: "PUT",
     body: JSON.stringify(data),
   });
 }
 
-export async function deleteContentType(siteId: string, slug: string) {
-  return api<void>(`/sites/${siteId}/content-types/${slug}`, {
+export async function deleteSchema(siteId: string, slug: string) {
+  return api<void>(`/sites/${siteId}/schemas/${slug}`, {
     method: "DELETE",
   });
 }
@@ -271,7 +271,7 @@ export async function getContentById(siteId: string, id: string) {
 export async function createContent(
   siteId: string,
   data: {
-    type_id: string;
+    schema_id: string;
     data: Record<string, unknown>;
     slug: string;
   },
