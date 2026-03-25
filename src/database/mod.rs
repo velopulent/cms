@@ -41,12 +41,12 @@ pub async fn init_db() -> SqlitePool {
             UNIQUE(site_id, user_id)
         );
 
-        CREATE TABLE IF NOT EXISTS content_types (
+        CREATE TABLE IF NOT EXISTS schemas (
             id TEXT PRIMARY KEY NOT NULL,
             site_id TEXT NOT NULL REFERENCES sites(id) ON DELETE CASCADE,
             name TEXT NOT NULL,
             slug TEXT NOT NULL,
-            schema_json JSON NOT NULL,
+            definition JSON NOT NULL,
             created_at TEXT NOT NULL DEFAULT (datetime('now')),
             updated_at TEXT NOT NULL DEFAULT (datetime('now'))
         );
@@ -54,7 +54,7 @@ pub async fn init_db() -> SqlitePool {
         CREATE TABLE IF NOT EXISTS content (
             id TEXT PRIMARY KEY NOT NULL,
             site_id TEXT NOT NULL REFERENCES sites(id) ON DELETE CASCADE,
-            type_id TEXT NOT NULL REFERENCES content_types(id) ON DELETE CASCADE,
+            schema_id TEXT NOT NULL REFERENCES schemas(id) ON DELETE CASCADE,
             data JSON NOT NULL,
             slug TEXT NOT NULL,
             status TEXT NOT NULL DEFAULT 'draft' CHECK(status IN ('draft', 'published')),
@@ -65,14 +65,14 @@ pub async fn init_db() -> SqlitePool {
 
         CREATE INDEX IF NOT EXISTS idx_site_members_user ON site_members(user_id);
         CREATE INDEX IF NOT EXISTS idx_site_members_site ON site_members(site_id);
-        CREATE INDEX IF NOT EXISTS idx_content_types_site ON content_types(site_id);
-        CREATE UNIQUE INDEX IF NOT EXISTS idx_content_types_site_name ON content_types(site_id, name);
-        CREATE UNIQUE INDEX IF NOT EXISTS idx_content_types_site_slug ON content_types(site_id, slug);
+        CREATE INDEX IF NOT EXISTS idx_schemas_site ON schemas(site_id);
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_schemas_site_name ON schemas(site_id, name);
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_schemas_site_slug ON schemas(site_id, slug);
         CREATE INDEX IF NOT EXISTS idx_content_site ON content(site_id);
         CREATE INDEX IF NOT EXISTS idx_content_slug ON content(slug);
-        CREATE INDEX IF NOT EXISTS idx_content_type ON content(type_id);
+        CREATE INDEX IF NOT EXISTS idx_content_schema ON content(schema_id);
         CREATE INDEX IF NOT EXISTS idx_content_status ON content(status);
-        CREATE UNIQUE INDEX IF NOT EXISTS idx_content_type_slug ON content(type_id, slug);
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_content_schema_slug ON content(schema_id, slug);
         "#,
     )
     .execute(&pool)

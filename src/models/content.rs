@@ -5,7 +5,7 @@ use sqlx::FromRow;
 pub struct Content {
     pub id: String,
     pub site_id: String,
-    pub type_id: String,
+    pub schema_id: String,
     pub data: String,
     pub slug: String,
     pub status: String,
@@ -16,7 +16,7 @@ pub struct Content {
 
 #[derive(Deserialize)]
 pub struct CreateContent {
-    pub type_id: String,
+    pub schema_id: String,
     pub data: serde_json::Value,
     pub slug: String,
 }
