@@ -4,14 +4,14 @@ mod middleware {
 }
 mod models {
     pub mod content;
-    pub mod content_type;
+    pub mod schema;
     pub mod site;
     pub mod user;
 }
 mod handlers {
     pub mod auth_handler;
     pub mod content_handler;
-    pub mod content_type_handler;
+    pub mod schema_handler;
     pub mod site_handler;
     pub mod ui_handler;
 }

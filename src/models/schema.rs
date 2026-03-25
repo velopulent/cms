@@ -2,26 +2,26 @@ use serde::{Deserialize, Serialize};
 use sqlx::FromRow;
 
 #[derive(Serialize, FromRow)]
-pub struct ContentType {
+pub struct Schema {
     pub id: String,
     pub site_id: String,
     pub name: String,
     pub slug: String,
-    pub schema_json: String,
+    pub definition: String,
     pub created_at: String,
     pub updated_at: String,
 }
 
 #[derive(Deserialize)]
-pub struct CreateContentType {
+pub struct CreateSchema {
     pub name: String,
     pub slug: String,
-    pub schema_json: serde_json::Value,
+    pub definition: serde_json::Value,
 }
 
 #[derive(Deserialize)]
-pub struct UpdateContentType {
+pub struct UpdateSchema {
     pub name: Option<String>,
     pub slug: Option<String>,
-    pub schema_json: Option<serde_json::Value>,
+    pub definition: Option<serde_json::Value>,
 }
