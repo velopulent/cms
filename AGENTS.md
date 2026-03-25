@@ -13,7 +13,7 @@ This file provides the workspace-level agent guidance for anyone contributing or
 
 - `src/`: Rust backend source.
   - `database/`: DB setup and connection helpers.
-  - `handlers/`: HTTP handlers (auth, content, content-type, site, UI). 
+  - `handlers/`: HTTP handlers (auth, content, schema, site, UI).
   - `middleware/`: auth middleware.
   - `models/`: domain models.
   - `router/`: route composition.
@@ -49,7 +49,7 @@ This file provides the workspace-level agent guidance for anyone contributing or
    - REST handlers return JSON and status codes across `handlers/`.
    - React: functional components, hooks, data fetching via Tanstack Query.
 3. For new features:
-   - Identify existing handler and model boundaries (content, content type, site, auth).
+   - Identify existing handler and model boundaries (content, schema, site, auth).
    - Keep API shape stable; if new endpoints are added, ensure frontend uses them.
 4. For bugfixes:
    - Reproduce with `cargo run` + `bun run dev` or `cargo test`.
