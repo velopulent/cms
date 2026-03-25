@@ -22,7 +22,7 @@ import { NavProjects } from "@/components/sidebar/nav-projects"
 import { NavUser } from "@/components/sidebar/nav-user"
 import { TeamSwitcher } from "@/components/sidebar/team-switcher"
 import { useAuth } from "@/contexts/auth-context"
-import { getContentTypes, getSites } from "@/lib/api"
+import { getSchemas, getSites } from "@/lib/api"
 
 export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   const { siteId } = useParams({ from: "/_admin/sites/$siteId" as any })
@@ -33,9 +33,9 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
     queryFn: getSites,
   })
 
-  const { data: contentTypes } = useQuery({
-    queryKey: ["content-types", siteId],
-    queryFn: () => getContentTypes(siteId as string),
+  const { data: schemas } = useQuery({
+    queryKey: ["schemas", siteId],
+    queryFn: () => getSchemas(siteId as string),
     enabled: !!siteId,
   })
 
@@ -63,19 +63,19 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
       ],
     },
     {
-      title: "Content Types",
-      url: `/sites/${siteId}/content-types`,
+      title: "Schemas",
+      url: `/sites/${siteId}/schemas`,
       icon: <Layers />,
-      items: (contentTypes ?? []).map((ct) => ({
-        title: ct.name,
-        url: `/sites/${siteId}/content-types`,
+      items: (schemas ?? []).map((s) => ({
+        title: s.name,
+        url: `/sites/${siteId}/schemas`,
       })),
     },
   ]
 
-  const contentNavItems = (contentTypes ?? []).map((ct) => ({
-    title: ct.name,
-    url: `/sites/${siteId}/content/${ct.slug}`,
+  const contentNavItems = (schemas ?? []).map((s) => ({
+    title: s.name,
+    url: `/sites/${siteId}/content/${s.slug}`,
     icon: <FileText />,
   }))
 
