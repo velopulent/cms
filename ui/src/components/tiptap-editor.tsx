@@ -1,7 +1,7 @@
 import Image from "@tiptap/extension-image";
 import Link from "@tiptap/extension-link";
 import Placeholder from "@tiptap/extension-placeholder";
-import { EditorContent, useEditor } from "@tiptap/react";
+import { EditorContent, useEditor, useEditorState } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import {
   Bold,
@@ -22,6 +22,7 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
+import "@/styles/tiptap.css";
 
 interface TiptapEditorProps {
   content: string;
@@ -42,12 +43,38 @@ export function TiptapEditor({
         openOnClick: false,
         HTMLAttributes: { class: "text-primary underline" },
       }),
-      Image.configure({ HTMLAttributes: { class: "rounded-lg max-w-full" } }),
+      Image.configure({
+        HTMLAttributes: { class: "rounded-lg max-w-full h-auto" },
+      }),
     ],
     content,
+    editorProps: {
+      attributes: {
+        class: "prose prose-sm max-w-none focus:outline-none",
+      },
+    },
     onUpdate: ({ editor }) => {
       onChange(editor.getHTML());
     },
+  });
+
+  const editorState = useEditorState({
+    editor,
+    selector: (snapshot) => ({
+      isBold: snapshot.editor.isActive("bold"),
+      isItalic: snapshot.editor.isActive("italic"),
+      isStrike: snapshot.editor.isActive("strike"),
+      isH1: snapshot.editor.isActive("heading", { level: 1 }),
+      isH2: snapshot.editor.isActive("heading", { level: 2 }),
+      isH3: snapshot.editor.isActive("heading", { level: 3 }),
+      isBulletList: snapshot.editor.isActive("bulletList"),
+      isOrderedList: snapshot.editor.isActive("orderedList"),
+      isBlockquote: snapshot.editor.isActive("blockquote"),
+      isCodeBlock: snapshot.editor.isActive("codeBlock"),
+      isLink: snapshot.editor.isActive("link"),
+      canUndo: snapshot.editor.can().undo(),
+      canRedo: snapshot.editor.can().redo(),
+    }),
   });
 
   if (!editor) return null;
@@ -73,7 +100,8 @@ export function TiptapEditor({
           variant="ghost"
           size="icon-sm"
           onClick={() => editor.chain().focus().toggleBold().run()}
-          data-active={editor.isActive("bold") ? true : undefined}
+          aria-expanded={editorState.isBold}
+          title="Bold"
         >
           <Bold />
         </Button>
@@ -81,7 +109,8 @@ export function TiptapEditor({
           variant="ghost"
           size="icon-sm"
           onClick={() => editor.chain().focus().toggleItalic().run()}
-          data-active={editor.isActive("italic") ? true : undefined}
+          aria-expanded={editorState.isItalic}
+          title="Italic"
         >
           <Italic />
         </Button>
@@ -89,7 +118,8 @@ export function TiptapEditor({
           variant="ghost"
           size="icon-sm"
           onClick={() => editor.chain().focus().toggleStrike().run()}
-          data-active={editor.isActive("strike") ? true : undefined}
+          aria-expanded={editorState.isStrike}
+          title="Strikethrough"
         >
           <Strikethrough />
         </Button>
@@ -102,9 +132,8 @@ export function TiptapEditor({
           onClick={() =>
             editor.chain().focus().toggleHeading({ level: 1 }).run()
           }
-          data-active={
-            editor.isActive("heading", { level: 1 }) ? true : undefined
-          }
+          aria-expanded={editorState.isH1}
+          title="Heading 1"
         >
           <Heading1 />
         </Button>
@@ -114,9 +143,8 @@ export function TiptapEditor({
           onClick={() =>
             editor.chain().focus().toggleHeading({ level: 2 }).run()
           }
-          data-active={
-            editor.isActive("heading", { level: 2 }) ? true : undefined
-          }
+          aria-expanded={editorState.isH2}
+          title="Heading 2"
         >
           <Heading2 />
         </Button>
@@ -126,9 +154,8 @@ export function TiptapEditor({
           onClick={() =>
             editor.chain().focus().toggleHeading({ level: 3 }).run()
           }
-          data-active={
-            editor.isActive("heading", { level: 3 }) ? true : undefined
-          }
+          aria-expanded={editorState.isH3}
+          title="Heading 3"
         >
           <Heading3 />
         </Button>
@@ -139,7 +166,8 @@ export function TiptapEditor({
           variant="ghost"
           size="icon-sm"
           onClick={() => editor.chain().focus().toggleBulletList().run()}
-          data-active={editor.isActive("bulletList") ? true : undefined}
+          aria-expanded={editorState.isBulletList}
+          title="Bullet List"
         >
           <List />
         </Button>
@@ -147,7 +175,8 @@ export function TiptapEditor({
           variant="ghost"
           size="icon-sm"
           onClick={() => editor.chain().focus().toggleOrderedList().run()}
-          data-active={editor.isActive("orderedList") ? true : undefined}
+          aria-expanded={editorState.isOrderedList}
+          title="Ordered List"
         >
           <ListOrdered />
         </Button>
@@ -155,7 +184,8 @@ export function TiptapEditor({
           variant="ghost"
           size="icon-sm"
           onClick={() => editor.chain().focus().toggleBlockquote().run()}
-          data-active={editor.isActive("blockquote") ? true : undefined}
+          aria-expanded={editorState.isBlockquote}
+          title="Blockquote"
         >
           <Quote />
         </Button>
@@ -163,7 +193,8 @@ export function TiptapEditor({
           variant="ghost"
           size="icon-sm"
           onClick={() => editor.chain().focus().toggleCodeBlock().run()}
-          data-active={editor.isActive("codeBlock") ? true : undefined}
+          aria-expanded={editorState.isCodeBlock}
+          title="Code Block"
         >
           <Code />
         </Button>
@@ -174,13 +205,25 @@ export function TiptapEditor({
           variant="ghost"
           size="icon-sm"
           onClick={() => editor.chain().focus().setHorizontalRule().run()}
+          title="Horizontal Rule"
         >
           <Minus />
         </Button>
-        <Button variant="ghost" size="icon-sm" onClick={addLink}>
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          onClick={addLink}
+          aria-expanded={editorState.isLink}
+          title="Link"
+        >
           <LinkIcon />
         </Button>
-        <Button variant="ghost" size="icon-sm" onClick={addImage}>
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          onClick={addImage}
+          title="Image"
+        >
           <ImageIcon />
         </Button>
 
@@ -190,7 +233,8 @@ export function TiptapEditor({
           variant="ghost"
           size="icon-sm"
           onClick={() => editor.chain().focus().undo().run()}
-          disabled={!editor.can().undo()}
+          disabled={!editorState.canUndo}
+          title="Undo"
         >
           <Undo2 />
         </Button>
@@ -198,15 +242,13 @@ export function TiptapEditor({
           variant="ghost"
           size="icon-sm"
           onClick={() => editor.chain().focus().redo().run()}
-          disabled={!editor.can().redo()}
+          disabled={!editorState.canRedo}
+          title="Redo"
         >
           <Redo2 />
         </Button>
       </div>
-      <EditorContent
-        editor={editor}
-        className="prose prose-sm max-w-none p-4 [&_.tiptap]:min-h-[200px] [&_.tiptap]:outline-none [&_.tiptap.ProseMirror]:outline-none [&_.is-editor-empty:first-child::before]:text-muted-foreground [&_.is-editor-empty:first-child::before]:pointer-events-none [&_.is-editor-empty:first-child::before]:float-left [&_.is-editor-empty:first-child::before]:h-0 [&_.is-editor-empty:first-child::before]:content-[attr(data-placeholder)]"
-      />
+      <EditorContent editor={editor} className="p-4" />
     </div>
   );
 }
