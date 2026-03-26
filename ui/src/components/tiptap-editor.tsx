@@ -14,12 +14,16 @@ import {
   Link as LinkIcon,
   List,
   ListOrdered,
+  Maximize2,
+  Minimize2,
   Minus,
   Quote,
   Redo2,
   Strikethrough,
   Undo2,
 } from "lucide-react";
+import { useState } from "react";
+import { createPortal } from "react-dom";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import "@/styles/tiptap.css";
@@ -35,6 +39,8 @@ export function TiptapEditor({
   onChange,
   placeholder = "Start writing...",
 }: TiptapEditorProps) {
+  const [isFullscreen, setIsFullscreen] = useState(false);
+
   const editor = useEditor({
     extensions: [
       StarterKit,
@@ -93,8 +99,14 @@ export function TiptapEditor({
     }
   };
 
-  return (
-    <div className="rounded-lg border">
+  const editorEl = (
+    <div
+      className={
+        isFullscreen
+          ? "fixed inset-0 z-50 flex flex-col bg-background"
+          : "rounded-lg border"
+      }
+    >
       <div className="flex flex-wrap items-center gap-0.5 border-b p-1">
         <Button
           variant="ghost"
@@ -247,8 +259,27 @@ export function TiptapEditor({
         >
           <Redo2 />
         </Button>
+
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          className="ml-auto"
+          onClick={() => setIsFullscreen((prev) => !prev)}
+          title={isFullscreen ? "Exit fullscreen" : "Fullscreen"}
+        >
+          {isFullscreen ? <Minimize2 /> : <Maximize2 />}
+        </Button>
       </div>
-      <EditorContent editor={editor} className="p-4" />
+      <EditorContent
+        editor={editor}
+        className={isFullscreen ? "flex-1 overflow-y-auto p-4" : "p-4"}
+      />
     </div>
   );
+
+  if (isFullscreen) {
+    return createPortal(editorEl, document.body);
+  }
+
+  return editorEl;
 }
