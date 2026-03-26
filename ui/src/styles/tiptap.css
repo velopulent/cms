@@ -1,0 +1,79 @@
+@reference "../styles.css";
+
+.tiptap {
+  outline: none;
+  min-height: 200px;
+
+  > * + * {
+    margin-top: 0.75em;
+  }
+
+  h1 {
+    @apply text-3xl font-bold mt-6 mb-2;
+  }
+
+  h2 {
+    @apply text-2xl font-semibold mt-5 mb-2;
+  }
+
+  h3 {
+    @apply text-xl font-semibold mt-4 mb-1;
+  }
+
+  p {
+    @apply leading-relaxed;
+  }
+
+  ul {
+    @apply list-disc pl-6 my-2;
+  }
+
+  ol {
+    @apply list-decimal pl-6 my-2;
+  }
+
+  li {
+    @apply my-1;
+
+    p {
+      margin-top: 0;
+      margin-bottom: 0;
+    }
+  }
+
+  blockquote {
+    @apply border-l-4 border-border pl-4 italic text-muted-foreground my-4;
+  }
+
+  pre {
+    @apply bg-muted rounded-md p-4 my-4 overflow-x-auto text-sm font-mono;
+  }
+
+  code {
+    @apply bg-muted px-1.5 py-0.5 rounded text-sm font-mono;
+  }
+
+  pre code {
+    @apply bg-transparent p-0;
+  }
+
+  hr {
+    @apply border-border my-6;
+  }
+
+  img {
+    @apply rounded-lg max-w-full h-auto my-4;
+  }
+
+  a {
+    @apply text-primary underline underline-offset-2;
+  }
+}
+
+.tiptap p.is-empty::before {
+  content: attr(data-placeholder);
+  float: left;
+  height: 0;
+  pointer-events: none;
+  color: oklch(0.552 0.016 285.938);
+}
