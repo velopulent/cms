@@ -2,7 +2,7 @@
 
 import * as React from "react"
 import { useQuery } from "@tanstack/react-query"
-import { useParams, Link } from "@tanstack/react-router"
+import { useParams, Link, useRouterState } from "@tanstack/react-router"
 import {
   LayoutDashboard,
   Layers,
@@ -31,6 +31,7 @@ import { getSchemas, getSites } from "@/lib/api"
 export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   const { siteId } = useParams({ from: "/_admin/sites/$siteId" as any })
   const auth = useAuth()
+  const pathname = useRouterState({ select: (s) => s.location.pathname })
 
   const { data: sites } = useQuery({
     queryKey: ["sites"],
@@ -91,6 +92,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
           <SidebarMenuItem>
             <SidebarMenuButton
               tooltip="Settings"
+              isActive={pathname === settingsUrl}
               render={<Link to={settingsUrl} />}
             >
               <Settings />

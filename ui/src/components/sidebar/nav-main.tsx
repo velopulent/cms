@@ -17,7 +17,7 @@ import {
   SidebarMenuSubItem,
 } from "@/components/ui/sidebar"
 import { ChevronRight } from "lucide-react"
-import { Link } from "@tanstack/react-router"
+import { Link, useRouterState } from "@tanstack/react-router"
 
 export function NavMain({
   items,
@@ -33,6 +33,8 @@ export function NavMain({
     }[]
   }[]
 }) {
+  const pathname = useRouterState({ select: (s) => s.location.pathname })
+
   return (
     <SidebarGroup>
       <SidebarGroupLabel>Platform</SidebarGroupLabel>
@@ -56,7 +58,10 @@ export function NavMain({
                 <SidebarMenuSub>
                   {item.items.map((subItem) => (
                     <SidebarMenuSubItem key={subItem.title}>
-                      <SidebarMenuSubButton render={<Link to={subItem.url} />}>
+                      <SidebarMenuSubButton
+                        isActive={pathname === subItem.url || pathname.startsWith(subItem.url + "/")}
+                        render={<Link to={subItem.url} />}
+                      >
                         <span>{subItem.title}</span>
                       </SidebarMenuSubButton>
                     </SidebarMenuSubItem>
@@ -68,6 +73,7 @@ export function NavMain({
             <SidebarMenuItem key={item.title}>
               <SidebarMenuButton
                 tooltip={item.title}
+                isActive={pathname === item.url}
                 render={<Link to={item.url} />}
               >
                 {item.icon}
