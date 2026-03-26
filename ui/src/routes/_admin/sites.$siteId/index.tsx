@@ -2,7 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { FileText, Plus } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
+import { buttonVariants } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
@@ -111,19 +111,15 @@ function DashboardPage() {
           <h2 className="text-lg font-semibold">Quick Create</h2>
           <div className="flex flex-wrap gap-2">
             {schemas.map((s: Schema) => (
-              <Button
+              <Link
                 key={s.id}
-                variant="outline"
-                render={
-                  <Link
-                    to="/sites/$siteId/content/$schemaSlug/new"
-                    params={{ siteId, schemaSlug: s.slug }}
-                  />
-                }
+                to="/sites/$siteId/content/$schemaSlug/new"
+                params={{ siteId, schemaSlug: s.slug }}
+                className={buttonVariants({ variant: "outline" })}
               >
                 <Plus data-icon="inline-start" />
                 New {s.name}
-              </Button>
+              </Link>
             ))}
           </div>
         </div>

@@ -4,7 +4,7 @@ import { ArrowLeft } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 import { DynamicForm } from "@/components/dynamic-form";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -101,18 +101,13 @@ function CreateContentPage() {
   return (
     <div className="flex flex-col gap-6 p-6">
       <div className="flex items-center gap-3">
-        <Button
-          variant="ghost"
-          size="icon"
-          render={
-            <Link
-              to="/sites/$siteId/content/$schemaSlug"
-              params={{ siteId, schemaSlug }}
-            />
-          }
+        <Link
+          to="/sites/$siteId/content/$schemaSlug"
+          params={{ siteId, schemaSlug }}
+          className={buttonVariants({ variant: "ghost", size: "icon" })}
         >
           <ArrowLeft />
-        </Button>
+        </Link>
         <div>
           <h1 className="text-2xl font-semibold">New {schema.name}</h1>
           <p className="text-sm text-muted-foreground">
@@ -170,18 +165,13 @@ function CreateContentPage() {
           >
             {createMutation.isPending ? "Creating..." : "Create"}
           </Button>
-          <Button
-            type="button"
-            variant="outline"
-            render={
-              <Link
-                to="/sites/$siteId/content/$schemaSlug"
-                params={{ siteId, schemaSlug }}
-              />
-            }
+          <Link
+            to="/sites/$siteId/content/$schemaSlug"
+            params={{ siteId, schemaSlug }}
+            className={buttonVariants({ variant: "outline" })}
           >
             Cancel
-          </Button>
+          </Link>
         </div>
       </form>
     </div>

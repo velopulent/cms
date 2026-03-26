@@ -5,7 +5,7 @@ import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { DynamicForm } from "@/components/dynamic-form";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -105,18 +105,13 @@ function EditContentPage() {
   return (
     <div className="flex flex-col gap-6 p-6">
       <div className="flex items-center gap-3">
-        <Button
-          variant="ghost"
-          size="icon"
-          render={
-            <Link
-              to="/sites/$siteId/content/$schemaSlug"
-              params={{ siteId, schemaSlug }}
-            />
-          }
+        <Link
+          to="/sites/$siteId/content/$schemaSlug"
+          params={{ siteId, schemaSlug }}
+          className={buttonVariants({ variant: "ghost", size: "icon" })}
         >
           <ArrowLeft />
-        </Button>
+        </Link>
         <div>
           <div className="flex items-center gap-2">
             <h1 className="text-2xl font-semibold">Edit {schema.name}</h1>
@@ -177,18 +172,13 @@ function EditContentPage() {
           >
             {updateMutation.isPending ? "Saving..." : "Save"}
           </Button>
-          <Button
-            type="button"
-            variant="outline"
-            render={
-              <Link
-                to="/sites/$siteId/content/$schemaSlug"
-                params={{ siteId, schemaSlug }}
-              />
-            }
+          <Link
+            to="/sites/$siteId/content/$schemaSlug"
+            params={{ siteId, schemaSlug }}
+            className={buttonVariants({ variant: "outline" })}
           >
             Cancel
-          </Button>
+          </Link>
         </div>
       </form>
     </div>

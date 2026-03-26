@@ -15,7 +15,7 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
   Select,
@@ -109,17 +109,14 @@ function ContentListPage() {
             Manage your {schemaName.toLowerCase()} content
           </p>
         </div>
-        <Button
-          render={
-            <Link
-              to="/sites/$siteId/content/$schemaSlug/new"
-              params={{ siteId, schemaSlug }}
-            />
-          }
+        <Link
+          to="/sites/$siteId/content/$schemaSlug/new"
+          params={{ siteId, schemaSlug }}
+          className={buttonVariants()}
         >
           <Plus data-icon="inline-start" />
           New {schemaName}
-        </Button>
+        </Link>
       </div>
 
       <div className="flex gap-2">
@@ -208,18 +205,13 @@ function ContentListPage() {
                   </TableCell>
                   <TableCell className="text-right">
                     <div className="flex justify-end gap-1">
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        render={
-                          <Link
-                            to="/sites/$siteId/content/$schemaSlug/$id/edit"
-                            params={{ siteId, schemaSlug, id: item.id }}
-                          />
-                        }
+                      <Link
+                        to="/sites/$siteId/content/$schemaSlug/$id/edit"
+                        params={{ siteId, schemaSlug, id: item.id }}
+                        className={buttonVariants({ variant: "ghost", size: "icon" })}
                       >
                         <Pencil />
-                      </Button>
+                      </Link>
                       {item.status === "draft" ? (
                         <Button
                           variant="ghost"
