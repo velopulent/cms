@@ -7,10 +7,6 @@ pub struct ApiKey {
     pub id: String,
     pub site_id: String,
     pub name: String,
-    #[serde(skip_serializing)]
-    #[schema(ignore)]
-    #[allow(dead_code)]
-    pub key_hash: String,
     pub key_prefix: String,
     pub permissions: String,
     pub last_used_at: Option<String>,

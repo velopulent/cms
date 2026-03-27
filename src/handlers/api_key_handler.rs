@@ -34,7 +34,7 @@ pub async fn list_api_keys(
     }
 
     let result = sqlx::query_as::<_, ApiKey>(
-        "SELECT id, site_id, name, key_hash, key_prefix, permissions, last_used_at, created_at, expires_at
+        "SELECT id, site_id, name, key_prefix, permissions, last_used_at, created_at, expires_at
          FROM api_keys WHERE site_id = ? ORDER BY created_at DESC",
     )
     .bind(&site_id)
