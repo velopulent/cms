@@ -1,7 +1,8 @@
 use serde::{Deserialize, Serialize};
 use sqlx::FromRow;
+use utoipa::ToSchema;
 
-#[derive(Serialize, FromRow)]
+#[derive(Serialize, FromRow, ToSchema)]
 pub struct Content {
     pub id: String,
     pub site_id: String,
@@ -14,14 +15,14 @@ pub struct Content {
     pub published_at: Option<String>,
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, ToSchema)]
 pub struct CreateContent {
     pub schema_id: String,
     pub data: serde_json::Value,
     pub slug: String,
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, ToSchema)]
 pub struct UpdateContent {
     pub data: Option<serde_json::Value>,
     pub slug: Option<String>,

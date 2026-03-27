@@ -56,3 +56,18 @@ CREATE INDEX IF NOT EXISTS idx_content_slug ON content(slug);
 CREATE INDEX IF NOT EXISTS idx_content_schema ON content(schema_id);
 CREATE INDEX IF NOT EXISTS idx_content_status ON content(status);
 CREATE UNIQUE INDEX IF NOT EXISTS idx_content_schema_slug ON content(schema_id, slug);
+
+CREATE TABLE IF NOT EXISTS api_keys (
+    id TEXT PRIMARY KEY NOT NULL,
+    site_id TEXT NOT NULL REFERENCES sites(id) ON DELETE CASCADE,
+    name TEXT NOT NULL,
+    key_hash TEXT NOT NULL,
+    key_prefix TEXT NOT NULL,
+    permissions TEXT NOT NULL DEFAULT 'read',
+    last_used_at TEXT,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    expires_at TEXT
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_api_keys_hash ON api_keys(key_hash);
+CREATE INDEX IF NOT EXISTS idx_api_keys_site ON api_keys(site_id);

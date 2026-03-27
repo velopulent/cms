@@ -3,12 +3,14 @@ mod middleware {
     pub mod auth;
 }
 mod models {
+    pub mod api_key;
     pub mod content;
     pub mod schema;
     pub mod site;
     pub mod user;
 }
 mod handlers {
+    pub mod api_key_handler;
     pub mod auth_handler;
     pub mod content_handler;
     pub mod schema_handler;
