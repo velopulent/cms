@@ -59,9 +59,9 @@ pub async fn list_content(
     }
 
     let mut query = String::from(
-        "SELECT c.id, c.site_id, c.schema_id, c.data, c.slug, c.status, c.created_at, c.updated_at, c.published_at
+        "SELECT c.id, c.site_id, c.collection_id, c.data, c.slug, c.status, c.created_at, c.updated_at, c.published_at
          FROM content c
-         JOIN schemas s ON c.schema_id = s.id
+         JOIN collections s ON c.collection_id = s.id
          WHERE c.site_id = ?",
     );
 
@@ -71,9 +71,9 @@ pub async fn list_content(
         query.push_str(" AND c.status = 'published'");
     }
 
-    if let Some(schema_slug) = &params.r#type {
+    if let Some(collection_slug) = &params.r#type {
         query.push_str(" AND s.slug = ?");
-        bindings.push(schema_slug.clone());
+        bindings.push(collection_slug.clone());
     }
     if let Some(status) = &params.status {
         if matches!(auth, AuthContext::Jwt { .. }) {
@@ -144,7 +144,7 @@ pub async fn get_content(
     }
 
     let mut query = String::from(
-        "SELECT id, site_id, schema_id, data, slug, status, created_at, updated_at, published_at FROM content WHERE id = ? AND site_id = ?",
+        "SELECT id, site_id, collection_id, data, slug, status, created_at, updated_at, published_at FROM content WHERE id = ? AND site_id = ?",
     );
 
     if matches!(auth, AuthContext::ApiKey { .. }) {
@@ -200,11 +200,11 @@ pub async fn create_content(
     let id = Uuid::now_v7().to_string();
 
     let result = sqlx::query(
-        "INSERT INTO content (id, site_id, schema_id, data, slug) VALUES (?, ?, ?, ?, ?)",
+        "INSERT INTO content (id, site_id, collection_id, data, slug) VALUES (?, ?, ?, ?, ?)",
     )
     .bind(&id)
     .bind(&site_id)
-    .bind(&payload.schema_id)
+    .bind(&payload.collection_id)
     .bind(&data_str)
     .bind(&payload.slug)
     .execute(&pool)
@@ -213,7 +213,7 @@ pub async fn create_content(
     match result {
         Ok(_) => {
             let item = sqlx::query_as::<_, Content>(
-                "SELECT id, site_id, schema_id, data, slug, status, created_at, updated_at, published_at FROM content WHERE id = ?",
+                "SELECT id, site_id, collection_id, data, slug, status, created_at, updated_at, published_at FROM content WHERE id = ?",
             )
             .bind(&id)
             .fetch_one(&pool)
@@ -224,7 +224,7 @@ pub async fn create_content(
         }
         Err(sqlx::Error::Database(ref db_err)) if db_err.is_unique_violation() => (
             StatusCode::CONFLICT,
-            Json(json!({"error": "Content with this slug already exists for this schema"})),
+            Json(json!({"error": "Content with this slug already exists for this collection"})),
         )
             .into_response(),
         Err(err) => (
@@ -262,7 +262,7 @@ pub async fn update_content(
     }
 
     let existing = sqlx::query_as::<_, Content>(
-        "SELECT id, site_id, schema_id, data, slug, status, created_at, updated_at, published_at FROM content WHERE id = ? AND site_id = ?",
+        "SELECT id, site_id, collection_id, data, slug, status, created_at, updated_at, published_at FROM content WHERE id = ? AND site_id = ?",
     )
     .bind(&id)
     .bind(&site_id)
@@ -307,7 +307,7 @@ pub async fn update_content(
     match result {
         Ok(_) => {
             let item = sqlx::query_as::<_, Content>(
-                "SELECT id, site_id, schema_id, data, slug, status, created_at, updated_at, published_at FROM content WHERE id = ?",
+                "SELECT id, site_id, collection_id, data, slug, status, created_at, updated_at, published_at FROM content WHERE id = ?",
             )
             .bind(&id)
             .fetch_one(&pool)
@@ -318,7 +318,7 @@ pub async fn update_content(
         }
         Err(sqlx::Error::Database(ref db_err)) if db_err.is_unique_violation() => (
             StatusCode::CONFLICT,
-            Json(json!({"error": "Content with this slug already exists for this schema"})),
+            Json(json!({"error": "Content with this slug already exists for this collection"})),
         )
             .into_response(),
         Err(err) => (
@@ -410,7 +410,7 @@ pub async fn publish_content(
             .into_response(),
         Ok(_) => {
             let item = sqlx::query_as::<_, Content>(
-                "SELECT id, site_id, schema_id, data, slug, status, created_at, updated_at, published_at FROM content WHERE id = ?",
+                "SELECT id, site_id, collection_id, data, slug, status, created_at, updated_at, published_at FROM content WHERE id = ?",
             )
             .bind(&id)
             .fetch_one(&pool)
@@ -468,7 +468,7 @@ pub async fn unpublish_content(
             .into_response(),
         Ok(_) => {
             let item = sqlx::query_as::<_, Content>(
-                "SELECT id, site_id, schema_id, data, slug, status, created_at, updated_at, published_at FROM content WHERE id = ?",
+                "SELECT id, site_id, collection_id, data, slug, status, created_at, updated_at, published_at FROM content WHERE id = ?",
             )
             .bind(&id)
             .fetch_one(&pool)

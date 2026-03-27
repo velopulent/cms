@@ -10,20 +10,20 @@ use uuid::Uuid;
 
 use crate::middleware::auth::{AuthContext, AuthenticatedUser, check_site_access};
 use crate::models::content::Content;
-use crate::models::schema::{CreateSchema, Schema, UpdateSchema};
+use crate::models::collection::{CreateCollection, Collection, UpdateCollection};
 
 #[utoipa::path(
     get,
-    path = "/api/v1/sites/{site_id}/schemas",
+    path = "/api/v1/sites/{site_id}/collections",
     params(("site_id" = String, Path, description = "Site ID")),
     responses(
-        (status = 200, description = "List of schemas", body = Vec<Schema>),
+        (status = 200, description = "List of collections", body = Vec<Collection>),
         (status = 401, description = "Unauthorized"),
     ),
     security(("bearer" = []), ("api_key" = [])),
-    tag = "schemas"
+    tag = "collections"
 )]
-pub async fn list_schemas(
+pub async fn list_collections(
     auth: AuthContext,
     Path(site_id): Path<String>,
     Extension(pool): Extension<SqlitePool>,
@@ -47,8 +47,8 @@ pub async fn list_schemas(
         }
     }
 
-    let result = sqlx::query_as::<_, Schema>(
-        "SELECT id, site_id, name, slug, definition, created_at, updated_at FROM schemas WHERE site_id = ? ORDER BY name",
+    let result = sqlx::query_as::<_, Collection>(
+        "SELECT id, site_id, name, slug, definition, created_at, updated_at FROM collections WHERE site_id = ? ORDER BY name",
     )
     .bind(&site_id)
     .fetch_all(&pool)
@@ -66,22 +66,22 @@ pub async fn list_schemas(
 
 #[utoipa::path(
     get,
-    path = "/api/v1/sites/{site_id}/schemas/{schema_slug}",
+    path = "/api/v1/sites/{site_id}/collections/{collection_slug}",
     params(
         ("site_id" = String, Path, description = "Site ID"),
-        ("schema_slug" = String, Path, description = "Schema slug"),
+        ("collection_slug" = String, Path, description = "Collection slug"),
     ),
     responses(
-        (status = 200, description = "Schema details", body = Schema),
+        (status = 200, description = "Collection details", body = Collection),
         (status = 401, description = "Unauthorized"),
-        (status = 404, description = "Schema not found"),
+        (status = 404, description = "Collection not found"),
     ),
     security(("bearer" = []), ("api_key" = [])),
-    tag = "schemas"
+    tag = "collections"
 )]
-pub async fn get_schema(
+pub async fn get_collection(
     auth: AuthContext,
-    Path((site_id, schema_slug)): Path<(String, String)>,
+    Path((site_id, collection_slug)): Path<(String, String)>,
     Extension(pool): Extension<SqlitePool>,
 ) -> Response {
     match &auth {
@@ -103,11 +103,11 @@ pub async fn get_schema(
         }
     }
 
-    let result = sqlx::query_as::<_, Schema>(
-        "SELECT id, site_id, name, slug, definition, created_at, updated_at FROM schemas WHERE site_id = ? AND slug = ?",
+    let result = sqlx::query_as::<_, Collection>(
+        "SELECT id, site_id, name, slug, definition, created_at, updated_at FROM collections WHERE site_id = ? AND slug = ?",
     )
     .bind(&site_id)
-    .bind(&schema_slug)
+    .bind(&collection_slug)
     .fetch_optional(&pool)
     .await;
 
@@ -115,7 +115,7 @@ pub async fn get_schema(
         Ok(Some(item)) => (StatusCode::OK, Json(item)).into_response(),
         Ok(None) => (
             StatusCode::NOT_FOUND,
-            Json(json!({"error": "Schema not found"})),
+            Json(json!({"error": "Collection not found"})),
         )
             .into_response(),
         Err(err) => (
@@ -128,23 +128,23 @@ pub async fn get_schema(
 
 #[utoipa::path(
     post,
-    path = "/api/v1/sites/{site_id}/schemas",
+    path = "/api/v1/sites/{site_id}/collections",
     params(("site_id" = String, Path, description = "Site ID")),
-    request_body = CreateSchema,
+    request_body = CreateCollection,
     responses(
-        (status = 201, description = "Schema created", body = Schema),
+        (status = 201, description = "Collection created", body = Collection),
         (status = 401, description = "Unauthorized"),
         (status = 403, description = "Insufficient permissions"),
-        (status = 409, description = "Schema name or slug already exists"),
+        (status = 409, description = "Collection name or slug already exists"),
     ),
     security(("bearer" = [])),
-    tag = "schemas"
+    tag = "collections"
 )]
-pub async fn create_schema(
+pub async fn create_collection(
     auth: AuthenticatedUser,
     Path(site_id): Path<String>,
     Extension(pool): Extension<SqlitePool>,
-    Json(payload): Json<CreateSchema>,
+    Json(payload): Json<CreateCollection>,
 ) -> Response {
     if let Err((status, err)) = check_site_access(&pool, &auth.user_id, &site_id, "editor").await {
         return (status, Json(err)).into_response();
@@ -154,7 +154,7 @@ pub async fn create_schema(
     let id = Uuid::now_v7().to_string();
 
     let result = sqlx::query(
-        "INSERT INTO schemas (id, site_id, name, slug, definition) VALUES (?, ?, ?, ?, ?)",
+        "INSERT INTO collections (id, site_id, name, slug, definition) VALUES (?, ?, ?, ?, ?)",
     )
     .bind(&id)
     .bind(&site_id)
@@ -166,8 +166,8 @@ pub async fn create_schema(
 
     match result {
         Ok(_) => {
-            let item = sqlx::query_as::<_, Schema>(
-                "SELECT id, site_id, name, slug, definition, created_at, updated_at FROM schemas WHERE id = ?",
+            let item = sqlx::query_as::<_, Collection>(
+                "SELECT id, site_id, name, slug, definition, created_at, updated_at FROM collections WHERE id = ?",
             )
             .bind(&id)
             .fetch_one(&pool)
@@ -178,7 +178,7 @@ pub async fn create_schema(
         }
         Err(sqlx::Error::Database(ref db_err)) if db_err.is_unique_violation() => (
             StatusCode::CONFLICT,
-            Json(json!({"error": "Schema with this name or slug already exists"})),
+            Json(json!({"error": "Collection with this name or slug already exists"})),
         )
             .into_response(),
         Err(err) => (
@@ -191,35 +191,35 @@ pub async fn create_schema(
 
 #[utoipa::path(
     put,
-    path = "/api/v1/sites/{site_id}/schemas/{schema_slug}",
+    path = "/api/v1/sites/{site_id}/collections/{collection_slug}",
     params(
         ("site_id" = String, Path, description = "Site ID"),
-        ("schema_slug" = String, Path, description = "Schema slug"),
+        ("collection_slug" = String, Path, description = "Collection slug"),
     ),
-    request_body = UpdateSchema,
+    request_body = UpdateCollection,
     responses(
-        (status = 200, description = "Schema updated", body = Schema),
+        (status = 200, description = "Collection updated", body = Collection),
         (status = 401, description = "Unauthorized"),
         (status = 403, description = "Insufficient permissions"),
     ),
     security(("bearer" = [])),
-    tag = "schemas"
+    tag = "collections"
 )]
-pub async fn update_schema(
+pub async fn update_collection(
     auth: AuthenticatedUser,
-    Path((site_id, schema_slug)): Path<(String, String)>,
+    Path((site_id, collection_slug)): Path<(String, String)>,
     Extension(pool): Extension<SqlitePool>,
-    Json(payload): Json<UpdateSchema>,
+    Json(payload): Json<UpdateCollection>,
 ) -> Response {
     if let Err((status, err)) = check_site_access(&pool, &auth.user_id, &site_id, "editor").await {
         return (status, Json(err)).into_response();
     }
 
-    let existing = sqlx::query_as::<_, Schema>(
-        "SELECT id, site_id, name, slug, definition, created_at, updated_at FROM schemas WHERE site_id = ? AND slug = ?",
+    let existing = sqlx::query_as::<_, Collection>(
+        "SELECT id, site_id, name, slug, definition, created_at, updated_at FROM collections WHERE site_id = ? AND slug = ?",
     )
     .bind(&site_id)
-    .bind(&schema_slug)
+    .bind(&collection_slug)
     .fetch_optional(&pool)
     .await;
 
@@ -228,7 +228,7 @@ pub async fn update_schema(
         Ok(None) => {
             return (
                 StatusCode::NOT_FOUND,
-                Json(json!({"error": "Schema not found"})),
+                Json(json!({"error": "Collection not found"})),
             )
                 .into_response()
         }
@@ -309,7 +309,7 @@ pub async fn update_schema(
 
             if !rename_map.is_empty() {
                 let contents = sqlx::query_as::<_, Content>(
-                    "SELECT id, site_id, schema_id, data, slug, status, created_at, updated_at, published_at FROM content WHERE schema_id = ?",
+                    "SELECT id, site_id, collection_id, data, slug, status, created_at, updated_at, published_at FROM content WHERE collection_id = ?",
                 )
                 .bind(&existing.id)
                 .fetch_all(&pool)
@@ -349,7 +349,7 @@ pub async fn update_schema(
     }
 
     let result = sqlx::query(
-        "UPDATE schemas SET name = ?, slug = ?, definition = ?, updated_at = datetime('now') WHERE id = ?",
+        "UPDATE collections SET name = ?, slug = ?, definition = ?, updated_at = datetime('now') WHERE id = ?",
     )
     .bind(&name)
     .bind(&new_slug)
@@ -360,8 +360,8 @@ pub async fn update_schema(
 
     match result {
         Ok(_) => {
-            let item = sqlx::query_as::<_, Schema>(
-                "SELECT id, site_id, name, slug, definition, created_at, updated_at FROM schemas WHERE id = ?",
+            let item = sqlx::query_as::<_, Collection>(
+                "SELECT id, site_id, name, slug, definition, created_at, updated_at FROM collections WHERE id = ?",
             )
             .bind(&existing.id)
             .fetch_one(&pool)
@@ -380,31 +380,31 @@ pub async fn update_schema(
 
 #[utoipa::path(
     delete,
-    path = "/api/v1/sites/{site_id}/schemas/{schema_slug}",
+    path = "/api/v1/sites/{site_id}/collections/{collection_slug}",
     params(
         ("site_id" = String, Path, description = "Site ID"),
-        ("schema_slug" = String, Path, description = "Schema slug"),
+        ("collection_slug" = String, Path, description = "Collection slug"),
     ),
     responses(
-        (status = 204, description = "Schema deleted"),
+        (status = 204, description = "Collection deleted"),
         (status = 401, description = "Unauthorized"),
         (status = 403, description = "Insufficient permissions"),
     ),
     security(("bearer" = [])),
-    tag = "schemas"
+    tag = "collections"
 )]
-pub async fn delete_schema(
+pub async fn delete_collection(
     auth: AuthenticatedUser,
-    Path((site_id, schema_slug)): Path<(String, String)>,
+    Path((site_id, collection_slug)): Path<(String, String)>,
     Extension(pool): Extension<SqlitePool>,
 ) -> Response {
     if let Err((status, err)) = check_site_access(&pool, &auth.user_id, &site_id, "editor").await {
         return (status, Json(err)).into_response();
     }
 
-    let result = sqlx::query("DELETE FROM schemas WHERE site_id = ? AND slug = ?")
+    let result = sqlx::query("DELETE FROM collections WHERE site_id = ? AND slug = ?")
         .bind(&site_id)
-        .bind(&schema_slug)
+        .bind(&collection_slug)
         .execute(&pool)
         .await;
 
