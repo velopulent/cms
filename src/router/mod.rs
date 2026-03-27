@@ -14,8 +14,8 @@ use crate::handlers::content_handler::{
     create_content, delete_content, get_content, list_content, publish_content, unpublish_content,
     update_content,
 };
-use crate::handlers::schema_handler::{
-    create_schema, delete_schema, get_schema, list_schemas, update_schema,
+use crate::handlers::collection_handler::{
+    create_collection, delete_collection, get_collection, list_collections, update_collection,
 };
 use crate::handlers::site_handler::{
     create_site, delete_site, get_site, invite_member, list_members, list_sites, remove_member,
@@ -25,7 +25,7 @@ use crate::handlers::ui_handler::ui_handler;
 
 use crate::models::api_key::{ApiKey, ApiKeyResponse, CreateApiKey};
 use crate::models::content::{Content, CreateContent, UpdateContent};
-use crate::models::schema::{CreateSchema, Schema, UpdateSchema};
+use crate::models::collection::{CreateCollection, Collection, UpdateCollection};
 use crate::models::site::{
     CreateSite, InviteMember, Site, SiteMember, SiteWithRole, UpdateMemberRole, UpdateSite,
 };
@@ -36,7 +36,7 @@ use crate::models::user::{AuthResponse, CreateUser, LoginRequest, UserPublic};
     info(
         title = "CMS API",
         version = "1.0.0",
-        description = "Headless CMS API for managing sites, schemas, and content. \
+        description = "Headless CMS API for managing sites, collections, and content. \
             Dashboard endpoints require JWT authentication. \
             Public API endpoints accept either JWT or API key authentication.",
         contact(name = "CMS", url = "https://github.com/anomalyco/cms"),
@@ -62,12 +62,12 @@ use crate::models::user::{AuthResponse, CreateUser, LoginRequest, UserPublic};
         crate::handlers::api_key_handler::list_api_keys,
         crate::handlers::api_key_handler::create_api_key,
         crate::handlers::api_key_handler::delete_api_key,
-        // Schemas
-        crate::handlers::schema_handler::list_schemas,
-        crate::handlers::schema_handler::get_schema,
-        crate::handlers::schema_handler::create_schema,
-        crate::handlers::schema_handler::update_schema,
-        crate::handlers::schema_handler::delete_schema,
+        // Collections
+        crate::handlers::collection_handler::list_collections,
+        crate::handlers::collection_handler::get_collection,
+        crate::handlers::collection_handler::create_collection,
+        crate::handlers::collection_handler::update_collection,
+        crate::handlers::collection_handler::delete_collection,
         // Content
         crate::handlers::content_handler::list_content,
         crate::handlers::content_handler::get_content,
@@ -84,8 +84,8 @@ use crate::models::user::{AuthResponse, CreateUser, LoginRequest, UserPublic};
         Site, SiteWithRole, CreateSite, UpdateSite, SiteMember, InviteMember, UpdateMemberRole,
         // API Key
         ApiKey, CreateApiKey, ApiKeyResponse,
-        // Schema
-        Schema, CreateSchema, UpdateSchema,
+        // Collection
+        Collection, CreateCollection, UpdateCollection,
         // Content
         Content, CreateContent, UpdateContent,
     )),
@@ -95,7 +95,7 @@ use crate::models::user::{AuthResponse, CreateUser, LoginRequest, UserPublic};
         (name = "sites", description = "Site management"),
         (name = "members", description = "Site member management"),
         (name = "api-keys", description = "API key management"),
-        (name = "schemas", description = "Schema management"),
+        (name = "collections", description = "Collection management"),
         (name = "content", description = "Content management"),
     )
 )]
@@ -163,20 +163,20 @@ pub fn create_router(pool: SqlitePool) -> Router {
             "/api/v1/sites/{site_id}/api-keys/{key_id}",
             delete(delete_api_key),
         )
-        // Schemas (site-scoped)
-        .route("/api/v1/sites/{site_id}/schemas", get(list_schemas))
-        .route("/api/v1/sites/{site_id}/schemas", post(create_schema))
+        // Collections (site-scoped)
+        .route("/api/v1/sites/{site_id}/collections", get(list_collections))
+        .route("/api/v1/sites/{site_id}/collections", post(create_collection))
         .route(
-            "/api/v1/sites/{site_id}/schemas/{schema_slug}",
-            get(get_schema),
+            "/api/v1/sites/{site_id}/collections/{collection_slug}",
+            get(get_collection),
         )
         .route(
-            "/api/v1/sites/{site_id}/schemas/{schema_slug}",
-            put(update_schema),
+            "/api/v1/sites/{site_id}/collections/{collection_slug}",
+            put(update_collection),
         )
         .route(
-            "/api/v1/sites/{site_id}/schemas/{schema_slug}",
-            delete(delete_schema),
+            "/api/v1/sites/{site_id}/collections/{collection_slug}",
+            delete(delete_collection),
         )
         // Content (site-scoped)
         .route("/api/v1/sites/{site_id}/content", get(list_content))
