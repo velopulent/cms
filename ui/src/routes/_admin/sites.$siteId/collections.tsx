@@ -1,5 +1,22 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
+import {
+  DndContext,
+  closestCenter,
+  KeyboardSensor,
+  PointerSensor,
+  useSensor,
+  useSensors,
+} from "@dnd-kit/core";
+import type { DragEndEvent } from "@dnd-kit/core";
+import {
+  arrayMove,
+  SortableContext,
+  sortableKeyboardCoordinates,
+  useSortable,
+  verticalListSortingStrategy,
+} from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
 import { GripVertical, Layers, Pencil, Plus, Trash2 } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
@@ -112,7 +129,7 @@ function CollectionsPage() {
               New Collection
             </Button>
           </DrawerTrigger>
-          <DrawerContent className="max-h-screen flex flex-col">
+          <DrawerContent className="flex h-auto flex-col max-w-full sm:max-w-2xl md:max-w-3xl lg:max-w-4xl">
             <DrawerHeader>
               <DrawerTitle>Create Collection</DrawerTitle>
               <DrawerDescription>
@@ -135,6 +152,12 @@ function CollectionsPage() {
               />
             </div>
             <DrawerFooter>
+              <Button
+                form="collection-form-create"
+                disabled={false}
+              >
+                Create Collection
+              </Button>
               <DrawerClose asChild>
                 <Button type="button" variant="outline">
                   Cancel
@@ -201,7 +224,7 @@ function CollectionsPage() {
                               <Pencil />
                             </Button>
                           </DrawerTrigger>
-                          <DrawerContent className="max-h-screen flex flex-col">
+                          <DrawerContent className="flex h-auto flex-col max-w-full sm:max-w-2xl md:max-w-3xl lg:max-w-4xl">
                             <DrawerHeader>
                               <DrawerTitle>Edit Collection</DrawerTitle>
                               <DrawerDescription>
@@ -231,6 +254,12 @@ function CollectionsPage() {
                               />
                             </div>
                             <DrawerFooter>
+                              <Button
+                                form="collection-form-edit"
+                                disabled={false}
+                              >
+                                Update Collection
+                              </Button>
                               <DrawerClose asChild>
                                 <Button type="button" variant="outline">
                                   Cancel
@@ -256,6 +285,105 @@ function CollectionsPage() {
           </Table>
         </Card>
       )}
+    </div>
+  );
+}
+
+// --- Sortable Field Item ---
+
+function SortableFieldItem({
+  field,
+  index,
+  updateField,
+  removeField,
+}: {
+  field: ContentFieldWithId;
+  index: number;
+  updateField: (index: number, updates: Partial<ContentField>) => void;
+  removeField: (index: number) => void;
+}) {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id: field._id });
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.5 : 1,
+  };
+
+  return (
+    <div
+      ref={setNodeRef}
+      style={style}
+      className="flex items-start gap-2 rounded-lg border p-3"
+    >
+      <button
+        className="mt-2 cursor-grab text-muted-foreground hover:text-foreground"
+        {...attributes}
+        {...listeners}
+      >
+        <GripVertical className="size-4" />
+      </button>
+      <div className="flex flex-1 flex-col gap-2">
+        <div className="flex gap-2">
+          <Input
+            placeholder="Field name"
+            value={field.name}
+            onChange={(e) => updateField(index, { name: e.target.value })}
+            className="flex-1"
+          />
+          <Select
+            items={[
+              ...FIELD_TYPES.map((ft) => ({
+                label: ft.label,
+                value: ft.value,
+              })),
+            ]}
+            value={field.type}
+            onValueChange={(val) =>
+              updateField(index, { type: val as string })
+            }
+          >
+            <SelectTrigger
+              className="w-[160px]"
+            >
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectGroup>
+                {FIELD_TYPES.map((ft) => (
+                  <SelectItem key={ft.value} value={ft.value}>
+                    {ft.label}
+                  </SelectItem>
+                ))}
+              </SelectGroup>
+            </SelectContent>
+          </Select>
+        </div>
+        <label className="flex items-center gap-2 text-xs text-muted-foreground">
+          <input
+            type="checkbox"
+            id={`required-${field._id}`}
+            checked={field.required ?? false}
+            onChange={(e) => updateField(index, { required: e.target.checked })}
+          />
+          Required
+        </label>
+      </div>
+      <Button
+        type="button"
+        variant="ghost"
+        size="icon-sm"
+        onClick={() => removeField(index)}
+      >
+        <Trash2 />
+      </Button>
     </div>
   );
 }
@@ -292,6 +420,17 @@ function CollectionForm({
 
   const [slugManuallyEdited, setSlugManuallyEdited] = useState(!!initialData);
 
+  const sensors = useSensors(
+    useSensor(PointerSensor, {
+      activationConstraint: {
+        distance: 8,
+      },
+    }),
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
+    })
+  );
+
   const handleNameChange = (value: string) => {
     setName(value);
     if (!slugManuallyEdited) {
@@ -319,6 +458,17 @@ function CollectionForm({
     setFields(fields.map((f, i) => (i === index ? { ...f, ...updates } : f)));
   };
 
+  const handleDragEnd = (event: DragEndEvent) => {
+    const { active, over } = event;
+    if (over && active.id !== over.id) {
+      setFields((items) => {
+        const oldIndex = items.findIndex((i) => i._id === active.id);
+        const newIndex = items.findIndex((i) => i._id === over.id);
+        return arrayMove(items, oldIndex, newIndex);
+      });
+    }
+  };
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!name.trim() || !slug.trim()) return;
@@ -330,8 +480,16 @@ function CollectionForm({
     });
   };
 
+  const formId = initialData
+    ? `collection-form-edit`
+    : `collection-form-create`;
+
   return (
-    <form onSubmit={handleSubmit} className="flex flex-col gap-4 pb-4">
+    <form
+      id={formId}
+      onSubmit={handleSubmit}
+      className="flex flex-col gap-4 pb-4"
+    >
       <div className="flex flex-col gap-2">
         <label htmlFor="collection-name" className="text-sm font-medium">
           Name
@@ -371,77 +529,29 @@ function CollectionForm({
             No fields defined. Add at least one field.
           </p>
         )}
-        <div className="flex flex-col gap-3">
-          {fields.map((field, index) => (
-            <div
-              key={field._id}
-              className="flex items-start gap-2 rounded-lg border p-3"
-            >
-              <GripVertical className="mt-2 size-4 shrink-0 text-muted-foreground" />
-              <div className="flex flex-1 flex-col gap-2">
-                <div className="flex gap-2">
-                  <Input
-                    placeholder="Field name"
-                    value={field.name}
-                    onChange={(e) =>
-                      updateField(index, { name: e.target.value })
-                    }
-                    className="flex-1"
-                  />
-                  <Select
-                    items={[
-                      ...FIELD_TYPES.map((ft) => ({
-                        label: ft.label,
-                        value: ft.value,
-                      })),
-                    ]}
-                    value={field.type}
-                    onValueChange={(val) =>
-                      updateField(index, { type: val as string })
-                    }
-                  >
-                    <SelectTrigger className="w-[160px]">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectGroup>
-                        {FIELD_TYPES.map((ft) => (
-                          <SelectItem key={ft.value} value={ft.value}>
-                            {ft.label}
-                          </SelectItem>
-                        ))}
-                      </SelectGroup>
-                    </SelectContent>
-                  </Select>
-                </div>
-                <label className="flex items-center gap-2 text-xs text-muted-foreground">
-                  <input
-                    type="checkbox"
-                    id={`required-${field._id}`}
-                    checked={field.required ?? false}
-                    onChange={(e) =>
-                      updateField(index, { required: e.target.checked })
-                    }
-                  />
-                  Required
-                </label>
-              </div>
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon-sm"
-                onClick={() => removeField(index)}
-              >
-                <Trash2 />
-              </Button>
+        <DndContext
+          sensors={sensors}
+          collisionDetection={closestCenter}
+          onDragEnd={handleDragEnd}
+        >
+          <SortableContext
+            items={fields.map((f) => f._id)}
+            strategy={verticalListSortingStrategy}
+          >
+            <div className="flex flex-col gap-3">
+              {fields.map((field, index) => (
+                <SortableFieldItem
+                  key={field._id}
+                  field={field}
+                  index={index}
+                  updateField={updateField}
+                  removeField={removeField}
+                />
+              ))}
             </div>
-          ))}
-        </div>
+          </SortableContext>
+        </DndContext>
       </div>
-
-      <Button type="submit" disabled={!name.trim() || !slug.trim()}>
-        {initialData ? "Update" : "Create"}
-      </Button>
     </form>
   );
 }
