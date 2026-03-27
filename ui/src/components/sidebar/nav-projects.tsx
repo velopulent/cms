@@ -28,7 +28,7 @@ export function NavProjects({
           <SidebarMenuItem key={item.name}>
             <SidebarMenuButton
               isActive={pathname === item.url || pathname.startsWith(item.url + "/")}
-              render={<Link to={item.url} />}
+              render={<Link to={item.url}  className="my-0.5" />}
             >
               {item.icon}
               <span>{item.name}</span>

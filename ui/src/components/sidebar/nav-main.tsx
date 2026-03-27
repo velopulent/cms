@@ -74,7 +74,7 @@ export function NavMain({
               <SidebarMenuButton
                 tooltip={item.title}
                 isActive={pathname === item.url}
-                render={<Link to={item.url} />}
+                render={<Link to={item.url} className="my-0.5" />}
               >
                 {item.icon}
                 <span>{item.title}</span>
