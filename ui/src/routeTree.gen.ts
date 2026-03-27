@@ -18,11 +18,11 @@ import { Route as AdminSitesIndexRouteImport } from './routes/_admin/sites/index
 import { Route as AdminSitesSiteIdRouteImport } from './routes/_admin/sites.$siteId'
 import { Route as AdminSitesSiteIdIndexRouteImport } from './routes/_admin/sites.$siteId/index'
 import { Route as AdminSitesSiteIdSettingsRouteImport } from './routes/_admin/sites.$siteId/settings'
-import { Route as AdminSitesSiteIdSchemasRouteImport } from './routes/_admin/sites.$siteId/schemas'
-import { Route as AdminSitesSiteIdContentSchemaSlugRouteImport } from './routes/_admin/sites.$siteId/content.$schemaSlug'
-import { Route as AdminSitesSiteIdContentSchemaSlugIndexRouteImport } from './routes/_admin/sites.$siteId/content.$schemaSlug/index'
-import { Route as AdminSitesSiteIdContentSchemaSlugNewRouteImport } from './routes/_admin/sites.$siteId/content.$schemaSlug/new'
-import { Route as AdminSitesSiteIdContentSchemaSlugIdEditRouteImport } from './routes/_admin/sites.$siteId/content.$schemaSlug/$id.edit'
+import { Route as AdminSitesSiteIdCollectionsRouteImport } from './routes/_admin/sites.$siteId/collections'
+import { Route as AdminSitesSiteIdContentCollectionSlugRouteImport } from './routes/_admin/sites.$siteId/content.$collectionSlug'
+import { Route as AdminSitesSiteIdContentCollectionSlugIndexRouteImport } from './routes/_admin/sites.$siteId/content.$collectionSlug/index'
+import { Route as AdminSitesSiteIdContentCollectionSlugNewRouteImport } from './routes/_admin/sites.$siteId/content.$collectionSlug/new'
+import { Route as AdminSitesSiteIdContentCollectionSlugIdEditRouteImport } from './routes/_admin/sites.$siteId/content.$collectionSlug/$id.edit'
 
 const RegisterRoute = RegisterRouteImport.update({
   id: '/register',
@@ -69,34 +69,35 @@ const AdminSitesSiteIdSettingsRoute =
     path: '/settings',
     getParentRoute: () => AdminSitesSiteIdRoute,
   } as any)
-const AdminSitesSiteIdSchemasRoute = AdminSitesSiteIdSchemasRouteImport.update({
-  id: '/schemas',
-  path: '/schemas',
-  getParentRoute: () => AdminSitesSiteIdRoute,
-} as any)
-const AdminSitesSiteIdContentSchemaSlugRoute =
-  AdminSitesSiteIdContentSchemaSlugRouteImport.update({
-    id: '/content/$schemaSlug',
-    path: '/content/$schemaSlug',
+const AdminSitesSiteIdCollectionsRoute =
+  AdminSitesSiteIdCollectionsRouteImport.update({
+    id: '/collections',
+    path: '/collections',
     getParentRoute: () => AdminSitesSiteIdRoute,
   } as any)
-const AdminSitesSiteIdContentSchemaSlugIndexRoute =
-  AdminSitesSiteIdContentSchemaSlugIndexRouteImport.update({
+const AdminSitesSiteIdContentCollectionSlugRoute =
+  AdminSitesSiteIdContentCollectionSlugRouteImport.update({
+    id: '/content/$collectionSlug',
+    path: '/content/$collectionSlug',
+    getParentRoute: () => AdminSitesSiteIdRoute,
+  } as any)
+const AdminSitesSiteIdContentCollectionSlugIndexRoute =
+  AdminSitesSiteIdContentCollectionSlugIndexRouteImport.update({
     id: '/',
     path: '/',
-    getParentRoute: () => AdminSitesSiteIdContentSchemaSlugRoute,
+    getParentRoute: () => AdminSitesSiteIdContentCollectionSlugRoute,
   } as any)
-const AdminSitesSiteIdContentSchemaSlugNewRoute =
-  AdminSitesSiteIdContentSchemaSlugNewRouteImport.update({
+const AdminSitesSiteIdContentCollectionSlugNewRoute =
+  AdminSitesSiteIdContentCollectionSlugNewRouteImport.update({
     id: '/new',
     path: '/new',
-    getParentRoute: () => AdminSitesSiteIdContentSchemaSlugRoute,
+    getParentRoute: () => AdminSitesSiteIdContentCollectionSlugRoute,
   } as any)
-const AdminSitesSiteIdContentSchemaSlugIdEditRoute =
-  AdminSitesSiteIdContentSchemaSlugIdEditRouteImport.update({
+const AdminSitesSiteIdContentCollectionSlugIdEditRoute =
+  AdminSitesSiteIdContentCollectionSlugIdEditRouteImport.update({
     id: '/$id/edit',
     path: '/$id/edit',
-    getParentRoute: () => AdminSitesSiteIdContentSchemaSlugRoute,
+    getParentRoute: () => AdminSitesSiteIdContentCollectionSlugRoute,
   } as any)
 
 export interface FileRoutesByFullPath {
@@ -106,25 +107,25 @@ export interface FileRoutesByFullPath {
   '/sites': typeof AdminSitesRouteWithChildren
   '/sites/$siteId': typeof AdminSitesSiteIdRouteWithChildren
   '/sites/': typeof AdminSitesIndexRoute
-  '/sites/$siteId/schemas': typeof AdminSitesSiteIdSchemasRoute
+  '/sites/$siteId/collections': typeof AdminSitesSiteIdCollectionsRoute
   '/sites/$siteId/settings': typeof AdminSitesSiteIdSettingsRoute
   '/sites/$siteId/': typeof AdminSitesSiteIdIndexRoute
-  '/sites/$siteId/content/$schemaSlug': typeof AdminSitesSiteIdContentSchemaSlugRouteWithChildren
-  '/sites/$siteId/content/$schemaSlug/new': typeof AdminSitesSiteIdContentSchemaSlugNewRoute
-  '/sites/$siteId/content/$schemaSlug/': typeof AdminSitesSiteIdContentSchemaSlugIndexRoute
-  '/sites/$siteId/content/$schemaSlug/$id/edit': typeof AdminSitesSiteIdContentSchemaSlugIdEditRoute
+  '/sites/$siteId/content/$collectionSlug': typeof AdminSitesSiteIdContentCollectionSlugRouteWithChildren
+  '/sites/$siteId/content/$collectionSlug/new': typeof AdminSitesSiteIdContentCollectionSlugNewRoute
+  '/sites/$siteId/content/$collectionSlug/': typeof AdminSitesSiteIdContentCollectionSlugIndexRoute
+  '/sites/$siteId/content/$collectionSlug/$id/edit': typeof AdminSitesSiteIdContentCollectionSlugIdEditRoute
 }
 export interface FileRoutesByTo {
   '/login': typeof LoginRoute
   '/register': typeof RegisterRoute
   '/': typeof AdminIndexRoute
   '/sites': typeof AdminSitesIndexRoute
-  '/sites/$siteId/schemas': typeof AdminSitesSiteIdSchemasRoute
+  '/sites/$siteId/collections': typeof AdminSitesSiteIdCollectionsRoute
   '/sites/$siteId/settings': typeof AdminSitesSiteIdSettingsRoute
   '/sites/$siteId': typeof AdminSitesSiteIdIndexRoute
-  '/sites/$siteId/content/$schemaSlug/new': typeof AdminSitesSiteIdContentSchemaSlugNewRoute
-  '/sites/$siteId/content/$schemaSlug': typeof AdminSitesSiteIdContentSchemaSlugIndexRoute
-  '/sites/$siteId/content/$schemaSlug/$id/edit': typeof AdminSitesSiteIdContentSchemaSlugIdEditRoute
+  '/sites/$siteId/content/$collectionSlug/new': typeof AdminSitesSiteIdContentCollectionSlugNewRoute
+  '/sites/$siteId/content/$collectionSlug': typeof AdminSitesSiteIdContentCollectionSlugIndexRoute
+  '/sites/$siteId/content/$collectionSlug/$id/edit': typeof AdminSitesSiteIdContentCollectionSlugIdEditRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -135,13 +136,13 @@ export interface FileRoutesById {
   '/_admin/': typeof AdminIndexRoute
   '/_admin/sites/$siteId': typeof AdminSitesSiteIdRouteWithChildren
   '/_admin/sites/': typeof AdminSitesIndexRoute
-  '/_admin/sites/$siteId/schemas': typeof AdminSitesSiteIdSchemasRoute
+  '/_admin/sites/$siteId/collections': typeof AdminSitesSiteIdCollectionsRoute
   '/_admin/sites/$siteId/settings': typeof AdminSitesSiteIdSettingsRoute
   '/_admin/sites/$siteId/': typeof AdminSitesSiteIdIndexRoute
-  '/_admin/sites/$siteId/content/$schemaSlug': typeof AdminSitesSiteIdContentSchemaSlugRouteWithChildren
-  '/_admin/sites/$siteId/content/$schemaSlug/new': typeof AdminSitesSiteIdContentSchemaSlugNewRoute
-  '/_admin/sites/$siteId/content/$schemaSlug/': typeof AdminSitesSiteIdContentSchemaSlugIndexRoute
-  '/_admin/sites/$siteId/content/$schemaSlug/$id/edit': typeof AdminSitesSiteIdContentSchemaSlugIdEditRoute
+  '/_admin/sites/$siteId/content/$collectionSlug': typeof AdminSitesSiteIdContentCollectionSlugRouteWithChildren
+  '/_admin/sites/$siteId/content/$collectionSlug/new': typeof AdminSitesSiteIdContentCollectionSlugNewRoute
+  '/_admin/sites/$siteId/content/$collectionSlug/': typeof AdminSitesSiteIdContentCollectionSlugIndexRoute
+  '/_admin/sites/$siteId/content/$collectionSlug/$id/edit': typeof AdminSitesSiteIdContentCollectionSlugIdEditRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -152,25 +153,25 @@ export interface FileRouteTypes {
     | '/sites'
     | '/sites/$siteId'
     | '/sites/'
-    | '/sites/$siteId/schemas'
+    | '/sites/$siteId/collections'
     | '/sites/$siteId/settings'
     | '/sites/$siteId/'
-    | '/sites/$siteId/content/$schemaSlug'
-    | '/sites/$siteId/content/$schemaSlug/new'
-    | '/sites/$siteId/content/$schemaSlug/'
-    | '/sites/$siteId/content/$schemaSlug/$id/edit'
+    | '/sites/$siteId/content/$collectionSlug'
+    | '/sites/$siteId/content/$collectionSlug/new'
+    | '/sites/$siteId/content/$collectionSlug/'
+    | '/sites/$siteId/content/$collectionSlug/$id/edit'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/login'
     | '/register'
     | '/'
     | '/sites'
-    | '/sites/$siteId/schemas'
+    | '/sites/$siteId/collections'
     | '/sites/$siteId/settings'
     | '/sites/$siteId'
-    | '/sites/$siteId/content/$schemaSlug/new'
-    | '/sites/$siteId/content/$schemaSlug'
-    | '/sites/$siteId/content/$schemaSlug/$id/edit'
+    | '/sites/$siteId/content/$collectionSlug/new'
+    | '/sites/$siteId/content/$collectionSlug'
+    | '/sites/$siteId/content/$collectionSlug/$id/edit'
   id:
     | '__root__'
     | '/_admin'
@@ -180,13 +181,13 @@ export interface FileRouteTypes {
     | '/_admin/'
     | '/_admin/sites/$siteId'
     | '/_admin/sites/'
-    | '/_admin/sites/$siteId/schemas'
+    | '/_admin/sites/$siteId/collections'
     | '/_admin/sites/$siteId/settings'
     | '/_admin/sites/$siteId/'
-    | '/_admin/sites/$siteId/content/$schemaSlug'
-    | '/_admin/sites/$siteId/content/$schemaSlug/new'
-    | '/_admin/sites/$siteId/content/$schemaSlug/'
-    | '/_admin/sites/$siteId/content/$schemaSlug/$id/edit'
+    | '/_admin/sites/$siteId/content/$collectionSlug'
+    | '/_admin/sites/$siteId/content/$collectionSlug/new'
+    | '/_admin/sites/$siteId/content/$collectionSlug/'
+    | '/_admin/sites/$siteId/content/$collectionSlug/$id/edit'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -260,78 +261,78 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AdminSitesSiteIdSettingsRouteImport
       parentRoute: typeof AdminSitesSiteIdRoute
     }
-    '/_admin/sites/$siteId/schemas': {
-      id: '/_admin/sites/$siteId/schemas'
-      path: '/schemas'
-      fullPath: '/sites/$siteId/schemas'
-      preLoaderRoute: typeof AdminSitesSiteIdSchemasRouteImport
+    '/_admin/sites/$siteId/collections': {
+      id: '/_admin/sites/$siteId/collections'
+      path: '/collections'
+      fullPath: '/sites/$siteId/collections'
+      preLoaderRoute: typeof AdminSitesSiteIdCollectionsRouteImport
       parentRoute: typeof AdminSitesSiteIdRoute
     }
-    '/_admin/sites/$siteId/content/$schemaSlug': {
-      id: '/_admin/sites/$siteId/content/$schemaSlug'
-      path: '/content/$schemaSlug'
-      fullPath: '/sites/$siteId/content/$schemaSlug'
-      preLoaderRoute: typeof AdminSitesSiteIdContentSchemaSlugRouteImport
+    '/_admin/sites/$siteId/content/$collectionSlug': {
+      id: '/_admin/sites/$siteId/content/$collectionSlug'
+      path: '/content/$collectionSlug'
+      fullPath: '/sites/$siteId/content/$collectionSlug'
+      preLoaderRoute: typeof AdminSitesSiteIdContentCollectionSlugRouteImport
       parentRoute: typeof AdminSitesSiteIdRoute
     }
-    '/_admin/sites/$siteId/content/$schemaSlug/': {
-      id: '/_admin/sites/$siteId/content/$schemaSlug/'
+    '/_admin/sites/$siteId/content/$collectionSlug/': {
+      id: '/_admin/sites/$siteId/content/$collectionSlug/'
       path: '/'
-      fullPath: '/sites/$siteId/content/$schemaSlug/'
-      preLoaderRoute: typeof AdminSitesSiteIdContentSchemaSlugIndexRouteImport
-      parentRoute: typeof AdminSitesSiteIdContentSchemaSlugRoute
+      fullPath: '/sites/$siteId/content/$collectionSlug/'
+      preLoaderRoute: typeof AdminSitesSiteIdContentCollectionSlugIndexRouteImport
+      parentRoute: typeof AdminSitesSiteIdContentCollectionSlugRoute
     }
-    '/_admin/sites/$siteId/content/$schemaSlug/new': {
-      id: '/_admin/sites/$siteId/content/$schemaSlug/new'
+    '/_admin/sites/$siteId/content/$collectionSlug/new': {
+      id: '/_admin/sites/$siteId/content/$collectionSlug/new'
       path: '/new'
-      fullPath: '/sites/$siteId/content/$schemaSlug/new'
-      preLoaderRoute: typeof AdminSitesSiteIdContentSchemaSlugNewRouteImport
-      parentRoute: typeof AdminSitesSiteIdContentSchemaSlugRoute
+      fullPath: '/sites/$siteId/content/$collectionSlug/new'
+      preLoaderRoute: typeof AdminSitesSiteIdContentCollectionSlugNewRouteImport
+      parentRoute: typeof AdminSitesSiteIdContentCollectionSlugRoute
     }
-    '/_admin/sites/$siteId/content/$schemaSlug/$id/edit': {
-      id: '/_admin/sites/$siteId/content/$schemaSlug/$id/edit'
+    '/_admin/sites/$siteId/content/$collectionSlug/$id/edit': {
+      id: '/_admin/sites/$siteId/content/$collectionSlug/$id/edit'
       path: '/$id/edit'
-      fullPath: '/sites/$siteId/content/$schemaSlug/$id/edit'
-      preLoaderRoute: typeof AdminSitesSiteIdContentSchemaSlugIdEditRouteImport
-      parentRoute: typeof AdminSitesSiteIdContentSchemaSlugRoute
+      fullPath: '/sites/$siteId/content/$collectionSlug/$id/edit'
+      preLoaderRoute: typeof AdminSitesSiteIdContentCollectionSlugIdEditRouteImport
+      parentRoute: typeof AdminSitesSiteIdContentCollectionSlugRoute
     }
   }
 }
 
-interface AdminSitesSiteIdContentSchemaSlugRouteChildren {
-  AdminSitesSiteIdContentSchemaSlugNewRoute: typeof AdminSitesSiteIdContentSchemaSlugNewRoute
-  AdminSitesSiteIdContentSchemaSlugIndexRoute: typeof AdminSitesSiteIdContentSchemaSlugIndexRoute
-  AdminSitesSiteIdContentSchemaSlugIdEditRoute: typeof AdminSitesSiteIdContentSchemaSlugIdEditRoute
+interface AdminSitesSiteIdContentCollectionSlugRouteChildren {
+  AdminSitesSiteIdContentCollectionSlugNewRoute: typeof AdminSitesSiteIdContentCollectionSlugNewRoute
+  AdminSitesSiteIdContentCollectionSlugIndexRoute: typeof AdminSitesSiteIdContentCollectionSlugIndexRoute
+  AdminSitesSiteIdContentCollectionSlugIdEditRoute: typeof AdminSitesSiteIdContentCollectionSlugIdEditRoute
 }
 
-const AdminSitesSiteIdContentSchemaSlugRouteChildren: AdminSitesSiteIdContentSchemaSlugRouteChildren =
+const AdminSitesSiteIdContentCollectionSlugRouteChildren: AdminSitesSiteIdContentCollectionSlugRouteChildren =
   {
-    AdminSitesSiteIdContentSchemaSlugNewRoute:
-      AdminSitesSiteIdContentSchemaSlugNewRoute,
-    AdminSitesSiteIdContentSchemaSlugIndexRoute:
-      AdminSitesSiteIdContentSchemaSlugIndexRoute,
-    AdminSitesSiteIdContentSchemaSlugIdEditRoute:
-      AdminSitesSiteIdContentSchemaSlugIdEditRoute,
+    AdminSitesSiteIdContentCollectionSlugNewRoute:
+      AdminSitesSiteIdContentCollectionSlugNewRoute,
+    AdminSitesSiteIdContentCollectionSlugIndexRoute:
+      AdminSitesSiteIdContentCollectionSlugIndexRoute,
+    AdminSitesSiteIdContentCollectionSlugIdEditRoute:
+      AdminSitesSiteIdContentCollectionSlugIdEditRoute,
   }
 
-const AdminSitesSiteIdContentSchemaSlugRouteWithChildren =
-  AdminSitesSiteIdContentSchemaSlugRoute._addFileChildren(
-    AdminSitesSiteIdContentSchemaSlugRouteChildren,
+const AdminSitesSiteIdContentCollectionSlugRouteWithChildren =
+  AdminSitesSiteIdContentCollectionSlugRoute._addFileChildren(
+    AdminSitesSiteIdContentCollectionSlugRouteChildren,
   )
 
 interface AdminSitesSiteIdRouteChildren {
-  AdminSitesSiteIdSchemasRoute: typeof AdminSitesSiteIdSchemasRoute
+  AdminSitesSiteIdCollectionsRoute: typeof AdminSitesSiteIdCollectionsRoute
   AdminSitesSiteIdSettingsRoute: typeof AdminSitesSiteIdSettingsRoute
   AdminSitesSiteIdIndexRoute: typeof AdminSitesSiteIdIndexRoute
-  AdminSitesSiteIdContentSchemaSlugRoute: typeof AdminSitesSiteIdContentSchemaSlugRouteWithChildren
+  AdminSitesSiteIdContentCollectionSlugRoute: typeof AdminSitesSiteIdContentCollectionSlugRouteWithChildren
 }
 
 const AdminSitesSiteIdRouteChildren: AdminSitesSiteIdRouteChildren = {
-  AdminSitesSiteIdSchemasRoute: AdminSitesSiteIdSchemasRoute,
+  AdminSitesSiteIdCollectionsRoute: AdminSitesSiteIdCollectionsRoute,
   AdminSitesSiteIdSettingsRoute: AdminSitesSiteIdSettingsRoute,
   AdminSitesSiteIdIndexRoute: AdminSitesSiteIdIndexRoute,
-  AdminSitesSiteIdContentSchemaSlugRoute:
-    AdminSitesSiteIdContentSchemaSlugRouteWithChildren,
+  AdminSitesSiteIdContentCollectionSlugRoute:
+    AdminSitesSiteIdContentCollectionSlugRouteWithChildren,
 }
 
 const AdminSitesSiteIdRouteWithChildren =
