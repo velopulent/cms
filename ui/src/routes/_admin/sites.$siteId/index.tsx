@@ -7,9 +7,9 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   type Content,
-  type Schema,
+  type Collection,
   getContent,
-  getSchemas,
+  getCollections,
 } from "@/lib/api";
 
 export const Route = createFileRoute("/_admin/sites/$siteId/")({
@@ -19,9 +19,9 @@ export const Route = createFileRoute("/_admin/sites/$siteId/")({
 function DashboardPage() {
   const { siteId } = Route.useParams();
 
-  const { data: schemas, isLoading: schemasLoading } = useQuery({
-    queryKey: ["schemas", siteId],
-    queryFn: () => getSchemas(siteId),
+  const { data: collections, isLoading: collectionsLoading } = useQuery({
+    queryKey: ["collections", siteId],
+    queryFn: () => getCollections(siteId),
   });
 
   const { data: allContent, isLoading: contentLoading } = useQuery({
@@ -47,15 +47,15 @@ function DashboardPage() {
         <Card>
           <CardHeader>
             <CardTitle className="text-sm font-medium text-muted-foreground">
-              Schemas
+              Collections
             </CardTitle>
           </CardHeader>
           <CardContent>
-            {schemasLoading ? (
+            {collectionsLoading ? (
               <Skeleton className="h-8 w-12" />
             ) : (
               <p className="text-3xl font-semibold">
-                {schemas?.length ?? 0}
+                {collections?.length ?? 0}
               </p>
             )}
           </CardContent>
@@ -106,19 +106,19 @@ function DashboardPage() {
         </Card>
       </div>
 
-      {schemas && schemas.length > 0 && (
+      {collections && collections.length > 0 && (
         <div className="flex flex-col gap-4">
           <h2 className="text-lg font-semibold">Quick Create</h2>
           <div className="flex flex-wrap gap-2">
-            {schemas.map((s: Schema) => (
+            {collections.map((c: Collection) => (
               <Link
-                key={s.id}
-                to="/sites/$siteId/content/$schemaSlug/new"
-                params={{ siteId, schemaSlug: s.slug }}
+                key={c.id}
+                to="/sites/$siteId/content/$collectionSlug/new"
+                params={{ siteId, collectionSlug: c.slug }}
                 className={buttonVariants({ variant: "outline" })}
               >
                 <Plus data-icon="inline-start" />
-                New {s.name}
+                New {c.name}
               </Link>
             ))}
           </div>
@@ -130,8 +130,8 @@ function DashboardPage() {
           <h2 className="text-lg font-semibold">Recently Updated</h2>
           <div className="flex flex-col gap-2">
             {allContent.slice(0, 5).map((item: Content) => {
-              const schemaName = schemas?.find(
-                (s: Schema) => s.id === item.schema_id,
+              const collectionName = collections?.find(
+                (c: Collection) => c.id === item.collection_id,
               )?.name;
               let title: string;
               try {
@@ -150,7 +150,7 @@ function DashboardPage() {
                     <div>
                       <p className="text-sm font-medium">{title}</p>
                       <p className="text-xs text-muted-foreground">
-                        {schemaName} · {item.slug}
+                        {collectionName} · {item.slug}
                       </p>
                     </div>
                   </div>
