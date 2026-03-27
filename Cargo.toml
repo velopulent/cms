@@ -18,4 +18,4 @@ chrono = { version = "0.4", features = ["serde"] }
 bcrypt = "0.19"
 jsonwebtoken = { version = "10.3", features = ["rust_crypto"] }
 utoipa = { version = "5", features = ["axum_extras"] }
-utoipa-swagger-ui = { version = "9", features = ["axum"] }
+utoipa-scalar = { version = "0.3", features = ["axum"] }

@@ -6,7 +6,7 @@ use axum::{
 use sqlx::SqlitePool;
 use tower_http::cors::CorsLayer;
 use utoipa::OpenApi;
-use utoipa_swagger_ui::SwaggerUi;
+use utoipa_scalar::{Scalar, Servable};
 
 use crate::handlers::api_key_handler::{create_api_key, delete_api_key, list_api_keys};
 use crate::handlers::auth_handler::{login, me, register};
@@ -195,8 +195,8 @@ pub fn create_router(pool: SqlitePool) -> Router {
             "/api/v1/sites/{site_id}/content/{id}/unpublish",
             post(unpublish_content),
         )
-        // Swagger UI
-        .merge(SwaggerUi::new("/api/v1/docs").url("/api/v1/openapi.json", ApiDoc::openapi()))
+        // Scalar API docs
+        .merge(Scalar::with_url("/api/v1/docs", ApiDoc::openapi()))
         .layer(CorsLayer::permissive())
         .layer(Extension(pool))
 }

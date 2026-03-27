@@ -159,7 +159,7 @@ function ApiKeysSection({ siteId }: { siteId: string }) {
       <CardContent className="flex flex-col gap-4">
         <p className="text-sm text-muted-foreground">
           API keys allow external applications to read published content from
-          this site. Use the Swagger UI at{" "}
+          this site. Use the API reference at{" "}
           <a
             href="/api/v1/docs"
             target="_blank"
