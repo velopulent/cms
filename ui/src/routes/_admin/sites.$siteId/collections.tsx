@@ -7,15 +7,15 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import {
-  Dialog,
-  DialogClose,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from "@/components/ui/dialog";
+  Drawer,
+  DrawerClose,
+  DrawerContent,
+  DrawerDescription,
+  DrawerFooter,
+  DrawerHeader,
+  DrawerTitle,
+  DrawerTrigger,
+} from "@/components/ui/drawer";
 import { Input } from "@/components/ui/input";
 import {
   Select,
@@ -36,20 +36,20 @@ import {
 } from "@/components/ui/table";
 import {
   type ContentField,
-  type Schema,
+  type Collection,
   type SchemaDefinition,
-  createSchema,
-  deleteSchema,
-  getSchemas,
-  updateSchema,
+  createCollection,
+  deleteCollection,
+  getCollections,
+  updateCollection,
 } from "@/lib/api";
 
 interface ContentFieldWithId extends ContentField {
   _id: string;
 }
 
-export const Route = createFileRoute("/_admin/sites/$siteId/schemas")({
-  component: SchemasPage,
+export const Route = createFileRoute("/_admin/sites/$siteId/collections")({
+  component: CollectionsPage,
 });
 
 const FIELD_TYPES = [
@@ -72,22 +72,22 @@ function slugify(text: string) {
     .replace(/-+/g, "-");
 }
 
-function SchemasPage() {
+function CollectionsPage() {
   const { siteId } = Route.useParams();
   const queryClient = useQueryClient();
   const [createOpen, setCreateOpen] = useState(false);
-  const [editSchema, setEditSchema] = useState<Schema | null>(null);
+  const [editCollection, setEditCollection] = useState<Collection | null>(null);
 
-  const { data: schemas, isLoading } = useQuery({
-    queryKey: ["schemas", siteId],
-    queryFn: () => getSchemas(siteId),
+  const { data: collections, isLoading } = useQuery({
+    queryKey: ["collections", siteId],
+    queryFn: () => getCollections(siteId),
   });
 
   const deleteMutation = useMutation({
-    mutationFn: (slug: string) => deleteSchema(siteId, slug),
+    mutationFn: (slug: string) => deleteCollection(siteId, slug),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["schemas", siteId] });
-      toast.success("Schema deleted");
+      queryClient.invalidateQueries({ queryKey: ["collections", siteId] });
+      toast.success("Collection deleted");
     },
     onError: (err: Error) => toast.error(err.message),
   });
@@ -96,38 +96,53 @@ function SchemasPage() {
     <div className="flex flex-col gap-6 p-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-semibold">Schemas</h1>
+          <h1 className="text-2xl font-semibold">Collections</h1>
           <p className="text-sm text-muted-foreground">
             Define the structure of your content
           </p>
         </div>
-        <Dialog open={createOpen} onOpenChange={setCreateOpen}>
-          <DialogTrigger render={<Button />}>
-            <Plus data-icon="inline-start" />
-            New Schema
-          </DialogTrigger>
-          <DialogContent className="max-h-[80vh] overflow-y-auto sm:max-w-lg">
-            <DialogHeader>
-              <DialogTitle>Create Schema</DialogTitle>
-              <DialogDescription>
-                Define a new schema with custom fields.
-              </DialogDescription>
-            </DialogHeader>
-            <SchemaForm
-              onSubmit={(data) => {
-                createSchema(siteId, data)
-                  .then(() => {
-                    queryClient.invalidateQueries({
-                      queryKey: ["schemas", siteId],
-                    });
-                    setCreateOpen(false);
-                    toast.success("Schema created");
-                  })
-                  .catch((err: Error) => toast.error(err.message));
-              }}
-            />
-          </DialogContent>
-        </Dialog>
+        <Drawer
+          open={createOpen}
+          onOpenChange={setCreateOpen}
+          direction="right"
+        >
+          <DrawerTrigger asChild>
+            <Button>
+              <Plus data-icon="inline-start" />
+              New Collection
+            </Button>
+          </DrawerTrigger>
+          <DrawerContent className="max-h-screen flex flex-col">
+            <DrawerHeader>
+              <DrawerTitle>Create Collection</DrawerTitle>
+              <DrawerDescription>
+                Define a new collection with custom fields.
+              </DrawerDescription>
+            </DrawerHeader>
+            <div className="flex-1 overflow-y-auto px-4">
+              <CollectionForm
+                onSubmit={(data) => {
+                  createCollection(siteId, data)
+                    .then(() => {
+                      queryClient.invalidateQueries({
+                        queryKey: ["collections", siteId],
+                      });
+                      setCreateOpen(false);
+                      toast.success("Collection created");
+                    })
+                    .catch((err: Error) => toast.error(err.message));
+                }}
+              />
+            </div>
+            <DrawerFooter>
+              <DrawerClose asChild>
+                <Button type="button" variant="outline">
+                  Cancel
+                </Button>
+              </DrawerClose>
+            </DrawerFooter>
+          </DrawerContent>
+        </Drawer>
       </div>
 
       {isLoading ? (
@@ -135,13 +150,13 @@ function SchemasPage() {
           <Skeleton className="h-12 w-full" />
           <Skeleton className="h-12 w-full" />
         </div>
-      ) : !schemas?.length ? (
+      ) : !collections?.length ? (
         <Card>
           <CardContent className="flex flex-col items-center justify-center py-12">
             <Layers className="mb-4 size-10 text-muted-foreground" />
-            <p className="text-lg font-medium">No schemas yet</p>
+            <p className="text-lg font-medium">No collections yet</p>
             <p className="text-sm text-muted-foreground">
-              Create your first schema to get started.
+              Create your first collection to get started.
             </p>
           </CardContent>
         </Card>
@@ -157,65 +172,77 @@ function SchemasPage() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {schemas.map((s: Schema) => {
+              {collections.map((c: Collection) => {
                 let fieldCount = 0;
                 try {
-                  const def: SchemaDefinition = JSON.parse(s.definition);
+                  const def: SchemaDefinition = JSON.parse(c.definition);
                   fieldCount = def.fields?.length ?? 0;
                 } catch {
                   // invalid json
                 }
                 return (
-                  <TableRow key={s.id}>
-                    <TableCell className="font-medium">{s.name}</TableCell>
+                  <TableRow key={c.id}>
+                    <TableCell className="font-medium">{c.name}</TableCell>
                     <TableCell>
-                      <Badge variant="outline">{s.slug}</Badge>
+                      <Badge variant="outline">{c.slug}</Badge>
                     </TableCell>
                     <TableCell>{fieldCount} fields</TableCell>
                     <TableCell className="text-right">
                       <div className="flex justify-end gap-1">
-                        <Dialog
-                          open={editSchema?.id === s.id}
-                          onOpenChange={(open) => setEditSchema(open ? s : null)}
+                        <Drawer
+                          open={editCollection?.id === c.id}
+                          onOpenChange={(open) =>
+                            setEditCollection(open ? c : null)
+                          }
+                          direction="right"
                         >
-                          <DialogTrigger
-                            render={<Button variant="ghost" size="icon" />}
-                          >
-                            <Pencil />
-                          </DialogTrigger>
-                          <DialogContent className="max-h-[80vh] overflow-y-auto sm:max-w-lg">
-                            <DialogHeader>
-                              <DialogTitle>Edit Schema</DialogTitle>
-                              <DialogDescription>
-                                Update the schema definition.
-                              </DialogDescription>
-                            </DialogHeader>
-                            <SchemaForm
-                              initialData={s}
-                              onSubmit={(data) => {
-                                updateSchema(siteId, s.slug, {
-                                  name: data.name,
-                                  slug: data.slug,
-                                  definition: data.definition,
-                                })
-                                  .then(() => {
-                                    queryClient.invalidateQueries({
-                                      queryKey: ["schemas", siteId],
-                                    });
-                                    setEditSchema(null);
-                                    toast.success("Schema updated");
+                          <DrawerTrigger asChild>
+                            <Button variant="ghost" size="icon">
+                              <Pencil />
+                            </Button>
+                          </DrawerTrigger>
+                          <DrawerContent className="max-h-screen flex flex-col">
+                            <DrawerHeader>
+                              <DrawerTitle>Edit Collection</DrawerTitle>
+                              <DrawerDescription>
+                                Update the collection definition.
+                              </DrawerDescription>
+                            </DrawerHeader>
+                            <div className="flex-1 overflow-y-auto px-4">
+                              <CollectionForm
+                                initialData={c}
+                                onSubmit={(data) => {
+                                  updateCollection(siteId, c.slug, {
+                                    name: data.name,
+                                    slug: data.slug,
+                                    definition: data.definition,
                                   })
-                                  .catch((err: Error) =>
-                                    toast.error(err.message),
-                                  );
-                              }}
-                            />
-                          </DialogContent>
-                        </Dialog>
+                                    .then(() => {
+                                      queryClient.invalidateQueries({
+                                        queryKey: ["collections", siteId],
+                                      });
+                                      setEditCollection(null);
+                                      toast.success("Collection updated");
+                                    })
+                                    .catch((err: Error) =>
+                                      toast.error(err.message),
+                                    );
+                                }}
+                              />
+                            </div>
+                            <DrawerFooter>
+                              <DrawerClose asChild>
+                                <Button type="button" variant="outline">
+                                  Cancel
+                                </Button>
+                              </DrawerClose>
+                            </DrawerFooter>
+                          </DrawerContent>
+                        </Drawer>
                         <Button
                           variant="ghost"
                           size="icon"
-                          onClick={() => deleteMutation.mutate(s.slug)}
+                          onClick={() => deleteMutation.mutate(c.slug)}
                           disabled={deleteMutation.isPending}
                         >
                           <Trash2 />
@@ -233,13 +260,13 @@ function SchemasPage() {
   );
 }
 
-// --- Schema Form ---
+// --- Collection Form ---
 
-function SchemaForm({
+function CollectionForm({
   initialData,
   onSubmit,
 }: {
-  initialData?: Schema;
+  initialData?: Collection;
   onSubmit: (data: {
     name: string;
     slug: string;
@@ -304,24 +331,24 @@ function SchemaForm({
   };
 
   return (
-    <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+    <form onSubmit={handleSubmit} className="flex flex-col gap-4 pb-4">
       <div className="flex flex-col gap-2">
-        <label htmlFor="schema-name" className="text-sm font-medium">
+        <label htmlFor="collection-name" className="text-sm font-medium">
           Name
         </label>
         <Input
-          id="schema-name"
+          id="collection-name"
           placeholder="e.g. Blog Post"
           value={name}
           onChange={(e) => handleNameChange(e.target.value)}
         />
       </div>
       <div className="flex flex-col gap-2">
-        <label htmlFor="schema-slug" className="text-sm font-medium">
+        <label htmlFor="collection-slug" className="text-sm font-medium">
           Slug
         </label>
         <Input
-          id="schema-slug"
+          id="collection-slug"
           placeholder="e.g. blog-post"
           value={slug}
           onChange={(e) => {
@@ -412,14 +439,9 @@ function SchemaForm({
         </div>
       </div>
 
-      <DialogFooter>
-        <DialogClose render={<Button type="button" variant="outline" />}>
-          Cancel
-        </DialogClose>
-        <Button type="submit" disabled={!name.trim() || !slug.trim()}>
-          {initialData ? "Update" : "Create"}
-        </Button>
-      </DialogFooter>
+      <Button type="submit" disabled={!name.trim() || !slug.trim()}>
+        {initialData ? "Update" : "Create"}
+      </Button>
     </form>
   );
 }
