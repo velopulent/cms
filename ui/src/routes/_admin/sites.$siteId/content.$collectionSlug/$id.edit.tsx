@@ -12,26 +12,26 @@ import { Skeleton } from "@/components/ui/skeleton";
 import {
   type SchemaDefinition,
   getContentById,
-  getSchema,
+  getCollection,
   updateContent,
 } from "@/lib/api";
 
 export const Route = createFileRoute(
-  "/_admin/sites/$siteId/content/$schemaSlug/$id/edit",
+  "/_admin/sites/$siteId/content/$collectionSlug/$id/edit",
 )({
   component: EditContentPage,
 });
 
 function EditContentPage() {
-  const { siteId, schemaSlug, id } = Route.useParams();
+  const { siteId, collectionSlug, id } = Route.useParams();
   const navigate = useNavigate();
   const [data, setData] = useState<Record<string, unknown>>({});
   const [slug, setSlug] = useState("");
   const [initialized, setInitialized] = useState(false);
 
-  const { data: schema, isLoading: schemaLoading } = useQuery({
-    queryKey: ["schema", siteId, schemaSlug],
-    queryFn: () => getSchema(siteId, schemaSlug),
+  const { data: collection, isLoading: collectionLoading } = useQuery({
+    queryKey: ["collection", siteId, collectionSlug],
+    queryFn: () => getCollection(siteId, collectionSlug),
   });
 
   const { data: content, isLoading: contentLoading } = useQuery({
@@ -61,19 +61,19 @@ function EditContentPage() {
     onSuccess: () => {
       toast.success("Content updated");
       navigate({
-        to: "/sites/$siteId/content/$schemaSlug",
-        params: { siteId, schemaSlug },
+        to: "/sites/$siteId/content/$collectionSlug",
+        params: { siteId, collectionSlug },
       });
     },
     onError: (err: Error) => toast.error(err.message),
   });
 
-  let schemaDef: SchemaDefinition | null = null;
-  if (schema) {
+  let collectionDef: SchemaDefinition | null = null;
+  if (collection) {
     try {
-      schemaDef = JSON.parse(schema.definition);
+      collectionDef = JSON.parse(collection.definition);
     } catch {
-      // invalid schema
+      // invalid collection
     }
   }
 
@@ -83,7 +83,7 @@ function EditContentPage() {
     updateMutation.mutate();
   };
 
-  const isLoading = schemaLoading || contentLoading;
+  const isLoading = collectionLoading || contentLoading;
 
   if (isLoading || !initialized) {
     return (
@@ -94,7 +94,7 @@ function EditContentPage() {
     );
   }
 
-  if (!schema || !content) {
+  if (!collection || !content) {
     return (
       <div className="p-6">
         <p>Content not found.</p>
@@ -106,15 +106,15 @@ function EditContentPage() {
     <div className="flex flex-col gap-6 p-6">
       <div className="flex items-center gap-3">
         <Link
-          to="/sites/$siteId/content/$schemaSlug"
-          params={{ siteId, schemaSlug }}
+          to="/sites/$siteId/content/$collectionSlug"
+          params={{ siteId, collectionSlug }}
           className={buttonVariants({ variant: "ghost", size: "icon" })}
         >
           <ArrowLeft />
         </Link>
         <div>
           <div className="flex items-center gap-2">
-            <h1 className="text-2xl font-semibold">Edit {schema.name}</h1>
+            <h1 className="text-2xl font-semibold">Edit {collection.name}</h1>
             <Badge
               variant={content.status === "published" ? "default" : "secondary"}
             >
@@ -122,7 +122,7 @@ function EditContentPage() {
             </Badge>
           </div>
           <p className="text-sm text-muted-foreground">
-            Edit {schema.name.toLowerCase()} #{content.id.slice(0, 8)}
+            Edit {collection.name.toLowerCase()} #{content.id.slice(0, 8)}
           </p>
         </div>
       </div>
@@ -133,15 +133,15 @@ function EditContentPage() {
             <CardTitle>Content</CardTitle>
           </CardHeader>
           <CardContent>
-            {schemaDef ? (
+            {collectionDef ? (
               <DynamicForm
-                fields={schemaDef.fields}
+                fields={collectionDef.fields}
                 values={data}
                 onChange={setData}
               />
             ) : (
               <p className="text-sm text-muted-foreground">
-                Invalid schema definition.
+                Invalid collection definition.
               </p>
             )}
           </CardContent>
@@ -173,8 +173,8 @@ function EditContentPage() {
             {updateMutation.isPending ? "Saving..." : "Save"}
           </Button>
           <Link
-            to="/sites/$siteId/content/$schemaSlug"
-            params={{ siteId, schemaSlug }}
+            to="/sites/$siteId/content/$collectionSlug"
+            params={{ siteId, collectionSlug }}
             className={buttonVariants({ variant: "outline" })}
           >
             Cancel

@@ -38,33 +38,33 @@ import {
   type Content,
   deleteContent,
   getContent,
-  getSchema,
+  getCollection,
   publishContent,
   unpublishContent,
 } from "@/lib/api";
 
 export const Route = createFileRoute(
-  "/_admin/sites/$siteId/content/$schemaSlug/",
+  "/_admin/sites/$siteId/content/$collectionSlug/",
 )({
   component: ContentListPage,
 });
 
 function ContentListPage() {
-  const { siteId, schemaSlug } = Route.useParams();
+  const { siteId, collectionSlug } = Route.useParams();
   const queryClient = useQueryClient();
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("");
 
-  const { data: schema, isLoading: schemaLoading } = useQuery({
-    queryKey: ["schema", siteId, schemaSlug],
-    queryFn: () => getSchema(siteId, schemaSlug),
+  const { data: collection, isLoading: collectionLoading } = useQuery({
+    queryKey: ["collection", siteId, collectionSlug],
+    queryFn: () => getCollection(siteId, collectionSlug),
   });
 
   const { data: items, isLoading: itemsLoading } = useQuery({
-    queryKey: ["content", siteId, schemaSlug, statusFilter, search],
+    queryKey: ["content", siteId, collectionSlug, statusFilter, search],
     queryFn: () =>
       getContent(siteId, {
-        type: schemaSlug,
+        type: collectionSlug,
         status: statusFilter || undefined,
         search: search || undefined,
       }),
@@ -73,7 +73,7 @@ function ContentListPage() {
   const deleteMutation = useMutation({
     mutationFn: (id: string) => deleteContent(siteId, id),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["content", siteId, schemaSlug] });
+      queryClient.invalidateQueries({ queryKey: ["content", siteId, collectionSlug] });
       toast.success("Content deleted");
     },
     onError: (err: Error) => toast.error(err.message),
@@ -82,7 +82,7 @@ function ContentListPage() {
   const publishMutation = useMutation({
     mutationFn: (id: string) => publishContent(siteId, id),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["content", siteId, schemaSlug] });
+      queryClient.invalidateQueries({ queryKey: ["content", siteId, collectionSlug] });
       toast.success("Published");
     },
     onError: (err: Error) => toast.error(err.message),
@@ -91,31 +91,31 @@ function ContentListPage() {
   const unpublishMutation = useMutation({
     mutationFn: (id: string) => unpublishContent(siteId, id),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["content", siteId, schemaSlug] });
+      queryClient.invalidateQueries({ queryKey: ["content", siteId, collectionSlug] });
       toast.success("Unpublished");
     },
     onError: (err: Error) => toast.error(err.message),
   });
 
-  const isLoading = schemaLoading || itemsLoading;
-  const schemaName = schema?.name ?? schemaSlug;
+  const isLoading = collectionLoading || itemsLoading;
+  const collectionName = collection?.name ?? collectionSlug;
 
   return (
     <div className="flex flex-col gap-6 p-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-semibold">{schemaName}</h1>
+          <h1 className="text-2xl font-semibold">{collectionName}</h1>
           <p className="text-sm text-muted-foreground">
-            Manage your {schemaName.toLowerCase()} content
+            Manage your {collectionName.toLowerCase()} content
           </p>
         </div>
         <Link
-          to="/sites/$siteId/content/$schemaSlug/new"
-          params={{ siteId, schemaSlug }}
+          to="/sites/$siteId/content/$collectionSlug/new"
+          params={{ siteId, collectionSlug }}
           className={buttonVariants()}
         >
           <Plus data-icon="inline-start" />
-          New {schemaName}
+          New {collectionName}
         </Link>
       </div>
 
@@ -161,7 +161,7 @@ function ContentListPage() {
         <div className="flex flex-col items-center justify-center py-12">
           <p className="text-lg font-medium">No content yet</p>
           <p className="text-sm text-muted-foreground">
-            Create your first {schemaName.toLowerCase()} to get started.
+            Create your first {collectionName.toLowerCase()} to get started.
           </p>
         </div>
       ) : (
@@ -206,8 +206,8 @@ function ContentListPage() {
                   <TableCell className="text-right">
                     <div className="flex justify-end gap-1">
                       <Link
-                        to="/sites/$siteId/content/$schemaSlug/$id/edit"
-                        params={{ siteId, schemaSlug, id: item.id }}
+                        to="/sites/$siteId/content/$collectionSlug/$id/edit"
+                        params={{ siteId, collectionSlug, id: item.id }}
                         className={buttonVariants({ variant: "ghost", size: "icon" })}
                       >
                         <Pencil />

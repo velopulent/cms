@@ -11,50 +11,50 @@ import { Skeleton } from "@/components/ui/skeleton";
 import {
   type SchemaDefinition,
   createContent,
-  getSchema,
+  getCollection,
 } from "@/lib/api";
 
 export const Route = createFileRoute(
-  "/_admin/sites/$siteId/content/$schemaSlug/new",
+  "/_admin/sites/$siteId/content/$collectionSlug/new",
 )({
   component: CreateContentPage,
 });
 
 function CreateContentPage() {
-  const { siteId, schemaSlug } = Route.useParams();
+  const { siteId, collectionSlug } = Route.useParams();
   const navigate = useNavigate();
   const [data, setData] = useState<Record<string, unknown>>({});
   const [slug, setSlug] = useState("");
   const [slugManuallyEdited, setSlugManuallyEdited] = useState(false);
 
-  const { data: schema, isLoading } = useQuery({
-    queryKey: ["schema", siteId, schemaSlug],
-    queryFn: () => getSchema(siteId, schemaSlug),
+  const { data: collection, isLoading } = useQuery({
+    queryKey: ["collection", siteId, collectionSlug],
+    queryFn: () => getCollection(siteId, collectionSlug),
   });
 
   const createMutation = useMutation({
     mutationFn: () =>
       createContent(siteId, {
-        schema_id: schema!.id,
+        collection_id: collection!.id,
         data,
         slug,
       }),
     onSuccess: () => {
       toast.success("Content created");
       navigate({
-        to: "/sites/$siteId/content/$schemaSlug",
-        params: { siteId, schemaSlug },
+        to: "/sites/$siteId/content/$collectionSlug",
+        params: { siteId, collectionSlug },
       });
     },
     onError: (err: Error) => toast.error(err.message),
   });
 
-  let schemaDef: SchemaDefinition | null = null;
-  if (schema) {
+  let collectionDef: SchemaDefinition | null = null;
+  if (collection) {
     try {
-      schemaDef = JSON.parse(schema.definition);
+      collectionDef = JSON.parse(collection.definition);
     } catch {
-      // invalid schema
+      // invalid collection
     }
   }
 
@@ -77,7 +77,7 @@ function CreateContentPage() {
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!slug.trim() || !schema) return;
+    if (!slug.trim() || !collection) return;
     createMutation.mutate();
   };
 
@@ -90,10 +90,10 @@ function CreateContentPage() {
     );
   }
 
-  if (!schema) {
+  if (!collection) {
     return (
       <div className="p-6">
-        <p>Schema not found.</p>
+        <p>Collection not found.</p>
       </div>
     );
   }
@@ -102,16 +102,16 @@ function CreateContentPage() {
     <div className="flex flex-col gap-6 p-6">
       <div className="flex items-center gap-3">
         <Link
-          to="/sites/$siteId/content/$schemaSlug"
-          params={{ siteId, schemaSlug }}
+          to="/sites/$siteId/content/$collectionSlug"
+          params={{ siteId, collectionSlug }}
           className={buttonVariants({ variant: "ghost", size: "icon" })}
         >
           <ArrowLeft />
         </Link>
         <div>
-          <h1 className="text-2xl font-semibold">New {schema.name}</h1>
+          <h1 className="text-2xl font-semibold">New {collection.name}</h1>
           <p className="text-sm text-muted-foreground">
-            Create a new {schema.name.toLowerCase()}
+            Create a new {collection.name.toLowerCase()}
           </p>
         </div>
       </div>
@@ -122,15 +122,15 @@ function CreateContentPage() {
             <CardTitle>Content</CardTitle>
           </CardHeader>
           <CardContent>
-            {schemaDef ? (
+            {collectionDef ? (
               <DynamicForm
-                fields={schemaDef.fields}
+                fields={collectionDef.fields}
                 values={data}
                 onChange={handleDataChange}
               />
             ) : (
               <p className="text-sm text-muted-foreground">
-                Invalid schema definition.
+                Invalid collection definition.
               </p>
             )}
           </CardContent>
@@ -166,8 +166,8 @@ function CreateContentPage() {
             {createMutation.isPending ? "Creating..." : "Create"}
           </Button>
           <Link
-            to="/sites/$siteId/content/$schemaSlug"
-            params={{ siteId, schemaSlug }}
+            to="/sites/$siteId/content/$collectionSlug"
+            params={{ siteId, collectionSlug }}
             className={buttonVariants({ variant: "outline" })}
           >
             Cancel
