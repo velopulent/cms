@@ -1,4 +1,5 @@
-const BASE_URL = "/api";
+const BASE_URL = "/api/v1";
+const AUTH_URL = "/api/auth";
 
 async function getToken(): Promise<string | null> {
   return localStorage.getItem("cms_token");
@@ -29,6 +30,33 @@ export async function api<T>(
     window.location.href = "/login";
     throw new Error("Unauthorized");
   }
+
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body.error || `Request failed: ${res.status}`);
+  }
+
+  if (res.status === 204) {
+    return undefined as T;
+  }
+
+  return res.json();
+}
+
+// Auth API uses unversioned path
+export async function authApi<T>(
+  path: string,
+  options: RequestInit = {},
+): Promise<T> {
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+    ...(options.headers as Record<string, string>),
+  };
+
+  const res = await fetch(`${AUTH_URL}${path}`, {
+    ...options,
+    headers,
+  });
 
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
@@ -119,10 +147,31 @@ export interface Content {
   published_at: string | null;
 }
 
+export interface ApiKey {
+  id: string;
+  site_id: string;
+  name: string;
+  key_prefix: string;
+  permissions: string;
+  last_used_at: string | null;
+  created_at: string;
+  expires_at: string | null;
+}
+
+export interface ApiKeyResponse {
+  id: string;
+  site_id: string;
+  name: string;
+  key: string;
+  key_prefix: string;
+  permissions: string;
+  created_at: string;
+}
+
 // --- Auth API ---
 
 export async function login(username: string, password: string) {
-  return api<AuthResponse>("/auth/login", {
+  return authApi<AuthResponse>("/login", {
     method: "POST",
     body: JSON.stringify({ username, password }),
   });
@@ -133,14 +182,14 @@ export async function register(
   email: string,
   password: string,
 ) {
-  return api<AuthResponse>("/auth/register", {
+  return authApi<AuthResponse>("/register", {
     method: "POST",
     body: JSON.stringify({ username, email, password }),
   });
 }
 
 export async function getMe() {
-  return api<UserPublic>("/auth/me");
+  return authApi<UserPublic>("/me");
 }
 
 // --- Sites API ---
@@ -201,6 +250,25 @@ export async function updateMemberRole(
 
 export async function removeMember(siteId: string, userId: string) {
   return api<void>(`/sites/${siteId}/members/${userId}`, {
+    method: "DELETE",
+  });
+}
+
+// --- API Keys API ---
+
+export async function getApiKeys(siteId: string) {
+  return api<ApiKey[]>(`/sites/${siteId}/api-keys`);
+}
+
+export async function createApiKey(siteId: string, name: string) {
+  return api<ApiKeyResponse>(`/sites/${siteId}/api-keys`, {
+    method: "POST",
+    body: JSON.stringify({ name }),
+  });
+}
+
+export async function deleteApiKey(siteId: string, keyId: string) {
+  return api<void>(`/sites/${siteId}/api-keys/${keyId}`, {
     method: "DELETE",
   });
 }
