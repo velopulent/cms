@@ -13,6 +13,16 @@ use crate::models::site::{
     CreateSite, InviteMember, Site, SiteMember, SiteWithRole, UpdateMemberRole, UpdateSite,
 };
 
+#[utoipa::path(
+    get,
+    path = "/api/v1/sites",
+    responses(
+        (status = 200, description = "List of sites", body = Vec<SiteWithRole>),
+        (status = 401, description = "Unauthorized"),
+    ),
+    security(("bearer" = [])),
+    tag = "sites"
+)]
 pub async fn list_sites(
     auth: AuthenticatedUser,
     Extension(pool): Extension<SqlitePool>,
@@ -38,6 +48,17 @@ pub async fn list_sites(
     }
 }
 
+#[utoipa::path(
+    post,
+    path = "/api/v1/sites",
+    request_body = CreateSite,
+    responses(
+        (status = 201, description = "Site created", body = Site),
+        (status = 401, description = "Unauthorized"),
+    ),
+    security(("bearer" = [])),
+    tag = "sites"
+)]
 pub async fn create_site(
     auth: AuthenticatedUser,
     Extension(pool): Extension<SqlitePool>,
@@ -118,6 +139,18 @@ pub async fn create_site(
     (StatusCode::CREATED, Json(site)).into_response()
 }
 
+#[utoipa::path(
+    get,
+    path = "/api/v1/sites/{site_id}",
+    params(("site_id" = String, Path, description = "Site ID")),
+    responses(
+        (status = 200, description = "Site details", body = Site),
+        (status = 401, description = "Unauthorized"),
+        (status = 404, description = "Site not found"),
+    ),
+    security(("bearer" = []), ("api_key" = [])),
+    tag = "sites"
+)]
 pub async fn get_site(
     auth: AuthenticatedUser,
     Path(site_id): Path<String>,
@@ -144,6 +177,19 @@ pub async fn get_site(
     }
 }
 
+#[utoipa::path(
+    put,
+    path = "/api/v1/sites/{site_id}",
+    params(("site_id" = String, Path, description = "Site ID")),
+    request_body = UpdateSite,
+    responses(
+        (status = 200, description = "Site updated", body = Site),
+        (status = 401, description = "Unauthorized"),
+        (status = 403, description = "Insufficient permissions"),
+    ),
+    security(("bearer" = [])),
+    tag = "sites"
+)]
 pub async fn update_site(
     auth: AuthenticatedUser,
     Path(site_id): Path<String>,
@@ -192,6 +238,18 @@ pub async fn update_site(
     }
 }
 
+#[utoipa::path(
+    delete,
+    path = "/api/v1/sites/{site_id}",
+    params(("site_id" = String, Path, description = "Site ID")),
+    responses(
+        (status = 204, description = "Site deleted"),
+        (status = 401, description = "Unauthorized"),
+        (status = 403, description = "Insufficient permissions"),
+    ),
+    security(("bearer" = [])),
+    tag = "sites"
+)]
 pub async fn delete_site(
     auth: AuthenticatedUser,
     Path(site_id): Path<String>,
@@ -216,6 +274,17 @@ pub async fn delete_site(
     }
 }
 
+#[utoipa::path(
+    get,
+    path = "/api/v1/sites/{site_id}/members",
+    params(("site_id" = String, Path, description = "Site ID")),
+    responses(
+        (status = 200, description = "List of members", body = Vec<SiteMember>),
+        (status = 401, description = "Unauthorized"),
+    ),
+    security(("bearer" = [])),
+    tag = "members"
+)]
 pub async fn list_members(
     auth: AuthenticatedUser,
     Path(site_id): Path<String>,
@@ -246,6 +315,19 @@ pub async fn list_members(
     }
 }
 
+#[utoipa::path(
+    post,
+    path = "/api/v1/sites/{site_id}/members",
+    params(("site_id" = String, Path, description = "Site ID")),
+    request_body = InviteMember,
+    responses(
+        (status = 201, description = "Member added", body = SiteMember),
+        (status = 401, description = "Unauthorized"),
+        (status = 403, description = "Insufficient permissions"),
+    ),
+    security(("bearer" = [])),
+    tag = "members"
+)]
 pub async fn invite_member(
     auth: AuthenticatedUser,
     Path(site_id): Path<String>,
@@ -319,6 +401,22 @@ pub async fn invite_member(
     }
 }
 
+#[utoipa::path(
+    put,
+    path = "/api/v1/sites/{site_id}/members/{user_id}",
+    params(
+        ("site_id" = String, Path, description = "Site ID"),
+        ("user_id" = String, Path, description = "User ID"),
+    ),
+    request_body = UpdateMemberRole,
+    responses(
+        (status = 200, description = "Role updated", body = SiteMember),
+        (status = 401, description = "Unauthorized"),
+        (status = 403, description = "Insufficient permissions"),
+    ),
+    security(("bearer" = [])),
+    tag = "members"
+)]
 pub async fn update_member_role(
     auth: AuthenticatedUser,
     Path((site_id, member_user_id)): Path<(String, String)>,
@@ -375,6 +473,21 @@ pub async fn update_member_role(
     }
 }
 
+#[utoipa::path(
+    delete,
+    path = "/api/v1/sites/{site_id}/members/{user_id}",
+    params(
+        ("site_id" = String, Path, description = "Site ID"),
+        ("user_id" = String, Path, description = "User ID"),
+    ),
+    responses(
+        (status = 204, description = "Member removed"),
+        (status = 401, description = "Unauthorized"),
+        (status = 403, description = "Insufficient permissions"),
+    ),
+    security(("bearer" = [])),
+    tag = "members"
+)]
 pub async fn remove_member(
     auth: AuthenticatedUser,
     Path((site_id, member_user_id)): Path<(String, String)>,

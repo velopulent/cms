@@ -9,24 +9,53 @@ use serde_json::json;
 use sqlx::SqlitePool;
 use uuid::Uuid;
 
-use crate::middleware::auth::{AuthenticatedUser, check_site_access};
+use crate::middleware::auth::{AuthContext, AuthenticatedUser, check_site_access};
 use crate::models::content::{Content, CreateContent, UpdateContent};
 
-#[derive(Deserialize)]
+#[derive(Deserialize, utoipa::IntoParams)]
 pub struct ListParams {
     pub r#type: Option<String>,
     pub status: Option<String>,
     pub search: Option<String>,
 }
 
+#[utoipa::path(
+    get,
+    path = "/api/v1/sites/{site_id}/content",
+    params(
+        ("site_id" = String, Path, description = "Site ID"),
+        ListParams,
+    ),
+    responses(
+        (status = 200, description = "List of content items", body = Vec<Content>),
+        (status = 401, description = "Unauthorized"),
+    ),
+    security(("bearer" = []), ("api_key" = [])),
+    tag = "content"
+)]
 pub async fn list_content(
-    auth: AuthenticatedUser,
+    auth: AuthContext,
     Path(site_id): Path<String>,
     Query(params): Query<ListParams>,
     Extension(pool): Extension<SqlitePool>,
 ) -> Response {
-    if let Err((status, err)) = check_site_access(&pool, &auth.user_id, &site_id, "viewer").await {
-        return (status, Json(err)).into_response();
+    match &auth {
+        AuthContext::Jwt { user_id } => {
+            if let Err((status, err)) =
+                check_site_access(&pool, user_id, &site_id, "viewer").await
+            {
+                return (status, Json(err)).into_response();
+            }
+        }
+        AuthContext::ApiKey { site_id: key_site_id } => {
+            if key_site_id != &site_id {
+                return (
+                    StatusCode::FORBIDDEN,
+                    Json(json!({"error": "API key does not have access to this site"})),
+                )
+                    .into_response();
+            }
+        }
     }
 
     let mut query = String::from(
@@ -38,13 +67,19 @@ pub async fn list_content(
 
     let mut bindings: Vec<String> = vec![site_id];
 
+    if matches!(auth, AuthContext::ApiKey { .. }) {
+        query.push_str(" AND c.status = 'published'");
+    }
+
     if let Some(schema_slug) = &params.r#type {
         query.push_str(" AND s.slug = ?");
         bindings.push(schema_slug.clone());
     }
     if let Some(status) = &params.status {
-        query.push_str(" AND c.status = ?");
-        bindings.push(status.clone());
+        if matches!(auth, AuthContext::Jwt { .. }) {
+            query.push_str(" AND c.status = ?");
+            bindings.push(status.clone());
+        }
     }
     if let Some(search) = &params.search {
         query.push_str(" AND c.data LIKE ?");
@@ -69,22 +104,58 @@ pub async fn list_content(
     }
 }
 
+#[utoipa::path(
+    get,
+    path = "/api/v1/sites/{site_id}/content/{id}",
+    params(
+        ("site_id" = String, Path, description = "Site ID"),
+        ("id" = String, Path, description = "Content ID"),
+    ),
+    responses(
+        (status = 200, description = "Content item", body = Content),
+        (status = 401, description = "Unauthorized"),
+        (status = 404, description = "Content not found"),
+    ),
+    security(("bearer" = []), ("api_key" = [])),
+    tag = "content"
+)]
 pub async fn get_content(
-    auth: AuthenticatedUser,
+    auth: AuthContext,
     Path((site_id, id)): Path<(String, String)>,
     Extension(pool): Extension<SqlitePool>,
 ) -> Response {
-    if let Err((status, err)) = check_site_access(&pool, &auth.user_id, &site_id, "viewer").await {
-        return (status, Json(err)).into_response();
+    match &auth {
+        AuthContext::Jwt { user_id } => {
+            if let Err((status, err)) =
+                check_site_access(&pool, user_id, &site_id, "viewer").await
+            {
+                return (status, Json(err)).into_response();
+            }
+        }
+        AuthContext::ApiKey { site_id: key_site_id } => {
+            if key_site_id != &site_id {
+                return (
+                    StatusCode::FORBIDDEN,
+                    Json(json!({"error": "API key does not have access to this site"})),
+                )
+                    .into_response();
+            }
+        }
     }
 
-    let result = sqlx::query_as::<_, Content>(
+    let mut query = String::from(
         "SELECT id, site_id, schema_id, data, slug, status, created_at, updated_at, published_at FROM content WHERE id = ? AND site_id = ?",
-    )
-    .bind(&id)
-    .bind(&site_id)
-    .fetch_optional(&pool)
-    .await;
+    );
+
+    if matches!(auth, AuthContext::ApiKey { .. }) {
+        query.push_str(" AND status = 'published'");
+    }
+
+    let result = sqlx::query_as::<_, Content>(&query)
+        .bind(&id)
+        .bind(&site_id)
+        .fetch_optional(&pool)
+        .await;
 
     match result {
         Ok(Some(item)) => (StatusCode::OK, Json(item)).into_response(),
@@ -101,6 +172,20 @@ pub async fn get_content(
     }
 }
 
+#[utoipa::path(
+    post,
+    path = "/api/v1/sites/{site_id}/content",
+    params(("site_id" = String, Path, description = "Site ID")),
+    request_body = CreateContent,
+    responses(
+        (status = 201, description = "Content created", body = Content),
+        (status = 401, description = "Unauthorized"),
+        (status = 403, description = "Insufficient permissions"),
+        (status = 409, description = "Slug already exists"),
+    ),
+    security(("bearer" = [])),
+    tag = "content"
+)]
 pub async fn create_content(
     auth: AuthenticatedUser,
     Path(site_id): Path<String>,
@@ -150,6 +235,22 @@ pub async fn create_content(
     }
 }
 
+#[utoipa::path(
+    put,
+    path = "/api/v1/sites/{site_id}/content/{id}",
+    params(
+        ("site_id" = String, Path, description = "Site ID"),
+        ("id" = String, Path, description = "Content ID"),
+    ),
+    request_body = UpdateContent,
+    responses(
+        (status = 200, description = "Content updated", body = Content),
+        (status = 401, description = "Unauthorized"),
+        (status = 403, description = "Insufficient permissions"),
+    ),
+    security(("bearer" = [])),
+    tag = "content"
+)]
 pub async fn update_content(
     auth: AuthenticatedUser,
     Path((site_id, id)): Path<(String, String)>,
@@ -228,6 +329,21 @@ pub async fn update_content(
     }
 }
 
+#[utoipa::path(
+    delete,
+    path = "/api/v1/sites/{site_id}/content/{id}",
+    params(
+        ("site_id" = String, Path, description = "Site ID"),
+        ("id" = String, Path, description = "Content ID"),
+    ),
+    responses(
+        (status = 204, description = "Content deleted"),
+        (status = 401, description = "Unauthorized"),
+        (status = 403, description = "Insufficient permissions"),
+    ),
+    security(("bearer" = [])),
+    tag = "content"
+)]
 pub async fn delete_content(
     auth: AuthenticatedUser,
     Path((site_id, id)): Path<(String, String)>,
@@ -253,6 +369,22 @@ pub async fn delete_content(
     }
 }
 
+#[utoipa::path(
+    post,
+    path = "/api/v1/sites/{site_id}/content/{id}/publish",
+    params(
+        ("site_id" = String, Path, description = "Site ID"),
+        ("id" = String, Path, description = "Content ID"),
+    ),
+    responses(
+        (status = 200, description = "Content published", body = Content),
+        (status = 401, description = "Unauthorized"),
+        (status = 403, description = "Insufficient permissions"),
+        (status = 404, description = "Content not found"),
+    ),
+    security(("bearer" = [])),
+    tag = "content"
+)]
 pub async fn publish_content(
     auth: AuthenticatedUser,
     Path((site_id, id)): Path<(String, String)>,
@@ -295,6 +427,22 @@ pub async fn publish_content(
     }
 }
 
+#[utoipa::path(
+    post,
+    path = "/api/v1/sites/{site_id}/content/{id}/unpublish",
+    params(
+        ("site_id" = String, Path, description = "Site ID"),
+        ("id" = String, Path, description = "Content ID"),
+    ),
+    responses(
+        (status = 200, description = "Content unpublished", body = Content),
+        (status = 401, description = "Unauthorized"),
+        (status = 403, description = "Insufficient permissions"),
+        (status = 404, description = "Content not found"),
+    ),
+    security(("bearer" = [])),
+    tag = "content"
+)]
 pub async fn unpublish_content(
     auth: AuthenticatedUser,
     Path((site_id, id)): Path<(String, String)>,

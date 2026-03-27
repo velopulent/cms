@@ -8,17 +8,43 @@ use serde_json::json;
 use sqlx::SqlitePool;
 use uuid::Uuid;
 
-use crate::middleware::auth::{AuthenticatedUser, check_site_access};
+use crate::middleware::auth::{AuthContext, AuthenticatedUser, check_site_access};
 use crate::models::content::Content;
-use crate::models::schema::{Schema, CreateSchema, UpdateSchema};
+use crate::models::schema::{CreateSchema, Schema, UpdateSchema};
 
+#[utoipa::path(
+    get,
+    path = "/api/v1/sites/{site_id}/schemas",
+    params(("site_id" = String, Path, description = "Site ID")),
+    responses(
+        (status = 200, description = "List of schemas", body = Vec<Schema>),
+        (status = 401, description = "Unauthorized"),
+    ),
+    security(("bearer" = []), ("api_key" = [])),
+    tag = "schemas"
+)]
 pub async fn list_schemas(
-    auth: AuthenticatedUser,
+    auth: AuthContext,
     Path(site_id): Path<String>,
     Extension(pool): Extension<SqlitePool>,
 ) -> Response {
-    if let Err((status, err)) = check_site_access(&pool, &auth.user_id, &site_id, "viewer").await {
-        return (status, Json(err)).into_response();
+    match &auth {
+        AuthContext::Jwt { user_id } => {
+            if let Err((status, err)) =
+                check_site_access(&pool, user_id, &site_id, "viewer").await
+            {
+                return (status, Json(err)).into_response();
+            }
+        }
+        AuthContext::ApiKey { site_id: key_site_id } => {
+            if key_site_id != &site_id {
+                return (
+                    StatusCode::FORBIDDEN,
+                    Json(json!({"error": "API key does not have access to this site"})),
+                )
+                    .into_response();
+            }
+        }
     }
 
     let result = sqlx::query_as::<_, Schema>(
@@ -38,13 +64,43 @@ pub async fn list_schemas(
     }
 }
 
+#[utoipa::path(
+    get,
+    path = "/api/v1/sites/{site_id}/schemas/{schema_slug}",
+    params(
+        ("site_id" = String, Path, description = "Site ID"),
+        ("schema_slug" = String, Path, description = "Schema slug"),
+    ),
+    responses(
+        (status = 200, description = "Schema details", body = Schema),
+        (status = 401, description = "Unauthorized"),
+        (status = 404, description = "Schema not found"),
+    ),
+    security(("bearer" = []), ("api_key" = [])),
+    tag = "schemas"
+)]
 pub async fn get_schema(
-    auth: AuthenticatedUser,
+    auth: AuthContext,
     Path((site_id, schema_slug)): Path<(String, String)>,
     Extension(pool): Extension<SqlitePool>,
 ) -> Response {
-    if let Err((status, err)) = check_site_access(&pool, &auth.user_id, &site_id, "viewer").await {
-        return (status, Json(err)).into_response();
+    match &auth {
+        AuthContext::Jwt { user_id } => {
+            if let Err((status, err)) =
+                check_site_access(&pool, user_id, &site_id, "viewer").await
+            {
+                return (status, Json(err)).into_response();
+            }
+        }
+        AuthContext::ApiKey { site_id: key_site_id } => {
+            if key_site_id != &site_id {
+                return (
+                    StatusCode::FORBIDDEN,
+                    Json(json!({"error": "API key does not have access to this site"})),
+                )
+                    .into_response();
+            }
+        }
     }
 
     let result = sqlx::query_as::<_, Schema>(
@@ -70,6 +126,20 @@ pub async fn get_schema(
     }
 }
 
+#[utoipa::path(
+    post,
+    path = "/api/v1/sites/{site_id}/schemas",
+    params(("site_id" = String, Path, description = "Site ID")),
+    request_body = CreateSchema,
+    responses(
+        (status = 201, description = "Schema created", body = Schema),
+        (status = 401, description = "Unauthorized"),
+        (status = 403, description = "Insufficient permissions"),
+        (status = 409, description = "Schema name or slug already exists"),
+    ),
+    security(("bearer" = [])),
+    tag = "schemas"
+)]
 pub async fn create_schema(
     auth: AuthenticatedUser,
     Path(site_id): Path<String>,
@@ -119,6 +189,22 @@ pub async fn create_schema(
     }
 }
 
+#[utoipa::path(
+    put,
+    path = "/api/v1/sites/{site_id}/schemas/{schema_slug}",
+    params(
+        ("site_id" = String, Path, description = "Site ID"),
+        ("schema_slug" = String, Path, description = "Schema slug"),
+    ),
+    request_body = UpdateSchema,
+    responses(
+        (status = 200, description = "Schema updated", body = Schema),
+        (status = 401, description = "Unauthorized"),
+        (status = 403, description = "Insufficient permissions"),
+    ),
+    security(("bearer" = [])),
+    tag = "schemas"
+)]
 pub async fn update_schema(
     auth: AuthenticatedUser,
     Path((site_id, schema_slug)): Path<(String, String)>,
@@ -163,7 +249,6 @@ pub async fn update_schema(
         .map(|s| s.to_string())
         .unwrap_or_else(|| existing.definition.clone());
 
-    // Detect field renames and migrate content data
     if let Some(ref new_def_value) = payload.definition {
         let old_def: Option<serde_json::Value> =
             serde_json::from_str(&existing.definition).ok();
@@ -174,13 +259,11 @@ pub async fn update_schema(
             let old_fields = old_d["fields"].as_array().cloned().unwrap_or_default();
             let new_fields = new_d["fields"].as_array().cloned().unwrap_or_default();
 
-            // Build rename map: old_name -> new_name
             let mut rename_map: std::collections::HashMap<String, String> =
                 std::collections::HashMap::new();
             let mut used_old = vec![false; old_fields.len()];
             let mut used_new = vec![false; new_fields.len()];
 
-            // First pass: match by same index position
             for i in 0..old_fields.len().min(new_fields.len()) {
                 let of = &old_fields[i];
                 let nf = &new_fields[i];
@@ -199,7 +282,6 @@ pub async fn update_schema(
                 }
             }
 
-            // Second pass: match remaining by type/required/options
             for (i, of) in old_fields.iter().enumerate() {
                 if used_old[i] {
                     continue;
@@ -225,7 +307,6 @@ pub async fn update_schema(
                 }
             }
 
-            // Migrate content data for detected renames
             if !rename_map.is_empty() {
                 let contents = sqlx::query_as::<_, Content>(
                     "SELECT id, site_id, schema_id, data, slug, status, created_at, updated_at, published_at FROM content WHERE schema_id = ?",
@@ -297,6 +378,21 @@ pub async fn update_schema(
     }
 }
 
+#[utoipa::path(
+    delete,
+    path = "/api/v1/sites/{site_id}/schemas/{schema_slug}",
+    params(
+        ("site_id" = String, Path, description = "Site ID"),
+        ("schema_slug" = String, Path, description = "Schema slug"),
+    ),
+    responses(
+        (status = 204, description = "Schema deleted"),
+        (status = 401, description = "Unauthorized"),
+        (status = 403, description = "Insufficient permissions"),
+    ),
+    security(("bearer" = [])),
+    tag = "schemas"
+)]
 pub async fn delete_schema(
     auth: AuthenticatedUser,
     Path((site_id, schema_slug)): Path<(String, String)>,

@@ -12,6 +12,16 @@ use uuid::Uuid;
 use crate::middleware::auth::{AuthenticatedUser, create_token};
 use crate::models::user::{AuthResponse, CreateUser, LoginRequest, User, UserPublic};
 
+#[utoipa::path(
+    post,
+    path = "/api/auth/register",
+    request_body = CreateUser,
+    responses(
+        (status = 201, description = "User registered successfully", body = AuthResponse),
+        (status = 409, description = "Username or email already exists"),
+    ),
+    tag = "auth"
+)]
 pub async fn register(
     Extension(pool): Extension<SqlitePool>,
     Json(payload): Json<CreateUser>,
@@ -86,6 +96,16 @@ pub async fn register(
     }
 }
 
+#[utoipa::path(
+    post,
+    path = "/api/auth/login",
+    request_body = LoginRequest,
+    responses(
+        (status = 200, description = "Login successful", body = AuthResponse),
+        (status = 401, description = "Invalid credentials"),
+    ),
+    tag = "auth"
+)]
 pub async fn login(
     Extension(pool): Extension<SqlitePool>,
     Json(payload): Json<LoginRequest>,
@@ -151,6 +171,16 @@ pub async fn login(
         .into_response()
 }
 
+#[utoipa::path(
+    get,
+    path = "/api/auth/me",
+    responses(
+        (status = 200, description = "Current user", body = UserPublic),
+        (status = 401, description = "Unauthorized"),
+    ),
+    security(("bearer" = [])),
+    tag = "auth"
+)]
 pub async fn me(
     auth: AuthenticatedUser,
     Extension(pool): Extension<SqlitePool>,
