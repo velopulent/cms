@@ -114,7 +114,7 @@ export interface SiteMember {
   created_at: string;
 }
 
-export interface Schema {
+export interface Collection {
   id: string;
   site_id: string;
   name: string;
@@ -138,7 +138,7 @@ export interface ContentField {
 export interface Content {
   id: string;
   site_id: string;
-  schema_id: string;
+  collection_id: string;
   data: string;
   slug: string;
   status: string;
@@ -273,17 +273,17 @@ export async function deleteApiKey(siteId: string, keyId: string) {
   });
 }
 
-// --- Schemas API (site-scoped) ---
+// --- Collections API (site-scoped) ---
 
-export async function getSchemas(siteId: string) {
-  return api<Schema[]>(`/sites/${siteId}/schemas`);
+export async function getCollections(siteId: string) {
+  return api<Collection[]>(`/sites/${siteId}/collections`);
 }
 
-export async function getSchema(siteId: string, slug: string) {
-  return api<Schema>(`/sites/${siteId}/schemas/${slug}`);
+export async function getCollection(siteId: string, slug: string) {
+  return api<Collection>(`/sites/${siteId}/collections/${slug}`);
 }
 
-export async function createSchema(
+export async function createCollection(
   siteId: string,
   data: {
     name: string;
@@ -291,25 +291,25 @@ export async function createSchema(
     definition: SchemaDefinition;
   },
 ) {
-  return api<Schema>(`/sites/${siteId}/schemas`, {
+  return api<Collection>(`/sites/${siteId}/collections`, {
     method: "POST",
     body: JSON.stringify(data),
   });
 }
 
-export async function updateSchema(
+export async function updateCollection(
   siteId: string,
   slug: string,
   data: { name?: string; slug?: string; definition?: SchemaDefinition },
 ) {
-  return api<Schema>(`/sites/${siteId}/schemas/${slug}`, {
+  return api<Collection>(`/sites/${siteId}/collections/${slug}`, {
     method: "PUT",
     body: JSON.stringify(data),
   });
 }
 
-export async function deleteSchema(siteId: string, slug: string) {
-  return api<void>(`/sites/${siteId}/schemas/${slug}`, {
+export async function deleteCollection(siteId: string, slug: string) {
+  return api<void>(`/sites/${siteId}/collections/${slug}`, {
     method: "DELETE",
   });
 }
@@ -339,7 +339,7 @@ export async function getContentById(siteId: string, id: string) {
 export async function createContent(
   siteId: string,
   data: {
-    schema_id: string;
+    collection_id: string;
     data: Record<string, unknown>;
     slug: string;
   },
