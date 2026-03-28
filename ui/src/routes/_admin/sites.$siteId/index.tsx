@@ -6,10 +6,10 @@ import { buttonVariants } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
-  type Content,
   type Collection,
-  getContent,
+  type Content,
   getCollections,
+  getContent,
 } from "@/lib/api";
 
 export const Route = createFileRoute("/_admin/sites/$siteId/")({

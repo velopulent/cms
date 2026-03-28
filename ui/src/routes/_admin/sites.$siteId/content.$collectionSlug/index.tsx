@@ -37,8 +37,8 @@ import {
 import {
   type Content,
   deleteContent,
-  getContent,
   getCollection,
+  getContent,
   publishContent,
   unpublishContent,
 } from "@/lib/api";
@@ -73,7 +73,9 @@ function ContentListPage() {
   const deleteMutation = useMutation({
     mutationFn: (id: string) => deleteContent(siteId, id),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["content", siteId, collectionSlug] });
+      queryClient.invalidateQueries({
+        queryKey: ["content", siteId, collectionSlug],
+      });
       toast.success("Content deleted");
     },
     onError: (err: Error) => toast.error(err.message),
@@ -82,7 +84,9 @@ function ContentListPage() {
   const publishMutation = useMutation({
     mutationFn: (id: string) => publishContent(siteId, id),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["content", siteId, collectionSlug] });
+      queryClient.invalidateQueries({
+        queryKey: ["content", siteId, collectionSlug],
+      });
       toast.success("Published");
     },
     onError: (err: Error) => toast.error(err.message),
@@ -91,7 +95,9 @@ function ContentListPage() {
   const unpublishMutation = useMutation({
     mutationFn: (id: string) => unpublishContent(siteId, id),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["content", siteId, collectionSlug] });
+      queryClient.invalidateQueries({
+        queryKey: ["content", siteId, collectionSlug],
+      });
       toast.success("Unpublished");
     },
     onError: (err: Error) => toast.error(err.message),
@@ -208,7 +214,10 @@ function ContentListPage() {
                       <Link
                         to="/sites/$siteId/content/$collectionSlug/$id/edit"
                         params={{ siteId, collectionSlug, id: item.id }}
-                        className={buttonVariants({ variant: "ghost", size: "icon" })}
+                        className={buttonVariants({
+                          variant: "ghost",
+                          size: "icon",
+                        })}
                       >
                         <Pencil />
                       </Link>

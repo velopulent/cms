@@ -77,9 +77,7 @@ function OnboardingPage() {
                   <Globe className="size-5 text-muted-foreground" />
                   <div className="flex-1">
                     <p className="font-medium">{site.name}</p>
-                    <p className="text-xs text-muted-foreground">
-                      {site.role}
-                    </p>
+                    <p className="text-xs text-muted-foreground">{site.role}</p>
                   </div>
                 </CardContent>
               </Card>
@@ -92,7 +90,9 @@ function OnboardingPage() {
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <Plus className="size-5" />
-            {sites && sites.length > 0 ? "Create New Site" : "Create Your First Site"}
+            {sites && sites.length > 0
+              ? "Create New Site"
+              : "Create Your First Site"}
           </CardTitle>
           <CardDescription>
             {sites && sites.length > 0
