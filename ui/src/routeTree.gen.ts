@@ -18,6 +18,7 @@ import { Route as AdminSitesIndexRouteImport } from './routes/_admin/sites/index
 import { Route as AdminSitesSiteIdRouteImport } from './routes/_admin/sites.$siteId'
 import { Route as AdminSitesSiteIdIndexRouteImport } from './routes/_admin/sites.$siteId/index'
 import { Route as AdminSitesSiteIdSettingsRouteImport } from './routes/_admin/sites.$siteId/settings'
+import { Route as AdminSitesSiteIdMediaRouteImport } from './routes/_admin/sites.$siteId/media'
 import { Route as AdminSitesSiteIdCollectionsRouteImport } from './routes/_admin/sites.$siteId/collections'
 import { Route as AdminSitesSiteIdContentCollectionSlugRouteImport } from './routes/_admin/sites.$siteId/content.$collectionSlug'
 import { Route as AdminSitesSiteIdContentCollectionSlugIndexRouteImport } from './routes/_admin/sites.$siteId/content.$collectionSlug/index'
@@ -69,6 +70,11 @@ const AdminSitesSiteIdSettingsRoute =
     path: '/settings',
     getParentRoute: () => AdminSitesSiteIdRoute,
   } as any)
+const AdminSitesSiteIdMediaRoute = AdminSitesSiteIdMediaRouteImport.update({
+  id: '/media',
+  path: '/media',
+  getParentRoute: () => AdminSitesSiteIdRoute,
+} as any)
 const AdminSitesSiteIdCollectionsRoute =
   AdminSitesSiteIdCollectionsRouteImport.update({
     id: '/collections',
@@ -108,6 +114,7 @@ export interface FileRoutesByFullPath {
   '/sites/$siteId': typeof AdminSitesSiteIdRouteWithChildren
   '/sites/': typeof AdminSitesIndexRoute
   '/sites/$siteId/collections': typeof AdminSitesSiteIdCollectionsRoute
+  '/sites/$siteId/media': typeof AdminSitesSiteIdMediaRoute
   '/sites/$siteId/settings': typeof AdminSitesSiteIdSettingsRoute
   '/sites/$siteId/': typeof AdminSitesSiteIdIndexRoute
   '/sites/$siteId/content/$collectionSlug': typeof AdminSitesSiteIdContentCollectionSlugRouteWithChildren
@@ -121,6 +128,7 @@ export interface FileRoutesByTo {
   '/': typeof AdminIndexRoute
   '/sites': typeof AdminSitesIndexRoute
   '/sites/$siteId/collections': typeof AdminSitesSiteIdCollectionsRoute
+  '/sites/$siteId/media': typeof AdminSitesSiteIdMediaRoute
   '/sites/$siteId/settings': typeof AdminSitesSiteIdSettingsRoute
   '/sites/$siteId': typeof AdminSitesSiteIdIndexRoute
   '/sites/$siteId/content/$collectionSlug/new': typeof AdminSitesSiteIdContentCollectionSlugNewRoute
@@ -137,6 +145,7 @@ export interface FileRoutesById {
   '/_admin/sites/$siteId': typeof AdminSitesSiteIdRouteWithChildren
   '/_admin/sites/': typeof AdminSitesIndexRoute
   '/_admin/sites/$siteId/collections': typeof AdminSitesSiteIdCollectionsRoute
+  '/_admin/sites/$siteId/media': typeof AdminSitesSiteIdMediaRoute
   '/_admin/sites/$siteId/settings': typeof AdminSitesSiteIdSettingsRoute
   '/_admin/sites/$siteId/': typeof AdminSitesSiteIdIndexRoute
   '/_admin/sites/$siteId/content/$collectionSlug': typeof AdminSitesSiteIdContentCollectionSlugRouteWithChildren
@@ -154,6 +163,7 @@ export interface FileRouteTypes {
     | '/sites/$siteId'
     | '/sites/'
     | '/sites/$siteId/collections'
+    | '/sites/$siteId/media'
     | '/sites/$siteId/settings'
     | '/sites/$siteId/'
     | '/sites/$siteId/content/$collectionSlug'
@@ -167,6 +177,7 @@ export interface FileRouteTypes {
     | '/'
     | '/sites'
     | '/sites/$siteId/collections'
+    | '/sites/$siteId/media'
     | '/sites/$siteId/settings'
     | '/sites/$siteId'
     | '/sites/$siteId/content/$collectionSlug/new'
@@ -182,6 +193,7 @@ export interface FileRouteTypes {
     | '/_admin/sites/$siteId'
     | '/_admin/sites/'
     | '/_admin/sites/$siteId/collections'
+    | '/_admin/sites/$siteId/media'
     | '/_admin/sites/$siteId/settings'
     | '/_admin/sites/$siteId/'
     | '/_admin/sites/$siteId/content/$collectionSlug'
@@ -261,6 +273,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AdminSitesSiteIdSettingsRouteImport
       parentRoute: typeof AdminSitesSiteIdRoute
     }
+    '/_admin/sites/$siteId/media': {
+      id: '/_admin/sites/$siteId/media'
+      path: '/media'
+      fullPath: '/sites/$siteId/media'
+      preLoaderRoute: typeof AdminSitesSiteIdMediaRouteImport
+      parentRoute: typeof AdminSitesSiteIdRoute
+    }
     '/_admin/sites/$siteId/collections': {
       id: '/_admin/sites/$siteId/collections'
       path: '/collections'
@@ -322,6 +341,7 @@ const AdminSitesSiteIdContentCollectionSlugRouteWithChildren =
 
 interface AdminSitesSiteIdRouteChildren {
   AdminSitesSiteIdCollectionsRoute: typeof AdminSitesSiteIdCollectionsRoute
+  AdminSitesSiteIdMediaRoute: typeof AdminSitesSiteIdMediaRoute
   AdminSitesSiteIdSettingsRoute: typeof AdminSitesSiteIdSettingsRoute
   AdminSitesSiteIdIndexRoute: typeof AdminSitesSiteIdIndexRoute
   AdminSitesSiteIdContentCollectionSlugRoute: typeof AdminSitesSiteIdContentCollectionSlugRouteWithChildren
@@ -329,6 +349,7 @@ interface AdminSitesSiteIdRouteChildren {
 
 const AdminSitesSiteIdRouteChildren: AdminSitesSiteIdRouteChildren = {
   AdminSitesSiteIdCollectionsRoute: AdminSitesSiteIdCollectionsRoute,
+  AdminSitesSiteIdMediaRoute: AdminSitesSiteIdMediaRoute,
   AdminSitesSiteIdSettingsRoute: AdminSitesSiteIdSettingsRoute,
   AdminSitesSiteIdIndexRoute: AdminSitesSiteIdIndexRoute,
   AdminSitesSiteIdContentCollectionSlugRoute:
