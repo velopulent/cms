@@ -7,7 +7,7 @@ use axum::{
 };
 use axum_extra::extract::multipart::Multipart;
 use bytes::Bytes;
-use image::ImageReader;
+use image::{ImageEncoder, ImageReader};
 use serde::Deserialize;
 use serde_json::json;
 use sqlx::SqlitePool;
@@ -89,6 +89,7 @@ fn mime_to_ext(mime: &str) -> &str {
         "image/png" => "png",
         "image/gif" => "gif",
         "image/webp" => "webp",
+        "image/avif" => "avif",
         "image/svg+xml" => "svg",
         "video/mp4" => "mp4",
         "video/webm" => "webm",
@@ -100,20 +101,19 @@ fn mime_to_ext(mime: &str) -> &str {
 fn generate_thumbnail(image_data: &[u8]) -> Option<(Vec<u8>, String)> {
     let reader = ImageReader::new(Cursor::new(image_data)).with_guessed_format().ok()?;
     let img = reader.decode().ok()?;
-    let thumb = img.resize(300, 300, image::imageops::FilterType::Lanczos3);
+    let thumb = img.resize(200, 200, image::imageops::FilterType::Lanczos3);
+    let rgba = thumb.to_rgba8();
     let mut bytes = Vec::new();
-
-    if thumb.color().has_alpha() {
-        thumb
-            .write_to(&mut Cursor::new(&mut bytes), image::ImageFormat::Png)
-            .ok()?;
-        Some((bytes, "image/png".into()))
-    } else {
-        thumb
-            .write_to(&mut Cursor::new(&mut bytes), image::ImageFormat::Jpeg)
-            .ok()?;
-        Some((bytes, "image/jpeg".into()))
-    }
+    let encoder = image::codecs::avif::AvifEncoder::new_with_speed_quality(&mut bytes, 7, 55);
+    encoder
+        .write_image(
+            rgba.as_raw(),
+            rgba.width(),
+            rgba.height(),
+            image::ExtendedColorType::Rgba8,
+        )
+        .ok()?;
+    Some((bytes, "image/avif".into()))
 }
 
 async fn store_file(
@@ -415,9 +415,8 @@ pub async fn upload_media(
                 height = Some(img.height() as i32);
 
                 if let Some((thumb_bytes, thumb_mime)) = generate_thumbnail(&file_data) {
-                    let ext = if thumb_mime == "image/png" { "png" } else { "jpg" };
                     let thumb_key =
-                        format!("{}/{}/thumb_{}.{}", site_id, media_id, &media_id[..8], ext);
+                        format!("{}/{}/thumb_{}.avif", site_id, media_id, &media_id[..8]);
                     thumbnail_data = Some((thumb_bytes, thumb_mime));
                     thumbnail_key = Some(thumb_key);
                 }
