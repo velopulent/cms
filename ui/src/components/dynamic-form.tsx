@@ -1,4 +1,8 @@
+import { useState } from "react";
+import { MediaPickerDialog } from "@/components/media-picker-dialog";
 import { TiptapEditor } from "@/components/tiptap-editor";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
   Select,
@@ -15,9 +19,15 @@ interface DynamicFormProps {
   fields: ContentField[];
   values: Record<string, unknown>;
   onChange: (values: Record<string, unknown>) => void;
+  siteId?: string;
 }
 
-export function DynamicForm({ fields, values, onChange }: DynamicFormProps) {
+export function DynamicForm({
+  fields,
+  values,
+  onChange,
+  siteId,
+}: DynamicFormProps) {
   const updateField = (name: string, value: unknown) => {
     onChange({ ...values, [name]: value });
   };
@@ -30,6 +40,7 @@ export function DynamicForm({ fields, values, onChange }: DynamicFormProps) {
           field={field}
           value={values[field.name]}
           onChange={(val) => updateField(field.name, val)}
+          siteId={siteId}
         />
       ))}
     </div>
@@ -40,10 +51,12 @@ function DynamicField({
   field,
   value,
   onChange,
+  siteId,
 }: {
   field: ContentField;
   value: unknown;
   onChange: (val: unknown) => void;
+  siteId?: string;
 }) {
   const label = field.name
     .replace(/_/g, " ")
@@ -55,7 +68,12 @@ function DynamicField({
         {label}
         {field.required && <span className="ml-1 text-destructive">*</span>}
       </p>
-      <FieldInput field={field} value={value} onChange={onChange} />
+      <FieldInput
+        field={field}
+        value={value}
+        onChange={onChange}
+        siteId={siteId}
+      />
     </div>
   );
 }
@@ -64,10 +82,12 @@ function FieldInput({
   field,
   value,
   onChange,
+  siteId,
 }: {
   field: ContentField;
   value: unknown;
   onChange: (val: unknown) => void;
+  siteId?: string;
 }) {
   const strValue = typeof value === "string" ? value : "";
   const numValue = typeof value === "number" ? value : 0;
@@ -99,6 +119,7 @@ function FieldInput({
           content={strValue}
           onChange={(html) => onChange(html)}
           placeholder={`Write ${field.name}...`}
+          siteId={siteId}
         />
       );
 
@@ -178,9 +199,87 @@ function FieldInput({
         </div>
       );
 
+    case "media":
+      return (
+        <MediaField value={strValue} onChange={onChange} siteId={siteId} />
+      );
+
     default:
       return (
         <Input value={strValue} onChange={(e) => onChange(e.target.value)} />
       );
   }
+}
+
+function MediaField({
+  value,
+  onChange,
+  siteId,
+}: {
+  value: string;
+  onChange: (val: unknown) => void;
+  siteId?: string;
+}) {
+  const [pickerOpen, setPickerOpen] = useState(false);
+
+  // value format: "media://<id>" or a full URL or empty
+  const mediaId = value.startsWith("media://") ? value.slice(8) : null;
+  const isImageUrl = value.startsWith("/") || value.startsWith("http");
+
+  return (
+    <div className="flex flex-col gap-2">
+      {value && (
+        <div className="relative flex items-center gap-3 rounded-lg border p-2">
+          {isImageUrl && (
+            <img
+              src={value}
+              alt="Selected media"
+              className="h-16 w-16 rounded object-cover"
+            />
+          )}
+          {mediaId && (
+            <img
+              src={`/media/${mediaId}/thumbnail`}
+              alt="Selected media"
+              className="h-16 w-16 rounded object-cover"
+              onError={(e) => {
+                (e.target as HTMLImageElement).style.display = "none";
+              }}
+            />
+          )}
+          <div className="flex-1">
+            <Badge variant="secondary" className="text-xs">
+              {mediaId ? `Media: ${mediaId.slice(0, 8)}...` : "File selected"}
+            </Badge>
+          </div>
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            onClick={() => onChange("")}
+          >
+            Remove
+          </Button>
+        </div>
+      )}
+      <Button
+        type="button"
+        variant="outline"
+        onClick={() => setPickerOpen(true)}
+        disabled={!siteId}
+      >
+        {value ? "Change File" : "Select File"}
+      </Button>
+      {siteId && (
+        <MediaPickerDialog
+          open={pickerOpen}
+          onOpenChange={setPickerOpen}
+          onSelect={(media) => {
+            onChange(`media://${media.id}`);
+          }}
+          siteId={siteId}
+        />
+      )}
+    </div>
+  );
 }
