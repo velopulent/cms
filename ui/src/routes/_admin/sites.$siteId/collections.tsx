@@ -1,14 +1,12 @@
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { createFileRoute } from "@tanstack/react-router";
+import type { DragEndEvent } from "@dnd-kit/core";
 import {
-  DndContext,
   closestCenter,
+  DndContext,
   KeyboardSensor,
   PointerSensor,
   useSensor,
   useSensors,
 } from "@dnd-kit/core";
-import type { DragEndEvent } from "@dnd-kit/core";
 import {
   arrayMove,
   SortableContext,
@@ -17,6 +15,8 @@ import {
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { createFileRoute } from "@tanstack/react-router";
 import { GripVertical, Layers, Pencil, Plus, Trash2 } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
@@ -52,12 +52,12 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import {
-  type ContentField,
   type Collection,
-  type SchemaDefinition,
+  type ContentField,
   createCollection,
   deleteCollection,
   getCollections,
+  type SchemaDefinition,
   updateCollection,
 } from "@/lib/api";
 
@@ -78,6 +78,7 @@ const FIELD_TYPES = [
   { value: "date", label: "Date" },
   { value: "select", label: "Select" },
   { value: "image_url", label: "Image URL" },
+  { value: "media", label: "Media (File Upload)" },
 ];
 
 function slugify(text: string) {
@@ -152,10 +153,7 @@ function CollectionsPage() {
               />
             </div>
             <DrawerFooter>
-              <Button
-                form="collection-form-create"
-                disabled={false}
-              >
+              <Button form="collection-form-create" disabled={false}>
                 Create Collection
               </Button>
               <DrawerClose asChild>
@@ -346,13 +344,9 @@ function SortableFieldItem({
               })),
             ]}
             value={field.type}
-            onValueChange={(val) =>
-              updateField(index, { type: val as string })
-            }
+            onValueChange={(val) => updateField(index, { type: val as string })}
           >
-            <SelectTrigger
-              className="w-[160px]"
-            >
+            <SelectTrigger className="w-[160px]">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -428,7 +422,7 @@ function CollectionForm({
     }),
     useSensor(KeyboardSensor, {
       coordinateGetter: sortableKeyboardCoordinates,
-    })
+    }),
   );
 
   const handleNameChange = (value: string) => {
