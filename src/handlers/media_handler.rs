@@ -45,11 +45,6 @@ pub struct MediaListParams {
 
 fn media_to_with_url(media: &Media, storage: &StorageManager) -> MediaWithUrl {
     let url = match media.storage_provider.as_str() {
-        "filesystem" => storage
-            .filesystem
-            .as_ref()
-            .map(|s| s.url(&media.storage_key))
-            .unwrap_or_else(|| format!("/media/{}/file", media.id)),
         "s3" => storage
             .s3
             .as_ref()
@@ -720,7 +715,11 @@ async fn serve_media_by_key(
     let (key, content_type) = if use_thumbnail {
         match &media.thumbnail_key {
             Some(tk) => {
-                let mime = if tk.ends_with(".png") {
+                let mime = if tk.ends_with(".avif") {
+                    "image/avif"
+                } else if tk.ends_with(".webp") {
+                    "image/webp"
+                } else if tk.ends_with(".png") {
                     "image/png"
                 } else {
                     "image/jpeg"
@@ -749,6 +748,11 @@ async fn serve_media_by_key(
                         media.original_name
                     ))
                     .unwrap_or(HeaderValue::from_static("inline")),
+                );
+            } else {
+                headers.insert(
+                    header::CACHE_CONTROL,
+                    HeaderValue::from_static("public, max-age=31536000, immutable"),
                 );
             }
             (StatusCode::OK, headers, Body::from(bytes)).into_response()
