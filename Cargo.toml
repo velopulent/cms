@@ -21,7 +21,7 @@ jsonwebtoken = { version = "10.3", features = ["rust_crypto"] }
 utoipa = { version = "5", features = ["axum_extras"] }
 utoipa-scalar = { version = "0.3", features = ["axum"] }
 dotenvy = "0.15"
-image = { version = "0.25", default-features = false, features = ["png", "jpeg", "webp", "gif"] }
+image = { version = "0.25", default-features = false, features = ["png", "jpeg", "webp", "gif", "avif"] }
 object_store = { version = "0.13", features = ["aws"] }
 bytes = "1"
 http = "1"
