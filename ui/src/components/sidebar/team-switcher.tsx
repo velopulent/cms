@@ -1,8 +1,8 @@
-"use client"
+"use client";
 
-import * as React from "react"
-import { useNavigate, useParams } from "@tanstack/react-router"
-import { ChevronsUpDown, Plus, GalleryVerticalEnd } from "lucide-react"
+import { useNavigate, useParams } from "@tanstack/react-router";
+import { ChevronsUpDown, GalleryVerticalEnd, Plus } from "lucide-react";
+import type * as React from "react";
 
 import {
   DropdownMenu,
@@ -12,30 +12,30 @@ import {
   DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu"
+} from "@/components/ui/dropdown-menu";
 import {
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
   useSidebar,
-} from "@/components/ui/sidebar"
+} from "@/components/ui/sidebar";
 
 interface Team {
-  name: string
-  id: string
-  icon: React.ReactNode
-  plan: string
+  name: string;
+  id: string;
+  icon: React.ReactNode;
+  plan: string;
 }
 
 export function TeamSwitcher({ teams }: { teams: Team[] }) {
-  const { isMobile } = useSidebar()
-  const navigate = useNavigate()
-  const { siteId } = useParams({ from: "/_admin/sites/$siteId" as any })
+  const { isMobile } = useSidebar();
+  const navigate = useNavigate();
+  const { siteId } = useParams({ from: "/_admin/sites/$siteId" as any });
 
-  const activeTeam = teams.find((t) => t.id === siteId) ?? teams[0]
+  const activeTeam = teams.find((t) => t.id === siteId) ?? teams[0];
 
   if (!activeTeam) {
-    return null
+    return null;
   }
 
   return (
@@ -73,7 +73,10 @@ export function TeamSwitcher({ teams }: { teams: Team[] }) {
                 <DropdownMenuItem
                   key={team.id}
                   onClick={() =>
-                    navigate({ to: "/sites/$siteId", params: { siteId: team.id } })
+                    navigate({
+                      to: "/sites/$siteId",
+                      params: { siteId: team.id },
+                    })
                   }
                   className="gap-2 p-2"
                 >
@@ -102,5 +105,5 @@ export function TeamSwitcher({ teams }: { teams: Team[] }) {
         </DropdownMenu>
       </SidebarMenuItem>
     </SidebarMenu>
-  )
+  );
 }

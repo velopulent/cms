@@ -1,5 +1,6 @@
 "use client";
 
+import { Link, useRouterState } from "@tanstack/react-router";
 import {
   SidebarGroup,
   SidebarGroupLabel,
@@ -7,7 +8,6 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
 } from "@/components/ui/sidebar";
-import { Link, useRouterState } from "@tanstack/react-router";
 
 export function NavProjects({
   projects,
@@ -18,7 +18,7 @@ export function NavProjects({
     icon: React.ReactNode;
   }[];
 }) {
-  const pathname = useRouterState({ select: (s) => s.location.pathname })
+  const pathname = useRouterState({ select: (s) => s.location.pathname });
 
   return (
     <SidebarGroup className="group-data-[collapsible=icon]:hidden">
@@ -27,8 +27,10 @@ export function NavProjects({
         {projects.map((item) => (
           <SidebarMenuItem key={item.name}>
             <SidebarMenuButton
-              isActive={pathname === item.url || pathname.startsWith(item.url + "/")}
-              render={<Link to={item.url}  className="my-0.5" />}
+              isActive={
+                pathname === item.url || pathname.startsWith(item.url + "/")
+              }
+              render={<Link to={item.url} className="my-0.5" />}
             >
               {item.icon}
               <span>{item.name}</span>

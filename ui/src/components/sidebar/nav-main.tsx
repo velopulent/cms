@@ -1,11 +1,13 @@
-"use client"
+"use client";
 
-import * as React from "react"
+import { Link, useRouterState } from "@tanstack/react-router";
+import { ChevronRight } from "lucide-react";
+import type * as React from "react";
 import {
   Collapsible,
   CollapsibleContent,
   CollapsibleTrigger,
-} from "@/components/ui/collapsible"
+} from "@/components/ui/collapsible";
 import {
   SidebarGroup,
   SidebarGroupLabel,
@@ -15,25 +17,23 @@ import {
   SidebarMenuSub,
   SidebarMenuSubButton,
   SidebarMenuSubItem,
-} from "@/components/ui/sidebar"
-import { ChevronRight } from "lucide-react"
-import { Link, useRouterState } from "@tanstack/react-router"
+} from "@/components/ui/sidebar";
 
 export function NavMain({
   items,
 }: {
   items: {
-    title: string
-    url: string
-    icon?: React.ReactNode
-    isActive?: boolean
+    title: string;
+    url: string;
+    icon?: React.ReactNode;
+    isActive?: boolean;
     items?: {
-      title: string
-      url: string
-    }[]
-  }[]
+      title: string;
+      url: string;
+    }[];
+  }[];
 }) {
-  const pathname = useRouterState({ select: (s) => s.location.pathname })
+  const pathname = useRouterState({ select: (s) => s.location.pathname });
 
   return (
     <SidebarGroup>
@@ -59,7 +59,10 @@ export function NavMain({
                   {item.items.map((subItem) => (
                     <SidebarMenuSubItem key={subItem.title}>
                       <SidebarMenuSubButton
-                        isActive={pathname === subItem.url || pathname.startsWith(subItem.url + "/")}
+                        isActive={
+                          pathname === subItem.url ||
+                          pathname.startsWith(subItem.url + "/")
+                        }
                         render={<Link to={subItem.url} />}
                       >
                         <span>{subItem.title}</span>
@@ -80,9 +83,9 @@ export function NavMain({
                 <span>{item.title}</span>
               </SidebarMenuButton>
             </SidebarMenuItem>
-          )
+          ),
         )}
       </SidebarMenu>
     </SidebarGroup>
-  )
+  );
 }

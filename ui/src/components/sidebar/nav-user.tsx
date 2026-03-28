@@ -1,9 +1,15 @@
-"use client"
+"use client";
 
+import { useNavigate } from "@tanstack/react-router";
 import {
-  Avatar,
-  AvatarFallback,
-} from "@/components/ui/avatar"
+  BadgeCheck,
+  Bell,
+  ChevronsUpDown,
+  CreditCard,
+  LogOut,
+  Sparkles,
+} from "lucide-react";
+import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -12,34 +18,32 @@ import {
   DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu"
+} from "@/components/ui/dropdown-menu";
 import {
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
   useSidebar,
-} from "@/components/ui/sidebar"
-import { BadgeCheck, Bell, ChevronsUpDown, CreditCard, LogOut, Sparkles } from "lucide-react"
-import { useNavigate } from "@tanstack/react-router"
-import { useAuth } from "@/contexts/auth-context"
+} from "@/components/ui/sidebar";
+import { useAuth } from "@/contexts/auth-context";
 
 export function NavUser({
   user,
 }: {
   user: {
-    name: string
-    email: string
-    avatar: string
-  }
+    name: string;
+    email: string;
+    avatar: string;
+  };
 }) {
-  const { isMobile } = useSidebar()
-  const auth = useAuth()
-  const navigate = useNavigate()
+  const { isMobile } = useSidebar();
+  const auth = useAuth();
+  const navigate = useNavigate();
 
   const handleLogout = () => {
-    auth.logout()
-    navigate({ to: "/login" })
-  }
+    auth.logout();
+    navigate({ to: "/login" });
+  };
 
   return (
     <SidebarMenu>
@@ -113,5 +117,5 @@ export function NavUser({
         </DropdownMenu>
       </SidebarMenuItem>
     </SidebarMenu>
-  )
+  );
 }
