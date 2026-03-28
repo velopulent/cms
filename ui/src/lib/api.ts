@@ -168,6 +168,38 @@ export interface ApiKeyResponse {
   created_at: string;
 }
 
+export interface Media {
+  id: string;
+  site_id: string;
+  filename: string;
+  original_name: string;
+  mime_type: string;
+  size: number;
+  storage_provider: string;
+  storage_key: string;
+  thumbnail_key: string | null;
+  width: number | null;
+  height: number | null;
+  deleted_at: string | null;
+  created_by: string;
+  created_at: string;
+  url: string;
+  thumbnail_url: string | null;
+}
+
+export interface MediaListResponse {
+  items: Media[];
+  total: number;
+  page: number;
+  per_page: number;
+}
+
+export interface MediaReference {
+  content_id: string;
+  collection_name: string;
+  field_name: string;
+}
+
 // --- Auth API ---
 
 export async function login(username: string, password: string) {
@@ -209,10 +241,7 @@ export async function getSite(id: string) {
   return api<Site>(`/sites/${id}`);
 }
 
-export async function updateSite(
-  id: string,
-  data: { name?: string },
-) {
+export async function updateSite(id: string, data: { name?: string }) {
   return api<Site>(`/sites/${id}`, {
     method: "PUT",
     body: JSON.stringify(data),
@@ -377,6 +406,71 @@ export async function publishContent(siteId: string, id: string) {
 
 export async function unpublishContent(siteId: string, id: string) {
   return api<Content>(`/sites/${siteId}/content/${id}/unpublish`, {
+    method: "POST",
+  });
+}
+
+// --- Media API (site-scoped) ---
+
+export async function getMedia(
+  siteId: string,
+  params: {
+    page?: number;
+    search?: string;
+    type?: string;
+  },
+) {
+  const query = new URLSearchParams();
+  if (params.page) query.set("page", String(params.page));
+  if (params.search) query.set("search", params.search);
+  if (params.type) query.set("type", params.type);
+  const qs = query.toString();
+  return api<MediaListResponse>(`/sites/${siteId}/media${qs ? `?${qs}` : ""}`);
+}
+
+export async function uploadMedia(
+  siteId: string,
+  file: File,
+  provider: "filesystem" | "s3",
+): Promise<Media> {
+  const token = await getToken();
+  const formData = new FormData();
+  formData.append("file", file);
+  formData.append("storage_provider", provider);
+
+  const res = await fetch(`${BASE_URL}/sites/${siteId}/media`, {
+    method: "POST",
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+    body: formData,
+  });
+
+  if (res.status === 401) {
+    localStorage.removeItem("cms_token");
+    localStorage.removeItem("cms_user");
+    window.location.href = "/login";
+    throw new Error("Unauthorized");
+  }
+
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body.error || `Upload failed: ${res.status}`);
+  }
+
+  return res.json();
+}
+
+export async function deleteMedia(siteId: string, mediaId: string) {
+  return api<{ message: string }>(`/sites/${siteId}/media/${mediaId}`, {
+    method: "DELETE",
+  });
+}
+
+export async function getMediaReferences(siteId: string, mediaId: string) {
+  return api<MediaReference[]>(`/sites/${siteId}/media/${mediaId}/references`);
+}
+
+export async function restoreMedia(siteId: string, mediaId: string) {
+  return api<{ message: string }>(`/sites/${siteId}/media/${mediaId}/restore`, {
     method: "POST",
   });
 }
