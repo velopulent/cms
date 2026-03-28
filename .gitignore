@@ -1,5 +1,6 @@
 /target
-notes.db
 cms.db
 !.env.example
 .env*
+/uploads
+/media
