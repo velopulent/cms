@@ -24,6 +24,7 @@ import {
 } from "lucide-react";
 import { useState } from "react";
 import { createPortal } from "react-dom";
+import { MediaPickerDialog } from "@/components/media-picker-dialog";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import "@/styles/tiptap.css";
@@ -32,14 +33,17 @@ interface TiptapEditorProps {
   content: string;
   onChange: (html: string) => void;
   placeholder?: string;
+  siteId?: string;
 }
 
 export function TiptapEditor({
   content,
   onChange,
   placeholder = "Start writing...",
+  siteId,
 }: TiptapEditorProps) {
   const [isFullscreen, setIsFullscreen] = useState(false);
+  const [mediaPickerOpen, setMediaPickerOpen] = useState(false);
 
   const editor = useEditor({
     extensions: [
@@ -93,9 +97,13 @@ export function TiptapEditor({
   };
 
   const addImage = () => {
-    const url = window.prompt("Enter image URL:");
-    if (url) {
-      editor.chain().focus().setImage({ src: url }).run();
+    if (siteId) {
+      setMediaPickerOpen(true);
+    } else {
+      const url = window.prompt("Enter image URL:");
+      if (url) {
+        editor.chain().focus().setImage({ src: url }).run();
+      }
     }
   };
 
@@ -230,12 +238,7 @@ export function TiptapEditor({
         >
           <LinkIcon />
         </Button>
-        <Button
-          variant="ghost"
-          size="icon-sm"
-          onClick={addImage}
-          title="Image"
-        >
+        <Button variant="ghost" size="icon-sm" onClick={addImage} title="Image">
           <ImageIcon />
         </Button>
 
@@ -274,6 +277,18 @@ export function TiptapEditor({
         editor={editor}
         className={isFullscreen ? "flex-1 overflow-y-auto p-4" : "p-4"}
       />
+
+      {siteId && (
+        <MediaPickerDialog
+          open={mediaPickerOpen}
+          onOpenChange={setMediaPickerOpen}
+          onSelect={(media) => {
+            editor.chain().focus().setImage({ src: media.url }).run();
+          }}
+          siteId={siteId}
+          accept="image/*"
+        />
+      )}
     </div>
   );
 
