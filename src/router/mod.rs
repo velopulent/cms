@@ -8,6 +8,7 @@ use tower_http::cors::CorsLayer;
 use utoipa::OpenApi;
 use utoipa_scalar::{Scalar, Servable};
 
+use crate::config::Config;
 use crate::handlers::api_key_handler::{create_api_key, delete_api_key, list_api_keys};
 use crate::handlers::auth_handler::{login, me, register};
 use crate::handlers::content_handler::{
@@ -16,6 +17,10 @@ use crate::handlers::content_handler::{
 };
 use crate::handlers::collection_handler::{
     create_collection, delete_collection, get_collection, list_collections, update_collection,
+};
+use crate::handlers::media_handler::{
+    StorageManager, delete_media, get_media, get_media_references, list_media,
+    restore_media, serve_media_file, serve_media_thumbnail, upload_media,
 };
 use crate::handlers::site_handler::{
     create_site, delete_site, get_site, invite_member, list_members, list_sites, remove_member,
@@ -26,6 +31,7 @@ use crate::handlers::ui_handler::ui_handler;
 use crate::models::api_key::{ApiKey, ApiKeyResponse, CreateApiKey};
 use crate::models::content::{Content, CreateContent, UpdateContent};
 use crate::models::collection::{CreateCollection, Collection, UpdateCollection};
+use crate::models::media::{Media, MediaReference, MediaWithUrl};
 use crate::models::site::{
     CreateSite, InviteMember, Site, SiteMember, SiteWithRole, UpdateMemberRole, UpdateSite,
 };
@@ -76,6 +82,13 @@ use crate::models::user::{AuthResponse, CreateUser, LoginRequest, UserPublic};
         crate::handlers::content_handler::delete_content,
         crate::handlers::content_handler::publish_content,
         crate::handlers::content_handler::unpublish_content,
+        // Media
+        crate::handlers::media_handler::list_media,
+        crate::handlers::media_handler::upload_media,
+        crate::handlers::media_handler::get_media,
+        crate::handlers::media_handler::delete_media,
+        crate::handlers::media_handler::get_media_references,
+        crate::handlers::media_handler::restore_media,
     ),
     components(schemas(
         // User
@@ -88,6 +101,8 @@ use crate::models::user::{AuthResponse, CreateUser, LoginRequest, UserPublic};
         Collection, CreateCollection, UpdateCollection,
         // Content
         Content, CreateContent, UpdateContent,
+        // Media
+        Media, MediaWithUrl, MediaReference,
     )),
     modifiers(&SecurityAddon),
     tags(
@@ -97,6 +112,7 @@ use crate::models::user::{AuthResponse, CreateUser, LoginRequest, UserPublic};
         (name = "api-keys", description = "API key management"),
         (name = "collections", description = "Collection management"),
         (name = "content", description = "Content management"),
+        (name = "media", description = "Media management"),
     )
 )]
 struct ApiDoc;
@@ -127,7 +143,7 @@ impl utoipa::Modify for SecurityAddon {
     }
 }
 
-pub fn create_router(pool: SqlitePool) -> Router {
+pub fn create_router(pool: SqlitePool, config: Config, storage: StorageManager) -> Router {
     Router::new()
         // SPA
         .route(
@@ -195,8 +211,26 @@ pub fn create_router(pool: SqlitePool) -> Router {
             "/api/v1/sites/{site_id}/content/{id}/unpublish",
             post(unpublish_content),
         )
+        // Media (site-scoped)
+        .route("/api/v1/sites/{site_id}/media", get(list_media))
+        .route("/api/v1/sites/{site_id}/media", post(upload_media))
+        .route("/api/v1/sites/{site_id}/media/{id}", get(get_media))
+        .route("/api/v1/sites/{site_id}/media/{id}", delete(delete_media))
+        .route(
+            "/api/v1/sites/{site_id}/media/{id}/references",
+            get(get_media_references),
+        )
+        .route(
+            "/api/v1/sites/{site_id}/media/{id}/restore",
+            post(restore_media),
+        )
+        // Media file serving (public, no auth)
+        .route("/media/{id}/file", get(serve_media_file))
+        .route("/media/{id}/thumbnail", get(serve_media_thumbnail))
         // Scalar API docs
         .merge(Scalar::with_url("/api/v1/docs", ApiDoc::openapi()))
         .layer(CorsLayer::permissive())
         .layer(Extension(pool))
+        .layer(Extension(config))
+        .layer(Extension(storage))
 }
