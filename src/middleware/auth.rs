@@ -5,9 +5,8 @@ use axum::{
 use jsonwebtoken::{Algorithm, DecodingKey, Validation, decode};
 use sqlx::SqlitePool;
 
+use crate::config::Config;
 use crate::models::user::Claims;
-
-const JWT_SECRET: &str = "cms-jwt-secret-change-in-production";
 
 // --- Auth Context ---
 
@@ -22,7 +21,10 @@ pub struct AuthenticatedUser {
     pub user_id: String,
 }
 
-pub fn create_token(user_id: String) -> Result<String, jsonwebtoken::errors::Error> {
+pub fn create_token(
+    user_id: String,
+    jwt_secret: &str,
+) -> Result<String, jsonwebtoken::errors::Error> {
     let expiration = chrono::Utc::now()
         .checked_add_signed(chrono::Duration::hours(24))
         .expect("valid timestamp")
@@ -36,17 +38,20 @@ pub fn create_token(user_id: String) -> Result<String, jsonwebtoken::errors::Err
     jsonwebtoken::encode(
         &jsonwebtoken::Header::default(),
         &claims,
-        &jsonwebtoken::EncodingKey::from_secret(JWT_SECRET.as_bytes()),
+        &jsonwebtoken::EncodingKey::from_secret(jwt_secret.as_bytes()),
     )
 }
 
-pub fn verify_token(token: &str) -> Result<Claims, jsonwebtoken::errors::Error> {
+pub fn verify_token(
+    token: &str,
+    jwt_secret: &str,
+) -> Result<Claims, jsonwebtoken::errors::Error> {
     let mut validation = Validation::new(Algorithm::HS256);
     validation.validate_exp = true;
 
     let data = decode::<Claims>(
         token,
-        &DecodingKey::from_secret(JWT_SECRET.as_bytes()),
+        &DecodingKey::from_secret(jwt_secret.as_bytes()),
         &validation,
     )?;
 
@@ -82,7 +87,12 @@ where
             .strip_prefix("Bearer ")
             .ok_or(unauthorized_error("Invalid authorization format"))?;
 
-        let claims = verify_token(token)
+        let config = parts
+            .extensions
+            .get::<Config>()
+            .ok_or(unauthorized_error("Internal server error"))?;
+
+        let claims = verify_token(token, &config.jwt_secret)
             .map_err(|_| unauthorized_error("Invalid or expired token"))?;
 
         Ok(AuthenticatedUser {
@@ -124,7 +134,12 @@ where
         }
 
         // Otherwise try JWT
-        let claims = verify_token(token)
+        let config = parts
+            .extensions
+            .get::<Config>()
+            .ok_or(unauthorized_error("Internal server error"))?;
+
+        let claims = verify_token(token, &config.jwt_secret)
             .map_err(|_| unauthorized_error("Invalid or expired token"))?;
 
         Ok(AuthContext::Jwt {

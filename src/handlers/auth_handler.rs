@@ -9,6 +9,7 @@ use serde_json::json;
 use sqlx::SqlitePool;
 use uuid::Uuid;
 
+use crate::config::Config;
 use crate::middleware::auth::{AuthenticatedUser, create_token};
 use crate::models::user::{AuthResponse, CreateUser, LoginRequest, User, UserPublic};
 
@@ -24,6 +25,7 @@ use crate::models::user::{AuthResponse, CreateUser, LoginRequest, User, UserPubl
 )]
 pub async fn register(
     Extension(pool): Extension<SqlitePool>,
+    Extension(config): Extension<Config>,
     Json(payload): Json<CreateUser>,
 ) -> Response {
     if payload.username.trim().is_empty() || payload.password.trim().is_empty() {
@@ -59,7 +61,7 @@ pub async fn register(
 
     match result {
         Ok(_) => {
-            let token = match create_token(id.clone()) {
+            let token = match create_token(id.clone(), &config.jwt_secret) {
                 Ok(t) => t,
                 Err(e) => {
                     return (
@@ -108,6 +110,7 @@ pub async fn register(
 )]
 pub async fn login(
     Extension(pool): Extension<SqlitePool>,
+    Extension(config): Extension<Config>,
     Json(payload): Json<LoginRequest>,
 ) -> Response {
     let user = sqlx::query_as::<_, User>(
@@ -146,7 +149,7 @@ pub async fn login(
         }
     }
 
-    let token = match create_token(user.id.clone()) {
+    let token = match create_token(user.id.clone(), &config.jwt_secret) {
         Ok(t) => t,
         Err(e) => {
             return (
