@@ -1,7 +1,7 @@
 use axum::Extension;
 use axum::{
-    Router,
     routing::{delete, get, post, put},
+    Router,
 };
 use sqlx::SqlitePool;
 use tower_http::cors::CorsLayer;
@@ -11,16 +11,16 @@ use utoipa_scalar::{Scalar, Servable};
 use crate::config::Config;
 use crate::handlers::api_key_handler::{create_api_key, delete_api_key, list_api_keys};
 use crate::handlers::auth_handler::{login, me, register};
+use crate::handlers::collection_handler::{
+    create_collection, delete_collection, get_collection, list_collections, update_collection,
+};
 use crate::handlers::content_handler::{
     create_content, delete_content, get_content, list_content, publish_content, unpublish_content,
     update_content,
 };
-use crate::handlers::collection_handler::{
-    create_collection, delete_collection, get_collection, list_collections, update_collection,
-};
 use crate::handlers::media_handler::{
-    StorageManager, delete_media, get_media, get_media_references, list_media,
-    restore_media, serve_media_file, serve_media_thumbnail, upload_media,
+    delete_media, get_media, get_media_references, list_media, restore_media, serve_media_file,
+    serve_media_thumbnail, upload_media, StorageManager,
 };
 use crate::handlers::site_handler::{
     create_site, delete_site, get_site, invite_member, list_members, list_sites, remove_member,
@@ -29,8 +29,8 @@ use crate::handlers::site_handler::{
 use crate::handlers::ui_handler::ui_handler;
 
 use crate::models::api_key::{ApiKey, ApiKeyResponse, CreateApiKey};
+use crate::models::collection::{Collection, CreateCollection, UpdateCollection};
 use crate::models::content::{Content, CreateContent, UpdateContent};
-use crate::models::collection::{CreateCollection, Collection, UpdateCollection};
 use crate::models::media::{Media, MediaReference, MediaWithUrl};
 use crate::models::site::{
     CreateSite, InviteMember, Site, SiteMember, SiteWithRole, UpdateMemberRole, UpdateSite,
@@ -145,12 +145,6 @@ impl utoipa::Modify for SecurityAddon {
 
 pub fn create_router(pool: SqlitePool, config: Config, storage: StorageManager) -> Router {
     Router::new()
-        // SPA
-        .route(
-            "/",
-            get(|| async { ui_handler(axum::extract::Path("".into())).await }),
-        )
-        .route("/{*file}", get(ui_handler))
         // Auth (unversioned, dashboard-only)
         .route("/api/auth/register", post(register))
         .route("/api/auth/login", post(login))
@@ -181,7 +175,10 @@ pub fn create_router(pool: SqlitePool, config: Config, storage: StorageManager) 
         )
         // Collections (site-scoped)
         .route("/api/v1/sites/{site_id}/collections", get(list_collections))
-        .route("/api/v1/sites/{site_id}/collections", post(create_collection))
+        .route(
+            "/api/v1/sites/{site_id}/collections",
+            post(create_collection),
+        )
         .route(
             "/api/v1/sites/{site_id}/collections/{collection_slug}",
             get(get_collection),
@@ -229,6 +226,12 @@ pub fn create_router(pool: SqlitePool, config: Config, storage: StorageManager) 
         .route("/media/{id}/thumbnail", get(serve_media_thumbnail))
         // Scalar API docs
         .merge(Scalar::with_url("/api/v1/docs", ApiDoc::openapi()))
+        // SPA fallback — must be last
+        .route(
+            "/",
+            get(|| async { ui_handler(axum::extract::Path("".into())).await }),
+        )
+        .route("/{*file}", get(ui_handler))
         .layer(CorsLayer::permissive())
         .layer(Extension(pool))
         .layer(Extension(config))
