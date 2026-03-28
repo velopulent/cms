@@ -8,11 +8,7 @@ import { Button, buttonVariants } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
-import {
-  type SchemaDefinition,
-  createContent,
-  getCollection,
-} from "@/lib/api";
+import { createContent, getCollection, type SchemaDefinition } from "@/lib/api";
 
 export const Route = createFileRoute(
   "/_admin/sites/$siteId/content/$collectionSlug/new",
@@ -127,6 +123,7 @@ function CreateContentPage() {
                 fields={collectionDef.fields}
                 values={data}
                 onChange={handleDataChange}
+                siteId={siteId}
               />
             ) : (
               <p className="text-sm text-muted-foreground">

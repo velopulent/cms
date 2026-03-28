@@ -10,9 +10,9 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
-  type SchemaDefinition,
-  getContentById,
   getCollection,
+  getContentById,
+  type SchemaDefinition,
   updateContent,
 } from "@/lib/api";
 
@@ -138,6 +138,7 @@ function EditContentPage() {
                 fields={collectionDef.fields}
                 values={data}
                 onChange={setData}
+                siteId={siteId}
               />
             ) : (
               <p className="text-sm text-muted-foreground">
