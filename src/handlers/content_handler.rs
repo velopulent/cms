@@ -547,11 +547,6 @@ async fn resolve_content_media(
         if let Ok(media_items) = q.fetch_all(pool).await {
             for m in media_items {
                 let url = match m.storage_provider.as_str() {
-                    "filesystem" => storage
-                        .filesystem
-                        .as_ref()
-                        .map(|s| s.url(&m.storage_key))
-                        .unwrap_or_else(|| format!("/media/{}/file", m.id)),
                     "s3" => storage
                         .s3
                         .as_ref()
@@ -565,7 +560,7 @@ async fn resolve_content_media(
                     json!({
                         "id": m.id,
                         "url": url,
-                        "thumbnail_url": format!("/media/{}/thumbnail", m.id),
+                        "thumbnail_url": m.thumbnail_key.as_ref().map(|_| format!("/media/{}/thumbnail", m.id)),
                         "filename": m.filename,
                         "original_name": m.original_name,
                         "mime_type": m.mime_type,
