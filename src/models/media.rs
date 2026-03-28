@@ -1,0 +1,48 @@
+use serde::Serialize;
+use sqlx::FromRow;
+use utoipa::ToSchema;
+
+#[derive(Serialize, FromRow, ToSchema)]
+pub struct Media {
+    pub id: String,
+    pub site_id: String,
+    pub filename: String,
+    pub original_name: String,
+    pub mime_type: String,
+    pub size: i64,
+    pub storage_provider: String,
+    pub storage_key: String,
+    pub thumbnail_key: Option<String>,
+    pub width: Option<i32>,
+    pub height: Option<i32>,
+    pub deleted_at: Option<String>,
+    pub created_by: String,
+    pub created_at: String,
+}
+
+#[derive(Serialize, ToSchema)]
+pub struct MediaWithUrl {
+    pub id: String,
+    pub site_id: String,
+    pub filename: String,
+    pub original_name: String,
+    pub mime_type: String,
+    pub size: i64,
+    pub storage_provider: String,
+    pub storage_key: String,
+    pub thumbnail_key: Option<String>,
+    pub width: Option<i32>,
+    pub height: Option<i32>,
+    pub deleted_at: Option<String>,
+    pub created_by: String,
+    pub created_at: String,
+    pub url: String,
+    pub thumbnail_url: Option<String>,
+}
+
+#[derive(Serialize, ToSchema)]
+pub struct MediaReference {
+    pub content_id: String,
+    pub collection_name: String,
+    pub field_name: String,
+}
