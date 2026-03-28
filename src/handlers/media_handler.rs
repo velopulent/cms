@@ -97,15 +97,23 @@ fn mime_to_ext(mime: &str) -> &str {
     }
 }
 
-fn generate_thumbnail(image_data: &[u8]) -> Option<Vec<u8>> {
+fn generate_thumbnail(image_data: &[u8]) -> Option<(Vec<u8>, String)> {
     let reader = ImageReader::new(Cursor::new(image_data)).with_guessed_format().ok()?;
     let img = reader.decode().ok()?;
     let thumb = img.resize(300, 300, image::imageops::FilterType::Lanczos3);
     let mut bytes = Vec::new();
-    thumb
-        .write_to(&mut Cursor::new(&mut bytes), image::ImageFormat::Jpeg)
-        .ok()?;
-    Some(bytes)
+
+    if thumb.color().has_alpha() {
+        thumb
+            .write_to(&mut Cursor::new(&mut bytes), image::ImageFormat::Png)
+            .ok()?;
+        Some((bytes, "image/png".into()))
+    } else {
+        thumb
+            .write_to(&mut Cursor::new(&mut bytes), image::ImageFormat::Jpeg)
+            .ok()?;
+        Some((bytes, "image/jpeg".into()))
+    }
 }
 
 async fn store_file(
@@ -397,7 +405,7 @@ pub async fn upload_media(
     // Try to get image dimensions and generate thumbnail
     let mut width: Option<i32> = None;
     let mut height: Option<i32> = None;
-    let mut thumbnail_data: Option<Vec<u8>> = None;
+    let mut thumbnail_data: Option<(Vec<u8>, String)> = None;
     let mut thumbnail_key: Option<String> = None;
 
     if mime_type.starts_with("image/") {
@@ -406,10 +414,11 @@ pub async fn upload_media(
                 width = Some(img.width() as i32);
                 height = Some(img.height() as i32);
 
-                if let Some(thumb_bytes) = generate_thumbnail(&file_data) {
+                if let Some((thumb_bytes, thumb_mime)) = generate_thumbnail(&file_data) {
+                    let ext = if thumb_mime == "image/png" { "png" } else { "jpg" };
                     let thumb_key =
-                        format!("{}/{}/thumb_{}.jpg", site_id, media_id, &media_id[..8]);
-                    thumbnail_data = Some(thumb_bytes);
+                        format!("{}/{}/thumb_{}.{}", site_id, media_id, &media_id[..8], ext);
+                    thumbnail_data = Some((thumb_bytes, thumb_mime));
                     thumbnail_key = Some(thumb_key);
                 }
             }
@@ -426,8 +435,8 @@ pub async fn upload_media(
     }
 
     // Upload thumbnail
-    if let (Some(thumb_data), Some(thumb_key)) = (&thumbnail_data, &thumbnail_key) {
-        let _ = store_file(&storage, &storage_provider, thumb_key, thumb_data, "image/jpeg").await;
+    if let (Some((thumb_data, thumb_mime)), Some(thumb_key)) = (&thumbnail_data, &thumbnail_key) {
+        let _ = store_file(&storage, &storage_provider, thumb_key, thumb_data, thumb_mime).await;
     }
 
     // Insert media record
@@ -711,7 +720,14 @@ async fn serve_media_by_key(
 
     let (key, content_type) = if use_thumbnail {
         match &media.thumbnail_key {
-            Some(tk) => (tk.as_str(), "image/jpeg"),
+            Some(tk) => {
+                let mime = if tk.ends_with(".png") {
+                    "image/png"
+                } else {
+                    "image/jpeg"
+                };
+                (tk.as_str(), mime)
+            }
             None => return (StatusCode::NOT_FOUND, "No thumbnail").into_response(),
         }
     } else {
