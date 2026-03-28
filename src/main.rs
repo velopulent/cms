@@ -48,7 +48,7 @@ async fn main() {
     };
 
     if let Some(ref fs_path) = config.storage_fs_path {
-        match storage::FileSystemStorage::new(fs_path, "/media") {
+        match storage::FileSystemStorage::new(fs_path) {
             Ok(fs) => {
                 storage_manager.filesystem = Some(fs);
                 println!("Filesystem storage initialized at {}", fs_path);
