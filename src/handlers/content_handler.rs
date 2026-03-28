@@ -9,8 +9,10 @@ use serde_json::json;
 use sqlx::SqlitePool;
 use uuid::Uuid;
 
+use crate::handlers::media_handler::StorageManager;
 use crate::middleware::auth::{AuthContext, AuthenticatedUser, check_site_access};
 use crate::models::content::{Content, CreateContent, UpdateContent};
+use crate::models::media::Media;
 
 #[derive(Deserialize, utoipa::IntoParams)]
 pub struct ListParams {
@@ -123,6 +125,7 @@ pub async fn get_content(
     auth: AuthContext,
     Path((site_id, id)): Path<(String, String)>,
     Extension(pool): Extension<SqlitePool>,
+    Extension(storage): Extension<StorageManager>,
 ) -> Response {
     match &auth {
         AuthContext::Jwt { user_id } => {
@@ -158,7 +161,10 @@ pub async fn get_content(
         .await;
 
     match result {
-        Ok(Some(item)) => (StatusCode::OK, Json(item)).into_response(),
+        Ok(Some(item)) => {
+            let resolved = resolve_content_media(&item, &pool, &storage).await;
+            (StatusCode::OK, Json(resolved)).into_response()
+        }
         Ok(None) => (
             StatusCode::NOT_FOUND,
             Json(json!({"error": "Content not found"})),
@@ -483,4 +489,105 @@ pub async fn unpublish_content(
         )
             .into_response(),
     }
+}
+
+// --- Media resolution helpers ---
+
+/// Extract all media://<id> references from a JSON value
+fn extract_media_ids(value: &serde_json::Value) -> Vec<String> {
+    let mut ids = Vec::new();
+    extract_media_ids_recursive(value, &mut ids);
+    ids
+}
+
+fn extract_media_ids_recursive(value: &serde_json::Value, ids: &mut Vec<String>) {
+    match value {
+        serde_json::Value::String(s) => {
+            if let Some(media_id) = s.strip_prefix("media://") {
+                ids.push(media_id.to_string());
+            }
+        }
+        serde_json::Value::Array(arr) => {
+            for item in arr {
+                extract_media_ids_recursive(item, ids);
+            }
+        }
+        serde_json::Value::Object(obj) => {
+            for val in obj.values() {
+                extract_media_ids_recursive(val, ids);
+            }
+        }
+        _ => {}
+    }
+}
+
+/// Resolve media:// URIs in content and return with a _media map
+async fn resolve_content_media(
+    content: &Content,
+    pool: &SqlitePool,
+    storage: &StorageManager,
+) -> serde_json::Value {
+    let data: serde_json::Value = serde_json::from_str(&content.data).unwrap_or_default();
+    let media_ids = extract_media_ids(&data);
+
+    let mut media_map = serde_json::Map::new();
+
+    if !media_ids.is_empty() {
+        let placeholders = media_ids.iter().map(|_| "?").collect::<Vec<_>>().join(",");
+        let query = format!(
+            "SELECT id, site_id, filename, original_name, mime_type, size, storage_provider, storage_key, thumbnail_key, width, height, deleted_at, created_by, created_at FROM media WHERE id IN ({}) AND deleted_at IS NULL",
+            placeholders
+        );
+
+        let mut q = sqlx::query_as::<_, Media>(&query);
+        for id in &media_ids {
+            q = q.bind(id);
+        }
+
+        if let Ok(media_items) = q.fetch_all(pool).await {
+            for m in media_items {
+                let url = match m.storage_provider.as_str() {
+                    "filesystem" => storage
+                        .filesystem
+                        .as_ref()
+                        .map(|s| s.url(&m.storage_key))
+                        .unwrap_or_else(|| format!("/media/{}/file", m.id)),
+                    "s3" => storage
+                        .s3
+                        .as_ref()
+                        .map(|s| s.url(&m.storage_key))
+                        .unwrap_or_else(|| format!("/media/{}/file", m.id)),
+                    _ => format!("/media/{}/file", m.id),
+                };
+
+                media_map.insert(
+                    m.id.clone(),
+                    json!({
+                        "id": m.id,
+                        "url": url,
+                        "thumbnail_url": format!("/media/{}/thumbnail", m.id),
+                        "filename": m.filename,
+                        "original_name": m.original_name,
+                        "mime_type": m.mime_type,
+                        "size": m.size,
+                        "width": m.width,
+                        "height": m.height,
+                    }),
+                );
+            }
+        }
+    }
+
+    json!({
+        "id": content.id,
+        "site_id": content.site_id,
+        "collection_id": content.collection_id,
+        "data": data,
+        "slug": content.slug,
+        "status": content.status,
+        "created_at": content.created_at,
+        "updated_at": content.updated_at,
+        "published_at": content.published_at,
+        "_media": media_map,
+    })
 }
