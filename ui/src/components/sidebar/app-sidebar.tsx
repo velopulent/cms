@@ -38,7 +38,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
     queryFn: getSites,
   });
 
-  const { data: collections } = useQuery({
+  const { data: collections, isLoading: collectionsLoading } = useQuery({
     queryKey: ["collections", siteId],
     queryFn: () => getCollections(siteId as string),
     enabled: !!siteId,
@@ -90,7 +90,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
       </SidebarHeader>
       <SidebarContent>
         <NavMain items={navMain} />
-        <NavCollections collections={contentNavItems} />
+        <NavCollections collections={contentNavItems} isLoading={collectionsLoading} />
       </SidebarContent>
       <SidebarFooter>
         <SidebarMenu>
