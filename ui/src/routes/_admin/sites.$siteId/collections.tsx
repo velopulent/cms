@@ -125,9 +125,7 @@ function CollectionsPage() {
             New Collection
           </SheetTrigger>
           <SheetContent
-            side="right"
-            className="sm:max-w-2xl lg:max-w-4xl"
-            showCloseButton={false}
+            className={"data-[side=right]:w-full data-[side=right]:sm:max-w-xl"}
           >
             <SheetHeader>
               <SheetTitle>Create Collection</SheetTitle>
@@ -158,9 +156,13 @@ function CollectionsPage() {
               >
                 Create Collection
               </Button>
-              <SheetClose render={<Button type="button" variant="outline" />}>
-                Cancel
-              </SheetClose>
+              <SheetClose
+                render={
+                  <Button type="button" variant="outline">
+                    Cancel
+                  </Button>
+                }
+              />
             </SheetFooter>
           </SheetContent>
         </Sheet>
@@ -222,9 +224,9 @@ function CollectionsPage() {
                             <Pencil />
                           </SheetTrigger>
                           <SheetContent
-                            side="right"
-                            className="sm:max-w-2xl lg:max-w-4xl"
-                            showCloseButton={false}
+                            className={
+                              "data-[side=right]:w-full data-[side=right]:sm:max-w-xl"
+                            }
                           >
                             <SheetHeader>
                               <SheetTitle>Edit Collection</SheetTitle>
@@ -264,11 +266,11 @@ function CollectionsPage() {
                               </Button>
                               <SheetClose
                                 render={
-                                  <Button type="button" variant="outline" />
+                                  <Button type="button" variant="outline">
+                                    Cancel
+                                  </Button>
                                 }
-                              >
-                                Cancel
-                              </SheetClose>
+                              />
                             </SheetFooter>
                           </SheetContent>
                         </Sheet>
