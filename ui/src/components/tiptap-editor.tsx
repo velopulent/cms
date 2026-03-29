@@ -1,4 +1,3 @@
-import Image from "@tiptap/extension-image";
 import Link from "@tiptap/extension-link";
 import Placeholder from "@tiptap/extension-placeholder";
 import { EditorContent, useEditor, useEditorState } from "@tiptap/react";
@@ -27,6 +26,7 @@ import { createPortal } from "react-dom";
 import { MediaPickerDialog } from "@/components/media-picker-dialog";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
+import { ImageWithControls } from "@/extensions/image-with-controls";
 import "@/styles/tiptap.css";
 
 interface TiptapEditorProps {
@@ -53,9 +53,7 @@ export function TiptapEditor({
         openOnClick: false,
         HTMLAttributes: { class: "text-primary underline" },
       }),
-      Image.configure({
-        HTMLAttributes: { class: "rounded-lg max-w-full h-auto" },
-      }),
+      ImageWithControls.configure({ siteId }),
     ],
     content,
     editorProps: {

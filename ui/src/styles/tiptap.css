@@ -77,3 +77,11 @@
   pointer-events: none;
   color: oklch(0.552 0.016 285.938);
 }
+
+.node-image {
+  margin: 0 auto;
+}
+
+.node-image img {
+  display: block;
+}
