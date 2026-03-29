@@ -3,9 +3,9 @@
 import { useQuery } from "@tanstack/react-query";
 import { Link, useParams, useRouterState } from "@tanstack/react-router";
 import {
+  Files,
   FileText,
   GalleryVerticalEnd,
-  ImageIcon,
   Layers,
   LayoutDashboard,
   Settings,
@@ -65,7 +65,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
     {
       title: "Files",
       url: `/sites/${siteId}/files`,
-      icon: <ImageIcon />,
+      icon: <Files />,
     },
   ];
 
