@@ -27,16 +27,16 @@ import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
-  deleteMedia,
-  getMedia,
-  getMediaReferences,
-  type Media,
-  type MediaReference,
-  uploadMedia,
+  deleteFile,
+  getFiles,
+  getFileReferences,
+  type FileItem,
+  type FileReference,
+  uploadFile,
 } from "@/lib/api";
 
-export const Route = createFileRoute("/_admin/sites/$siteId/media")({
-  component: MediaPage,
+export const Route = createFileRoute("/_admin/sites/$siteId/files")({
+  component: FilesPage,
 });
 
 function formatFileSize(bytes: number): string {
@@ -53,25 +53,25 @@ function formatDate(dateStr: string): string {
   });
 }
 
-function MediaPage() {
+function FilesPage() {
   const { siteId } = Route.useParams();
   const queryClient = useQueryClient();
   const [search, setSearch] = useState("");
   const [typeFilter, setTypeFilter] = useState<string>("all");
   const [page, setPage] = useState(1);
-  const [selectedMedia, setSelectedMedia] = useState<Media | null>(null);
+  const [selectedFile, setSelectedFile] = useState<FileItem | null>(null);
   const [detailsOpen, setDetailsOpen] = useState(false);
   const [dragOver, setDragOver] = useState(false);
   const [pendingDelete, setPendingDelete] = useState<{
-    media: Media;
-    refs: MediaReference[];
+    file: FileItem;
+    refs: FileReference[];
   } | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const { data, isLoading } = useQuery({
-    queryKey: ["media", siteId, page, search, typeFilter],
+    queryKey: ["files", siteId, page, search, typeFilter],
     queryFn: () =>
-      getMedia(siteId, {
+      getFiles(siteId, {
         page,
         search: search || undefined,
         type: typeFilter === "all" ? undefined : typeFilter,
@@ -79,21 +79,21 @@ function MediaPage() {
   });
 
   const uploadMutation = useMutation({
-    mutationFn: (file: File) => uploadMedia(siteId, file, "filesystem"),
+    mutationFn: (file: File) => uploadFile(siteId, file, "filesystem"),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["media", siteId] });
+      queryClient.invalidateQueries({ queryKey: ["files", siteId] });
       toast.success("File uploaded successfully");
     },
     onError: (err: Error) => toast.error(err.message),
   });
 
   const deleteMutation = useMutation({
-    mutationFn: (mediaId: string) => deleteMedia(siteId, mediaId),
+    mutationFn: (fileId: string) => deleteFile(siteId, fileId),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["media", siteId] });
+      queryClient.invalidateQueries({ queryKey: ["files", siteId] });
       setDetailsOpen(false);
-      setSelectedMedia(null);
-      toast.success("Media deleted");
+      setSelectedFile(null);
+      toast.success("File deleted");
     },
     onError: (err: Error) => toast.error(err.message),
   });
@@ -111,18 +111,18 @@ function MediaPage() {
     handleFileSelect(e.dataTransfer.files);
   };
 
-  const handleDelete = async (media: Media) => {
-    const refs = await getMediaReferences(siteId, media.id).catch(() => []);
+  const handleDelete = async (file: FileItem) => {
+    const refs = await getFileReferences(siteId, file.id).catch(() => []);
     if (refs.length > 0) {
-      setPendingDelete({ media, refs });
+      setPendingDelete({ file, refs });
     } else {
-      deleteMutation.mutate(media.id);
+      deleteMutation.mutate(file.id);
     }
   };
 
   const confirmDelete = () => {
     if (pendingDelete) {
-      deleteMutation.mutate(pendingDelete.media.id);
+      deleteMutation.mutate(pendingDelete.file.id);
       setPendingDelete(null);
     }
   };
@@ -131,7 +131,7 @@ function MediaPage() {
     <div className="flex flex-col gap-6 p-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-semibold">Media Library</h1>
+          <h1 className="text-2xl font-semibold">Files</h1>
           <p className="text-sm text-muted-foreground">
             Upload and manage files for your site
           </p>
@@ -214,7 +214,7 @@ function MediaPage() {
         <Card>
           <CardContent className="flex flex-col items-center justify-center py-16">
             <ImagePlus className="mb-4 size-12 text-muted-foreground" />
-            <p className="text-lg font-medium">No media files yet</p>
+            <p className="text-lg font-medium">No files yet</p>
             <p className="mb-4 text-sm text-muted-foreground">
               Upload your first file to get started
             </p>
@@ -227,12 +227,12 @@ function MediaPage() {
       ) : (
         <>
           <div className="grid grid-cols-2 gap-4 sm:grid-cols-4 md:grid-cols-4 lg:grid-cols-8">
-            {data.items.map((media) => (
-              <MediaCard
-                key={media.id}
-                media={media}
+            {data.items.map((file) => (
+              <FileCard
+                key={file.id}
+                file={file}
                 onClick={() => {
-                  setSelectedMedia(media);
+                  setSelectedFile(file);
                   setDetailsOpen(true);
                 }}
               />
@@ -271,20 +271,20 @@ function MediaPage() {
       <Dialog open={detailsOpen} onOpenChange={setDetailsOpen}>
         <DialogContent className="sm:max-w-lg">
           <DialogHeader>
-            <DialogTitle>Media Details</DialogTitle>
+            <DialogTitle>File Details</DialogTitle>
           </DialogHeader>
-          {selectedMedia && (
+          {selectedFile && (
             <div className="flex flex-col gap-4">
-              {selectedMedia.mime_type.startsWith("image/") ? (
+              {selectedFile.mime_type.startsWith("image/") ? (
                 <img
-                  src={selectedMedia.url}
-                  alt={selectedMedia.original_name}
+                  src={selectedFile.url}
+                  alt={selectedFile.original_name}
                   className="max-h-64 w-auto rounded-lg object-contain"
                 />
               ) : (
                 <div className="flex h-32 items-center justify-center rounded-lg bg-muted">
                   <Badge variant="secondary">
-                    {selectedMedia.mime_type.split("/")[1]?.toUpperCase() ||
+                    {selectedFile.mime_type.split("/")[1]?.toUpperCase() ||
                       "FILE"}
                   </Badge>
                 </div>
@@ -293,55 +293,55 @@ function MediaPage() {
                 <div>
                   <p className="text-muted-foreground">Name</p>
                   <p className="font-medium truncate">
-                    {selectedMedia.original_name}
+                    {selectedFile.original_name}
                   </p>
                 </div>
                 <div>
                   <p className="text-muted-foreground">Size</p>
                   <p className="font-medium">
-                    {formatFileSize(selectedMedia.size)}
+                    {formatFileSize(selectedFile.size)}
                   </p>
                 </div>
                 <div>
                   <p className="text-muted-foreground">Type</p>
-                  <p className="font-medium">{selectedMedia.mime_type}</p>
+                  <p className="font-medium">{selectedFile.mime_type}</p>
                 </div>
                 <div>
                   <p className="text-muted-foreground">Storage</p>
                   <p className="font-medium">
-                    {selectedMedia.storage_provider}
+                    {selectedFile.storage_provider}
                   </p>
                 </div>
-                {selectedMedia.width && selectedMedia.height && (
+                {selectedFile.width && selectedFile.height && (
                   <div>
                     <p className="text-muted-foreground">Dimensions</p>
                     <p className="font-medium">
-                      {selectedMedia.width} x {selectedMedia.height}
+                      {selectedFile.width} x {selectedFile.height}
                     </p>
                   </div>
                 )}
                 <div>
                   <p className="text-muted-foreground">Uploaded</p>
                   <p className="font-medium">
-                    {formatDate(selectedMedia.created_at)}
+                    {formatDate(selectedFile.created_at)}
                   </p>
                 </div>
               </div>
               <div className="flex flex-col gap-2">
                 <p className="text-muted-foreground text-sm">URL</p>
                 <code className="rounded bg-muted px-2 py-1 text-xs break-all">
-                  {selectedMedia.url}
+                  {selectedFile.url}
                 </code>
               </div>
             </div>
           )}
           <DialogFooter>
-            {selectedMedia && (
+            {selectedFile && (
               <>
                 <Button
                   variant="outline"
                   size="sm"
-                  onClick={() => window.open(selectedMedia.url, "_blank")}
+                  onClick={() => window.open(selectedFile.url, "_blank")}
                 >
                   <Download data-icon="inline-start" />
                   Open
@@ -349,7 +349,7 @@ function MediaPage() {
                 <Button
                   variant="destructive"
                   size="sm"
-                  onClick={() => selectedMedia && handleDelete(selectedMedia)}
+                  onClick={() => selectedFile && handleDelete(selectedFile)}
                   disabled={deleteMutation.isPending}
                 >
                   <Trash2 data-icon="inline-start" />
@@ -369,9 +369,9 @@ function MediaPage() {
       >
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Delete media?</AlertDialogTitle>
+            <AlertDialogTitle>Delete file?</AlertDialogTitle>
             <AlertDialogDescription>
-              This media is used in {pendingDelete?.refs.length} content item(s)
+              This file is used in {pendingDelete?.refs.length} content item(s)
               (
               {pendingDelete &&
                 [
@@ -398,8 +398,8 @@ function MediaPage() {
   );
 }
 
-function MediaCard({ media, onClick }: { media: Media; onClick: () => void }) {
-  const isImage = media.mime_type.startsWith("image/");
+function FileCard({ file, onClick }: { file: FileItem; onClick: () => void }) {
+  const isImage = file.mime_type.startsWith("image/");
 
   return (
     <button
@@ -415,24 +415,24 @@ function MediaCard({ media, onClick }: { media: Media; onClick: () => void }) {
     >
       {isImage ? (
         <img
-          src={media.thumbnail_url || media.url}
-          alt={media.original_name}
+          src={file.thumbnail_url || file.url}
+          alt={file.original_name}
           className="size-full object-cover"
         />
       ) : (
         <div className="flex size-full flex-col items-center justify-center bg-muted p-2">
           <Badge variant="secondary" className="text-xs">
-            {media.mime_type.split("/")[1]?.toUpperCase() || "FILE"}
+            {file.mime_type.split("/")[1]?.toUpperCase() || "FILE"}
           </Badge>
           <p className="mt-1 truncate text-center text-xs text-muted-foreground">
-            {media.original_name}
+            {file.original_name}
           </p>
         </div>
       )}
       <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/60 to-transparent p-2">
-        <p className="truncate text-xs text-white">{media.original_name}</p>
+        <p className="truncate text-xs text-white">{file.original_name}</p>
         <p className="text-[10px] text-white/70">
-          {formatFileSize(media.size)}
+          {formatFileSize(file.size)}
         </p>
       </div>
     </button>
