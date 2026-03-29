@@ -2,8 +2,8 @@ import type { NodeViewProps } from "@tiptap/react";
 import { NodeViewWrapper } from "@tiptap/react";
 import { Pencil, Trash2 } from "lucide-react";
 import { useState } from "react";
-import { MediaPickerDialog } from "@/components/media-picker-dialog";
-import type { Media } from "@/lib/api";
+import { FilePickerDialog } from "@/components/file-picker-dialog";
+import type { FileItem } from "@/lib/api";
 
 export function TiptapImageComponent(props: NodeViewProps) {
   const { node, updateAttributes, deleteNode, editor, selected } = props;
@@ -14,8 +14,8 @@ export function TiptapImageComponent(props: NodeViewProps) {
 
   const src = node.attrs.src as string;
 
-  const handleReplace = (media: Media) => {
-    updateAttributes({ src: media.url });
+  const handleReplace = (file: FileItem) => {
+    updateAttributes({ src: file.url });
     setPickerOpen(false);
   };
 
@@ -62,7 +62,7 @@ export function TiptapImageComponent(props: NodeViewProps) {
       />
 
       {siteId && (
-        <MediaPickerDialog
+        <FilePickerDialog
           open={pickerOpen}
           onOpenChange={setPickerOpen}
           onSelect={handleReplace}
