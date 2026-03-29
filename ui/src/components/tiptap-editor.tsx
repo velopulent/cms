@@ -21,8 +21,7 @@ import {
   Strikethrough,
   Undo2,
 } from "lucide-react";
-import { useState } from "react";
-import { createPortal } from "react-dom";
+import { useEffect, useState } from "react";
 import { FilePickerDialog } from "@/components/file-picker-dialog";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
@@ -289,10 +288,6 @@ export function TiptapEditor({
       )}
     </div>
   );
-
-  if (isFullscreen) {
-    return createPortal(editorEl, document.body);
-  }
 
   return editorEl;
 }
