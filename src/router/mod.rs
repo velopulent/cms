@@ -46,7 +46,7 @@ use crate::models::user::{AuthResponse, CreateUser, LoginRequest, UserPublic};
         description = "Headless CMS API for managing sites, collections, and content. \
             Dashboard endpoints require JWT authentication. \
             Public API endpoints accept either JWT or API key authentication.",
-        contact(name = "CMS", url = "https://github.com/anomalyco/cms"),
+        contact(name = "CMS", url = "https://cms.velopulent.com"),
         license(name = "MIT")
     ),
     paths(
