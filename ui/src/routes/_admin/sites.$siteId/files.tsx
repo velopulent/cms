@@ -448,7 +448,7 @@ function FileCard({ file, onClick }: { file: FileItem; onClick: () => void }) {
           </p>
         </div>
       )}
-      <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/60 to-transparent p-2">
+      <div className="absolute bottom-0 left-0 right-0 bg-linear-to-t from-black/60 to-transparent p-2">
         <p className="truncate text-xs text-white">{file.original_name}</p>
         <p className="text-[10px] text-white/70">{formatFileSize(file.size)}</p>
       </div>
