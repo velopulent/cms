@@ -24,15 +24,15 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import {
-  Drawer,
-  DrawerClose,
-  DrawerContent,
-  DrawerDescription,
-  DrawerFooter,
-  DrawerHeader,
-  DrawerTitle,
-  DrawerTrigger,
-} from "@/components/ui/drawer";
+  Sheet,
+  SheetClose,
+  SheetContent,
+  SheetDescription,
+  SheetFooter,
+  SheetHeader,
+  SheetTitle,
+  SheetTrigger,
+} from "@/components/ui/sheet";
 import { Input } from "@/components/ui/input";
 import {
   Select,
@@ -119,24 +119,22 @@ function CollectionsPage() {
             Define the structure of your content
           </p>
         </div>
-        <Drawer
-          open={createOpen}
-          onOpenChange={setCreateOpen}
-          direction="right"
-        >
-          <DrawerTrigger asChild>
-            <Button>
-              <Plus data-icon="inline-start" />
-              New Collection
-            </Button>
-          </DrawerTrigger>
-          <DrawerContent className="flex h-auto flex-col max-w-full sm:max-w-2xl md:max-w-3xl lg:max-w-4xl">
-            <DrawerHeader>
-              <DrawerTitle>Create Collection</DrawerTitle>
-              <DrawerDescription>
+        <Sheet open={createOpen} onOpenChange={setCreateOpen}>
+          <SheetTrigger render={<Button />}>
+            <Plus data-icon="inline-start" />
+            New Collection
+          </SheetTrigger>
+          <SheetContent
+            side="right"
+            className="sm:max-w-2xl lg:max-w-4xl"
+            showCloseButton={false}
+          >
+            <SheetHeader>
+              <SheetTitle>Create Collection</SheetTitle>
+              <SheetDescription>
                 Define a new collection with custom fields.
-              </DrawerDescription>
-            </DrawerHeader>
+              </SheetDescription>
+            </SheetHeader>
             <div className="flex-1 overflow-y-auto px-4">
               <CollectionForm
                 onSubmit={(data) => {
@@ -152,18 +150,20 @@ function CollectionsPage() {
                 }}
               />
             </div>
-            <DrawerFooter>
-              <Button form="collection-form-create" disabled={false}>
+            <SheetFooter>
+              <Button
+                type="submit"
+                form="collection-form-create"
+                disabled={false}
+              >
                 Create Collection
               </Button>
-              <DrawerClose asChild>
-                <Button type="button" variant="outline">
-                  Cancel
-                </Button>
-              </DrawerClose>
-            </DrawerFooter>
-          </DrawerContent>
-        </Drawer>
+              <SheetClose render={<Button type="button" variant="outline" />}>
+                Cancel
+              </SheetClose>
+            </SheetFooter>
+          </SheetContent>
+        </Sheet>
       </div>
 
       {isLoading ? (
@@ -210,25 +210,28 @@ function CollectionsPage() {
                     <TableCell>{fieldCount} fields</TableCell>
                     <TableCell className="text-right">
                       <div className="flex justify-end gap-1">
-                        <Drawer
+                        <Sheet
                           open={editCollection?.id === c.id}
                           onOpenChange={(open) =>
                             setEditCollection(open ? c : null)
                           }
-                          direction="right"
                         >
-                          <DrawerTrigger asChild>
-                            <Button variant="ghost" size="icon">
-                              <Pencil />
-                            </Button>
-                          </DrawerTrigger>
-                          <DrawerContent className="flex h-auto flex-col max-w-full sm:max-w-2xl md:max-w-3xl lg:max-w-4xl">
-                            <DrawerHeader>
-                              <DrawerTitle>Edit Collection</DrawerTitle>
-                              <DrawerDescription>
+                          <SheetTrigger
+                            render={<Button variant="ghost" size="icon" />}
+                          >
+                            <Pencil />
+                          </SheetTrigger>
+                          <SheetContent
+                            side="right"
+                            className="sm:max-w-2xl lg:max-w-4xl"
+                            showCloseButton={false}
+                          >
+                            <SheetHeader>
+                              <SheetTitle>Edit Collection</SheetTitle>
+                              <SheetDescription>
                                 Update the collection definition.
-                              </DrawerDescription>
-                            </DrawerHeader>
+                              </SheetDescription>
+                            </SheetHeader>
                             <div className="flex-1 overflow-y-auto px-4">
                               <CollectionForm
                                 initialData={c}
@@ -251,21 +254,24 @@ function CollectionsPage() {
                                 }}
                               />
                             </div>
-                            <DrawerFooter>
+                            <SheetFooter>
                               <Button
+                                type="submit"
                                 form="collection-form-edit"
                                 disabled={false}
                               >
                                 Update Collection
                               </Button>
-                              <DrawerClose asChild>
-                                <Button type="button" variant="outline">
-                                  Cancel
-                                </Button>
-                              </DrawerClose>
-                            </DrawerFooter>
-                          </DrawerContent>
-                        </Drawer>
+                              <SheetClose
+                                render={
+                                  <Button type="button" variant="outline" />
+                                }
+                              >
+                                Cancel
+                              </SheetClose>
+                            </SheetFooter>
+                          </SheetContent>
+                        </Sheet>
                         <Button
                           variant="ghost"
                           size="icon"
