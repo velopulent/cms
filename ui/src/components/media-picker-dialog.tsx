@@ -4,6 +4,16 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ImagePlus, Search, Trash2, Upload } from "lucide-react";
 import { useRef, useState } from "react";
 import { toast } from "sonner";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -22,6 +32,7 @@ import {
   getMedia,
   getMediaReferences,
   type Media,
+  type MediaReference,
   uploadMedia,
 } from "@/lib/api";
 
@@ -50,6 +61,10 @@ export function MediaPickerDialog({
   const [page, setPage] = useState(1);
   const [tab, setTab] = useState("library");
   const [dragOver, setDragOver] = useState(false);
+  const [pendingDelete, setPendingDelete] = useState<{
+    media: Media;
+    refs: MediaReference[];
+  } | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const queryClient = useQueryClient();
 
@@ -100,157 +115,194 @@ export function MediaPickerDialog({
   const handleDelete = async (media: Media) => {
     const refs = await getMediaReferences(siteId, media.id).catch(() => []);
     if (refs.length > 0) {
-      const names = refs.map((r) => r.collection_name).join(", ");
-      if (
-        !window.confirm(
-          `This media is used in ${refs.length} content item(s) (${names}). Delete anyway?`,
-        )
-      ) {
-        return;
-      }
+      setPendingDelete({ media, refs });
+    } else {
+      deleteMutation.mutate(media.id);
     }
-    deleteMutation.mutate(media.id);
+  };
+
+  const confirmDelete = () => {
+    if (pendingDelete) {
+      deleteMutation.mutate(pendingDelete.media.id);
+      setPendingDelete(null);
+    }
   };
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="flex max-h-[80vh] flex-col sm:max-w-3xl">
-        <DialogHeader>
-          <DialogTitle>Media Library</DialogTitle>
-          <DialogDescription>
-            Select an existing file or upload a new one.
-          </DialogDescription>
-        </DialogHeader>
+    <>
+      <Dialog open={open} onOpenChange={onOpenChange}>
+        <DialogContent className="flex max-h-[80vh] flex-col sm:max-w-3xl">
+          <DialogHeader>
+            <DialogTitle>Media Library</DialogTitle>
+            <DialogDescription>
+              Select an existing file or upload a new one.
+            </DialogDescription>
+          </DialogHeader>
 
-        <Tabs
-          value={tab}
-          onValueChange={setTab}
-          className="flex flex-1 flex-col overflow-hidden"
-        >
-          <TabsList>
-            <TabsTrigger value="library">Library</TabsTrigger>
-            <TabsTrigger value="upload">Upload</TabsTrigger>
-          </TabsList>
+          <Tabs
+            value={tab}
+            onValueChange={setTab}
+            className="flex flex-1 flex-col overflow-hidden"
+          >
+            <TabsList>
+              <TabsTrigger value="library">Library</TabsTrigger>
+              <TabsTrigger value="upload">Upload</TabsTrigger>
+            </TabsList>
 
-          <TabsContent value="library" className="flex-1 overflow-hidden">
-            <div className="flex flex-col gap-3 overflow-hidden">
-              <div className="relative">
-                <Search className="absolute left-2.5 top-2.5 size-4 text-muted-foreground" />
-                <Input
-                  placeholder="Search files..."
-                  value={search}
-                  onChange={(e) => {
-                    setSearch(e.target.value);
-                    setPage(1);
-                  }}
-                  className="pl-8"
+            <TabsContent value="library" className="flex-1 overflow-hidden">
+              <div className="flex flex-col gap-3 overflow-hidden">
+                <div className="relative">
+                  <Search className="absolute left-2.5 top-2.5 size-4 text-muted-foreground" />
+                  <Input
+                    placeholder="Search files..."
+                    value={search}
+                    onChange={(e) => {
+                      setSearch(e.target.value);
+                      setPage(1);
+                    }}
+                    className="pl-8"
+                  />
+                </div>
+
+                {isLoading ? (
+                  <div className="grid grid-cols-3 gap-3 sm:grid-cols-4">
+                    {["a", "b", "c", "d", "e", "f", "g", "h"].map((id) => (
+                      <Skeleton key={id} className="aspect-square rounded-lg" />
+                    ))}
+                  </div>
+                ) : !data?.items.length ? (
+                  <div className="flex flex-1 items-center justify-center text-muted-foreground text-sm">
+                    No media files found.
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-3 gap-3 overflow-y-auto sm:grid-cols-4">
+                    {data.items.map((media) => (
+                      <MediaGridItem
+                        key={media.id}
+                        media={media}
+                        onSelect={() => {
+                          onSelect(media);
+                          onOpenChange(false);
+                        }}
+                        onDelete={() => handleDelete(media)}
+                      />
+                    ))}
+                  </div>
+                )}
+
+                {data && data.total > data.per_page && (
+                  <div className="flex items-center justify-between text-sm text-muted-foreground">
+                    <span>
+                      {data.items.length} of {data.total} files
+                    </span>
+                    <div className="flex gap-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        disabled={page <= 1}
+                        onClick={() => setPage((p) => p - 1)}
+                      >
+                        Previous
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        disabled={data.items.length < data.per_page}
+                        onClick={() => setPage((p) => p + 1)}
+                      >
+                        Next
+                      </Button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </TabsContent>
+
+            <TabsContent value="upload" className="flex-1">
+              {/* biome-ignore lint/a11y/noStaticElementInteractions: drop zone needs drag events */}
+              <div
+                className={`flex flex-col items-center justify-center gap-4 rounded-lg border-2 border-dashed p-12 transition-colors ${
+                  dragOver
+                    ? "border-primary bg-primary/5"
+                    : "border-muted-foreground/25"
+                }`}
+                onDragOver={(e) => {
+                  e.preventDefault();
+                  setDragOver(true);
+                }}
+                onDragLeave={() => setDragOver(false)}
+                onDrop={handleDrop}
+              >
+                <Upload className="size-10 text-muted-foreground" />
+                <div className="text-center">
+                  <p className="font-medium">
+                    Drag and drop a file here, or click to browse
+                  </p>
+                  <p className="text-sm text-muted-foreground">
+                    {accept || "Images, videos, PDFs, and more"}
+                  </p>
+                </div>
+                <Button
+                  variant="outline"
+                  onClick={() => fileInputRef.current?.click()}
+                  disabled={uploadMutation.isPending}
+                >
+                  <ImagePlus data-icon="inline-start" />
+                  {uploadMutation.isPending ? "Uploading..." : "Choose File"}
+                </Button>
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  className="hidden"
+                  accept={accept}
+                  onChange={(e) => handleFileSelect(e.target.files)}
                 />
               </div>
+            </TabsContent>
+          </Tabs>
 
-              {isLoading ? (
-                <div className="grid grid-cols-3 gap-3 sm:grid-cols-4">
-                  {["a", "b", "c", "d", "e", "f", "g", "h"].map((id) => (
-                    <Skeleton key={id} className="aspect-square rounded-lg" />
-                  ))}
-                </div>
-              ) : !data?.items.length ? (
-                <div className="flex flex-1 items-center justify-center text-muted-foreground text-sm">
-                  No media files found.
-                </div>
-              ) : (
-                <div className="grid grid-cols-3 gap-3 overflow-y-auto sm:grid-cols-4">
-                  {data.items.map((media) => (
-                    <MediaGridItem
-                      key={media.id}
-                      media={media}
-                      onSelect={() => {
-                        onSelect(media);
-                        onOpenChange(false);
-                      }}
-                      onDelete={() => handleDelete(media)}
-                    />
-                  ))}
-                </div>
-              )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => onOpenChange(false)}>
+              Cancel
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
-              {data && data.total > data.per_page && (
-                <div className="flex items-center justify-between text-sm text-muted-foreground">
-                  <span>
-                    {data.items.length} of {data.total} files
-                  </span>
-                  <div className="flex gap-2">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      disabled={page <= 1}
-                      onClick={() => setPage((p) => p - 1)}
-                    >
-                      Previous
-                    </Button>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      disabled={data.items.length < data.per_page}
-                      onClick={() => setPage((p) => p + 1)}
-                    >
-                      Next
-                    </Button>
-                  </div>
-                </div>
-              )}
-            </div>
-          </TabsContent>
-
-          <TabsContent value="upload" className="flex-1">
-            {/* biome-ignore lint/a11y/noStaticElementInteractions: drop zone needs drag events */}
-            <div
-              className={`flex flex-col items-center justify-center gap-4 rounded-lg border-2 border-dashed p-12 transition-colors ${
-                dragOver
-                  ? "border-primary bg-primary/5"
-                  : "border-muted-foreground/25"
-              }`}
-              onDragOver={(e) => {
-                e.preventDefault();
-                setDragOver(true);
-              }}
-              onDragLeave={() => setDragOver(false)}
-              onDrop={handleDrop}
+      <AlertDialog
+        open={!!pendingDelete}
+        onOpenChange={(open) => {
+          if (!open) setPendingDelete(null);
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete media?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This media is used in {pendingDelete?.refs.length} content item(s)
+              (
+              {pendingDelete &&
+                [
+                  ...new Set(pendingDelete.refs.map((r) => r.collection_name)),
+                ].join(", ")}
+              ).
+              <br />
+              Deleting it may break those pages.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              variant="destructive"
+              onClick={confirmDelete}
+              disabled={deleteMutation.isPending}
             >
-              <Upload className="size-10 text-muted-foreground" />
-              <div className="text-center">
-                <p className="font-medium">
-                  Drag and drop a file here, or click to browse
-                </p>
-                <p className="text-sm text-muted-foreground">
-                  {accept || "Images, videos, PDFs, and more"}
-                </p>
-              </div>
-              <Button
-                variant="outline"
-                onClick={() => fileInputRef.current?.click()}
-                disabled={uploadMutation.isPending}
-              >
-                <ImagePlus data-icon="inline-start" />
-                {uploadMutation.isPending ? "Uploading..." : "Choose File"}
-              </Button>
-              <input
-                ref={fileInputRef}
-                type="file"
-                className="hidden"
-                accept={accept}
-                onChange={(e) => handleFileSelect(e.target.files)}
-              />
-            </div>
-          </TabsContent>
-        </Tabs>
-
-        <DialogFooter>
-          <Button variant="outline" onClick={() => onOpenChange(false)}>
-            Cancel
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+              {deleteMutation.isPending ? "Deleting..." : "Delete"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </>
   );
 }
 

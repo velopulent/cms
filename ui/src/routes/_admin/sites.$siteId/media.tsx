@@ -3,6 +3,16 @@ import { createFileRoute } from "@tanstack/react-router";
 import { Download, ImagePlus, Search, Trash2, Upload } from "lucide-react";
 import { useRef, useState } from "react";
 import { toast } from "sonner";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -21,6 +31,7 @@ import {
   getMedia,
   getMediaReferences,
   type Media,
+  type MediaReference,
   uploadMedia,
 } from "@/lib/api";
 
@@ -51,6 +62,10 @@ function MediaPage() {
   const [selectedMedia, setSelectedMedia] = useState<Media | null>(null);
   const [detailsOpen, setDetailsOpen] = useState(false);
   const [dragOver, setDragOver] = useState(false);
+  const [pendingDelete, setPendingDelete] = useState<{
+    media: Media;
+    refs: MediaReference[];
+  } | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const { data, isLoading } = useQuery({
@@ -99,16 +114,17 @@ function MediaPage() {
   const handleDelete = async (media: Media) => {
     const refs = await getMediaReferences(siteId, media.id).catch(() => []);
     if (refs.length > 0) {
-      const names = [...new Set(refs.map((r) => r.collection_name))].join(", ");
-      if (
-        !window.confirm(
-          `This media is used in ${refs.length} content item(s) (${names}). Delete anyway?`,
-        )
-      ) {
-        return;
-      }
+      setPendingDelete({ media, refs });
+    } else {
+      deleteMutation.mutate(media.id);
     }
-    deleteMutation.mutate(media.id);
+  };
+
+  const confirmDelete = () => {
+    if (pendingDelete) {
+      deleteMutation.mutate(pendingDelete.media.id);
+      setPendingDelete(null);
+    }
   };
 
   return (
@@ -297,12 +313,12 @@ function MediaPage() {
                   </p>
                 </div>
                 {selectedMedia.width && selectedMedia.height && (
-                    <div>
-                      <p className="text-muted-foreground">Dimensions</p>
-                      <p className="font-medium">
-                        {selectedMedia.width} x {selectedMedia.height}
-                      </p>
-                    </div>
+                  <div>
+                    <p className="text-muted-foreground">Dimensions</p>
+                    <p className="font-medium">
+                      {selectedMedia.width} x {selectedMedia.height}
+                    </p>
+                  </div>
                 )}
                 <div>
                   <p className="text-muted-foreground">Uploaded</p>
@@ -344,6 +360,40 @@ function MediaPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <AlertDialog
+        open={!!pendingDelete}
+        onOpenChange={(open) => {
+          if (!open) setPendingDelete(null);
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete media?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This media is used in {pendingDelete?.refs.length} content item(s)
+              (
+              {pendingDelete &&
+                [
+                  ...new Set(pendingDelete.refs.map((r) => r.collection_name)),
+                ].join(", ")}
+              ).
+              <br />
+              Deleting it may break those pages.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              variant="destructive"
+              onClick={confirmDelete}
+              disabled={deleteMutation.isPending}
+            >
+              {deleteMutation.isPending ? "Deleting..." : "Delete"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
