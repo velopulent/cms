@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { MediaPickerDialog } from "@/components/media-picker-dialog";
+import { FilePickerDialog } from "@/components/file-picker-dialog";
 import { TiptapEditor } from "@/components/tiptap-editor";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -201,7 +201,7 @@ function FieldInput({
 
     case "media":
       return (
-        <MediaField value={strValue} onChange={onChange} siteId={siteId} />
+        <FileField value={strValue} onChange={onChange} siteId={siteId} />
       );
 
     default:
@@ -211,7 +211,7 @@ function FieldInput({
   }
 }
 
-function MediaField({
+function FileField({
   value,
   onChange,
   siteId,
@@ -222,8 +222,9 @@ function MediaField({
 }) {
   const [pickerOpen, setPickerOpen] = useState(false);
 
-  // value format: "media://<id>" or a full URL or empty
-  const mediaId = value.startsWith("media://") ? value.slice(8) : null;
+  // value format: "/api/files/<id>" or a full URL or empty
+  const fileIdMatch = value.match(/\/api\/files\/([^/]+)/);
+  const fileId = fileIdMatch ? fileIdMatch[1] : null;
   const isImageUrl = value.startsWith("/") || value.startsWith("http");
 
   return (
@@ -233,14 +234,14 @@ function MediaField({
           {isImageUrl && (
             <img
               src={value}
-              alt="Selected media"
+              alt="Selected file"
               className="h-16 w-16 rounded object-cover"
             />
           )}
-          {mediaId && (
+          {fileId && (
             <img
-              src={`/media/${mediaId}/thumbnail`}
-              alt="Selected media"
+              src={`/api/files/${fileId}/thumbnail`}
+              alt="Selected file"
               className="h-16 w-16 rounded object-cover"
               onError={(e) => {
                 (e.target as HTMLImageElement).style.display = "none";
@@ -249,7 +250,7 @@ function MediaField({
           )}
           <div className="flex-1">
             <Badge variant="secondary" className="text-xs">
-              {mediaId ? `Media: ${mediaId.slice(0, 8)}...` : "File selected"}
+              {fileId ? `File: ${fileId.slice(0, 8)}...` : "File selected"}
             </Badge>
           </div>
           <Button
@@ -271,11 +272,11 @@ function MediaField({
         {value ? "Change File" : "Select File"}
       </Button>
       {siteId && (
-        <MediaPickerDialog
+        <FilePickerDialog
           open={pickerOpen}
           onOpenChange={setPickerOpen}
-          onSelect={(media) => {
-            onChange(`media://${media.id}`);
+          onSelect={(file) => {
+            onChange(file.url);
           }}
           siteId={siteId}
         />
