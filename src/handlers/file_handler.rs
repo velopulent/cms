@@ -17,7 +17,7 @@ use uuid::Uuid;
 use crate::config::Config;
 use crate::middleware::auth::AuthenticatedUser;
 use crate::middleware::auth::check_site_access;
-use crate::models::media::{Media, MediaReference, MediaWithUrl};
+use crate::models::file::{File, FileReference, FileWithUrl};
 use crate::storage::{FileSystemStorage, S3Storage};
 
 #[derive(Clone)]
@@ -37,42 +37,42 @@ impl StorageManager {
 }
 
 #[derive(Deserialize, utoipa::IntoParams)]
-pub struct MediaListParams {
+pub struct FileListParams {
     pub page: Option<i64>,
     pub search: Option<String>,
     pub r#type: Option<String>,
 }
 
-fn media_to_with_url(media: &Media, storage: &StorageManager) -> MediaWithUrl {
-    let url = match media.storage_provider.as_str() {
+fn file_to_with_url(file: &File, storage: &StorageManager) -> FileWithUrl {
+    let url = match file.storage_provider.as_str() {
         "s3" => storage
             .s3
             .as_ref()
-            .map(|s| s.url(&media.storage_key))
-            .unwrap_or_else(|| format!("/media/{}/file", media.id)),
-        _ => format!("/media/{}/file", media.id),
+            .map(|s| s.url(&file.storage_key))
+            .unwrap_or_else(|| format!("/api/files/{}", file.id)),
+        _ => format!("/api/files/{}", file.id),
     };
 
-    let thumbnail_url = media
+    let thumbnail_url = file
         .thumbnail_key
         .as_ref()
-        .map(|_| format!("/media/{}/thumbnail", media.id));
+        .map(|_| format!("/api/files/{}/thumbnail", file.id));
 
-    MediaWithUrl {
-        id: media.id.clone(),
-        site_id: media.site_id.clone(),
-        filename: media.filename.clone(),
-        original_name: media.original_name.clone(),
-        mime_type: media.mime_type.clone(),
-        size: media.size,
-        storage_provider: media.storage_provider.clone(),
-        storage_key: media.storage_key.clone(),
-        thumbnail_key: media.thumbnail_key.clone(),
-        width: media.width,
-        height: media.height,
-        deleted_at: media.deleted_at.clone(),
-        created_by: media.created_by.clone(),
-        created_at: media.created_at.clone(),
+    FileWithUrl {
+        id: file.id.clone(),
+        site_id: file.site_id.clone(),
+        filename: file.filename.clone(),
+        original_name: file.original_name.clone(),
+        mime_type: file.mime_type.clone(),
+        size: file.size,
+        storage_provider: file.storage_provider.clone(),
+        storage_key: file.storage_key.clone(),
+        thumbnail_key: file.thumbnail_key.clone(),
+        width: file.width,
+        height: file.height,
+        deleted_at: file.deleted_at.clone(),
+        created_by: file.created_by.clone(),
+        created_at: file.created_at.clone(),
         url,
         thumbnail_url,
     }
@@ -135,7 +135,7 @@ async fn store_file(
     }
 }
 
-async fn get_file(
+async fn read_from_storage(
     storage: &StorageManager,
     provider: &str,
     key: &str,
@@ -159,7 +159,7 @@ async fn get_file(
     }
 }
 
-async fn delete_file(
+async fn remove_from_storage(
     storage: &StorageManager,
     provider: &str,
     key: &str,
@@ -185,22 +185,22 @@ async fn delete_file(
 
 #[utoipa::path(
     get,
-    path = "/api/v1/sites/{site_id}/media",
+    path = "/api/v1/sites/{site_id}/files",
     params(
         ("site_id" = String, Path, description = "Site ID"),
-        MediaListParams,
+        FileListParams,
     ),
     responses(
-        (status = 200, description = "List of media items"),
+        (status = 200, description = "List of files"),
         (status = 401, description = "Unauthorized"),
     ),
     security(("bearer" = [])),
-    tag = "media"
+    tag = "files"
 )]
-pub async fn list_media(
+pub async fn list_files(
     auth: AuthenticatedUser,
     Path(site_id): Path<String>,
-    Query(params): Query<MediaListParams>,
+    Query(params): Query<FileListParams>,
     Extension(pool): Extension<SqlitePool>,
     Extension(storage): Extension<StorageManager>,
 ) -> Response {
@@ -213,10 +213,10 @@ pub async fn list_media(
     let offset = (page - 1) * per_page;
 
     let mut query = String::from(
-        "SELECT id, site_id, filename, original_name, mime_type, size, storage_provider, storage_key, thumbnail_key, width, height, deleted_at, created_by, created_at FROM media WHERE site_id = ? AND deleted_at IS NULL",
+        "SELECT id, site_id, filename, original_name, mime_type, size, storage_provider, storage_key, thumbnail_key, width, height, deleted_at, created_by, created_at FROM files WHERE site_id = ? AND deleted_at IS NULL",
     );
     let mut count_query = String::from(
-        "SELECT COUNT(*) FROM media WHERE site_id = ? AND deleted_at IS NULL",
+        "SELECT COUNT(*) FROM files WHERE site_id = ? AND deleted_at IS NULL",
     );
 
     let mut bindings: Vec<String> = vec![site_id.clone()];
@@ -265,16 +265,16 @@ pub async fn list_media(
     let total: i64 = count_q.fetch_optional(&pool).await.unwrap_or(Some(0)).unwrap_or(0);
 
     // Fetch items
-    let mut q = sqlx::query_as::<_, Media>(&query);
+    let mut q = sqlx::query_as::<_, File>(&query);
     for b in &bindings {
         q = q.bind(b);
     }
 
     match q.fetch_all(&pool).await {
         Ok(items) => {
-            let with_urls: Vec<MediaWithUrl> = items
+            let with_urls: Vec<FileWithUrl> = items
                 .into_iter()
-                .map(|m| media_to_with_url(&m, &storage))
+                .map(|f| file_to_with_url(&f, &storage))
                 .collect();
 
             (
@@ -298,18 +298,18 @@ pub async fn list_media(
 
 #[utoipa::path(
     post,
-    path = "/api/v1/sites/{site_id}/media",
+    path = "/api/v1/sites/{site_id}/files",
     params(("site_id" = String, Path, description = "Site ID")),
     responses(
-        (status = 201, description = "Media uploaded", body = MediaWithUrl),
+        (status = 201, description = "File uploaded", body = FileWithUrl),
         (status = 400, description = "Bad request"),
         (status = 401, description = "Unauthorized"),
         (status = 413, description = "File too large"),
     ),
     security(("bearer" = [])),
-    tag = "media"
+    tag = "files"
 )]
-pub async fn upload_media(
+pub async fn upload_file(
     auth: AuthenticatedUser,
     Path(site_id): Path<String>,
     Extension(pool): Extension<SqlitePool>,
@@ -381,18 +381,18 @@ pub async fn upload_media(
     let original_name = file_name.unwrap_or_else(|| "upload".into());
     let content_type = file_content_type.unwrap_or_else(|| "application/octet-stream".into());
 
-    let media_id = Uuid::now_v7().to_string();
+    let file_id = Uuid::now_v7().to_string();
     let ext = std::path::Path::new(&original_name)
         .extension()
         .and_then(|e| e.to_str())
         .unwrap_or("");
     let filename = if ext.is_empty() {
-        format!("{}.{}", &media_id[..8], mime_to_ext(&content_type))
+        format!("{}.{}", &file_id[..8], mime_to_ext(&content_type))
     } else {
-        format!("{}.{}", &media_id[..8], ext)
+        format!("{}.{}", &file_id[..8], ext)
     };
 
-    let storage_key = format!("{}/{}/{}", site_id, media_id, filename);
+    let storage_key = format!("{}/{}/{}", site_id, file_id, filename);
     let mime_type = content_type.clone();
 
     // Try to get image dimensions and generate thumbnail
@@ -409,7 +409,7 @@ pub async fn upload_media(
 
                 if let Some((thumb_bytes, thumb_mime)) = generate_thumbnail(&img) {
                     let thumb_key =
-                        format!("{}/{}/thumb_{}.avif", site_id, media_id, &media_id[..8]);
+                        format!("{}/{}/thumb_{}.avif", site_id, file_id, &file_id[..8]);
                     thumbnail_data = Some((thumb_bytes, thumb_mime));
                     thumbnail_key = Some(thumb_key);
                 }
@@ -433,12 +433,12 @@ pub async fn upload_media(
         let _ = store_file(&storage, &storage_provider, thumb_key, Bytes::from(thumb_data.clone()), thumb_mime).await;
     }
 
-    // Insert media record
+    // Insert file record
     let thumb_key_str = thumbnail_key.clone();
     let result = sqlx::query(
-        "INSERT INTO media (id, site_id, filename, original_name, mime_type, size, storage_provider, storage_key, thumbnail_key, width, height, created_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        "INSERT INTO files (id, site_id, filename, original_name, mime_type, size, storage_provider, storage_key, thumbnail_key, width, height, created_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
     )
-    .bind(&media_id)
+    .bind(&file_id)
     .bind(&site_id)
     .bind(&filename)
     .bind(&original_name)
@@ -455,22 +455,22 @@ pub async fn upload_media(
 
     match result {
         Ok(_) => {
-            let media = sqlx::query_as::<_, Media>(
-                "SELECT id, site_id, filename, original_name, mime_type, size, storage_provider, storage_key, thumbnail_key, width, height, deleted_at, created_by, created_at FROM media WHERE id = ?",
+            let file = sqlx::query_as::<_, File>(
+                "SELECT id, site_id, filename, original_name, mime_type, size, storage_provider, storage_key, thumbnail_key, width, height, deleted_at, created_by, created_at FROM files WHERE id = ?",
             )
-            .bind(&media_id)
+            .bind(&file_id)
             .fetch_one(&pool)
             .await
             .unwrap();
 
-            let with_url = media_to_with_url(&media, &storage);
+            let with_url = file_to_with_url(&file, &storage);
             (StatusCode::CREATED, Json(with_url)).into_response()
         }
         Err(err) => {
             // Clean up uploaded files on DB error
-            let _ = delete_file(&storage, &storage_provider, &storage_key).await;
+            let _ = remove_from_storage(&storage, &storage_provider, &storage_key).await;
             if let Some(ref tk) = thumbnail_key {
-                let _ = delete_file(&storage, &storage_provider, tk).await;
+                let _ = remove_from_storage(&storage, &storage_provider, tk).await;
             }
             (
                 StatusCode::INTERNAL_SERVER_ERROR,
@@ -483,19 +483,19 @@ pub async fn upload_media(
 
 #[utoipa::path(
     get,
-    path = "/api/v1/sites/{site_id}/media/{id}",
+    path = "/api/v1/sites/{site_id}/files/{id}",
     params(
         ("site_id" = String, Path, description = "Site ID"),
-        ("id" = String, Path, description = "Media ID"),
+        ("id" = String, Path, description = "File ID"),
     ),
     responses(
-        (status = 200, description = "Media item", body = MediaWithUrl),
+        (status = 200, description = "File item", body = FileWithUrl),
         (status = 404, description = "Not found"),
     ),
     security(("bearer" = [])),
-    tag = "media"
+    tag = "files"
 )]
-pub async fn get_media(
+pub async fn get_file(
     auth: AuthenticatedUser,
     Path((site_id, id)): Path<(String, String)>,
     Extension(pool): Extension<SqlitePool>,
@@ -505,21 +505,21 @@ pub async fn get_media(
         return (status, Json(err)).into_response();
     }
 
-    match sqlx::query_as::<_, Media>(
-        "SELECT id, site_id, filename, original_name, mime_type, size, storage_provider, storage_key, thumbnail_key, width, height, deleted_at, created_by, created_at FROM media WHERE id = ? AND site_id = ?",
+    match sqlx::query_as::<_, File>(
+        "SELECT id, site_id, filename, original_name, mime_type, size, storage_provider, storage_key, thumbnail_key, width, height, deleted_at, created_by, created_at FROM files WHERE id = ? AND site_id = ?",
     )
     .bind(&id)
     .bind(&site_id)
     .fetch_optional(&pool)
     .await
     {
-        Ok(Some(media)) => {
-            let with_url = media_to_with_url(&media, &storage);
+        Ok(Some(file)) => {
+            let with_url = file_to_with_url(&file, &storage);
             (StatusCode::OK, Json(with_url)).into_response()
         }
         Ok(None) => (
             StatusCode::NOT_FOUND,
-            Json(json!({"error": "Media not found"})),
+            Json(json!({"error": "File not found"})),
         )
             .into_response(),
         Err(err) => (
@@ -532,19 +532,19 @@ pub async fn get_media(
 
 #[utoipa::path(
     delete,
-    path = "/api/v1/sites/{site_id}/media/{id}",
+    path = "/api/v1/sites/{site_id}/files/{id}",
     params(
         ("site_id" = String, Path, description = "Site ID"),
-        ("id" = String, Path, description = "Media ID"),
+        ("id" = String, Path, description = "File ID"),
     ),
     responses(
-        (status = 200, description = "Media soft-deleted"),
+        (status = 200, description = "File soft-deleted"),
         (status = 404, description = "Not found"),
     ),
     security(("bearer" = [])),
-    tag = "media"
+    tag = "files"
 )]
-pub async fn delete_media(
+pub async fn delete_file_handler(
     auth: AuthenticatedUser,
     Path((site_id, id)): Path<(String, String)>,
     Extension(pool): Extension<SqlitePool>,
@@ -554,7 +554,7 @@ pub async fn delete_media(
     }
 
     let result = sqlx::query(
-        "UPDATE media SET deleted_at = datetime('now') WHERE id = ? AND site_id = ? AND deleted_at IS NULL",
+        "UPDATE files SET deleted_at = datetime('now') WHERE id = ? AND site_id = ? AND deleted_at IS NULL",
     )
     .bind(&id)
     .bind(&site_id)
@@ -564,10 +564,10 @@ pub async fn delete_media(
     match result {
         Ok(r) if r.rows_affected() == 0 => (
             StatusCode::NOT_FOUND,
-            Json(json!({"error": "Media not found"})),
+            Json(json!({"error": "File not found"})),
         )
             .into_response(),
-        Ok(_) => (StatusCode::OK, Json(json!({"message": "Media deleted"}))).into_response(),
+        Ok(_) => (StatusCode::OK, Json(json!({"message": "File deleted"}))).into_response(),
         Err(err) => (
             StatusCode::INTERNAL_SERVER_ERROR,
             Json(json!({"error": err.to_string()})),
@@ -578,18 +578,18 @@ pub async fn delete_media(
 
 #[utoipa::path(
     get,
-    path = "/api/v1/sites/{site_id}/media/{id}/references",
+    path = "/api/v1/sites/{site_id}/files/{id}/references",
     params(
         ("site_id" = String, Path, description = "Site ID"),
-        ("id" = String, Path, description = "Media ID"),
+        ("id" = String, Path, description = "File ID"),
     ),
     responses(
-        (status = 200, description = "References found", body = Vec<MediaReference>),
+        (status = 200, description = "References found", body = Vec<FileReference>),
     ),
     security(("bearer" = [])),
-    tag = "media"
+    tag = "files"
 )]
-pub async fn get_media_references(
+pub async fn get_file_references(
     auth: AuthenticatedUser,
     Path((site_id, id)): Path<(String, String)>,
     Extension(pool): Extension<SqlitePool>,
@@ -599,16 +599,16 @@ pub async fn get_media_references(
     }
 
     match sqlx::query_as::<_, (String, String)>(
-        "SELECT DISTINCT c.id, col.name FROM content_media_references cmr JOIN content c ON cmr.content_id = c.id JOIN collections col ON c.collection_id = col.id WHERE cmr.media_id = ?",
+        "SELECT DISTINCT c.id, col.name FROM content_file_references cfr JOIN content c ON cfr.content_id = c.id JOIN collections col ON c.collection_id = col.id WHERE cfr.file_id = ?",
     )
     .bind(&id)
     .fetch_all(&pool)
     .await
     {
         Ok(rows) => {
-            let refs: Vec<MediaReference> = rows
+            let refs: Vec<FileReference> = rows
                 .into_iter()
-                .map(|(content_id, collection_name)| MediaReference {
+                .map(|(content_id, collection_name)| FileReference {
                     content_id,
                     collection_name,
                     field_name: String::new(),
@@ -626,19 +626,19 @@ pub async fn get_media_references(
 
 #[utoipa::path(
     post,
-    path = "/api/v1/sites/{site_id}/media/{id}/restore",
+    path = "/api/v1/sites/{site_id}/files/{id}/restore",
     params(
         ("site_id" = String, Path, description = "Site ID"),
-        ("id" = String, Path, description = "Media ID"),
+        ("id" = String, Path, description = "File ID"),
     ),
     responses(
-        (status = 200, description = "Media restored"),
+        (status = 200, description = "File restored"),
         (status = 404, description = "Not found"),
     ),
     security(("bearer" = [])),
-    tag = "media"
+    tag = "files"
 )]
-pub async fn restore_media(
+pub async fn restore_file(
     auth: AuthenticatedUser,
     Path((site_id, id)): Path<(String, String)>,
     Extension(pool): Extension<SqlitePool>,
@@ -648,7 +648,7 @@ pub async fn restore_media(
     }
 
     let result = sqlx::query(
-        "UPDATE media SET deleted_at = NULL WHERE id = ? AND site_id = ? AND deleted_at IS NOT NULL",
+        "UPDATE files SET deleted_at = NULL WHERE id = ? AND site_id = ? AND deleted_at IS NOT NULL",
     )
     .bind(&id)
     .bind(&site_id)
@@ -658,10 +658,10 @@ pub async fn restore_media(
     match result {
         Ok(r) if r.rows_affected() == 0 => (
             StatusCode::NOT_FOUND,
-            Json(json!({"error": "Media not found or not deleted"})),
+            Json(json!({"error": "File not found or not deleted"})),
         )
             .into_response(),
-        Ok(_) => (StatusCode::OK, Json(json!({"message": "Media restored"}))).into_response(),
+        Ok(_) => (StatusCode::OK, Json(json!({"message": "File restored"}))).into_response(),
         Err(err) => (
             StatusCode::INTERNAL_SERVER_ERROR,
             Json(json!({"error": err.to_string()})),
@@ -670,47 +670,47 @@ pub async fn restore_media(
     }
 }
 
-pub async fn serve_media_file(
+pub async fn serve_file(
     Path(id): Path<String>,
     Extension(pool): Extension<SqlitePool>,
     Extension(storage): Extension<StorageManager>,
 ) -> Response {
-    serve_media_by_key(&id, &pool, &storage, false).await
+    serve_file_by_key(&id, &pool, &storage, false).await
 }
 
-pub async fn serve_media_thumbnail(
+pub async fn serve_file_thumbnail(
     Path(id): Path<String>,
     Extension(pool): Extension<SqlitePool>,
     Extension(storage): Extension<StorageManager>,
 ) -> Response {
-    serve_media_by_key(&id, &pool, &storage, true).await
+    serve_file_by_key(&id, &pool, &storage, true).await
 }
 
-async fn serve_media_by_key(
+async fn serve_file_by_key(
     id: &str,
     pool: &SqlitePool,
     storage: &StorageManager,
     use_thumbnail: bool,
 ) -> Response {
-    let media = match sqlx::query_as::<_, Media>(
-        "SELECT id, site_id, filename, original_name, mime_type, size, storage_provider, storage_key, thumbnail_key, width, height, deleted_at, created_by, created_at FROM media WHERE id = ?",
+    let file = match sqlx::query_as::<_, File>(
+        "SELECT id, site_id, filename, original_name, mime_type, size, storage_provider, storage_key, thumbnail_key, width, height, deleted_at, created_by, created_at FROM files WHERE id = ?",
     )
     .bind(id)
     .fetch_optional(pool)
     .await
     {
-        Ok(Some(m)) => m,
+        Ok(Some(f)) => f,
         Ok(None) => return (StatusCode::NOT_FOUND, "Not found").into_response(),
         Err(_) => return (StatusCode::INTERNAL_SERVER_ERROR, "Database error").into_response(),
     };
 
-    // Don't serve soft-deleted media
-    if media.deleted_at.is_some() {
+    // Don't serve soft-deleted files
+    if file.deleted_at.is_some() {
         return (StatusCode::NOT_FOUND, "Not found").into_response();
     }
 
     let (key, content_type) = if use_thumbnail {
-        match &media.thumbnail_key {
+        match &file.thumbnail_key {
             Some(tk) => {
                 let mime = if tk.ends_with(".avif") {
                     "image/avif"
@@ -726,10 +726,10 @@ async fn serve_media_by_key(
             None => return (StatusCode::NOT_FOUND, "No thumbnail").into_response(),
         }
     } else {
-        (media.storage_key.as_str(), media.mime_type.as_str())
+        (file.storage_key.as_str(), file.mime_type.as_str())
     };
 
-    match get_file(storage, &media.storage_provider, key).await {
+    match read_from_storage(storage, &file.storage_provider, key).await {
         Ok(bytes) => {
             let mut headers = HeaderMap::new();
             headers.insert(
@@ -742,7 +742,7 @@ async fn serve_media_by_key(
                     header::CONTENT_DISPOSITION,
                     HeaderValue::from_str(&format!(
                         "inline; filename=\"{}\"",
-                        media.original_name
+                        file.original_name
                     ))
                     .unwrap_or(HeaderValue::from_static("inline")),
                 );
@@ -757,3 +757,5 @@ async fn serve_media_by_key(
         Err(_) => (StatusCode::NOT_FOUND, "File not found in storage").into_response(),
     }
 }
+
+
