@@ -1,4 +1,4 @@
-import { useMutation, useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { ArrowLeft } from "lucide-react";
 import { useEffect, useState } from "react";
@@ -25,6 +25,7 @@ export const Route = createFileRoute(
 function EditContentPage() {
   const { siteId, collectionSlug, id } = Route.useParams();
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const [data, setData] = useState<Record<string, unknown>>({});
   const [slug, setSlug] = useState("");
   const [initialized, setInitialized] = useState(false);
@@ -59,6 +60,9 @@ function EditContentPage() {
         slug,
       }),
     onSuccess: () => {
+      queryClient.invalidateQueries({
+        queryKey: ["content", siteId, id],
+      });
       toast.success("Content updated");
       navigate({
         to: "/sites/$siteId/content/$collectionSlug",
