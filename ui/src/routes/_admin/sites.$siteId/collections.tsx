@@ -78,7 +78,7 @@ const FIELD_TYPES = [
   { value: "date", label: "Date" },
   { value: "select", label: "Select" },
   { value: "image_url", label: "Image URL" },
-  { value: "media", label: "Media (File Upload)" },
+  { value: "media", label: "File Upload" },
 ];
 
 function slugify(text: string) {
