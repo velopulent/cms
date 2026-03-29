@@ -72,7 +72,7 @@ CREATE TABLE IF NOT EXISTS api_keys (
 CREATE UNIQUE INDEX IF NOT EXISTS idx_api_keys_hash ON api_keys(key_hash);
 CREATE INDEX IF NOT EXISTS idx_api_keys_site ON api_keys(site_id);
 
-CREATE TABLE IF NOT EXISTS media (
+CREATE TABLE IF NOT EXISTS files (
     id TEXT PRIMARY KEY NOT NULL,
     site_id TEXT NOT NULL REFERENCES sites(id) ON DELETE CASCADE,
     filename TEXT NOT NULL,
@@ -89,14 +89,14 @@ CREATE TABLE IF NOT EXISTS media (
     created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
-CREATE INDEX IF NOT EXISTS idx_media_site ON media(site_id);
-CREATE INDEX IF NOT EXISTS idx_media_created_by ON media(created_by);
+CREATE INDEX IF NOT EXISTS idx_files_site ON files(site_id);
+CREATE INDEX IF NOT EXISTS idx_files_created_by ON files(created_by);
 
-CREATE TABLE IF NOT EXISTS content_media_references (
+CREATE TABLE IF NOT EXISTS content_file_references (
     content_id TEXT NOT NULL REFERENCES content(id) ON DELETE CASCADE,
-    media_id TEXT NOT NULL REFERENCES media(id) ON DELETE CASCADE,
+    file_id TEXT NOT NULL REFERENCES files(id) ON DELETE CASCADE,
     site_id TEXT NOT NULL REFERENCES sites(id) ON DELETE CASCADE,
-    PRIMARY KEY (content_id, media_id)
+    PRIMARY KEY (content_id, file_id)
 );
-CREATE INDEX IF NOT EXISTS idx_cmr_media ON content_media_references(media_id);
-CREATE INDEX IF NOT EXISTS idx_cmr_content ON content_media_references(content_id);
+CREATE INDEX IF NOT EXISTS idx_cfr_file ON content_file_references(file_id);
+CREATE INDEX IF NOT EXISTS idx_cfr_content ON content_file_references(content_id);
