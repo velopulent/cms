@@ -63,8 +63,8 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
       icon: <Layers />,
     },
     {
-      title: "Media Library",
-      url: `/sites/${siteId}/media`,
+      title: "Files",
+      url: `/sites/${siteId}/files`,
       icon: <ImageIcon />,
     },
   ];
