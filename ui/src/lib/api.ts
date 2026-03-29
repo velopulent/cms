@@ -168,7 +168,7 @@ export interface ApiKeyResponse {
   created_at: string;
 }
 
-export interface Media {
+export interface FileItem {
   id: string;
   site_id: string;
   filename: string;
@@ -187,14 +187,14 @@ export interface Media {
   thumbnail_url: string | null;
 }
 
-export interface MediaListResponse {
-  items: Media[];
+export interface FileListResponse {
+  items: FileItem[];
   total: number;
   page: number;
   per_page: number;
 }
 
-export interface MediaReference {
+export interface FileReference {
   content_id: string;
   collection_name: string;
   field_name: string;
@@ -410,9 +410,9 @@ export async function unpublishContent(siteId: string, id: string) {
   });
 }
 
-// --- Media API (site-scoped) ---
+// --- Files API (site-scoped) ---
 
-export async function getMedia(
+export async function getFiles(
   siteId: string,
   params: {
     page?: number;
@@ -425,20 +425,20 @@ export async function getMedia(
   if (params.search) query.set("search", params.search);
   if (params.type) query.set("type", params.type);
   const qs = query.toString();
-  return api<MediaListResponse>(`/sites/${siteId}/media${qs ? `?${qs}` : ""}`);
+  return api<FileListResponse>(`/sites/${siteId}/files${qs ? `?${qs}` : ""}`);
 }
 
-export async function uploadMedia(
+export async function uploadFile(
   siteId: string,
   file: File,
   provider: "filesystem" | "s3",
-): Promise<Media> {
+): Promise<FileItem> {
   const token = await getToken();
   const formData = new FormData();
   formData.append("file", file);
   formData.append("storage_provider", provider);
 
-  const res = await fetch(`${BASE_URL}/sites/${siteId}/media`, {
+  const res = await fetch(`${BASE_URL}/sites/${siteId}/files`, {
     method: "POST",
     headers: token ? { Authorization: `Bearer ${token}` } : {},
     body: formData,
@@ -459,18 +459,18 @@ export async function uploadMedia(
   return res.json();
 }
 
-export async function deleteMedia(siteId: string, mediaId: string) {
-  return api<{ message: string }>(`/sites/${siteId}/media/${mediaId}`, {
+export async function deleteFile(siteId: string, fileId: string) {
+  return api<{ message: string }>(`/sites/${siteId}/files/${fileId}`, {
     method: "DELETE",
   });
 }
 
-export async function getMediaReferences(siteId: string, mediaId: string) {
-  return api<MediaReference[]>(`/sites/${siteId}/media/${mediaId}/references`);
+export async function getFileReferences(siteId: string, fileId: string) {
+  return api<FileReference[]>(`/sites/${siteId}/files/${fileId}/references`);
 }
 
-export async function restoreMedia(siteId: string, mediaId: string) {
-  return api<{ message: string }>(`/sites/${siteId}/media/${mediaId}/restore`, {
+export async function restoreFile(siteId: string, fileId: string) {
+  return api<{ message: string }>(`/sites/${siteId}/files/${fileId}/restore`, {
     method: "POST",
   });
 }
