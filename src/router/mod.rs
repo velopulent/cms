@@ -19,9 +19,9 @@ use crate::handlers::content_handler::{
     create_content, delete_content, get_content, list_content, publish_content, unpublish_content,
     update_content,
 };
-use crate::handlers::media_handler::{
-    delete_media, get_media, get_media_references, list_media, restore_media, serve_media_file,
-    serve_media_thumbnail, upload_media, StorageManager,
+use crate::handlers::file_handler::{
+    delete_file_handler, get_file, get_file_references, list_files, restore_file, serve_file,
+    serve_file_thumbnail, upload_file, StorageManager,
 };
 use crate::handlers::site_handler::{
     create_site, delete_site, get_site, invite_member, list_members, list_sites, remove_member,
@@ -32,7 +32,7 @@ use crate::handlers::ui_handler::ui_handler;
 use crate::models::api_key::{ApiKey, ApiKeyResponse, CreateApiKey};
 use crate::models::collection::{Collection, CreateCollection, UpdateCollection};
 use crate::models::content::{Content, CreateContent, UpdateContent};
-use crate::models::media::{Media, MediaReference, MediaWithUrl};
+use crate::models::file::{File, FileReference, FileWithUrl};
 use crate::models::site::{
     CreateSite, InviteMember, Site, SiteMember, SiteWithRole, UpdateMemberRole, UpdateSite,
 };
@@ -83,13 +83,13 @@ use crate::models::user::{AuthResponse, CreateUser, LoginRequest, UserPublic};
         crate::handlers::content_handler::delete_content,
         crate::handlers::content_handler::publish_content,
         crate::handlers::content_handler::unpublish_content,
-        // Media
-        crate::handlers::media_handler::list_media,
-        crate::handlers::media_handler::upload_media,
-        crate::handlers::media_handler::get_media,
-        crate::handlers::media_handler::delete_media,
-        crate::handlers::media_handler::get_media_references,
-        crate::handlers::media_handler::restore_media,
+        // Files
+        crate::handlers::file_handler::list_files,
+        crate::handlers::file_handler::upload_file,
+        crate::handlers::file_handler::get_file,
+        crate::handlers::file_handler::delete_file_handler,
+        crate::handlers::file_handler::get_file_references,
+        crate::handlers::file_handler::restore_file,
     ),
     components(schemas(
         // User
@@ -102,8 +102,8 @@ use crate::models::user::{AuthResponse, CreateUser, LoginRequest, UserPublic};
         Collection, CreateCollection, UpdateCollection,
         // Content
         Content, CreateContent, UpdateContent,
-        // Media
-        Media, MediaWithUrl, MediaReference,
+        // File
+        File, FileWithUrl, FileReference,
     )),
     modifiers(&SecurityAddon),
     tags(
@@ -113,7 +113,7 @@ use crate::models::user::{AuthResponse, CreateUser, LoginRequest, UserPublic};
         (name = "api-keys", description = "API key management"),
         (name = "collections", description = "Collection management"),
         (name = "content", description = "Content management"),
-        (name = "media", description = "Media management"),
+        (name = "files", description = "File management"),
     )
 )]
 struct ApiDoc;
@@ -211,22 +211,22 @@ pub fn create_router(pool: SqlitePool, config: Config, storage: StorageManager) 
             "/api/v1/sites/{site_id}/content/{id}/unpublish",
             post(unpublish_content),
         )
-        // Media (site-scoped)
-        .route("/api/v1/sites/{site_id}/media", get(list_media))
-        .route("/api/v1/sites/{site_id}/media", post(upload_media).layer(RequestBodyLimitLayer::new(max_upload_bytes)))
-        .route("/api/v1/sites/{site_id}/media/{id}", get(get_media))
-        .route("/api/v1/sites/{site_id}/media/{id}", delete(delete_media))
+        // Files (site-scoped)
+        .route("/api/v1/sites/{site_id}/files", get(list_files))
+        .route("/api/v1/sites/{site_id}/files", post(upload_file).layer(RequestBodyLimitLayer::new(max_upload_bytes)))
+        .route("/api/v1/sites/{site_id}/files/{id}", get(get_file))
+        .route("/api/v1/sites/{site_id}/files/{id}", delete(delete_file_handler))
         .route(
-            "/api/v1/sites/{site_id}/media/{id}/references",
-            get(get_media_references),
+            "/api/v1/sites/{site_id}/files/{id}/references",
+            get(get_file_references),
         )
         .route(
-            "/api/v1/sites/{site_id}/media/{id}/restore",
-            post(restore_media),
+            "/api/v1/sites/{site_id}/files/{id}/restore",
+            post(restore_file),
         )
-        // Media file serving (public, no auth)
-        .route("/media/{id}/file", get(serve_media_file))
-        .route("/media/{id}/thumbnail", get(serve_media_thumbnail))
+        // File serving (public, no auth)
+        .route("/api/files/{id}", get(serve_file))
+        .route("/api/files/{id}/thumbnail", get(serve_file_thumbnail))
         // Scalar API docs
         .merge(Scalar::with_url("/api/v1/docs", ApiDoc::openapi()))
         // SPA fallback — must be last
