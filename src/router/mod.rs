@@ -5,6 +5,7 @@ use axum::{
 };
 use sqlx::SqlitePool;
 use tower_http::cors::CorsLayer;
+use tower_http::limit::RequestBodyLimitLayer;
 use utoipa::OpenApi;
 use utoipa_scalar::{Scalar, Servable};
 
@@ -144,6 +145,8 @@ impl utoipa::Modify for SecurityAddon {
 }
 
 pub fn create_router(pool: SqlitePool, config: Config, storage: StorageManager) -> Router {
+    let max_upload_bytes = config.max_upload_size_bytes;
+
     Router::new()
         // Auth (unversioned, dashboard-only)
         .route("/api/auth/register", post(register))
@@ -210,7 +213,7 @@ pub fn create_router(pool: SqlitePool, config: Config, storage: StorageManager) 
         )
         // Media (site-scoped)
         .route("/api/v1/sites/{site_id}/media", get(list_media))
-        .route("/api/v1/sites/{site_id}/media", post(upload_media))
+        .route("/api/v1/sites/{site_id}/media", post(upload_media).layer(RequestBodyLimitLayer::new(max_upload_bytes)))
         .route("/api/v1/sites/{site_id}/media/{id}", get(get_media))
         .route("/api/v1/sites/{site_id}/media/{id}", delete(delete_media))
         .route(
