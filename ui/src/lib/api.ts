@@ -139,7 +139,7 @@ export interface Content {
   id: string;
   site_id: string;
   collection_id: string;
-  data: string;
+  data: string | Record<string, unknown>;
   slug: string;
   status: string;
   created_at: string;

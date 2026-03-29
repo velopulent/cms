@@ -42,11 +42,11 @@ function EditContentPage() {
 
   useEffect(() => {
     if (content && !initialized) {
-      try {
-        setData(JSON.parse(content.data));
-      } catch {
-        setData({});
-      }
+      const parsedData =
+        typeof content.data === "string"
+          ? JSON.parse(content.data)
+          : content.data;
+      setData(parsedData as Record<string, unknown>);
       setSlug(content.slug);
       setInitialized(true);
     }
