@@ -185,8 +185,14 @@ function ContentListPage() {
             {items.map((item: Content) => {
               let title: string;
               try {
-                const data = JSON.parse(item.data);
-                title = data.title || data.name || item.slug;
+                const parsedData =
+                  typeof item.data === "string"
+                    ? JSON.parse(item.data)
+                    : item.data;
+                title =
+                  (parsedData.title as string) ||
+                  (parsedData.name as string) ||
+                  item.slug;
               } catch {
                 title = item.slug;
               }
