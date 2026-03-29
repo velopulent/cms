@@ -20,21 +20,21 @@ import {
   useSidebar,
 } from "@/components/ui/sidebar";
 
-interface Team {
+interface Site {
   name: string;
   id: string;
   icon: React.ReactNode;
   plan: string;
 }
 
-export function TeamSwitcher({ teams }: { teams: Team[] }) {
+export function SiteSwitcher({ sites }: { sites: Site[] }) {
   const { isMobile } = useSidebar();
   const navigate = useNavigate();
   const { siteId } = useParams({ from: "/_admin/sites/$siteId" as any });
 
-  const activeTeam = teams.find((t) => t.id === siteId) ?? teams[0];
+  const activeSite = sites.find((t) => t.id === siteId) ?? sites[0];
 
-  if (!activeTeam) {
+  if (!activeSite) {
     return null;
   }
 
@@ -54,8 +54,8 @@ export function TeamSwitcher({ teams }: { teams: Team[] }) {
               <GalleryVerticalEnd className="size-4" />
             </div>
             <div className="grid flex-1 text-left text-sm leading-tight">
-              <span className="truncate font-medium">{activeTeam.name}</span>
-              <span className="truncate text-xs">{activeTeam.plan}</span>
+              <span className="truncate font-medium">{activeSite.name}</span>
+              <span className="truncate text-xs">{activeSite.plan}</span>
             </div>
             <ChevronsUpDown className="ml-auto" />
           </DropdownMenuTrigger>
@@ -69,7 +69,7 @@ export function TeamSwitcher({ teams }: { teams: Team[] }) {
               <DropdownMenuLabel className="text-xs text-muted-foreground">
                 Sites
               </DropdownMenuLabel>
-              {teams.map((team) => (
+              {sites.map((team) => (
                 <DropdownMenuItem
                   key={team.id}
                   onClick={() =>
