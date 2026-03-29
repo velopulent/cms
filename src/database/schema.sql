@@ -91,3 +91,12 @@ CREATE TABLE IF NOT EXISTS media (
 
 CREATE INDEX IF NOT EXISTS idx_media_site ON media(site_id);
 CREATE INDEX IF NOT EXISTS idx_media_created_by ON media(created_by);
+
+CREATE TABLE IF NOT EXISTS content_media_references (
+    content_id TEXT NOT NULL REFERENCES content(id) ON DELETE CASCADE,
+    media_id TEXT NOT NULL REFERENCES media(id) ON DELETE CASCADE,
+    site_id TEXT NOT NULL REFERENCES sites(id) ON DELETE CASCADE,
+    PRIMARY KEY (content_id, media_id)
+);
+CREATE INDEX IF NOT EXISTS idx_cmr_media ON content_media_references(media_id);
+CREATE INDEX IF NOT EXISTS idx_cmr_content ON content_media_references(content_id);

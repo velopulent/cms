@@ -598,13 +598,10 @@ pub async fn get_media_references(
         return (status, Json(err)).into_response();
     }
 
-    let pattern = format!("%media://{}%", id);
-
     match sqlx::query_as::<_, (String, String)>(
-        "SELECT c.id, col.name FROM content c JOIN collections col ON c.collection_id = col.id WHERE c.site_id = ? AND c.data LIKE ?",
+        "SELECT DISTINCT c.id, col.name FROM content_media_references cmr JOIN content c ON cmr.content_id = c.id JOIN collections col ON c.collection_id = col.id WHERE cmr.media_id = ?",
     )
-    .bind(&site_id)
-    .bind(&pattern)
+    .bind(&id)
     .fetch_all(&pool)
     .await
     {

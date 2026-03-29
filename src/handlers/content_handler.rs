@@ -4,6 +4,7 @@ use axum::{
     http::StatusCode,
     response::{IntoResponse, Response},
 };
+use regex::Regex;
 use serde::Deserialize;
 use serde_json::json;
 use sqlx::SqlitePool;
@@ -218,6 +219,8 @@ pub async fn create_content(
 
     match result {
         Ok(_) => {
+            sync_media_references(&pool, &id, &site_id, &payload.data).await;
+
             let item = sqlx::query_as::<_, Content>(
                 "SELECT id, site_id, collection_id, data, slug, status, created_at, updated_at, published_at FROM content WHERE id = ?",
             )
@@ -293,10 +296,11 @@ pub async fn update_content(
         }
     };
 
-    let data_str = payload
-        .data
-        .map(|d: serde_json::Value| d.to_string())
-        .unwrap_or(existing.data);
+    let resolved_data = match payload.data {
+        Some(d) => d,
+        None => serde_json::from_str(&existing.data).unwrap_or(serde_json::Value::Null),
+    };
+    let data_str = resolved_data.to_string();
     let slug = payload.slug.unwrap_or(existing.slug);
     let status = payload.status.unwrap_or(existing.status);
 
@@ -312,6 +316,8 @@ pub async fn update_content(
 
     match result {
         Ok(_) => {
+            sync_media_references(&pool, &id, &site_id, &resolved_data).await;
+
             let item = sqlx::query_as::<_, Content>(
                 "SELECT id, site_id, collection_id, data, slug, status, created_at, updated_at, published_at FROM content WHERE id = ?",
             )
@@ -493,42 +499,81 @@ pub async fn unpublish_content(
 
 // --- Media resolution helpers ---
 
-/// Extract all media://<id> references from a JSON value
-fn extract_media_ids(value: &serde_json::Value) -> Vec<String> {
+fn extract_all_media_ids(value: &serde_json::Value) -> Vec<String> {
     let mut ids = Vec::new();
-    extract_media_ids_recursive(value, &mut ids);
+    extract_all_media_ids_recursive(value, &mut ids);
+    ids.sort();
+    ids.dedup();
     ids
 }
 
-fn extract_media_ids_recursive(value: &serde_json::Value, ids: &mut Vec<String>) {
+fn extract_all_media_ids_recursive(value: &serde_json::Value, ids: &mut Vec<String>) {
+    static MEDIA_URL_RE: std::sync::LazyLock<Regex> =
+        std::sync::LazyLock::new(|| Regex::new(r"/media/([^/]+)/(?:file|thumbnail)").unwrap());
+
     match value {
         serde_json::Value::String(s) => {
+            // media://<id> format (media field type)
             if let Some(media_id) = s.strip_prefix("media://") {
                 ids.push(media_id.to_string());
+            }
+            // /media/<id>/file and /media/<id>/thumbnail URLs (TipTap rich_text images)
+            for cap in MEDIA_URL_RE.captures_iter(s) {
+                if let Some(m) = cap.get(1) {
+                    ids.push(m.as_str().to_string());
+                }
             }
         }
         serde_json::Value::Array(arr) => {
             for item in arr {
-                extract_media_ids_recursive(item, ids);
+                extract_all_media_ids_recursive(item, ids);
             }
         }
         serde_json::Value::Object(obj) => {
             for val in obj.values() {
-                extract_media_ids_recursive(val, ids);
+                extract_all_media_ids_recursive(val, ids);
             }
         }
         _ => {}
     }
 }
 
-/// Resolve media:// URIs in content and return with a _media map
+/// Sync media references for a content item into the content_media_references table
+async fn sync_media_references(
+    pool: &SqlitePool,
+    content_id: &str,
+    site_id: &str,
+    data: &serde_json::Value,
+) {
+    let media_ids = extract_all_media_ids(data);
+
+    // Clear existing references for this content
+    let _ = sqlx::query("DELETE FROM content_media_references WHERE content_id = ?")
+        .bind(content_id)
+        .execute(pool)
+        .await;
+
+    // Insert new references
+    for media_id in &media_ids {
+        let _ = sqlx::query(
+            "INSERT OR IGNORE INTO content_media_references (content_id, media_id, site_id) VALUES (?, ?, ?)",
+        )
+        .bind(content_id)
+        .bind(media_id)
+        .bind(site_id)
+        .execute(pool)
+        .await;
+    }
+}
+
+/// Resolve media URIs in content and return with a _media map
 async fn resolve_content_media(
     content: &Content,
     pool: &SqlitePool,
     storage: &StorageManager,
 ) -> serde_json::Value {
     let data: serde_json::Value = serde_json::from_str(&content.data).unwrap_or_default();
-    let media_ids = extract_media_ids(&data);
+    let media_ids = extract_all_media_ids(&data);
 
     let mut media_map = serde_json::Map::new();
 

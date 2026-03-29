@@ -435,6 +435,7 @@ dependencies = [
  "jsonwebtoken",
  "mime_guess",
  "object_store",
+ "regex",
  "rust-embed",
  "serde",
  "serde_json",
