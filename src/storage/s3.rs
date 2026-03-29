@@ -60,7 +60,7 @@ impl S3Storage {
     pub fn url(&self, key: &str) -> String {
         match &self.public_url {
             Some(base) => format!("{}/{}", base.trim_end_matches('/'), key),
-            None => format!("/media/file?key={}", key),
+            None => format!("/api/files?key={}", key),
         }
     }
 }
