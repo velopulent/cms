@@ -1,6 +1,13 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
-import { Download, ImagePlus, Search, Trash2, Upload } from "lucide-react";
+import {
+  Download,
+  ImagePlus,
+  Search,
+  SquareArrowOutUpRight,
+  Trash2,
+  Upload,
+} from "lucide-react";
 import { useRef, useState } from "react";
 import { toast } from "sonner";
 import {
@@ -14,7 +21,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import {
   Dialog,
@@ -308,9 +315,7 @@ function FilesPage() {
                 </div>
                 <div>
                   <p className="text-muted-foreground">Storage</p>
-                  <p className="font-medium">
-                    {selectedFile.storage_provider}
-                  </p>
+                  <p className="font-medium">{selectedFile.storage_provider}</p>
                 </div>
                 {selectedFile.width && selectedFile.height && (
                   <div>
@@ -335,26 +340,40 @@ function FilesPage() {
               </div>
             </div>
           )}
-          <DialogFooter>
+          <DialogFooter className="flex-row! justify-between!">
             {selectedFile && (
               <>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => window.open(selectedFile.url, "_blank")}
-                >
-                  <Download data-icon="inline-start" />
-                  Open
-                </Button>
                 <Button
                   variant="destructive"
                   size="sm"
                   onClick={() => selectedFile && handleDelete(selectedFile)}
                   disabled={deleteMutation.isPending}
                 >
-                  <Trash2 data-icon="inline-start" />
+                  <Trash2 />
                   {deleteMutation.isPending ? "Deleting..." : "Delete"}
                 </Button>
+
+                <div className="flex gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => window.open(selectedFile.url, "_blank")}
+                  >
+                    <SquareArrowOutUpRight />
+                    Open
+                  </Button>
+                  <a
+                    href={selectedFile.url}
+                    download={selectedFile.original_name}
+                    className={buttonVariants({
+                      size: "sm",
+                      variant: "secondary",
+                    })}
+                  >
+                    <Download className="size-4" />
+                    Download
+                  </a>
+                </div>
               </>
             )}
           </DialogFooter>
@@ -431,9 +450,7 @@ function FileCard({ file, onClick }: { file: FileItem; onClick: () => void }) {
       )}
       <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/60 to-transparent p-2">
         <p className="truncate text-xs text-white">{file.original_name}</p>
-        <p className="text-[10px] text-white/70">
-          {formatFileSize(file.size)}
-        </p>
+        <p className="text-[10px] text-white/70">{formatFileSize(file.size)}</p>
       </div>
     </button>
   );
