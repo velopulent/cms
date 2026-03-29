@@ -33,7 +33,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   const auth = useAuth();
   const pathname = useRouterState({ select: (s) => s.location.pathname });
 
-  const { data: sites } = useQuery({
+  const { data: sites, isLoading: sitesLoading } = useQuery({
     queryKey: ["sites"],
     queryFn: getSites,
   });
@@ -86,7 +86,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   return (
     <Sidebar collapsible="icon" {...props}>
       <SidebarHeader>
-        <SiteSwitcher sites={teams} />
+        <SiteSwitcher sites={teams} isLoading={sitesLoading} />
       </SidebarHeader>
       <SidebarContent>
         <NavMain items={navMain} />

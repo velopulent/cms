@@ -19,6 +19,7 @@ import {
   SidebarMenuItem,
   useSidebar,
 } from "@/components/ui/sidebar";
+import { Skeleton } from "@/components/ui/skeleton";
 
 interface Site {
   name: string;
@@ -27,12 +28,34 @@ interface Site {
   plan: string;
 }
 
-export function SiteSwitcher({ sites }: { sites: Site[] }) {
+export function SiteSwitcher({
+  sites,
+  isLoading,
+}: {
+  sites: Site[];
+  isLoading?: boolean;
+}) {
   const { isMobile } = useSidebar();
   const navigate = useNavigate();
   const { siteId } = useParams({ from: "/_admin/sites/$siteId" as any });
 
   const activeSite = sites.find((t) => t.id === siteId) ?? sites[0];
+
+  if (isLoading && !activeSite) {
+    return (
+      <SidebarMenu>
+        <SidebarMenuItem>
+          <SidebarMenuButton size="lg">
+            <Skeleton className="size-8 rounded-lg" />
+            <div className="grid flex-1 gap-1">
+              <Skeleton className="h-4 w-24" />
+              <Skeleton className="h-3 w-12" />
+            </div>
+          </SidebarMenuButton>
+        </SidebarMenuItem>
+      </SidebarMenu>
+    );
+  }
 
   if (!activeSite) {
     return null;
