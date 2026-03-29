@@ -7,7 +7,7 @@ mod models {
     pub mod api_key;
     pub mod collection;
     pub mod content;
-    pub mod media;
+    pub mod file;
     pub mod site;
     pub mod user;
 }
@@ -16,7 +16,7 @@ mod handlers {
     pub mod auth_handler;
     pub mod collection_handler;
     pub mod content_handler;
-    pub mod media_handler;
+    pub mod file_handler;
     pub mod site_handler;
     pub mod ui_handler;
 }
@@ -30,7 +30,7 @@ use uuid::Uuid;
 
 use config::Config;
 use database::init_db;
-use handlers::media_handler::StorageManager;
+use handlers::file_handler::StorageManager;
 use router::create_router;
 
 #[tokio::main]
