@@ -14,7 +14,7 @@ export const Route = createRootRouteWithContext<MyRouterContext>()({
   component: () => (
     <AuthProvider>
       <Outlet />
-      <Toaster />
+      <Toaster richColors closeButton />
       <TanStackDevtools
         config={{
           position: "bottom-right",
