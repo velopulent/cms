@@ -222,16 +222,16 @@ function FileField({
 }) {
   const [pickerOpen, setPickerOpen] = useState(false);
 
-  // value format: "/api/files/<id>" or a full URL or empty
+  // value format: "/api/files/<id>" or a full external URL or empty
   const fileIdMatch = value.match(/\/api\/files\/([^/]+)/);
   const fileId = fileIdMatch ? fileIdMatch[1] : null;
-  const isImageUrl = value.startsWith("/") || value.startsWith("http");
+  const isExternalUrl = !fileId && (value.startsWith("http"));
 
   return (
     <div className="flex flex-col gap-2">
       {value && (
         <div className="relative flex items-center gap-3 rounded-lg border p-2">
-          {isImageUrl && (
+          {isExternalUrl && (
             <img
               src={value}
               alt="Selected file"
