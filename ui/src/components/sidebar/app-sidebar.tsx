@@ -11,8 +11,8 @@ import {
   Settings,
 } from "lucide-react";
 import type * as React from "react";
+import { NavCollections } from "@/components/sidebar/nav-collections";
 import { NavMain } from "@/components/sidebar/nav-main";
-import { NavProjects } from "@/components/sidebar/nav-projects";
 import { NavUser } from "@/components/sidebar/nav-user";
 import { SiteSwitcher } from "@/components/sidebar/site-switcher";
 import {
@@ -90,7 +90,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
       </SidebarHeader>
       <SidebarContent>
         <NavMain items={navMain} />
-        <NavProjects projects={contentNavItems} />
+        <NavCollections collections={contentNavItems} />
       </SidebarContent>
       <SidebarFooter>
         <SidebarMenu>

@@ -9,10 +9,10 @@ import {
   SidebarMenuItem,
 } from "@/components/ui/sidebar";
 
-export function NavProjects({
-  projects,
+export function NavCollections({
+  collections,
 }: {
-  projects: {
+  collections: {
     name: string;
     url: string;
     icon: React.ReactNode;
@@ -24,7 +24,7 @@ export function NavProjects({
     <SidebarGroup className="group-data-[collapsible=icon]:hidden">
       <SidebarGroupLabel>Collections</SidebarGroupLabel>
       <SidebarMenu>
-        {projects.map((item) => (
+        {collections.map((item) => (
           <SidebarMenuItem key={item.name}>
             <SidebarMenuButton
               isActive={
