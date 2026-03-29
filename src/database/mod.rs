@@ -18,14 +18,14 @@ pub async fn init_db(database_url: &str) -> SqlitePool {
         .await
         .expect("Failed to create tables");
 
-    backfill_media_references(&pool).await;
+    backfill_file_references(&pool).await;
 
     pool
 }
 
-/// One-time backfill: scan existing content rows and populate content_media_references.
+/// One-time backfill: scan existing content rows and populate content_file_references.
 /// Idempotent — skips if references already exist.
-async fn backfill_media_references(pool: &SqlitePool) {
+async fn backfill_file_references(pool: &SqlitePool) {
     let has_content: bool =
         sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM content LIMIT 1)")
             .fetch_one(pool)
@@ -33,7 +33,7 @@ async fn backfill_media_references(pool: &SqlitePool) {
             .unwrap_or(false);
 
     let has_references: bool =
-        sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM content_media_references LIMIT 1)")
+        sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM content_file_references LIMIT 1)")
             .fetch_one(pool)
             .await
             .unwrap_or(false);
@@ -42,8 +42,8 @@ async fn backfill_media_references(pool: &SqlitePool) {
         return;
     }
 
-    let media_url_re =
-        Regex::new(r"/media/([^/]+)/(?:file|thumbnail)").expect("Invalid regex");
+    let file_url_re =
+        Regex::new(r"/api/files/([^/]+)(?:/thumbnail)?").expect("Invalid regex");
 
     let rows = sqlx::query_as::<_, (String, String, String)>(
         "SELECT id, site_id, data FROM content",
@@ -57,14 +57,14 @@ async fn backfill_media_references(pool: &SqlitePool) {
             continue;
         };
 
-        let media_ids = extract_media_ids_from_value(&data, &media_url_re);
+        let file_ids = extract_file_ids_from_value(&data, &file_url_re);
 
-        for media_id in media_ids {
+        for file_id in file_ids {
             let _ = sqlx::query(
-                "INSERT OR IGNORE INTO content_media_references (content_id, media_id, site_id) VALUES (?, ?, ?)",
+                "INSERT OR IGNORE INTO content_file_references (content_id, file_id, site_id) VALUES (?, ?, ?)",
             )
             .bind(&content_id)
-            .bind(&media_id)
+            .bind(&file_id)
             .bind(&site_id)
             .execute(pool)
             .await;
@@ -72,20 +72,17 @@ async fn backfill_media_references(pool: &SqlitePool) {
     }
 }
 
-fn extract_media_ids_from_value(value: &serde_json::Value, re: &Regex) -> Vec<String> {
+fn extract_file_ids_from_value(value: &serde_json::Value, re: &Regex) -> Vec<String> {
     let mut ids = Vec::new();
-    collect_media_ids(value, re, &mut ids);
+    collect_file_ids(value, re, &mut ids);
     ids.sort();
     ids.dedup();
     ids
 }
 
-fn collect_media_ids(value: &serde_json::Value, re: &Regex, ids: &mut Vec<String>) {
+fn collect_file_ids(value: &serde_json::Value, re: &Regex, ids: &mut Vec<String>) {
     match value {
         serde_json::Value::String(s) => {
-            if let Some(media_id) = s.strip_prefix("media://") {
-                ids.push(media_id.to_string());
-            }
             for cap in re.captures_iter(s) {
                 if let Some(m) = cap.get(1) {
                     ids.push(m.as_str().to_string());
@@ -94,12 +91,12 @@ fn collect_media_ids(value: &serde_json::Value, re: &Regex, ids: &mut Vec<String
         }
         serde_json::Value::Array(arr) => {
             for item in arr {
-                collect_media_ids(item, re, ids);
+                collect_file_ids(item, re, ids);
             }
         }
         serde_json::Value::Object(obj) => {
             for val in obj.values() {
-                collect_media_ids(val, re, ids);
+                collect_file_ids(val, re, ids);
             }
         }
         _ => {}
