@@ -10,10 +10,10 @@ use serde_json::json;
 use sqlx::SqlitePool;
 use uuid::Uuid;
 
-use crate::handlers::media_handler::StorageManager;
+use crate::handlers::file_handler::StorageManager;
 use crate::middleware::auth::{AuthContext, AuthenticatedUser, check_site_access};
 use crate::models::content::{Content, CreateContent, UpdateContent};
-use crate::models::media::Media;
+use crate::models::file::File;
 
 #[derive(Deserialize, utoipa::IntoParams)]
 pub struct ListParams {
@@ -163,7 +163,7 @@ pub async fn get_content(
 
     match result {
         Ok(Some(item)) => {
-            let resolved = resolve_content_media(&item, &pool, &storage).await;
+            let resolved = resolve_content_files(&item, &pool, &storage).await;
             (StatusCode::OK, Json(resolved)).into_response()
         }
         Ok(None) => (
@@ -219,7 +219,7 @@ pub async fn create_content(
 
     match result {
         Ok(_) => {
-            sync_media_references(&pool, &id, &site_id, &payload.data).await;
+            sync_file_references(&pool, &id, &site_id, &payload.data).await;
 
             let item = sqlx::query_as::<_, Content>(
                 "SELECT id, site_id, collection_id, data, slug, status, created_at, updated_at, published_at FROM content WHERE id = ?",
@@ -316,7 +316,7 @@ pub async fn update_content(
 
     match result {
         Ok(_) => {
-            sync_media_references(&pool, &id, &site_id, &resolved_data).await;
+            sync_file_references(&pool, &id, &site_id, &resolved_data).await;
 
             let item = sqlx::query_as::<_, Content>(
                 "SELECT id, site_id, collection_id, data, slug, status, created_at, updated_at, published_at FROM content WHERE id = ?",
@@ -497,28 +497,24 @@ pub async fn unpublish_content(
     }
 }
 
-// --- Media resolution helpers ---
+// --- File resolution helpers ---
 
-fn extract_all_media_ids(value: &serde_json::Value) -> Vec<String> {
+fn extract_all_file_ids(value: &serde_json::Value) -> Vec<String> {
     let mut ids = Vec::new();
-    extract_all_media_ids_recursive(value, &mut ids);
+    extract_all_file_ids_recursive(value, &mut ids);
     ids.sort();
     ids.dedup();
     ids
 }
 
-fn extract_all_media_ids_recursive(value: &serde_json::Value, ids: &mut Vec<String>) {
-    static MEDIA_URL_RE: std::sync::LazyLock<Regex> =
-        std::sync::LazyLock::new(|| Regex::new(r"/media/([^/]+)/(?:file|thumbnail)").unwrap());
+fn extract_all_file_ids_recursive(value: &serde_json::Value, ids: &mut Vec<String>) {
+    static FILE_URL_RE: std::sync::LazyLock<Regex> =
+        std::sync::LazyLock::new(|| Regex::new(r"/api/files/([^/]+)(?:/thumbnail)?").unwrap());
 
     match value {
         serde_json::Value::String(s) => {
-            // media://<id> format (media field type)
-            if let Some(media_id) = s.strip_prefix("media://") {
-                ids.push(media_id.to_string());
-            }
-            // /media/<id>/file and /media/<id>/thumbnail URLs (TipTap rich_text images)
-            for cap in MEDIA_URL_RE.captures_iter(s) {
+            // /api/files/<id> and /api/files/<id>/thumbnail URLs
+            for cap in FILE_URL_RE.captures_iter(s) {
                 if let Some(m) = cap.get(1) {
                     ids.push(m.as_str().to_string());
                 }
@@ -526,92 +522,92 @@ fn extract_all_media_ids_recursive(value: &serde_json::Value, ids: &mut Vec<Stri
         }
         serde_json::Value::Array(arr) => {
             for item in arr {
-                extract_all_media_ids_recursive(item, ids);
+                extract_all_file_ids_recursive(item, ids);
             }
         }
         serde_json::Value::Object(obj) => {
             for val in obj.values() {
-                extract_all_media_ids_recursive(val, ids);
+                extract_all_file_ids_recursive(val, ids);
             }
         }
         _ => {}
     }
 }
 
-/// Sync media references for a content item into the content_media_references table
-async fn sync_media_references(
+/// Sync file references for a content item into the content_file_references table
+async fn sync_file_references(
     pool: &SqlitePool,
     content_id: &str,
     site_id: &str,
     data: &serde_json::Value,
 ) {
-    let media_ids = extract_all_media_ids(data);
+    let file_ids = extract_all_file_ids(data);
 
     // Clear existing references for this content
-    let _ = sqlx::query("DELETE FROM content_media_references WHERE content_id = ?")
+    let _ = sqlx::query("DELETE FROM content_file_references WHERE content_id = ?")
         .bind(content_id)
         .execute(pool)
         .await;
 
     // Insert new references
-    for media_id in &media_ids {
+    for file_id in &file_ids {
         let _ = sqlx::query(
-            "INSERT OR IGNORE INTO content_media_references (content_id, media_id, site_id) VALUES (?, ?, ?)",
+            "INSERT OR IGNORE INTO content_file_references (content_id, file_id, site_id) VALUES (?, ?, ?)",
         )
         .bind(content_id)
-        .bind(media_id)
+        .bind(file_id)
         .bind(site_id)
         .execute(pool)
         .await;
     }
 }
 
-/// Resolve media URIs in content and return with a _media map
-async fn resolve_content_media(
+/// Resolve file URLs in content and return with a _files map
+async fn resolve_content_files(
     content: &Content,
     pool: &SqlitePool,
     storage: &StorageManager,
 ) -> serde_json::Value {
     let data: serde_json::Value = serde_json::from_str(&content.data).unwrap_or_default();
-    let media_ids = extract_all_media_ids(&data);
+    let file_ids = extract_all_file_ids(&data);
 
-    let mut media_map = serde_json::Map::new();
+    let mut file_map = serde_json::Map::new();
 
-    if !media_ids.is_empty() {
-        let placeholders = media_ids.iter().map(|_| "?").collect::<Vec<_>>().join(",");
+    if !file_ids.is_empty() {
+        let placeholders = file_ids.iter().map(|_| "?").collect::<Vec<_>>().join(",");
         let query = format!(
-            "SELECT id, site_id, filename, original_name, mime_type, size, storage_provider, storage_key, thumbnail_key, width, height, deleted_at, created_by, created_at FROM media WHERE id IN ({}) AND deleted_at IS NULL",
+            "SELECT id, site_id, filename, original_name, mime_type, size, storage_provider, storage_key, thumbnail_key, width, height, deleted_at, created_by, created_at FROM files WHERE id IN ({}) AND deleted_at IS NULL",
             placeholders
         );
 
-        let mut q = sqlx::query_as::<_, Media>(&query);
-        for id in &media_ids {
+        let mut q = sqlx::query_as::<_, File>(&query);
+        for id in &file_ids {
             q = q.bind(id);
         }
 
-        if let Ok(media_items) = q.fetch_all(pool).await {
-            for m in media_items {
-                let url = match m.storage_provider.as_str() {
+        if let Ok(file_items) = q.fetch_all(pool).await {
+            for f in file_items {
+                let url = match f.storage_provider.as_str() {
                     "s3" => storage
                         .s3
                         .as_ref()
-                        .map(|s| s.url(&m.storage_key))
-                        .unwrap_or_else(|| format!("/media/{}/file", m.id)),
-                    _ => format!("/media/{}/file", m.id),
+                        .map(|s| s.url(&f.storage_key))
+                        .unwrap_or_else(|| format!("/api/files/{}", f.id)),
+                    _ => format!("/api/files/{}", f.id),
                 };
 
-                media_map.insert(
-                    m.id.clone(),
+                file_map.insert(
+                    f.id.clone(),
                     json!({
-                        "id": m.id,
+                        "id": f.id,
                         "url": url,
-                        "thumbnail_url": m.thumbnail_key.as_ref().map(|_| format!("/media/{}/thumbnail", m.id)),
-                        "filename": m.filename,
-                        "original_name": m.original_name,
-                        "mime_type": m.mime_type,
-                        "size": m.size,
-                        "width": m.width,
-                        "height": m.height,
+                        "thumbnail_url": f.thumbnail_key.as_ref().map(|_| format!("/api/files/{}/thumbnail", f.id)),
+                        "filename": f.filename,
+                        "original_name": f.original_name,
+                        "mime_type": f.mime_type,
+                        "size": f.size,
+                        "width": f.width,
+                        "height": f.height,
                     }),
                 );
             }
@@ -628,6 +624,6 @@ async fn resolve_content_media(
         "created_at": content.created_at,
         "updated_at": content.updated_at,
         "published_at": content.published_at,
-        "_media": media_map,
+        "_files": file_map,
     })
 }
