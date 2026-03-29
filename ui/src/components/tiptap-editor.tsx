@@ -44,6 +44,15 @@ export function TiptapEditor({
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [filePickerOpen, setFilePickerOpen] = useState(false);
 
+  useEffect(() => {
+    if (isFullscreen) {
+      document.body.style.overflow = "hidden";
+      return () => {
+        document.body.style.overflow = "";
+      };
+    }
+  }, [isFullscreen]);
+
   const editor = useEditor({
     extensions: [
       StarterKit,
