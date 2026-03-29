@@ -3,7 +3,7 @@ use sqlx::FromRow;
 use utoipa::ToSchema;
 
 #[derive(Serialize, FromRow, ToSchema)]
-pub struct Media {
+pub struct File {
     pub id: String,
     pub site_id: String,
     pub filename: String,
@@ -21,7 +21,7 @@ pub struct Media {
 }
 
 #[derive(Serialize, ToSchema)]
-pub struct MediaWithUrl {
+pub struct FileWithUrl {
     pub id: String,
     pub site_id: String,
     pub filename: String,
@@ -41,7 +41,7 @@ pub struct MediaWithUrl {
 }
 
 #[derive(Serialize, ToSchema)]
-pub struct MediaReference {
+pub struct FileReference {
     pub content_id: String,
     pub collection_name: String,
     pub field_name: String,
