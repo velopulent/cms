@@ -23,7 +23,7 @@ import {
 } from "lucide-react";
 import { useState } from "react";
 import { createPortal } from "react-dom";
-import { MediaPickerDialog } from "@/components/media-picker-dialog";
+import { FilePickerDialog } from "@/components/file-picker-dialog";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { ImageWithControls } from "@/extensions/image-with-controls";
@@ -43,7 +43,7 @@ export function TiptapEditor({
   siteId,
 }: TiptapEditorProps) {
   const [isFullscreen, setIsFullscreen] = useState(false);
-  const [mediaPickerOpen, setMediaPickerOpen] = useState(false);
+  const [filePickerOpen, setFilePickerOpen] = useState(false);
 
   const editor = useEditor({
     extensions: [
@@ -96,7 +96,7 @@ export function TiptapEditor({
 
   const addImage = () => {
     if (siteId) {
-      setMediaPickerOpen(true);
+      setFilePickerOpen(true);
     } else {
       const url = window.prompt("Enter image URL:");
       if (url) {
@@ -277,11 +277,11 @@ export function TiptapEditor({
       />
 
       {siteId && (
-        <MediaPickerDialog
-          open={mediaPickerOpen}
-          onOpenChange={setMediaPickerOpen}
-          onSelect={(media) => {
-            editor.chain().focus().setImage({ src: media.url }).run();
+        <FilePickerDialog
+          open={filePickerOpen}
+          onOpenChange={setFilePickerOpen}
+          onSelect={(file) => {
+            editor.chain().focus().setImage({ src: file.url }).run();
           }}
           siteId={siteId}
           accept="image/*"
