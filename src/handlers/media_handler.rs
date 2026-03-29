@@ -7,7 +7,7 @@ use axum::{
 };
 use axum_extra::extract::multipart::Multipart;
 use bytes::Bytes;
-use image::{ImageEncoder, ImageReader};
+use image::{DynamicImage, ImageEncoder, ImageReader};
 use serde::Deserialize;
 use serde_json::json;
 use sqlx::SqlitePool;
@@ -93,9 +93,7 @@ fn mime_to_ext(mime: &str) -> &str {
     }
 }
 
-fn generate_thumbnail(image_data: &[u8]) -> Option<(Vec<u8>, String)> {
-    let reader = ImageReader::new(Cursor::new(image_data)).with_guessed_format().ok()?;
-    let img = reader.decode().ok()?;
+fn generate_thumbnail(img: &DynamicImage) -> Option<(Vec<u8>, String)> {
     let thumb = img.resize(200, 200, image::imageops::FilterType::Lanczos3);
     let rgba = thumb.to_rgba8();
     let mut bytes = Vec::new();
@@ -115,7 +113,7 @@ async fn store_file(
     storage: &StorageManager,
     provider: &str,
     key: &str,
-    data: &[u8],
+    data: Bytes,
     content_type: &str,
 ) -> Result<(), Box<dyn std::error::Error>> {
     match provider {
@@ -409,7 +407,7 @@ pub async fn upload_media(
                 width = Some(img.width() as i32);
                 height = Some(img.height() as i32);
 
-                if let Some((thumb_bytes, thumb_mime)) = generate_thumbnail(&file_data) {
+                if let Some((thumb_bytes, thumb_mime)) = generate_thumbnail(&img) {
                     let thumb_key =
                         format!("{}/{}/thumb_{}.avif", site_id, media_id, &media_id[..8]);
                     thumbnail_data = Some((thumb_bytes, thumb_mime));
@@ -419,8 +417,10 @@ pub async fn upload_media(
         }
     }
 
-    // Upload original file
-    if let Err(e) = store_file(&storage, &storage_provider, &storage_key, &file_data, &mime_type).await {
+    let file_size = file_data.len() as i64;
+
+    // Upload original file (file_data is moved, freeing memory after storage)
+    if let Err(e) = store_file(&storage, &storage_provider, &storage_key, file_data, &mime_type).await {
         return (
             StatusCode::INTERNAL_SERVER_ERROR,
             Json(json!({"error": format!("Failed to store file: {}", e)})),
@@ -430,7 +430,7 @@ pub async fn upload_media(
 
     // Upload thumbnail
     if let (Some((thumb_data, thumb_mime)), Some(thumb_key)) = (&thumbnail_data, &thumbnail_key) {
-        let _ = store_file(&storage, &storage_provider, thumb_key, thumb_data, thumb_mime).await;
+        let _ = store_file(&storage, &storage_provider, thumb_key, Bytes::from(thumb_data.clone()), thumb_mime).await;
     }
 
     // Insert media record
@@ -443,7 +443,7 @@ pub async fn upload_media(
     .bind(&filename)
     .bind(&original_name)
     .bind(&mime_type)
-    .bind(file_data.len() as i64)
+    .bind(file_size)
     .bind(&storage_provider)
     .bind(&storage_key)
     .bind(&thumb_key_str)
