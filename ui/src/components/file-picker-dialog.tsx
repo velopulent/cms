@@ -28,18 +28,18 @@ import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
-  deleteMedia,
-  getMedia,
-  getMediaReferences,
-  type Media,
-  type MediaReference,
-  uploadMedia,
+  deleteFile,
+  getFiles,
+  getFileReferences,
+  type FileItem,
+  type FileReference,
+  uploadFile,
 } from "@/lib/api";
 
-interface MediaPickerDialogProps {
+interface FilePickerDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onSelect: (media: Media) => void;
+  onSelect: (file: FileItem) => void;
   siteId: string;
   accept?: string;
 }
@@ -50,27 +50,27 @@ function formatFileSize(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
-export function MediaPickerDialog({
+export function FilePickerDialog({
   open,
   onOpenChange,
   onSelect,
   siteId,
   accept,
-}: MediaPickerDialogProps) {
+}: FilePickerDialogProps) {
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(1);
   const [tab, setTab] = useState("library");
   const [dragOver, setDragOver] = useState(false);
   const [pendingDelete, setPendingDelete] = useState<{
-    media: Media;
-    refs: MediaReference[];
+    file: FileItem;
+    refs: FileReference[];
   } | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const queryClient = useQueryClient();
 
   const { data, isLoading } = useQuery({
-    queryKey: ["media", siteId, page, search],
-    queryFn: () => getMedia(siteId, { page, search: search || undefined }),
+    queryKey: ["files", siteId, page, search],
+    queryFn: () => getFiles(siteId, { page, search: search || undefined }),
     enabled: open,
   });
 
@@ -81,21 +81,21 @@ export function MediaPickerDialog({
     }: {
       file: File;
       provider: "filesystem" | "s3";
-    }) => uploadMedia(siteId, file, provider),
-    onSuccess: (media) => {
-      queryClient.invalidateQueries({ queryKey: ["media", siteId] });
+    }) => uploadFile(siteId, file, provider),
+    onSuccess: (file) => {
+      queryClient.invalidateQueries({ queryKey: ["files", siteId] });
       toast.success("File uploaded");
-      onSelect(media);
+      onSelect(file);
       onOpenChange(false);
     },
     onError: (err: Error) => toast.error(err.message),
   });
 
   const deleteMutation = useMutation({
-    mutationFn: (mediaId: string) => deleteMedia(siteId, mediaId),
+    mutationFn: (fileId: string) => deleteFile(siteId, fileId),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["media", siteId] });
-      toast.success("Media deleted");
+      queryClient.invalidateQueries({ queryKey: ["files", siteId] });
+      toast.success("File deleted");
     },
     onError: (err: Error) => toast.error(err.message),
   });
@@ -112,18 +112,18 @@ export function MediaPickerDialog({
     handleFileSelect(e.dataTransfer.files);
   };
 
-  const handleDelete = async (media: Media) => {
-    const refs = await getMediaReferences(siteId, media.id).catch(() => []);
+  const handleDelete = async (file: FileItem) => {
+    const refs = await getFileReferences(siteId, file.id).catch(() => []);
     if (refs.length > 0) {
-      setPendingDelete({ media, refs });
+      setPendingDelete({ file, refs });
     } else {
-      deleteMutation.mutate(media.id);
+      deleteMutation.mutate(file.id);
     }
   };
 
   const confirmDelete = () => {
     if (pendingDelete) {
-      deleteMutation.mutate(pendingDelete.media.id);
+      deleteMutation.mutate(pendingDelete.file.id);
       setPendingDelete(null);
     }
   };
@@ -133,7 +133,7 @@ export function MediaPickerDialog({
       <Dialog open={open} onOpenChange={onOpenChange}>
         <DialogContent className="flex max-h-[80vh] flex-col sm:max-w-3xl">
           <DialogHeader>
-            <DialogTitle>Media Library</DialogTitle>
+            <DialogTitle>File Library</DialogTitle>
             <DialogDescription>
               Select an existing file or upload a new one.
             </DialogDescription>
@@ -172,19 +172,19 @@ export function MediaPickerDialog({
                   </div>
                 ) : !data?.items.length ? (
                   <div className="flex flex-1 items-center justify-center text-muted-foreground text-sm">
-                    No media files found.
+                    No files found.
                   </div>
                 ) : (
                   <div className="grid grid-cols-3 gap-3 overflow-y-auto sm:grid-cols-4">
-                    {data.items.map((media) => (
-                      <MediaGridItem
-                        key={media.id}
-                        media={media}
+                    {data.items.map((file) => (
+                      <FileGridItem
+                        key={file.id}
+                        file={file}
                         onSelect={() => {
-                          onSelect(media);
+                          onSelect(file);
                           onOpenChange(false);
                         }}
-                        onDelete={() => handleDelete(media)}
+                        onDelete={() => handleDelete(file)}
                       />
                     ))}
                   </div>
@@ -277,9 +277,9 @@ export function MediaPickerDialog({
       >
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Delete media?</AlertDialogTitle>
+            <AlertDialogTitle>Delete file?</AlertDialogTitle>
             <AlertDialogDescription>
-              This media is used in {pendingDelete?.refs.length} content item(s)
+              This file is used in {pendingDelete?.refs.length} content item(s)
               (
               {pendingDelete &&
                 [
@@ -306,16 +306,16 @@ export function MediaPickerDialog({
   );
 }
 
-function MediaGridItem({
-  media,
+function FileGridItem({
+  file,
   onSelect,
   onDelete,
 }: {
-  media: Media;
+  file: FileItem;
   onSelect: () => void;
   onDelete: () => void;
 }) {
-  const isImage = media.mime_type.startsWith("image/");
+  const isImage = file.mime_type.startsWith("image/");
 
   return (
     <button
@@ -331,17 +331,17 @@ function MediaGridItem({
     >
       {isImage ? (
         <img
-          src={media.thumbnail_url || media.url}
-          alt={media.original_name}
+          src={file.thumbnail_url || file.url}
+          alt={file.original_name}
           className="size-full object-cover"
         />
       ) : (
         <div className="flex size-full flex-col items-center justify-center bg-muted p-2">
           <Badge variant="secondary" className="text-xs">
-            {media.mime_type.split("/")[1]?.toUpperCase() || "FILE"}
+            {file.mime_type.split("/")[1]?.toUpperCase() || "FILE"}
           </Badge>
           <p className="mt-1 truncate text-center text-xs text-muted-foreground">
-            {media.original_name}
+            {file.original_name}
           </p>
         </div>
       )}
@@ -359,9 +359,9 @@ function MediaGridItem({
         </Button>
       </div>
       <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/60 to-transparent p-1.5">
-        <p className="truncate text-xs text-white">{media.original_name}</p>
+        <p className="truncate text-xs text-white">{file.original_name}</p>
         <p className="text-[10px] text-white/70">
-          {formatFileSize(media.size)}
+          {formatFileSize(file.size)}
         </p>
       </div>
     </button>
