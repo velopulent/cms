@@ -133,7 +133,7 @@ function SiteSettingsPage() {
                 value={storageProvider}
                 onValueChange={(v) => v && setStorageProvider(v)}
               >
-                <SelectTrigger id="storage-provider" className="max-w-md">
+                <SelectTrigger id="storage-provider" className="w-full max-w-md">
                   {storageProvider === "filesystem" ? (
                     <div className="flex items-center gap-2">
                       <HardDrive className="size-4" />

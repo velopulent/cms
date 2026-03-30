@@ -174,7 +174,7 @@ function CreateSiteDialog({
               value={storageProvider}
               onValueChange={(v) => v && setStorageProvider(v)}
             >
-              <SelectTrigger id="storage-provider">
+              <SelectTrigger id="storage-provider" className={"w-52"}>
                 {storageProvider === "filesystem" ? (
                   <div className="flex items-center gap-2">
                     <HardDrive className="size-4" />
