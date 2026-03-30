@@ -13,7 +13,8 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
-import type { ContentField } from "@/lib/api";
+import { VideoPlayer } from "@/components/video-player";
+import type { ContentField, FileItem } from "@/lib/api";
 
 interface DynamicFormProps {
   fields: ContentField[];
@@ -200,9 +201,7 @@ function FieldInput({
       );
 
     case "media":
-      return (
-        <FileField value={strValue} onChange={onChange} siteId={siteId} />
-      );
+      return <FileField value={strValue} onChange={onChange} siteId={siteId} />;
 
     default:
       return (
@@ -221,46 +220,74 @@ function FileField({
   siteId?: string;
 }) {
   const [pickerOpen, setPickerOpen] = useState(false);
+  const [selectedFileInfo, setSelectedFileInfo] = useState<FileItem | null>(
+    null,
+  );
 
   // value format: "/api/files/<id>" or a full external URL or empty
   const fileIdMatch = value.match(/\/api\/files\/([^/]+)/);
   const fileId = fileIdMatch ? fileIdMatch[1] : null;
-  const isExternalUrl = !fileId && (value.startsWith("http"));
+  const isExternalUrl = !fileId && value.startsWith("http");
+  const isVideo = selectedFileInfo?.mime_type?.startsWith("video/");
 
   return (
     <div className="flex flex-col gap-2">
       {value && (
-        <div className="relative flex items-center gap-3 rounded-lg border p-2">
-          {isExternalUrl && (
-            <img
-              src={value}
-              alt="Selected file"
-              className="h-16 w-16 rounded object-cover"
-            />
-          )}
-          {fileId && (
-            <img
-              src={`/api/files/${fileId}/thumbnail`}
-              alt="Selected file"
-              className="h-16 w-16 rounded object-cover"
-              onError={(e) => {
-                (e.target as HTMLImageElement).style.display = "none";
+        <div className="relative flex flex-col gap-3 rounded-lg border p-2">
+          <div className="flex items-center gap-3">
+            {isExternalUrl && (
+              <img
+                src={value}
+                alt="Selected file"
+                className="h-16 w-16 rounded object-cover"
+              />
+            )}
+            {fileId && isVideo && selectedFileInfo?.thumbnail_url && (
+              <img
+                src={selectedFileInfo.thumbnail_url}
+                alt="Selected file"
+                className="h-16 w-16 rounded object-cover"
+              />
+            )}
+            {fileId && !isVideo && (
+              <img
+                src={`/api/files/${fileId}/thumbnail`}
+                alt="Selected file"
+                className="h-16 w-16 rounded object-cover"
+                onError={(e) => {
+                  (e.target as HTMLImageElement).style.display = "none";
+                }}
+              />
+            )}
+            <div className="flex-1">
+              <Badge variant="secondary" className="text-xs">
+                {fileId ? `File: ${fileId.slice(0, 8)}...` : "File selected"}
+              </Badge>
+              {isVideo && selectedFileInfo?.original_name && (
+                <p className="mt-1 truncate text-xs text-muted-foreground">
+                  {selectedFileInfo.original_name}
+                </p>
+              )}
+            </div>
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              onClick={() => {
+                onChange("");
+                setSelectedFileInfo(null);
               }}
+            >
+              Remove
+            </Button>
+          </div>
+          {isVideo && value && (
+            <VideoPlayer
+              src={value}
+              poster={selectedFileInfo?.thumbnail_url || undefined}
+              className="w-full overflow-hidden rounded"
             />
           )}
-          <div className="flex-1">
-            <Badge variant="secondary" className="text-xs">
-              {fileId ? `File: ${fileId.slice(0, 8)}...` : "File selected"}
-            </Badge>
-          </div>
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            onClick={() => onChange("")}
-          >
-            Remove
-          </Button>
         </div>
       )}
       <Button
@@ -277,6 +304,7 @@ function FileField({
           onOpenChange={setPickerOpen}
           onSelect={(file) => {
             onChange(file.url);
+            setSelectedFileInfo(file);
           }}
           siteId={siteId}
         />
