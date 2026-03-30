@@ -1,11 +1,20 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
+import { HardDrive, Cloud, AlertTriangle } from "lucide-react";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import {
   type ApiKey,
   type ApiKeyResponse,
@@ -24,6 +33,7 @@ function SiteSettingsPage() {
   const { siteId } = Route.useParams();
   const queryClient = useQueryClient();
   const [name, setName] = useState("");
+  const [storageProvider, setStorageProvider] = useState("");
   const [initialized, setInitialized] = useState(false);
 
   const { data: site, isLoading } = useQuery({
@@ -34,12 +44,13 @@ function SiteSettingsPage() {
   useEffect(() => {
     if (site && !initialized) {
       setName(site.name);
+      setStorageProvider(site.default_storage_provider);
       setInitialized(true);
     }
   }, [site, initialized]);
 
   const updateMutation = useMutation({
-    mutationFn: () => updateSite(siteId, { name }),
+    mutationFn: () => updateSite(siteId, { name, default_storage_provider: storageProvider }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["site", siteId] });
       queryClient.invalidateQueries({ queryKey: ["sites"] });
@@ -98,6 +109,55 @@ function SiteSettingsPage() {
                 className="max-w-md"
               />
             </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>File Storage</CardTitle>
+            <CardDescription>
+              Choose where uploaded files will be stored
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="flex flex-col gap-4">
+            <div className="flex flex-col gap-2">
+              <Label htmlFor="storage-provider">Storage Provider</Label>
+              <Select
+                value={storageProvider}
+                onValueChange={(v) => v && setStorageProvider(v)}
+              >
+                <SelectTrigger id="storage-provider" className="max-w-md">
+                  <SelectValue placeholder="Select storage type" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="filesystem">
+                    <div className="flex items-center gap-2">
+                      <HardDrive className="size-4" />
+                      <span>Filesystem</span>
+                    </div>
+                  </SelectItem>
+                  <SelectItem value="s3">
+                    <div className="flex items-center gap-2">
+                      <Cloud className="size-4" />
+                      <span>S3 / Cloud Storage</span>
+                    </div>
+                  </SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            {(name !== site?.name || storageProvider !== site?.default_storage_provider) && (
+              <div className="flex items-start gap-2 rounded-md border border-amber-200 bg-amber-50 p-3">
+                <AlertTriangle className="mt-0.5 size-4 text-amber-600" />
+                <div className="text-sm text-amber-800">
+                  <p className="font-medium">Changing storage will only affect new uploads.</p>
+                  <p className="text-amber-700">
+                    Existing files will stay where they are. Make sure your S3
+                    bucket is properly configured before switching.
+                  </p>
+                </div>
+              </div>
+            )}
           </CardContent>
         </Card>
 
