@@ -86,11 +86,21 @@ pub async fn create_site(
         }
     };
 
+    let storage_provider = payload.default_storage_provider.as_deref().unwrap_or("filesystem");
+    if storage_provider != "filesystem" && storage_provider != "s3" {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(json!({"error": "Invalid storage provider. Must be 'filesystem' or 's3'"})),
+        )
+            .into_response();
+    }
+
     let result = sqlx::query(
-        "INSERT INTO sites (id, name, created_by) VALUES (?, ?, ?)",
+        "INSERT INTO sites (id, name, default_storage_provider, created_by) VALUES (?, ?, ?, ?)",
     )
     .bind(&site_id)
     .bind(&payload.name)
+    .bind(&storage_provider)
     .bind(&auth.user_id)
     .execute(&mut *tx)
     .await;
@@ -129,7 +139,7 @@ pub async fn create_site(
     }
 
     let site = sqlx::query_as::<_, Site>(
-        "SELECT id, name, created_by, created_at, updated_at FROM sites WHERE id = ?",
+        "SELECT id, name, default_storage_provider, created_by, created_at, updated_at FROM sites WHERE id = ?",
     )
     .bind(&site_id)
     .fetch_one(&pool)
@@ -161,7 +171,7 @@ pub async fn get_site(
     }
 
     let result = sqlx::query_as::<_, Site>(
-        "SELECT id, name, created_by, created_at, updated_at FROM sites WHERE id = ?",
+        "SELECT id, name, default_storage_provider, created_by, created_at, updated_at FROM sites WHERE id = ?",
     )
     .bind(&site_id)
     .fetch_one(&pool)
@@ -201,7 +211,7 @@ pub async fn update_site(
     }
 
     let existing = sqlx::query_as::<_, Site>(
-        "SELECT id, name, created_by, created_at, updated_at FROM sites WHERE id = ?",
+        "SELECT id, name, default_storage_provider, created_by, created_at, updated_at FROM sites WHERE id = ?",
     )
     .bind(&site_id)
     .fetch_one(&pool)
@@ -209,11 +219,15 @@ pub async fn update_site(
     .unwrap();
 
     let name = payload.name.unwrap_or(existing.name);
+    let storage_provider = payload.default_storage_provider
+        .filter(|v| v == "filesystem" || v == "s3")
+        .unwrap_or(existing.default_storage_provider);
 
     let result = sqlx::query(
-        "UPDATE sites SET name = ?, updated_at = datetime('now') WHERE id = ?",
+        "UPDATE sites SET name = ?, default_storage_provider = ?, updated_at = datetime('now') WHERE id = ?",
     )
     .bind(&name)
+    .bind(&storage_provider)
     .bind(&site_id)
     .execute(&pool)
     .await;
@@ -221,7 +235,7 @@ pub async fn update_site(
     match result {
         Ok(_) => {
             let site = sqlx::query_as::<_, Site>(
-                "SELECT id, name, created_by, created_at, updated_at FROM sites WHERE id = ?",
+                "SELECT id, name, default_storage_provider, created_by, created_at, updated_at FROM sites WHERE id = ?",
             )
             .bind(&site_id)
             .fetch_one(&pool)
