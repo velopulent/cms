@@ -29,10 +29,10 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   deleteFile,
-  getFiles,
-  getFileReferences,
   type FileItem,
   type FileReference,
+  getFileReferences,
+  getFiles,
   uploadFile,
 } from "@/lib/api";
 
@@ -316,6 +316,7 @@ function FileGridItem({
   onDelete: () => void;
 }) {
   const isImage = file.mime_type.startsWith("image/");
+  const isVideo = file.mime_type.startsWith("video/");
 
   return (
     <button
@@ -332,6 +333,12 @@ function FileGridItem({
       {isImage ? (
         <img
           src={file.thumbnail_url || file.url}
+          alt={file.original_name}
+          className="size-full object-cover"
+        />
+      ) : isVideo && file.thumbnail_url ? (
+        <img
+          src={file.thumbnail_url}
           alt={file.original_name}
           className="size-full object-cover"
         />
@@ -360,9 +367,7 @@ function FileGridItem({
       </div>
       <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/60 to-transparent p-1.5">
         <p className="truncate text-xs text-white">{file.original_name}</p>
-        <p className="text-[10px] text-white/70">
-          {formatFileSize(file.size)}
-        </p>
+        <p className="text-[10px] text-white/70">{formatFileSize(file.size)}</p>
       </div>
     </button>
   );
