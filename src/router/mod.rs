@@ -1,7 +1,8 @@
 use axum::Extension;
+use axum::extract::DefaultBodyLimit;
 use axum::{
-    routing::{delete, get, post, put},
     Router,
+    routing::{delete, get, post, put},
 };
 use sqlx::SqlitePool;
 use tower_http::cors::CorsLayer;
@@ -20,8 +21,8 @@ use crate::handlers::content_handler::{
     update_content,
 };
 use crate::handlers::file_handler::{
-    delete_file_handler, get_file, get_file_references, list_files, restore_file, serve_file,
-    serve_file_thumbnail, upload_file, StorageManager,
+    StorageManager, delete_file_handler, get_file, get_file_references, list_files, restore_file,
+    serve_file, serve_file_thumbnail, upload_file,
 };
 use crate::handlers::site_handler::{
     create_site, delete_site, get_site, invite_member, list_members, list_sites, remove_member,
@@ -213,9 +214,23 @@ pub fn create_router(pool: SqlitePool, config: Config, storage: StorageManager) 
         )
         // Files (site-scoped)
         .route("/api/v1/sites/{site_id}/files", get(list_files))
-        .route("/api/v1/sites/{site_id}/files", post(upload_file).layer(RequestBodyLimitLayer::new(max_upload_bytes)))
+        // Upload route uses a nested router to disable DefaultBodyLimit
+        // before applying RequestBodyLimitLayer (avoids type inference issue
+        // with MethodRouter::layer)
+        .merge(
+            Router::new()
+                .route(
+                    "/api/v1/sites/{site_id}/files",
+                    post(upload_file),
+                )
+                .layer(DefaultBodyLimit::disable())
+                .layer(RequestBodyLimitLayer::new(max_upload_bytes)),
+        )
         .route("/api/v1/sites/{site_id}/files/{id}", get(get_file))
-        .route("/api/v1/sites/{site_id}/files/{id}", delete(delete_file_handler))
+        .route(
+            "/api/v1/sites/{site_id}/files/{id}",
+            delete(delete_file_handler),
+        )
         .route(
             "/api/v1/sites/{site_id}/files/{id}/references",
             get(get_file_references),
