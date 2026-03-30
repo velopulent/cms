@@ -12,6 +12,8 @@ use serde::Deserialize;
 use serde_json::json;
 use sqlx::SqlitePool;
 use std::io::Cursor;
+use tempfile::NamedTempFile;
+use std::io::Write;
 use uuid::Uuid;
 
 use crate::config::Config;
@@ -135,6 +137,46 @@ async fn store_file(
     }
 }
 
+/// Store a file directly from a filesystem path without loading it fully into memory.
+/// For "filesystem" provider this uses a direct path copy.
+/// For "s3" provider this reads the file to Bytes (S3 requires it).
+async fn store_file_from_path(
+    storage: &StorageManager,
+    provider: &str,
+    key: &str,
+    path: &std::path::Path,
+    content_type: &str,
+) -> Result<(), Box<dyn std::error::Error>> {
+    eprintln!(
+        "[store_file_from_path] provider={}, key={}, path={:?}, content_type={}",
+        provider, key, path, content_type
+    );
+    let result = match provider {
+        "filesystem" => {
+            if let Some(fs) = &storage.filesystem {
+                eprintln!("[store_file_from_path] Calling filesystem put_from_path...");
+                fs.put_from_path(path, key, content_type).await
+            } else {
+                Err("Filesystem storage not available".into())
+            }
+        }
+        "s3" => {
+            if let Some(s3) = &storage.s3 {
+                eprintln!("[store_file_from_path] Calling S3 put_from_path...");
+                s3.put_from_path(path, key, content_type).await
+            } else {
+                Err("S3 storage not available".into())
+            }
+        }
+        _ => Err(format!("Unknown storage provider: {}", provider).into()),
+    };
+    match &result {
+        Ok(_) => eprintln!("[store_file_from_path] Success"),
+        Err(e) => eprintln!("[store_file_from_path] Error: {}", e),
+    }
+    result
+}
+
 async fn read_from_storage(
     storage: &StorageManager,
     provider: &str,
@@ -215,9 +257,8 @@ pub async fn list_files(
     let mut query = String::from(
         "SELECT id, site_id, filename, original_name, mime_type, size, storage_provider, storage_key, thumbnail_key, width, height, deleted_at, created_by, created_at FROM files WHERE site_id = ? AND deleted_at IS NULL",
     );
-    let mut count_query = String::from(
-        "SELECT COUNT(*) FROM files WHERE site_id = ? AND deleted_at IS NULL",
-    );
+    let mut count_query =
+        String::from("SELECT COUNT(*) FROM files WHERE site_id = ? AND deleted_at IS NULL");
 
     let mut bindings: Vec<String> = vec![site_id.clone()];
 
@@ -262,7 +303,11 @@ pub async fn list_files(
     for b in &count_bindings {
         count_q = count_q.bind(b);
     }
-    let total: i64 = count_q.fetch_optional(&pool).await.unwrap_or(Some(0)).unwrap_or(0);
+    let total: i64 = count_q
+        .fetch_optional(&pool)
+        .await
+        .unwrap_or(Some(0))
+        .unwrap_or(0);
 
     // Fetch items
     let mut q = sqlx::query_as::<_, File>(&query);
@@ -317,55 +362,117 @@ pub async fn upload_file(
     Extension(config): Extension<Config>,
     mut multipart: Multipart,
 ) -> Response {
+    eprintln!("[upload_file] === Handler invoked ===");
+    eprintln!(
+        "[upload_file] Config max_upload_size_bytes: {} ({}MB)",
+        config.max_upload_size_bytes,
+        config.max_upload_size_bytes / (1024 * 1024)
+    );
+
+    // 1. Auth check — verify the user has editor access to this site
+    eprintln!("[upload_file] Step 1: Checking site access for user={} site={}", auth.user_id, site_id);
     if let Err((status, err)) = check_site_access(&pool, &auth.user_id, &site_id, "editor").await {
+        eprintln!("[upload_file] Access denied: {:?}", err);
         return (status, Json(err)).into_response();
     }
+    eprintln!("[upload_file] Access OK");
 
-    let site_storage = sqlx::query_scalar::<_, String>(
-        "SELECT default_storage_provider FROM sites WHERE id = ?",
-    )
-    .bind(&site_id)
-    .fetch_optional(&pool)
-    .await
-    .unwrap_or(Some("filesystem".into()))
-    .unwrap_or("filesystem".into());
+    // 2. Determine default storage provider for this site
+    eprintln!("[upload_file] Step 2: Resolving storage provider for site={}", site_id);
+    let site_storage =
+        sqlx::query_scalar::<_, String>("SELECT default_storage_provider FROM sites WHERE id = ?")
+            .bind(&site_id)
+            .fetch_optional(&pool)
+            .await
+            .unwrap_or(Some("filesystem".into()))
+            .unwrap_or("filesystem".into());
 
     let mut storage_provider = site_storage;
-    let mut file_data: Option<Bytes> = None;
+    eprintln!("[upload_file] Default storage_provider={}", storage_provider);
+    let mut temp_file: Option<NamedTempFile> = None;
     let mut file_name: Option<String> = None;
     let mut file_content_type: Option<String> = None;
+    let mut file_size: i64 = 0;
 
+    // 3. Parse multipart fields — stream the file to a temp file on disk
+    eprintln!("[upload_file] Step 3: Parsing multipart fields");
     while let Ok(Some(field)) = multipart.next_field().await {
         let name: String = field.name().unwrap_or("").to_string();
+        eprintln!("[upload_file]   Multipart field: name={}", name);
 
         if name == "storage_provider" {
             if let Ok(val) = field.text().await {
+                eprintln!("[upload_file]   storage_provider field value={}", val);
                 if val == "s3" && storage.has_s3() {
                     storage_provider = val;
+                    eprintln!("[upload_file]   Switched to S3 storage");
                 }
             }
         } else if name == "file" {
             file_name = field.file_name().map(String::from);
             file_content_type = field.content_type().map(String::from);
+            eprintln!(
+                "[upload_file]   File field: name={:?}, content_type={:?}",
+                file_name, file_content_type
+            );
 
+            // Create a secure temporary file that auto-deletes on drop
+            let mut tmp = match NamedTempFile::new() {
+                Ok(f) => {
+                    eprintln!(
+                        "[upload_file]   Temp file created: {:?} (persisted={:?})",
+                        f.path(),
+                        f.as_file().metadata().map(|m| m.len()).unwrap_or(0)
+                    );
+                    f
+                }
+                Err(e) => {
+                    eprintln!("[upload_file]   ERROR: Failed to create temp file: {}", e);
+                    return (
+                        StatusCode::INTERNAL_SERVER_ERROR,
+                        Json(json!({"error": format!("Failed to create temp file: {}", e)})),
+                    )
+                        .into_response();
+                }
+            };
+
+            // NOTE: field.chunk() is broken in multer 3.1.0 (see rwf2/multer#67).
+            // Using field.bytes() which works reliably, then writing to temp file.
+            // The temp file still enables efficient store_file_from_path for filesystem storage.
+            let max_bytes = config.max_upload_size_bytes;
+
+            eprintln!("[upload_file]   Reading file via field.bytes() (max={}MB)", max_bytes / (1024 * 1024));
             match field.bytes().await {
                 Ok(bytes) => {
-                    let bytes: bytes::Bytes = bytes;
-                    if bytes.len() > config.max_upload_size_bytes {
+                    eprintln!("[upload_file]   Read {} bytes from multipart field", bytes.len());
+                    if bytes.len() > max_bytes {
+                        eprintln!(
+                            "[upload_file]   PAYLOAD_TOO_LARGE: {} > {}",
+                            bytes.len(), max_bytes
+                        );
                         return (
                             StatusCode::PAYLOAD_TOO_LARGE,
                             Json(json!({
                                 "error": format!(
                                     "File too large. Maximum size is {}MB",
-                                    config.max_upload_size_bytes / (1024 * 1024)
+                                    max_bytes / (1024 * 1024)
                                 )
                             })),
                         )
                             .into_response();
                     }
-                    file_data = Some(bytes);
+                    if let Err(e) = tmp.write_all(&bytes) {
+                        eprintln!("[upload_file]   ERROR: write_all failed: {}", e);
+                        return (
+                            StatusCode::INTERNAL_SERVER_ERROR,
+                            Json(json!({"error": format!("Failed to write temp file: {}", e)})),
+                        )
+                            .into_response();
+                    }
+                    file_size = bytes.len() as i64;
                 }
                 Err(e) => {
+                    eprintln!("[upload_file]   ERROR: field.bytes() failed: {}", e);
                     return (
                         StatusCode::BAD_REQUEST,
                         Json(json!({"error": format!("Failed to read file: {}", e)})),
@@ -373,23 +480,56 @@ pub async fn upload_file(
                         .into_response();
                 }
             }
+
+            // Flush writes to the OS
+            eprintln!("[upload_file]   Flushing temp file...");
+            if let Err(e) = tmp.flush() {
+                eprintln!("[upload_file]   ERROR: flush failed: {}", e);
+                return (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    Json(json!({"error": format!("Failed to flush temp file: {}", e)})),
+                )
+                    .into_response();
+            }
+
+            // Verify the temp file size on disk
+            if let Ok(meta) = std::fs::metadata(tmp.path()) {
+                eprintln!(
+                    "[upload_file]   Temp file on disk: {} bytes at {:?}",
+                    meta.len(),
+                    tmp.path()
+                );
+            }
+
+            temp_file = Some(tmp);
+            eprintln!("[upload_file]   file_size set to {}", file_size);
+        } else {
+            eprintln!("[upload_file]   Skipping unknown field: {}", name);
         }
     }
+    eprintln!("[upload_file] Multipart parsing done");
 
-    let file_data = match file_data {
-        Some(d) => d,
+    // 4. Validate we received a file
+    let tmp = match temp_file {
+        Some(f) => f,
         None => {
+            eprintln!("[upload_file] ERROR: No file field found in multipart");
             return (
                 StatusCode::BAD_REQUEST,
                 Json(json!({"error": "No file provided"})),
             )
-                .into_response()
+                .into_response();
         }
     };
 
     let original_name = file_name.unwrap_or_else(|| "upload".into());
     let content_type = file_content_type.unwrap_or_else(|| "application/octet-stream".into());
+    eprintln!(
+        "[upload_file] original_name={}, content_type={}, size={}",
+        original_name, content_type, file_size
+    );
 
+    // 5. Generate file metadata before storage operations
     let file_id = Uuid::now_v7().to_string();
     let ext = std::path::Path::new(&original_name)
         .extension()
@@ -403,46 +543,115 @@ pub async fn upload_file(
 
     let storage_key = format!("{}/{}/{}", site_id, file_id, filename);
     let mime_type = content_type.clone();
+    eprintln!(
+        "[upload_file] file_id={}, filename={}, storage_key={}",
+        file_id, filename, storage_key
+    );
 
-    // Try to get image dimensions and generate thumbnail
+    // 6. Image processing — read temp file once only for images
     let mut width: Option<i32> = None;
     let mut height: Option<i32> = None;
     let mut thumbnail_data: Option<(Vec<u8>, String)> = None;
     let mut thumbnail_key: Option<String> = None;
 
     if mime_type.starts_with("image/") {
-        if let Ok(reader) = ImageReader::new(Cursor::new(&file_data)).with_guessed_format() {
-            if let Ok(img) = reader.decode() {
-                width = Some(img.width() as i32);
-                height = Some(img.height() as i32);
+        eprintln!("[upload_file] Step 6: Image detected, processing...");
+        // Read the temp file into memory once for image decoding
+        match tokio::fs::read(tmp.path()).await {
+            Ok(img_bytes) => {
+                eprintln!(
+                    "[upload_file]   Read {} bytes from temp file for image processing",
+                    img_bytes.len()
+                );
+                if let Ok(reader) =
+                    ImageReader::new(Cursor::new(&img_bytes)).with_guessed_format()
+                {
+                    if let Ok(img) = reader.decode() {
+                        width = Some(img.width() as i32);
+                        height = Some(img.height() as i32);
+                        eprintln!(
+                            "[upload_file]   Image dimensions: {}x{}",
+                            img.width(),
+                            img.height()
+                        );
 
-                if let Some((thumb_bytes, thumb_mime)) = generate_thumbnail(&img) {
-                    let thumb_key =
-                        format!("{}/{}/thumb_{}.avif", site_id, file_id, &file_id[..8]);
-                    thumbnail_data = Some((thumb_bytes, thumb_mime));
-                    thumbnail_key = Some(thumb_key);
+                        if let Some((thumb_bytes, thumb_mime)) = generate_thumbnail(&img) {
+                            let thumb_key =
+                                format!("{}/{}/thumb_{}.avif", site_id, file_id, &file_id[..8]);
+                            eprintln!(
+                                "[upload_file]   Thumbnail generated: {} bytes, mime={}, key={}",
+                                thumb_bytes.len(),
+                                thumb_mime,
+                                thumb_key
+                            );
+                            thumbnail_data = Some((thumb_bytes, thumb_mime));
+                            thumbnail_key = Some(thumb_key);
+                        } else {
+                            eprintln!("[upload_file]   Thumbnail generation returned None");
+                        }
+                    } else {
+                        eprintln!("[upload_file]   WARNING: Failed to decode image");
+                    }
+                } else {
+                    eprintln!("[upload_file]   WARNING: Failed to guess image format");
                 }
+                // img_bytes is dropped here — memory freed before storage upload
+                eprintln!("[upload_file]   Image bytes freed from memory");
+            }
+            Err(e) => {
+                eprintln!("[upload_file]   WARNING: Failed to read temp file for image processing: {}", e);
             }
         }
+    } else {
+        eprintln!("[upload_file] Step 6: Non-image file ({}), skipping image processing", mime_type);
     }
 
-    let file_size = file_data.len() as i64;
-
-    // Upload original file (file_data is moved, freeing memory after storage)
-    if let Err(e) = store_file(&storage, &storage_provider, &storage_key, file_data, &mime_type).await {
+    // 7. Upload original file from temp file path
+    eprintln!(
+        "[upload_file] Step 7: Storing file with provider={} key={}",
+        storage_provider, storage_key
+    );
+    if let Err(e) = store_file_from_path(
+        &storage,
+        &storage_provider,
+        &storage_key,
+        tmp.path(),
+        &mime_type,
+    )
+    .await
+    {
+        eprintln!("[upload_file]   ERROR: store_file_from_path failed: {}", e);
         return (
             StatusCode::INTERNAL_SERVER_ERROR,
             Json(json!({"error": format!("Failed to store file: {}", e)})),
         )
             .into_response();
     }
+    eprintln!("[upload_file]   File stored successfully");
 
-    // Upload thumbnail
-    if let (Some((thumb_data, thumb_mime)), Some(thumb_key)) = (&thumbnail_data, &thumbnail_key) {
-        let _ = store_file(&storage, &storage_provider, thumb_key, Bytes::from(thumb_data.clone()), thumb_mime).await;
+    // 8. Upload thumbnail (small, already in memory as Vec<u8>)
+    if let (Some((thumb_data, thumb_mime)), Some(thumb_key)) =
+        (&thumbnail_data, &thumbnail_key)
+    {
+        eprintln!(
+            "[upload_file] Step 8: Storing thumbnail key={} ({} bytes)",
+            thumb_key,
+            thumb_data.len()
+        );
+        let _ = store_file(
+            &storage,
+            &storage_provider,
+            thumb_key,
+            Bytes::from(thumb_data.clone()),
+            thumb_mime,
+        )
+        .await;
+    } else {
+        eprintln!("[upload_file] Step 8: No thumbnail to store");
     }
 
-    // Insert file record
+    // 9. Insert file record into database
+    eprintln!("[upload_file] Step 9: Inserting DB record");
     let thumb_key_str = thumbnail_key.clone();
     let result = sqlx::query(
         "INSERT INTO files (id, site_id, filename, original_name, mime_type, size, storage_provider, storage_key, thumbnail_key, width, height, created_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
@@ -462,8 +671,12 @@ pub async fn upload_file(
     .execute(&pool)
     .await;
 
+    // NamedTempFile drops here, cleaning up the temp file automatically
+    eprintln!("[upload_file] Temp file cleaned up (NamedTempFile dropped)");
+
     match result {
         Ok(_) => {
+            eprintln!("[upload_file] DB insert OK, fetching record...");
             let file = sqlx::query_as::<_, File>(
                 "SELECT id, site_id, filename, original_name, mime_type, size, storage_provider, storage_key, thumbnail_key, width, height, deleted_at, created_by, created_at FROM files WHERE id = ?",
             )
@@ -473,10 +686,12 @@ pub async fn upload_file(
             .unwrap();
 
             let with_url = file_to_with_url(&file, &storage);
+            eprintln!("[upload_file] === Upload complete (201 CREATED) ===");
             (StatusCode::CREATED, Json(with_url)).into_response()
         }
         Err(err) => {
-            // Clean up uploaded files on DB error
+            eprintln!("[upload_file] ERROR: DB insert failed: {}", err);
+            // Clean up uploaded files on DB insert failure
             let _ = remove_from_storage(&storage, &storage_provider, &storage_key).await;
             if let Some(ref tk) = thumbnail_key {
                 let _ = remove_from_storage(&storage, &storage_provider, tk).await;
@@ -749,11 +964,8 @@ async fn serve_file_by_key(
             if !use_thumbnail {
                 headers.insert(
                     header::CONTENT_DISPOSITION,
-                    HeaderValue::from_str(&format!(
-                        "inline; filename=\"{}\"",
-                        file.original_name
-                    ))
-                    .unwrap_or(HeaderValue::from_static("inline")),
+                    HeaderValue::from_str(&format!("inline; filename=\"{}\"", file.original_name))
+                        .unwrap_or(HeaderValue::from_static("inline")),
                 );
             } else {
                 headers.insert(
@@ -766,5 +978,3 @@ async fn serve_file_by_key(
         Err(_) => (StatusCode::NOT_FOUND, "File not found in storage").into_response(),
     }
 }
-
-
