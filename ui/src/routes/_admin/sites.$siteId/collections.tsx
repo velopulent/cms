@@ -330,6 +330,7 @@ function SortableFieldItem({
       className="flex items-start gap-2 rounded-lg border p-3"
     >
       <button
+        type="button"
         className="mt-2 cursor-grab text-muted-foreground hover:text-foreground"
         {...attributes}
         {...listeners}
