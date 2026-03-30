@@ -134,7 +134,19 @@ function SiteSettingsPage() {
                 onValueChange={(v) => v && setStorageProvider(v)}
               >
                 <SelectTrigger id="storage-provider" className="max-w-md">
-                  <SelectValue placeholder="Select storage type" />
+                  {storageProvider === "filesystem" ? (
+                    <div className="flex items-center gap-2">
+                      <HardDrive className="size-4" />
+                      <span>Filesystem</span>
+                    </div>
+                  ) : storageProvider === "s3" ? (
+                    <div className="flex items-center gap-2">
+                      <Cloud className="size-4" />
+                      <span>S3 / Cloud Storage</span>
+                    </div>
+                  ) : (
+                    <SelectValue placeholder="Select storage type" />
+                  )}
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="filesystem">
