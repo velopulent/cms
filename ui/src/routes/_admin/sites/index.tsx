@@ -1,9 +1,13 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { createFileRoute, useNavigate, useSearch } from "@tanstack/react-router";
-import { Globe, Plus, HardDrive, Cloud } from "lucide-react";
-import { z } from "zod";
-import { useState, useEffect } from "react";
+import {
+  createFileRoute,
+  useNavigate,
+  useSearch,
+} from "@tanstack/react-router";
+import { Cloud, Globe, HardDrive, Plus } from "lucide-react";
+import { useEffect, useState } from "react";
 import { toast } from "sonner";
+import { z } from "zod";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -86,7 +90,12 @@ function SiteCard({ site }: { site: SiteWithRole }) {
         </div>
       </CardHeader>
       <CardContent className="flex items-center justify-between pt-0">
-        <Badge variant="outline" className={roleColors[site.role as keyof typeof roleColors] || "bg-muted"}>
+        <Badge
+          variant="outline"
+          className={
+            roleColors[site.role as keyof typeof roleColors] || "bg-muted"
+          }
+        >
           {site.role}
         </Badge>
       </CardContent>
@@ -259,10 +268,7 @@ function SitesPage() {
               Manage your sites and their content
             </p>
           </div>
-          <Button
-            onClick={() => setCreateOpen(true)}
-            className="gap-2"
-          >
+          <Button onClick={() => setCreateOpen(true)} className="gap-2">
             <Plus className="size-4" />
             Create Site
           </Button>
@@ -283,10 +289,7 @@ function SitesPage() {
             <p className="mt-1 text-center text-muted-foreground">
               Create your first site to start managing content
             </p>
-            <Button
-              onClick={() => setCreateOpen(true)}
-              className="mt-6 gap-2"
-            >
+            <Button onClick={() => setCreateOpen(true)} className="mt-6 gap-2">
               <Plus className="size-4" />
               Create Site
             </Button>

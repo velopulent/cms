@@ -1,13 +1,18 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
-import { HardDrive, Cloud, AlertTriangle } from "lucide-react";
+import { AlertTriangle, Cloud, HardDrive } from "lucide-react";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Skeleton } from "@/components/ui/skeleton";
 import {
   Select,
   SelectContent,
@@ -15,6 +20,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Skeleton } from "@/components/ui/skeleton";
 import {
   type ApiKey,
   type ApiKeyResponse,
@@ -50,7 +56,8 @@ function SiteSettingsPage() {
   }, [site, initialized]);
 
   const updateMutation = useMutation({
-    mutationFn: () => updateSite(siteId, { name, default_storage_provider: storageProvider }),
+    mutationFn: () =>
+      updateSite(siteId, { name, default_storage_provider: storageProvider }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["site", siteId] });
       queryClient.invalidateQueries({ queryKey: ["sites"] });
@@ -146,11 +153,14 @@ function SiteSettingsPage() {
               </Select>
             </div>
 
-            {(name !== site?.name || storageProvider !== site?.default_storage_provider) && (
+            {(name !== site?.name ||
+              storageProvider !== site?.default_storage_provider) && (
               <div className="flex items-start gap-2 rounded-md border border-amber-200 bg-amber-50 p-3">
                 <AlertTriangle className="mt-0.5 size-4 text-amber-600" />
                 <div className="text-sm text-amber-800">
-                  <p className="font-medium">Changing storage will only affect new uploads.</p>
+                  <p className="font-medium">
+                    Changing storage will only affect new uploads.
+                  </p>
                   <p className="text-amber-700">
                     Existing files will stay where they are. Make sure your S3
                     bucket is properly configured before switching.
