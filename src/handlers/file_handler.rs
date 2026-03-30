@@ -321,7 +321,16 @@ pub async fn upload_file(
         return (status, Json(err)).into_response();
     }
 
-    let mut storage_provider = String::from("filesystem");
+    let site_storage = sqlx::query_scalar::<_, String>(
+        "SELECT default_storage_provider FROM sites WHERE id = ?",
+    )
+    .bind(&site_id)
+    .fetch_optional(&pool)
+    .await
+    .unwrap_or(Some("filesystem".into()))
+    .unwrap_or("filesystem".into());
+
+    let mut storage_provider = site_storage;
     let mut file_data: Option<Bytes> = None;
     let mut file_name: Option<String> = None;
     let mut file_content_type: Option<String> = None;
