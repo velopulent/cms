@@ -33,12 +33,13 @@ import {
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { VideoPlayer } from "@/components/video-player";
 import {
   deleteFile,
-  getFiles,
-  getFileReferences,
   type FileItem,
   type FileReference,
+  getFileReferences,
+  getFiles,
   uploadFile,
 } from "@/lib/api";
 
@@ -288,6 +289,12 @@ function FilesPage() {
                   alt={selectedFile.original_name}
                   className="max-h-64 w-auto rounded-lg object-contain"
                 />
+              ) : selectedFile.mime_type.startsWith("video/") ? (
+                <VideoPlayer
+                  src={selectedFile.url}
+                  poster={selectedFile.thumbnail_url || undefined}
+                  className="w-full overflow-hidden rounded-lg"
+                />
               ) : (
                 <div className="flex h-32 items-center justify-center rounded-lg bg-muted">
                   <Badge variant="secondary">
@@ -419,6 +426,7 @@ function FilesPage() {
 
 function FileCard({ file, onClick }: { file: FileItem; onClick: () => void }) {
   const isImage = file.mime_type.startsWith("image/");
+  const isVideo = file.mime_type.startsWith("video/");
 
   return (
     <button
@@ -435,6 +443,12 @@ function FileCard({ file, onClick }: { file: FileItem; onClick: () => void }) {
       {isImage ? (
         <img
           src={file.thumbnail_url || file.url}
+          alt={file.original_name}
+          className="size-full object-cover"
+        />
+      ) : isVideo && file.thumbnail_url ? (
+        <img
+          src={file.thumbnail_url}
           alt={file.original_name}
           className="size-full object-cover"
         />
