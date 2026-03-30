@@ -6,6 +6,7 @@ use utoipa::ToSchema;
 pub struct Site {
     pub id: String,
     pub name: String,
+    pub default_storage_provider: String,
     pub created_by: String,
     pub created_at: String,
     pub updated_at: String,
@@ -15,6 +16,7 @@ pub struct Site {
 pub struct SiteWithRole {
     pub id: String,
     pub name: String,
+    pub default_storage_provider: String,
     pub created_by: String,
     pub created_at: String,
     pub updated_at: String,
@@ -24,11 +26,13 @@ pub struct SiteWithRole {
 #[derive(Deserialize, ToSchema)]
 pub struct CreateSite {
     pub name: String,
+    pub default_storage_provider: Option<String>,
 }
 
 #[derive(Deserialize, ToSchema)]
 pub struct UpdateSite {
     pub name: Option<String>,
+    pub default_storage_provider: Option<String>,
 }
 
 #[derive(Serialize, FromRow, ToSchema)]
