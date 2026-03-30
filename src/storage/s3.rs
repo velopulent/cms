@@ -63,4 +63,13 @@ impl S3Storage {
             None => format!("/api/files?key={}", key),
         }
     }
+
+    /// Store a file by reading from a filesystem path.
+    /// S3 requires Bytes for upload, so this reads the file into memory internally.
+    pub async fn put_from_path(&self, path: &std::path::Path, key: &str, _content_type: &str) -> Result<(), Box<dyn std::error::Error>> {
+        eprintln!("[S3Storage::put_from_path] Reading file from {:?}", path);
+        let data = tokio::fs::read(path).await?;
+        eprintln!("[S3Storage::put_from_path] Read {} bytes, putting to key={}", data.len(), key);
+        self.put(key, Bytes::from(data), _content_type).await
+    }
 }
