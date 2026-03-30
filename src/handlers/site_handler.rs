@@ -28,7 +28,7 @@ pub async fn list_sites(
     Extension(pool): Extension<SqlitePool>,
 ) -> Response {
     let result = sqlx::query_as::<_, SiteWithRole>(
-        "SELECT s.id, s.name, s.created_by, s.created_at, s.updated_at, sm.role
+        "SELECT s.id, s.name, s.default_storage_provider, s.created_by, s.created_at, s.updated_at, sm.role
          FROM sites s
          JOIN site_members sm ON s.id = sm.site_id
          WHERE sm.user_id = ?
