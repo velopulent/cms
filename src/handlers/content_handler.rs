@@ -44,13 +44,14 @@ pub async fn list_content(
 ) -> Response {
     match &auth {
         AuthContext::Jwt { user_id } => {
-            if let Err((status, err)) =
-                check_site_access(&pool, user_id, &site_id, "viewer").await
+            if let Err((status, err)) = check_site_access(&pool, user_id, &site_id, "viewer").await
             {
                 return (status, Json(err)).into_response();
             }
         }
-        AuthContext::ApiKey { site_id: key_site_id } => {
+        AuthContext::ApiKey {
+            site_id: key_site_id,
+        } => {
             if key_site_id != &site_id {
                 return (
                     StatusCode::FORBIDDEN,
@@ -130,13 +131,14 @@ pub async fn get_content(
 ) -> Response {
     match &auth {
         AuthContext::Jwt { user_id } => {
-            if let Err((status, err)) =
-                check_site_access(&pool, user_id, &site_id, "viewer").await
+            if let Err((status, err)) = check_site_access(&pool, user_id, &site_id, "viewer").await
             {
                 return (status, Json(err)).into_response();
             }
         }
-        AuthContext::ApiKey { site_id: key_site_id } => {
+        AuthContext::ApiKey {
+            site_id: key_site_id,
+        } => {
             if key_site_id != &site_id {
                 return (
                     StatusCode::FORBIDDEN,
@@ -285,14 +287,14 @@ pub async fn update_content(
                 StatusCode::NOT_FOUND,
                 Json(json!({"error": "Content not found"})),
             )
-                .into_response()
+                .into_response();
         }
         Err(err) => {
             return (
                 StatusCode::INTERNAL_SERVER_ERROR,
                 Json(json!({"error": err.to_string()})),
             )
-                .into_response()
+                .into_response();
         }
     };
 

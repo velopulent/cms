@@ -42,10 +42,7 @@ pub fn create_token(
     )
 }
 
-pub fn verify_token(
-    token: &str,
-    jwt_secret: &str,
-) -> Result<Claims, jsonwebtoken::errors::Error> {
+pub fn verify_token(token: &str, jwt_secret: &str) -> Result<Claims, jsonwebtoken::errors::Error> {
     let mut validation = Validation::new(Algorithm::HS256);
     validation.validate_exp = true;
 
@@ -73,10 +70,7 @@ where
 {
     type Rejection = (StatusCode, String);
 
-    async fn from_request_parts(
-        parts: &mut Parts,
-        _state: &S,
-    ) -> Result<Self, Self::Rejection> {
+    async fn from_request_parts(parts: &mut Parts, _state: &S) -> Result<Self, Self::Rejection> {
         let auth_header = parts
             .headers
             .get("Authorization")
@@ -109,10 +103,7 @@ where
 {
     type Rejection = (StatusCode, String);
 
-    async fn from_request_parts(
-        parts: &mut Parts,
-        _state: &S,
-    ) -> Result<Self, Self::Rejection> {
+    async fn from_request_parts(parts: &mut Parts, _state: &S) -> Result<Self, Self::Rejection> {
         let auth_header = parts
             .headers
             .get("Authorization")
@@ -178,12 +169,10 @@ async fn verify_api_key(
         }
 
         // Update last_used_at (fire and forget)
-        let _ = sqlx::query(
-            "UPDATE api_keys SET last_used_at = datetime('now') WHERE id = ?",
-        )
-        .bind(&key_id)
-        .execute(pool)
-        .await;
+        let _ = sqlx::query("UPDATE api_keys SET last_used_at = datetime('now') WHERE id = ?")
+            .bind(&key_id)
+            .execute(pool)
+            .await;
 
         return Ok(AuthContext::ApiKey { site_id });
     }

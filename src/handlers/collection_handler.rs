@@ -9,8 +9,8 @@ use sqlx::SqlitePool;
 use uuid::Uuid;
 
 use crate::middleware::auth::{AuthContext, AuthenticatedUser, check_site_access};
+use crate::models::collection::{Collection, CreateCollection, UpdateCollection};
 use crate::models::content::Content;
-use crate::models::collection::{CreateCollection, Collection, UpdateCollection};
 
 #[utoipa::path(
     get,
@@ -30,13 +30,14 @@ pub async fn list_collections(
 ) -> Response {
     match &auth {
         AuthContext::Jwt { user_id } => {
-            if let Err((status, err)) =
-                check_site_access(&pool, user_id, &site_id, "viewer").await
+            if let Err((status, err)) = check_site_access(&pool, user_id, &site_id, "viewer").await
             {
                 return (status, Json(err)).into_response();
             }
         }
-        AuthContext::ApiKey { site_id: key_site_id } => {
+        AuthContext::ApiKey {
+            site_id: key_site_id,
+        } => {
             if key_site_id != &site_id {
                 return (
                     StatusCode::FORBIDDEN,
@@ -86,13 +87,14 @@ pub async fn get_collection(
 ) -> Response {
     match &auth {
         AuthContext::Jwt { user_id } => {
-            if let Err((status, err)) =
-                check_site_access(&pool, user_id, &site_id, "viewer").await
+            if let Err((status, err)) = check_site_access(&pool, user_id, &site_id, "viewer").await
             {
                 return (status, Json(err)).into_response();
             }
         }
-        AuthContext::ApiKey { site_id: key_site_id } => {
+        AuthContext::ApiKey {
+            site_id: key_site_id,
+        } => {
             if key_site_id != &site_id {
                 return (
                     StatusCode::FORBIDDEN,
@@ -230,14 +232,14 @@ pub async fn update_collection(
                 StatusCode::NOT_FOUND,
                 Json(json!({"error": "Collection not found"})),
             )
-                .into_response()
+                .into_response();
         }
         Err(err) => {
             return (
                 StatusCode::INTERNAL_SERVER_ERROR,
                 Json(json!({"error": err.to_string()})),
             )
-                .into_response()
+                .into_response();
         }
     };
 
@@ -250,10 +252,8 @@ pub async fn update_collection(
         .unwrap_or_else(|| existing.definition.clone());
 
     if let Some(ref new_def_value) = payload.definition {
-        let old_def: Option<serde_json::Value> =
-            serde_json::from_str(&existing.definition).ok();
-        let new_def: Option<serde_json::Value> =
-            serde_json::from_value(new_def_value.clone()).ok();
+        let old_def: Option<serde_json::Value> = serde_json::from_str(&existing.definition).ok();
+        let new_def: Option<serde_json::Value> = serde_json::from_value(new_def_value.clone()).ok();
 
         if let (Some(old_d), Some(new_d)) = (old_def, new_def) {
             let old_fields = old_d["fields"].as_array().cloned().unwrap_or_default();
@@ -272,9 +272,7 @@ pub async fn update_collection(
                     && of.get("required") == nf.get("required")
                     && of.get("options") == nf.get("options")
                 {
-                    if let (Some(on), Some(nn)) =
-                        (of["name"].as_str(), nf["name"].as_str())
-                    {
+                    if let (Some(on), Some(nn)) = (of["name"].as_str(), nf["name"].as_str()) {
                         rename_map.insert(on.to_string(), nn.to_string());
                         used_old[i] = true;
                         used_new[i] = true;
@@ -295,9 +293,7 @@ pub async fn update_collection(
                         && of.get("required") == nf.get("required")
                         && of.get("options") == nf.get("options")
                     {
-                        if let (Some(on), Some(nn)) =
-                            (of["name"].as_str(), nf["name"].as_str())
-                        {
+                        if let (Some(on), Some(nn)) = (of["name"].as_str(), nf["name"].as_str()) {
                             rename_map.insert(on.to_string(), nn.to_string());
                             used_old[i] = true;
                             used_new[j] = true;
@@ -323,10 +319,8 @@ pub async fn update_collection(
                             if let Some(obj) = data.as_object_mut() {
                                 let mut renamed = serde_json::Map::new();
                                 for (key, value) in obj.iter() {
-                                    let new_key = rename_map
-                                        .get(key)
-                                        .cloned()
-                                        .unwrap_or_else(|| key.clone());
+                                    let new_key =
+                                        rename_map.get(key).cloned().unwrap_or_else(|| key.clone());
                                     renamed.insert(new_key, value.clone());
                                 }
                                 let new_data = serde_json::Value::Object(renamed);

@@ -25,7 +25,7 @@ mod storage;
 
 use std::net::SocketAddr;
 
-use bcrypt::{hash, DEFAULT_COST};
+use bcrypt::{DEFAULT_COST, hash};
 use uuid::Uuid;
 
 use config::Config;
@@ -82,18 +82,12 @@ async fn main() {
 
     let app = create_router(pool, config.clone(), storage_manager);
 
-    let addr: SocketAddr = config
-        .bind_address
-        .parse()
-        .expect("Invalid BIND_ADDRESS");
+    let addr: SocketAddr = config.bind_address.parse().expect("Invalid BIND_ADDRESS");
     println!("Server running on {}", addr);
 
-    axum::serve(
-        tokio::net::TcpListener::bind(addr).await.unwrap(),
-        app,
-    )
-    .await
-    .unwrap();
+    axum::serve(tokio::net::TcpListener::bind(addr).await.unwrap(), app)
+        .await
+        .unwrap();
 }
 
 async fn seed_admin(pool: &sqlx::SqlitePool) {

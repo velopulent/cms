@@ -82,11 +82,14 @@ pub async fn create_site(
                 StatusCode::INTERNAL_SERVER_ERROR,
                 Json(json!({"error": e.to_string()})),
             )
-                .into_response()
+                .into_response();
         }
     };
 
-    let storage_provider = payload.default_storage_provider.as_deref().unwrap_or("filesystem");
+    let storage_provider = payload
+        .default_storage_provider
+        .as_deref()
+        .unwrap_or("filesystem");
     if storage_provider != "filesystem" && storage_provider != "s3" {
         return (
             StatusCode::BAD_REQUEST,
@@ -219,7 +222,8 @@ pub async fn update_site(
     .unwrap();
 
     let name = payload.name.unwrap_or(existing.name);
-    let storage_provider = payload.default_storage_provider
+    let storage_provider = payload
+        .default_storage_provider
         .filter(|v| v == "filesystem" || v == "s3")
         .unwrap_or(existing.default_storage_provider);
 
@@ -374,20 +378,19 @@ pub async fn invite_member(
                 StatusCode::NOT_FOUND,
                 Json(json!({"error": "User not found"})),
             )
-                .into_response()
+                .into_response();
         }
     };
 
     let member_id = Uuid::now_v7().to_string();
-    let result = sqlx::query(
-        "INSERT INTO site_members (id, site_id, user_id, role) VALUES (?, ?, ?, ?)",
-    )
-    .bind(&member_id)
-    .bind(&site_id)
-    .bind(&user_id)
-    .bind(&payload.role)
-    .execute(&pool)
-    .await;
+    let result =
+        sqlx::query("INSERT INTO site_members (id, site_id, user_id, role) VALUES (?, ?, ?, ?)")
+            .bind(&member_id)
+            .bind(&site_id)
+            .bind(&user_id)
+            .bind(&payload.role)
+            .execute(&pool)
+            .await;
 
     match result {
         Ok(_) => {
@@ -450,14 +453,12 @@ pub async fn update_member_role(
             .into_response();
     }
 
-    let result = sqlx::query(
-        "UPDATE site_members SET role = ? WHERE site_id = ? AND user_id = ?",
-    )
-    .bind(&payload.role)
-    .bind(&site_id)
-    .bind(&member_user_id)
-    .execute(&pool)
-    .await;
+    let result = sqlx::query("UPDATE site_members SET role = ? WHERE site_id = ? AND user_id = ?")
+        .bind(&payload.role)
+        .bind(&site_id)
+        .bind(&member_user_id)
+        .execute(&pool)
+        .await;
 
     match result {
         Ok(r) if r.rows_affected() == 0 => (

@@ -18,7 +18,12 @@ impl FileSystemStorage {
         })
     }
 
-    pub async fn put(&self, key: &str, data: Bytes, _content_type: &str) -> Result<(), Box<dyn std::error::Error>> {
+    pub async fn put(
+        &self,
+        key: &str,
+        data: Bytes,
+        _content_type: &str,
+    ) -> Result<(), Box<dyn std::error::Error>> {
         let path = ObjectPath::from(key);
         let payload = object_store::PutPayload::from_bytes(data);
         self.store.put(&path, payload).await?;
@@ -40,10 +45,22 @@ impl FileSystemStorage {
 
     /// Store a file by reading directly from a filesystem path.
     /// Avoids loading the entire file into a Bytes allocation.
-    pub async fn put_from_path(&self, path: &std::path::Path, key: &str, _content_type: &str) -> Result<(), Box<dyn std::error::Error>> {
-        eprintln!("[FileSystemStorage::put_from_path] Reading file from {:?}", path);
+    pub async fn put_from_path(
+        &self,
+        path: &std::path::Path,
+        key: &str,
+        _content_type: &str,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        eprintln!(
+            "[FileSystemStorage::put_from_path] Reading file from {:?}",
+            path
+        );
         let data = tokio::fs::read(path).await?;
-        eprintln!("[FileSystemStorage::put_from_path] Read {} bytes, putting to key={}", data.len(), key);
+        eprintln!(
+            "[FileSystemStorage::put_from_path] Read {} bytes, putting to key={}",
+            data.len(),
+            key
+        );
         let object_path = ObjectPath::from(key);
         let payload = object_store::PutPayload::from_bytes(Bytes::from(data));
         self.store.put(&object_path, payload).await?;

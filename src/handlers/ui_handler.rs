@@ -3,8 +3,8 @@ use axum::{
     http::{StatusCode, header},
     response::{IntoResponse, Response},
 };
-use rust_embed::RustEmbed;
 use mime_guess::from_path;
+use rust_embed::RustEmbed;
 
 #[derive(RustEmbed)]
 #[folder = "ui/dist"]

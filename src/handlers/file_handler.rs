@@ -12,8 +12,8 @@ use serde::Deserialize;
 use serde_json::json;
 use sqlx::SqlitePool;
 use std::io::Cursor;
-use tempfile::NamedTempFile;
 use std::io::Write;
+use tempfile::NamedTempFile;
 use uuid::Uuid;
 
 use crate::config::Config;
@@ -370,7 +370,10 @@ pub async fn upload_file(
     );
 
     // 1. Auth check — verify the user has editor access to this site
-    eprintln!("[upload_file] Step 1: Checking site access for user={} site={}", auth.user_id, site_id);
+    eprintln!(
+        "[upload_file] Step 1: Checking site access for user={} site={}",
+        auth.user_id, site_id
+    );
     if let Err((status, err)) = check_site_access(&pool, &auth.user_id, &site_id, "editor").await {
         eprintln!("[upload_file] Access denied: {:?}", err);
         return (status, Json(err)).into_response();
@@ -378,7 +381,10 @@ pub async fn upload_file(
     eprintln!("[upload_file] Access OK");
 
     // 2. Determine default storage provider for this site
-    eprintln!("[upload_file] Step 2: Resolving storage provider for site={}", site_id);
+    eprintln!(
+        "[upload_file] Step 2: Resolving storage provider for site={}",
+        site_id
+    );
     let site_storage =
         sqlx::query_scalar::<_, String>("SELECT default_storage_provider FROM sites WHERE id = ?")
             .bind(&site_id)
@@ -388,7 +394,10 @@ pub async fn upload_file(
             .unwrap_or("filesystem".into());
 
     let mut storage_provider = site_storage;
-    eprintln!("[upload_file] Default storage_provider={}", storage_provider);
+    eprintln!(
+        "[upload_file] Default storage_provider={}",
+        storage_provider
+    );
     let mut temp_file: Option<NamedTempFile> = None;
     let mut file_name: Option<String> = None;
     let mut file_content_type: Option<String> = None;
@@ -441,14 +450,21 @@ pub async fn upload_file(
             // The temp file still enables efficient store_file_from_path for filesystem storage.
             let max_bytes = config.max_upload_size_bytes;
 
-            eprintln!("[upload_file]   Reading file via field.bytes() (max={}MB)", max_bytes / (1024 * 1024));
+            eprintln!(
+                "[upload_file]   Reading file via field.bytes() (max={}MB)",
+                max_bytes / (1024 * 1024)
+            );
             match field.bytes().await {
                 Ok(bytes) => {
-                    eprintln!("[upload_file]   Read {} bytes from multipart field", bytes.len());
+                    eprintln!(
+                        "[upload_file]   Read {} bytes from multipart field",
+                        bytes.len()
+                    );
                     if bytes.len() > max_bytes {
                         eprintln!(
                             "[upload_file]   PAYLOAD_TOO_LARGE: {} > {}",
-                            bytes.len(), max_bytes
+                            bytes.len(),
+                            max_bytes
                         );
                         return (
                             StatusCode::PAYLOAD_TOO_LARGE,
@@ -563,8 +579,7 @@ pub async fn upload_file(
                     "[upload_file]   Read {} bytes from temp file for image processing",
                     img_bytes.len()
                 );
-                if let Ok(reader) =
-                    ImageReader::new(Cursor::new(&img_bytes)).with_guessed_format()
+                if let Ok(reader) = ImageReader::new(Cursor::new(&img_bytes)).with_guessed_format()
                 {
                     if let Ok(img) = reader.decode() {
                         width = Some(img.width() as i32);
@@ -599,11 +614,17 @@ pub async fn upload_file(
                 eprintln!("[upload_file]   Image bytes freed from memory");
             }
             Err(e) => {
-                eprintln!("[upload_file]   WARNING: Failed to read temp file for image processing: {}", e);
+                eprintln!(
+                    "[upload_file]   WARNING: Failed to read temp file for image processing: {}",
+                    e
+                );
             }
         }
     } else {
-        eprintln!("[upload_file] Step 6: Non-image file ({}), skipping image processing", mime_type);
+        eprintln!(
+            "[upload_file] Step 6: Non-image file ({}), skipping image processing",
+            mime_type
+        );
     }
 
     // 7. Upload original file from temp file path
@@ -630,9 +651,7 @@ pub async fn upload_file(
     eprintln!("[upload_file]   File stored successfully");
 
     // 8. Upload thumbnail (small, already in memory as Vec<u8>)
-    if let (Some((thumb_data, thumb_mime)), Some(thumb_key)) =
-        (&thumbnail_data, &thumbnail_key)
-    {
+    if let (Some((thumb_data, thumb_mime)), Some(thumb_key)) = (&thumbnail_data, &thumbnail_key) {
         eprintln!(
             "[upload_file] Step 8: Storing thumbnail key={} ({} bytes)",
             thumb_key,

@@ -1,7 +1,7 @@
 use bytes::Bytes;
-use object_store::{ObjectStore, ObjectStoreExt};
 use object_store::aws::AmazonS3Builder;
 use object_store::path::Path as ObjectPath;
+use object_store::{ObjectStore, ObjectStoreExt};
 use std::sync::Arc;
 
 #[derive(Clone)]
@@ -37,7 +37,12 @@ impl S3Storage {
         })
     }
 
-    pub async fn put(&self, key: &str, data: Bytes, _content_type: &str) -> Result<(), Box<dyn std::error::Error>> {
+    pub async fn put(
+        &self,
+        key: &str,
+        data: Bytes,
+        _content_type: &str,
+    ) -> Result<(), Box<dyn std::error::Error>> {
         let path = ObjectPath::from(key);
         let payload = object_store::PutPayload::from_bytes(data);
         self.store.put(&path, payload).await?;
@@ -66,10 +71,19 @@ impl S3Storage {
 
     /// Store a file by reading from a filesystem path.
     /// S3 requires Bytes for upload, so this reads the file into memory internally.
-    pub async fn put_from_path(&self, path: &std::path::Path, key: &str, _content_type: &str) -> Result<(), Box<dyn std::error::Error>> {
+    pub async fn put_from_path(
+        &self,
+        path: &std::path::Path,
+        key: &str,
+        _content_type: &str,
+    ) -> Result<(), Box<dyn std::error::Error>> {
         eprintln!("[S3Storage::put_from_path] Reading file from {:?}", path);
         let data = tokio::fs::read(path).await?;
-        eprintln!("[S3Storage::put_from_path] Read {} bytes, putting to key={}", data.len(), key);
+        eprintln!(
+            "[S3Storage::put_from_path] Read {} bytes, putting to key={}",
+            data.len(),
+            key
+        );
         self.put(key, Bytes::from(data), _content_type).await
     }
 }

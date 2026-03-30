@@ -26,11 +26,10 @@ pub async fn init_db(database_url: &str) -> SqlitePool {
 /// One-time backfill: scan existing content rows and populate content_file_references.
 /// Idempotent — skips if references already exist.
 async fn backfill_file_references(pool: &SqlitePool) {
-    let has_content: bool =
-        sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM content LIMIT 1)")
-            .fetch_one(pool)
-            .await
-            .unwrap_or(false);
+    let has_content: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM content LIMIT 1)")
+        .fetch_one(pool)
+        .await
+        .unwrap_or(false);
 
     let has_references: bool =
         sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM content_file_references LIMIT 1)")
@@ -42,15 +41,13 @@ async fn backfill_file_references(pool: &SqlitePool) {
         return;
     }
 
-    let file_url_re =
-        Regex::new(r"/api/files/([^/]+)(?:/thumbnail)?").expect("Invalid regex");
+    let file_url_re = Regex::new(r"/api/files/([^/]+)(?:/thumbnail)?").expect("Invalid regex");
 
-    let rows = sqlx::query_as::<_, (String, String, String)>(
-        "SELECT id, site_id, data FROM content",
-    )
-    .fetch_all(pool)
-    .await
-    .unwrap_or_default();
+    let rows =
+        sqlx::query_as::<_, (String, String, String)>("SELECT id, site_id, data FROM content")
+            .fetch_all(pool)
+            .await
+            .unwrap_or_default();
 
     for (content_id, site_id, data_str) in rows {
         let Ok(data) = serde_json::from_str::<serde_json::Value>(&data_str) else {

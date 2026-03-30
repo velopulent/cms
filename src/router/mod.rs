@@ -219,10 +219,7 @@ pub fn create_router(pool: SqlitePool, config: Config, storage: StorageManager) 
         // with MethodRouter::layer)
         .merge(
             Router::new()
-                .route(
-                    "/api/v1/sites/{site_id}/files",
-                    post(upload_file),
-                )
+                .route("/api/v1/sites/{site_id}/files", post(upload_file))
                 .layer(DefaultBodyLimit::disable())
                 .layer(RequestBodyLimitLayer::new(max_upload_bytes)),
         )

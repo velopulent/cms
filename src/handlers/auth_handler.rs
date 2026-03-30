@@ -4,7 +4,7 @@ use axum::{
     http::StatusCode,
     response::{IntoResponse, Response},
 };
-use bcrypt::{hash, verify, DEFAULT_COST};
+use bcrypt::{DEFAULT_COST, hash, verify};
 use serde_json::json;
 use sqlx::SqlitePool;
 use uuid::Uuid;
@@ -43,21 +43,20 @@ pub async fn register(
                 StatusCode::INTERNAL_SERVER_ERROR,
                 Json(json!({"error": format!("Hash error: {}", e)})),
             )
-                .into_response()
+                .into_response();
         }
     };
 
     let id = Uuid::now_v7().to_string();
 
-    let result = sqlx::query(
-        "INSERT INTO users (id, username, email, password_hash) VALUES (?, ?, ?, ?)",
-    )
-    .bind(&id)
-    .bind(&payload.username)
-    .bind(&payload.email)
-    .bind(&password_hash)
-    .execute(&pool)
-    .await;
+    let result =
+        sqlx::query("INSERT INTO users (id, username, email, password_hash) VALUES (?, ?, ?, ?)")
+            .bind(&id)
+            .bind(&payload.username)
+            .bind(&payload.email)
+            .bind(&password_hash)
+            .execute(&pool)
+            .await;
 
     match result {
         Ok(_) => {
@@ -68,7 +67,7 @@ pub async fn register(
                         StatusCode::INTERNAL_SERVER_ERROR,
                         Json(json!({"error": format!("Token error: {}", e)})),
                     )
-                        .into_response()
+                        .into_response();
                 }
             };
 
@@ -127,14 +126,14 @@ pub async fn login(
                 StatusCode::UNAUTHORIZED,
                 Json(json!({"error": "Invalid username or password"})),
             )
-                .into_response()
+                .into_response();
         }
         Err(err) => {
             return (
                 StatusCode::INTERNAL_SERVER_ERROR,
                 Json(json!({"error": err.to_string()})),
             )
-                .into_response()
+                .into_response();
         }
     };
 
@@ -145,7 +144,7 @@ pub async fn login(
                 StatusCode::UNAUTHORIZED,
                 Json(json!({"error": "Invalid username or password"})),
             )
-                .into_response()
+                .into_response();
         }
     }
 
@@ -156,7 +155,7 @@ pub async fn login(
                 StatusCode::INTERNAL_SERVER_ERROR,
                 Json(json!({"error": format!("Token error: {}", e)})),
             )
-                .into_response()
+                .into_response();
         }
     };
 
@@ -184,10 +183,7 @@ pub async fn login(
     security(("bearer" = [])),
     tag = "auth"
 )]
-pub async fn me(
-    auth: AuthenticatedUser,
-    Extension(pool): Extension<SqlitePool>,
-) -> Response {
+pub async fn me(auth: AuthenticatedUser, Extension(pool): Extension<SqlitePool>) -> Response {
     let user = sqlx::query_as::<_, User>(
         "SELECT id, username, email, password_hash, created_at, updated_at FROM users WHERE id = ?",
     )

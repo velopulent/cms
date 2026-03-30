@@ -99,7 +99,7 @@ pub async fn create_api_key(
                 StatusCode::INTERNAL_SERVER_ERROR,
                 Json(json!({"error": format!("Hash error: {}", e)})),
             )
-                .into_response()
+                .into_response();
         }
     };
 
