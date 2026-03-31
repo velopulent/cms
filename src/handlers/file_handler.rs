@@ -95,10 +95,10 @@ fn mime_to_ext(mime: &str) -> &str {
 }
 
 fn generate_thumbnail(img: &DynamicImage) -> Option<(Vec<u8>, String)> {
-    let thumb = img.resize(200, 200, image::imageops::FilterType::Lanczos3);
+    let thumb = img.resize(260, 260, image::imageops::FilterType::Lanczos3);
     let rgba = thumb.to_rgba8();
     let mut bytes = Vec::new();
-    let encoder = image::codecs::avif::AvifEncoder::new_with_speed_quality(&mut bytes, 7, 55);
+    let encoder = image::codecs::avif::AvifEncoder::new_with_speed_quality(&mut bytes, 7, 60);
     encoder
         .write_image(
             rgba.as_raw(),
