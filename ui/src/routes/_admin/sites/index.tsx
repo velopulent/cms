@@ -1,3 +1,4 @@
+import { useForm } from "@tanstack/react-form";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   createFileRoute,
@@ -24,8 +25,13 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import {
+  Field,
+  FieldError,
+  FieldGroup,
+  FieldLabel,
+} from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import {
   Select,
   SelectContent,
@@ -103,6 +109,11 @@ function SiteCard({ site }: { site: SiteWithRole }) {
   );
 }
 
+const createSiteSchema = z.object({
+  name: z.string().min(1, "Site name is required"),
+  storageProvider: z.string(),
+});
+
 function CreateSiteDialog({
   open,
   onOpenChange,
@@ -112,11 +123,15 @@ function CreateSiteDialog({
 }) {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const [name, setName] = useState("");
-  const [storageProvider, setStorageProvider] = useState("filesystem");
 
   const createMutation = useMutation({
-    mutationFn: () =>
+    mutationFn: ({
+      name,
+      storageProvider,
+    }: {
+      name: string;
+      storageProvider: string;
+    }) =>
       createSite({
         name,
         default_storage_provider: storageProvider,
@@ -124,8 +139,7 @@ function CreateSiteDialog({
     onSuccess: (site) => {
       queryClient.invalidateQueries({ queryKey: ["sites"] });
       toast.success("Site created!");
-      setName("");
-      setStorageProvider("filesystem");
+      form.reset();
       onOpenChange(false);
       navigate({
         to: "/sites/$siteId",
@@ -135,18 +149,24 @@ function CreateSiteDialog({
     onError: (err: Error) => toast.error(err.message),
   });
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!name.trim()) return;
-    createMutation.mutate();
-  };
+  const form = useForm({
+    defaultValues: {
+      name: "",
+      storageProvider: "filesystem",
+    },
+    validators: {
+      onSubmit: createSiteSchema,
+    },
+    onSubmit: async ({ value }) => {
+      createMutation.mutate(value);
+    },
+  });
 
   useEffect(() => {
     if (!open) {
-      setName("");
-      setStorageProvider("filesystem");
+      form.reset();
     }
-  }, [open]);
+  }, [open, form]);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -157,63 +177,98 @@ function CreateSiteDialog({
             Set up a new site to organize your content
           </DialogDescription>
         </DialogHeader>
-        <form onSubmit={handleSubmit} className="flex flex-col gap-6">
-          <div className="flex flex-col gap-2">
-            <Label htmlFor="site-name">Site Name</Label>
-            <Input
-              id="site-name"
-              placeholder="e.g. My Portfolio"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            form.handleSubmit();
+          }}
+          className="flex flex-col gap-6"
+        >
+          <FieldGroup>
+            <form.Field
+              name="name"
+              children={(field) => {
+                const isInvalid =
+                  field.state.meta.isTouched && !field.state.meta.isValid;
+                return (
+                  <Field data-invalid={isInvalid}>
+                    <FieldLabel htmlFor={field.name}>Site Name</FieldLabel>
+                    <Input
+                      id={field.name}
+                      name={field.name}
+                      placeholder="e.g. My Portfolio"
+                      value={field.state.value}
+                      onBlur={field.handleBlur}
+                      onChange={(e) => field.handleChange(e.target.value)}
+                      aria-invalid={isInvalid}
+                    />
+                    {isInvalid && (
+                      <FieldError errors={field.state.meta.errors} />
+                    )}
+                  </Field>
+                );
+              }}
             />
-          </div>
-
-          <div className="flex flex-col gap-2">
-            <Label htmlFor="storage-provider">File Storage</Label>
-            <Select
-              value={storageProvider}
-              onValueChange={(v) => v && setStorageProvider(v)}
-            >
-              <SelectTrigger id="storage-provider" className={"w-52"}>
-                {storageProvider === "filesystem" ? (
-                  <div className="flex items-center gap-2">
-                    <HardDrive className="size-4" />
-                    <span>Filesystem</span>
-                  </div>
-                ) : storageProvider === "s3" ? (
-                  <div className="flex items-center gap-2">
-                    <Cloud className="size-4" />
-                    <span>S3 / Cloud Storage</span>
-                  </div>
-                ) : (
-                  <SelectValue placeholder="Select storage type" />
-                )}
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="filesystem">
-                  <div className="flex items-center gap-2">
-                    <HardDrive className="size-4" />
-                    <span>Filesystem</span>
-                    <span className="text-xs text-muted-foreground">
-                      (default)
-                    </span>
-                  </div>
-                </SelectItem>
-                <SelectItem value="s3">
-                  <div className="flex items-center gap-2">
-                    <Cloud className="size-4" />
-                    <span>S3 / Cloud Storage</span>
-                  </div>
-                </SelectItem>
-              </SelectContent>
-            </Select>
-            <p className="text-xs text-muted-foreground">
-              {storageProvider === "s3"
-                ? "Files will be stored in your S3 bucket"
-                : "Files will be stored on the local filesystem"}
-            </p>
-          </div>
-
+            <form.Field
+              name="storageProvider"
+              children={(field) => {
+                return (
+                  <Field>
+                    <FieldLabel htmlFor={field.name}>File Storage</FieldLabel>
+                    <Select
+                      value={field.state.value}
+                      onValueChange={(v) => v && field.handleChange(v)}
+                    >
+                      <SelectTrigger
+                        id={field.name}
+                        className="w-52"
+                        aria-invalid={
+                          field.state.meta.isTouched &&
+                          !field.state.meta.isValid
+                        }
+                      >
+                        {field.state.value === "filesystem" ? (
+                          <div className="flex items-center gap-2">
+                            <HardDrive className="size-4" />
+                            <span>Filesystem</span>
+                          </div>
+                        ) : field.state.value === "s3" ? (
+                          <div className="flex items-center gap-2">
+                            <Cloud className="size-4" />
+                            <span>S3 / Cloud Storage</span>
+                          </div>
+                        ) : (
+                          <SelectValue placeholder="Select storage type" />
+                        )}
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="filesystem">
+                          <div className="flex items-center gap-2">
+                            <HardDrive className="size-4" />
+                            <span>Filesystem</span>
+                            <span className="text-xs text-muted-foreground">
+                              (default)
+                            </span>
+                          </div>
+                        </SelectItem>
+                        <SelectItem value="s3">
+                          <div className="flex items-center gap-2">
+                            <Cloud className="size-4" />
+                            <span>S3 / Cloud Storage</span>
+                          </div>
+                        </SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <p className="text-xs text-muted-foreground">
+                      {field.state.value === "s3"
+                        ? "Files will be stored in your S3 bucket"
+                        : "Files will be stored on the local filesystem"}
+                    </p>
+                  </Field>
+                );
+              }}
+            />
+          </FieldGroup>
           <div className="flex justify-end gap-2">
             <Button
               type="button"
@@ -222,10 +277,7 @@ function CreateSiteDialog({
             >
               Cancel
             </Button>
-            <Button
-              type="submit"
-              disabled={createMutation.isPending || !name.trim()}
-            >
+            <Button type="submit" disabled={createMutation.isPending}>
               {createMutation.isPending ? "Creating..." : "Create Site"}
             </Button>
           </div>
