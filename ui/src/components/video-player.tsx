@@ -16,10 +16,12 @@ export function VideoPlayer({ src, poster, className }: VideoPlayerProps) {
   return (
     <div
       className={className}
-      style={{
-        "--media-object-fit": "cover",
-        "--media-border-radius": "0",
-      } as React.CSSProperties}
+      style={
+        {
+          "--media-object-fit": "cover",
+          "--media-border-radius": "0",
+        } as React.CSSProperties
+      }
     >
       <Player.Provider>
         <VideoSkin>

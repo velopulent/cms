@@ -38,7 +38,7 @@ export function NavCollections({
               <SidebarMenuItem key={item.name}>
                 <SidebarMenuButton
                   isActive={
-                    pathname === item.url || pathname.startsWith(item.url + "/")
+                    pathname === item.url || pathname.startsWith(`${item.url}/`)
                   }
                   render={<Link to={item.url} className="my-0.5" />}
                 >

@@ -231,7 +231,10 @@ export async function getSites() {
   return api<SiteWithRole[]>("/sites");
 }
 
-export async function createSite(data: { name: string; default_storage_provider?: string }) {
+export async function createSite(data: {
+  name: string;
+  default_storage_provider?: string;
+}) {
   return api<Site>("/sites", {
     method: "POST",
     body: JSON.stringify(data),

@@ -61,7 +61,7 @@ export function NavMain({
                       <SidebarMenuSubButton
                         isActive={
                           pathname === subItem.url ||
-                          pathname.startsWith(subItem.url + "/")
+                          pathname.startsWith(`${subItem.url}/`)
                         }
                         render={<Link to={subItem.url} />}
                       >

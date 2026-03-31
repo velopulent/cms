@@ -90,7 +90,10 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
       </SidebarHeader>
       <SidebarContent>
         <NavMain items={navMain} />
-        <NavCollections collections={contentNavItems} isLoading={collectionsLoading} />
+        <NavCollections
+          collections={contentNavItems}
+          isLoading={collectionsLoading}
+        />
       </SidebarContent>
       <SidebarFooter>
         <SidebarMenu>
