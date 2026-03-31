@@ -3,6 +3,13 @@ import { FilePickerDialog } from "@/components/file-picker-dialog";
 import { TiptapEditor } from "@/components/tiptap-editor";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
+import {
+  Field,
+  FieldError,
+  FieldGroup,
+  FieldLabel,
+} from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import {
   Select,
@@ -18,64 +25,76 @@ import type { ContentField, FileItem } from "@/lib/api";
 
 interface DynamicFormProps {
   fields: ContentField[];
-  values: Record<string, unknown>;
-  onChange: (values: Record<string, unknown>) => void;
+  // biome-ignore lint/suspicious/noExplicitAny: TanStack Form instance with complex generics
+  form: any;
+  prefix?: string;
   siteId?: string;
 }
 
 export function DynamicForm({
   fields,
-  values,
-  onChange,
+  form,
+  prefix = "data",
   siteId,
 }: DynamicFormProps) {
-  const updateField = (name: string, value: unknown) => {
-    onChange({ ...values, [name]: value });
-  };
-
   return (
-    <div className="flex flex-col gap-4">
+    <FieldGroup>
       {fields.map((field) => (
         <DynamicField
           key={field.name}
           field={field}
-          value={values[field.name]}
-          onChange={(val) => updateField(field.name, val)}
+          form={form}
+          prefix={prefix}
           siteId={siteId}
         />
       ))}
-    </div>
+    </FieldGroup>
   );
 }
 
 function DynamicField({
   field,
-  value,
-  onChange,
+  form,
+  prefix,
   siteId,
 }: {
   field: ContentField;
-  value: unknown;
-  onChange: (val: unknown) => void;
+  form: DynamicFormProps["form"];
+  prefix: string;
   siteId?: string;
 }) {
+  const fieldName = `${prefix}.${field.name}`;
   const label = field.name
     .replace(/_/g, " ")
     .replace(/\b\w/g, (c) => c.toUpperCase());
 
   return (
-    <div className="flex flex-col gap-2">
-      <p className="text-sm font-medium">
-        {label}
-        {field.required && <span className="ml-1 text-destructive">*</span>}
-      </p>
-      <FieldInput
-        field={field}
-        value={value}
-        onChange={onChange}
-        siteId={siteId}
-      />
-    </div>
+    <form.Field
+      name={fieldName}
+      children={(f: any) => {
+        const isInvalid = f.state.meta.isTouched && !f.state.meta.isValid;
+        return (
+          <Field data-invalid={isInvalid}>
+            <FieldLabel htmlFor={fieldName}>
+              {label}
+              {field.required && (
+                <span className="ml-1 text-destructive">*</span>
+              )}
+            </FieldLabel>
+            <FieldInput
+              field={field}
+              value={f.state.value}
+              onChange={f.handleChange}
+              onBlur={f.handleBlur}
+              isInvalid={isInvalid}
+              siteId={siteId}
+              fieldName={fieldName}
+            />
+            {isInvalid && <FieldError errors={f.state.meta.errors} />}
+          </Field>
+        );
+      }}
+    />
   );
 }
 
@@ -83,12 +102,18 @@ function FieldInput({
   field,
   value,
   onChange,
+  onBlur,
+  isInvalid,
   siteId,
+  fieldName,
 }: {
   field: ContentField;
   value: unknown;
   onChange: (val: unknown) => void;
+  onBlur: () => void;
+  isInvalid: boolean;
   siteId?: string;
+  fieldName: string;
 }) {
   const strValue = typeof value === "string" ? value : "";
   const numValue = typeof value === "number" ? value : 0;
@@ -98,19 +123,23 @@ function FieldInput({
     case "text":
       return (
         <Input
-          placeholder={field.name}
+          id={fieldName}
           value={strValue}
+          onBlur={onBlur}
           onChange={(e) => onChange(e.target.value)}
+          aria-invalid={isInvalid}
         />
       );
 
     case "textarea":
       return (
         <Textarea
-          placeholder={field.name}
+          id={fieldName}
           value={strValue}
+          onBlur={onBlur}
           onChange={(e) => onChange(e.target.value)}
           rows={4}
+          aria-invalid={isInvalid}
         />
       );
 
@@ -127,48 +156,54 @@ function FieldInput({
     case "number":
       return (
         <Input
+          id={fieldName}
           type="number"
           value={numValue}
+          onBlur={onBlur}
           onChange={(e) => onChange(Number(e.target.value) || 0)}
+          aria-invalid={isInvalid}
         />
       );
 
     case "boolean":
       return (
-        <label className="flex items-center gap-2 text-sm">
-          <input
-            type="checkbox"
+        <Field orientation="horizontal">
+          <Checkbox
+            id={fieldName}
             checked={boolValue}
-            onChange={(e) => onChange(e.target.checked)}
+            onCheckedChange={(checked) => onChange(!!checked)}
+            aria-invalid={isInvalid}
           />
-          Enabled
-        </label>
+          <FieldLabel htmlFor={fieldName} className="font-normal">
+            Enabled
+          </FieldLabel>
+        </Field>
       );
 
     case "date":
       return (
         <Input
+          id={fieldName}
           type="date"
           value={strValue}
+          onBlur={onBlur}
           onChange={(e) => onChange(e.target.value)}
+          aria-invalid={isInvalid}
         />
       );
 
     case "select":
       return (
         <Select
-          items={[
-            { label: `Select ${field.name}`, value: null },
-            ...(field.options ?? []).map((opt) => ({
-              label: opt,
-              value: opt,
-            })),
-          ]}
           value={strValue}
           onValueChange={(val) => onChange(val as string)}
         >
-          <SelectTrigger>
-            <SelectValue />
+          <SelectTrigger
+            id={fieldName}
+            aria-invalid={isInvalid}
+            className="w-full"
+          >
+            <SelectValue placeholder={`Select ${field.name}`} />
           </SelectTrigger>
           <SelectContent>
             <SelectGroup>
@@ -186,9 +221,12 @@ function FieldInput({
       return (
         <div className="flex flex-col gap-2">
           <Input
+            id={fieldName}
             placeholder="Image URL"
             value={strValue}
+            onBlur={onBlur}
             onChange={(e) => onChange(e.target.value)}
+            aria-invalid={isInvalid}
           />
           {strValue && (
             <img
@@ -201,11 +239,24 @@ function FieldInput({
       );
 
     case "media":
-      return <FileField value={strValue} onChange={onChange} siteId={siteId} />;
+      return (
+        <FileField
+          value={strValue}
+          onChange={onChange}
+          siteId={siteId}
+          isInvalid={isInvalid}
+        />
+      );
 
     default:
       return (
-        <Input value={strValue} onChange={(e) => onChange(e.target.value)} />
+        <Input
+          id={fieldName}
+          value={strValue}
+          onBlur={onBlur}
+          onChange={(e) => onChange(e.target.value)}
+          aria-invalid={isInvalid}
+        />
       );
   }
 }
@@ -214,17 +265,18 @@ function FileField({
   value,
   onChange,
   siteId,
+  isInvalid,
 }: {
   value: string;
   onChange: (val: unknown) => void;
   siteId?: string;
+  isInvalid: boolean;
 }) {
   const [pickerOpen, setPickerOpen] = useState(false);
   const [selectedFileInfo, setSelectedFileInfo] = useState<FileItem | null>(
     null,
   );
 
-  // value format: "/api/files/<id>" or a full external URL or empty
   const fileIdMatch = value.match(/\/api\/files\/([^/]+)/);
   const fileId = fileIdMatch ? fileIdMatch[1] : null;
   const isExternalUrl = !fileId && value.startsWith("http");
@@ -295,6 +347,7 @@ function FileField({
         variant="outline"
         onClick={() => setPickerOpen(true)}
         disabled={!siteId}
+        aria-invalid={isInvalid}
       >
         {value ? "Change File" : "Select File"}
       </Button>
