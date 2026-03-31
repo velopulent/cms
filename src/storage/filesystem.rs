@@ -2,11 +2,13 @@ use bytes::Bytes;
 use object_store::ObjectStoreExt;
 use object_store::local::LocalFileSystem;
 use object_store::path::Path as ObjectPath;
+use std::path::Path;
 use std::sync::Arc;
 
 #[derive(Clone)]
 pub struct FileSystemStorage {
     store: Arc<LocalFileSystem>,
+    root_path: String,
 }
 
 impl FileSystemStorage {
@@ -15,6 +17,7 @@ impl FileSystemStorage {
         let store = LocalFileSystem::new_with_prefix(root_path)?;
         Ok(Self {
             store: Arc::new(store),
+            root_path: root_path.to_string(),
         })
     }
 
@@ -40,7 +43,12 @@ impl FileSystemStorage {
     pub async fn delete(&self, key: &str) -> Result<(), Box<dyn std::error::Error>> {
         let path = ObjectPath::from(key);
         self.store.delete(&path).await?;
+
+        // Clean up empty parent directory (the f_{file_id} level)
+        if let Some(parent) = Path::new(key).parent() {
+            let _ = std::fs::remove_dir(Path::new(&self.root_path).join(parent));
+        }
+
         Ok(())
     }
-
 }

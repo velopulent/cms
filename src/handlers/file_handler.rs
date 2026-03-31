@@ -413,7 +413,7 @@ pub async fn upload_file(
         format!("{}.{}", &file_id[..8], ext)
     };
 
-    let storage_key = format!("{}/{}/{}", site_id, file_id, filename);
+    let storage_key = format!("s_{}/f_{}/{}", site_id, file_id, filename);
     let mime_type = content_type.clone();
 
     let mut width: Option<i32> = None;
@@ -429,7 +429,7 @@ pub async fn upload_file(
 
                 if let Some((thumb_bytes, thumb_mime)) = generate_thumbnail(&img) {
                     let thumb_key =
-                        format!("{}/{}/thumb_{}.avif", site_id, file_id, &file_id[..8]);
+                        format!("s_{}/f_{}/thumb_{}.avif", site_id, file_id, &file_id[..8]);
                     thumbnail_data = Some((thumb_bytes, thumb_mime));
                     thumbnail_key = Some(thumb_key);
                 }
