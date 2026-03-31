@@ -15,14 +15,23 @@ import {
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
+import { useForm } from "@tanstack/react-form";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
 import { GripVertical, Layers, Pencil, Plus, Trash2 } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
+import { z } from "zod";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import { Checkbox } from "@/components/ui/checkbox";
+import {
+  Field,
+  FieldError,
+  FieldGroup,
+  FieldLabel,
+} from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import {
   Select,
@@ -300,12 +309,13 @@ function CollectionsPage() {
 function SortableFieldItem({
   field,
   index,
-  updateField,
+  form,
   removeField,
 }: {
   field: ContentFieldWithId;
   index: number;
-  updateField: (index: number, updates: Partial<ContentField>) => void;
+  // biome-ignore lint/suspicious/noExplicitAny: TanStack Form instance with complex generics
+  form: any;
   removeField: (index: number) => void;
 }) {
   const {
@@ -342,7 +352,9 @@ function SortableFieldItem({
           <Input
             placeholder="Field name"
             value={field.name}
-            onChange={(e) => updateField(index, { name: e.target.value })}
+            onChange={(e) =>
+              form.setFieldValue(`fields[${index}].name`, e.target.value)
+            }
             className="flex-1"
           />
           <Select
@@ -353,7 +365,9 @@ function SortableFieldItem({
               })),
             ]}
             value={field.type}
-            onValueChange={(val) => updateField(index, { type: val as string })}
+            onValueChange={(val) =>
+              form.setFieldValue(`fields[${index}].type`, val as string)
+            }
           >
             <SelectTrigger className="w-[160px]">
               <SelectValue />
@@ -369,15 +383,21 @@ function SortableFieldItem({
             </SelectContent>
           </Select>
         </div>
-        <label className="flex items-center gap-2 text-xs text-muted-foreground">
-          <input
-            type="checkbox"
+        <Field orientation="horizontal">
+          <Checkbox
             id={`required-${field._id}`}
             checked={field.required ?? false}
-            onChange={(e) => updateField(index, { required: e.target.checked })}
+            onCheckedChange={(checked) =>
+              form.setFieldValue(`fields[${index}].required`, !!checked)
+            }
           />
-          Required
-        </label>
+          <FieldLabel
+            htmlFor={`required-${field._id}`}
+            className="font-normal text-xs text-muted-foreground"
+          >
+            Required
+          </FieldLabel>
+        </Field>
       </div>
       <Button
         type="button"
@@ -393,6 +413,25 @@ function SortableFieldItem({
 
 // --- Collection Form ---
 
+const collectionFieldSchema = z.object({
+  name: z.string().min(1, "Field name is required"),
+  type: z.string(),
+  required: z.boolean().optional(),
+  _id: z.string(),
+});
+
+const collectionFormSchema = z.object({
+  name: z.string().min(1, "Collection name is required"),
+  slug: z.string().min(1, "Slug is required"),
+  fields: z.array(collectionFieldSchema),
+});
+
+type CollectionFormValues = {
+  name: string;
+  slug: string;
+  fields: ContentFieldWithId[];
+};
+
 function CollectionForm({
   initialData,
   onSubmit,
@@ -404,9 +443,9 @@ function CollectionForm({
     definition: SchemaDefinition;
   }) => void;
 }) {
-  const [name, setName] = useState(initialData?.name ?? "");
-  const [slug, setSlug] = useState(initialData?.slug ?? "");
-  const [fields, setFields] = useState<ContentFieldWithId[]>(() => {
+  const [slugManuallyEdited, setSlugManuallyEdited] = useState(!!initialData);
+
+  const initialFields: ContentFieldWithId[] = (() => {
     if (initialData) {
       try {
         const def: SchemaDefinition = JSON.parse(initialData.definition);
@@ -419,9 +458,28 @@ function CollectionForm({
       }
     }
     return [];
-  });
+  })();
 
-  const [slugManuallyEdited, setSlugManuallyEdited] = useState(!!initialData);
+  const form = useForm({
+    defaultValues: {
+      name: initialData?.name ?? "",
+      slug: initialData?.slug ?? "",
+      fields: initialFields,
+    } as CollectionFormValues,
+    validators: {
+      onSubmit: collectionFormSchema,
+    },
+    onSubmit: async ({ value }) => {
+      const cleanFields: ContentField[] = value.fields.map(
+        ({ _id, ...rest }) => rest,
+      );
+      onSubmit({
+        name: value.name,
+        slug: value.slug,
+        definition: { fields: cleanFields },
+      });
+    },
+  });
 
   const sensors = useSensors(
     useSensor(PointerSensor, {
@@ -434,53 +492,32 @@ function CollectionForm({
     }),
   );
 
-  const handleNameChange = (value: string) => {
-    setName(value);
-    if (!slugManuallyEdited) {
-      setSlug(slugify(value));
+  const handleDragEnd = (event: DragEndEvent) => {
+    const { active, over } = event;
+    if (over && active.id !== over.id) {
+      const currentFields = form.getFieldValue("fields");
+      const oldIndex = currentFields.findIndex((f) => f._id === active.id);
+      const newIndex = currentFields.findIndex((f) => f._id === over.id);
+      if (oldIndex !== -1 && newIndex !== -1) {
+        form.setFieldValue(
+          "fields",
+          arrayMove(currentFields, oldIndex, newIndex),
+        );
+      }
     }
   };
 
   const addField = () => {
-    setFields([
-      ...fields,
-      {
-        name: "",
-        type: "text",
-        required: false,
-        _id: `new-${Date.now()}-${fields.length}`,
-      },
-    ]);
+    form.pushFieldValue("fields", {
+      name: "",
+      type: "text",
+      required: false,
+      _id: `new-${Date.now()}-${form.getFieldValue("fields").length}`,
+    });
   };
 
   const removeField = (index: number) => {
-    setFields(fields.filter((_, i) => i !== index));
-  };
-
-  const updateField = (index: number, updates: Partial<ContentField>) => {
-    setFields(fields.map((f, i) => (i === index ? { ...f, ...updates } : f)));
-  };
-
-  const handleDragEnd = (event: DragEndEvent) => {
-    const { active, over } = event;
-    if (over && active.id !== over.id) {
-      setFields((items) => {
-        const oldIndex = items.findIndex((i) => i._id === active.id);
-        const newIndex = items.findIndex((i) => i._id === over.id);
-        return arrayMove(items, oldIndex, newIndex);
-      });
-    }
-  };
-
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!name.trim() || !slug.trim()) return;
-    const cleanFields: ContentField[] = fields.map(({ _id, ...rest }) => rest);
-    onSubmit({
-      name,
-      slug,
-      definition: { fields: cleanFields },
-    });
+    form.removeFieldValue("fields", index);
   };
 
   const formId = initialData
@@ -490,71 +527,114 @@ function CollectionForm({
   return (
     <form
       id={formId}
-      onSubmit={handleSubmit}
+      onSubmit={(e) => {
+        e.preventDefault();
+        form.handleSubmit();
+      }}
       className="flex flex-col gap-4 pb-4"
     >
-      <div className="flex flex-col gap-2">
-        <label htmlFor="collection-name" className="text-sm font-medium">
-          Name
-        </label>
-        <Input
-          id="collection-name"
-          placeholder="e.g. Blog Post"
-          value={name}
-          onChange={(e) => handleNameChange(e.target.value)}
-        />
-      </div>
-      <div className="flex flex-col gap-2">
-        <label htmlFor="collection-slug" className="text-sm font-medium">
-          Slug
-        </label>
-        <Input
-          id="collection-slug"
-          placeholder="e.g. blog-post"
-          value={slug}
-          onChange={(e) => {
-            setSlug(e.target.value);
-            setSlugManuallyEdited(true);
+      <FieldGroup>
+        <form.Field
+          name="name"
+          children={(field) => {
+            const isInvalid =
+              field.state.meta.isTouched && !field.state.meta.isValid;
+            return (
+              <Field data-invalid={isInvalid}>
+                <FieldLabel htmlFor={field.name}>Name</FieldLabel>
+                <Input
+                  id={field.name}
+                  placeholder="e.g. Blog Post"
+                  value={field.state.value}
+                  onBlur={field.handleBlur}
+                  onChange={(e) => {
+                    field.handleChange(e.target.value);
+                    if (!slugManuallyEdited) {
+                      form.setFieldValue("slug", slugify(e.target.value));
+                    }
+                  }}
+                  aria-invalid={isInvalid}
+                />
+                {isInvalid && <FieldError errors={field.state.meta.errors} />}
+              </Field>
+            );
           }}
         />
-      </div>
-
-      <div className="flex flex-col gap-2">
-        <div className="flex items-center justify-between">
-          <p className="text-sm font-medium">Fields</p>
-          <Button type="button" variant="outline" size="sm" onClick={addField}>
-            <Plus data-icon="inline-start" />
-            Add Field
-          </Button>
-        </div>
-        {fields.length === 0 && (
-          <p className="text-sm text-muted-foreground">
-            No fields defined. Add at least one field.
-          </p>
-        )}
-        <DndContext
-          sensors={sensors}
-          collisionDetection={closestCenter}
-          onDragEnd={handleDragEnd}
-        >
-          <SortableContext
-            items={fields.map((f) => f._id)}
-            strategy={verticalListSortingStrategy}
-          >
-            <div className="flex flex-col gap-3">
-              {fields.map((field, index) => (
-                <SortableFieldItem
-                  key={field._id}
-                  field={field}
-                  index={index}
-                  updateField={updateField}
-                  removeField={removeField}
+        <form.Field
+          name="slug"
+          children={(field) => {
+            const isInvalid =
+              field.state.meta.isTouched && !field.state.meta.isValid;
+            return (
+              <Field data-invalid={isInvalid}>
+                <FieldLabel htmlFor={field.name}>Slug</FieldLabel>
+                <Input
+                  id={field.name}
+                  placeholder="e.g. blog-post"
+                  value={field.state.value}
+                  onBlur={field.handleBlur}
+                  onChange={(e) => {
+                    field.handleChange(e.target.value);
+                    setSlugManuallyEdited(true);
+                  }}
+                  aria-invalid={isInvalid}
                 />
-              ))}
+                {isInvalid && <FieldError errors={field.state.meta.errors} />}
+              </Field>
+            );
+          }}
+        />
+      </FieldGroup>
+
+      <form.Field
+        name="fields"
+        children={(arrayField) => {
+          const fields = arrayField.state.value;
+          return (
+            <div className="flex flex-col gap-2">
+              <div className="flex items-center justify-between">
+                <p className="text-sm font-medium">Fields</p>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={addField}
+                >
+                  <Plus data-icon="inline-start" />
+                  Add Field
+                </Button>
+              </div>
+              {fields.length === 0 && (
+                <p className="text-sm text-muted-foreground">
+                  No fields defined. Add at least one field.
+                </p>
+              )}
+              <DndContext
+                sensors={sensors}
+                collisionDetection={closestCenter}
+                onDragEnd={handleDragEnd}
+              >
+                <SortableContext
+                  items={fields.map((f) => f._id)}
+                  strategy={verticalListSortingStrategy}
+                >
+                  <div className="flex flex-col gap-3">
+                    {fields.map((field, index) => (
+                      <SortableFieldItem
+                        key={field._id}
+                        field={field}
+                        index={index}
+                        form={form}
+                        removeField={removeField}
+                      />
+                    ))}
+                  </div>
+                </SortableContext>
+              </DndContext>
             </div>
-          </SortableContext>
-        </DndContext>
-      </div>
+          );
+        }}
+      />
     </form>
   );
 }
