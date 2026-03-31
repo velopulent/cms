@@ -1,12 +1,20 @@
+import { useForm } from "@tanstack/react-form";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { ArrowLeft } from "lucide-react";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
+import { z } from "zod";
 import { DynamicForm } from "@/components/dynamic-form";
 import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Field,
+  FieldError,
+  FieldGroup,
+  FieldLabel,
+} from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
@@ -15,6 +23,27 @@ import {
   type SchemaDefinition,
   updateContent,
 } from "@/lib/api";
+
+function buildDataSchema(schema: SchemaDefinition) {
+  const shape: Record<string, z.ZodTypeAny> = {};
+  for (const f of schema.fields) {
+    switch (f.type) {
+      case "number":
+        shape[f.name] = f.required
+          ? z.number({ error: `${f.name} is required` })
+          : z.number().optional();
+        break;
+      case "boolean":
+        shape[f.name] = z.boolean().optional();
+        break;
+      default:
+        shape[f.name] = f.required
+          ? z.string().min(1, `${f.name.replace(/_/g, " ")} is required`)
+          : z.string().optional();
+    }
+  }
+  return z.object(shape);
+}
 
 export const Route = createFileRoute(
   "/_admin/sites/$siteId/content/$collectionSlug/$id/edit",
@@ -26,8 +55,6 @@ function EditContentPage() {
   const { siteId, collectionSlug, id } = Route.useParams();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const [data, setData] = useState<Record<string, unknown>>({});
-  const [slug, setSlug] = useState("");
   const [initialized, setInitialized] = useState(false);
 
   const { data: collection, isLoading: collectionLoading } = useQuery({
@@ -41,24 +68,44 @@ function EditContentPage() {
     enabled: !!id,
   });
 
-  useEffect(() => {
-    if (content && !initialized) {
-      const parsedData =
-        typeof content.data === "string"
-          ? JSON.parse(content.data)
-          : content.data;
-      setData(parsedData as Record<string, unknown>);
-      setSlug(content.slug);
-      setInitialized(true);
+  let collectionDef: SchemaDefinition | null = null;
+  if (collection) {
+    try {
+      collectionDef = JSON.parse(collection.definition);
+    } catch {
+      // invalid collection
     }
-  }, [content, initialized]);
+  }
+
+  const contentSchema = z.object({
+    data: collectionDef ? buildDataSchema(collectionDef) : z.object({}),
+    slug: z.string().min(1, "Slug is required"),
+  });
+
+  const form = useForm({
+    defaultValues: {
+      data: {} as Record<string, unknown>,
+      slug: "",
+    },
+    validators: {
+      onSubmit: contentSchema,
+    },
+    onSubmit: async ({ value }) => {
+      updateMutation.mutate({
+        data: value.data,
+        slug: value.slug,
+      });
+    },
+  });
 
   const updateMutation = useMutation({
-    mutationFn: () =>
-      updateContent(siteId, id, {
-        data,
-        slug,
-      }),
+    mutationFn: ({
+      data,
+      slug,
+    }: {
+      data: Record<string, unknown>;
+      slug: string;
+    }) => updateContent(siteId, id, { data, slug }),
     onSuccess: () => {
       queryClient.invalidateQueries({
         queryKey: ["content", siteId, id],
@@ -72,20 +119,17 @@ function EditContentPage() {
     onError: (err: Error) => toast.error(err.message),
   });
 
-  let collectionDef: SchemaDefinition | null = null;
-  if (collection) {
-    try {
-      collectionDef = JSON.parse(collection.definition);
-    } catch {
-      // invalid collection
+  useEffect(() => {
+    if (content && !initialized) {
+      const parsedData =
+        typeof content.data === "string"
+          ? JSON.parse(content.data)
+          : content.data;
+      form.setFieldValue("data", parsedData as Record<string, unknown>);
+      form.setFieldValue("slug", content.slug);
+      setInitialized(true);
     }
-  }
-
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!slug.trim()) return;
-    updateMutation.mutate();
-  };
+  }, [content, initialized, form]);
 
   const isLoading = collectionLoading || contentLoading;
 
@@ -131,7 +175,13 @@ function EditContentPage() {
         </div>
       </div>
 
-      <form onSubmit={handleSubmit} className="flex flex-col gap-6">
+      <form
+        onSubmit={(e) => {
+          e.preventDefault();
+          form.handleSubmit();
+        }}
+        className="flex flex-col gap-6"
+      >
         <Card>
           <CardHeader>
             <CardTitle>Content</CardTitle>
@@ -140,8 +190,8 @@ function EditContentPage() {
             {collectionDef ? (
               <DynamicForm
                 fields={collectionDef.fields}
-                values={data}
-                onChange={setData}
+                form={form}
+                prefix="data"
                 siteId={siteId}
               />
             ) : (
@@ -157,24 +207,35 @@ function EditContentPage() {
             <CardTitle>Settings</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="flex flex-col gap-2">
-              <label htmlFor="edit-slug" className="text-sm font-medium">
-                Slug
-              </label>
-              <Input
-                id="edit-slug"
-                value={slug}
-                onChange={(e) => setSlug(e.target.value)}
+            <FieldGroup>
+              <form.Field
+                name="slug"
+                children={(field) => {
+                  const isInvalid =
+                    field.state.meta.isTouched && !field.state.meta.isValid;
+                  return (
+                    <Field data-invalid={isInvalid}>
+                      <FieldLabel htmlFor={field.name}>Slug</FieldLabel>
+                      <Input
+                        id={field.name}
+                        value={field.state.value}
+                        onBlur={field.handleBlur}
+                        onChange={(e) => field.handleChange(e.target.value)}
+                        aria-invalid={isInvalid}
+                      />
+                      {isInvalid && (
+                        <FieldError errors={field.state.meta.errors} />
+                      )}
+                    </Field>
+                  );
+                }}
               />
-            </div>
+            </FieldGroup>
           </CardContent>
         </Card>
 
         <div className="flex gap-2">
-          <Button
-            type="submit"
-            disabled={updateMutation.isPending || !slug.trim()}
-          >
+          <Button type="submit" disabled={updateMutation.isPending}>
             {updateMutation.isPending ? "Saving..." : "Save"}
           </Button>
           <Link
