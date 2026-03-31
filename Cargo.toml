@@ -26,7 +26,6 @@ object_store = { version = "0.13", features = ["aws"] }
 bytes = "1"
 http = "1"
 regex = "1"
-tempfile = "3"
 
 [profile.release]
 opt-level = "s"
