@@ -17,7 +17,7 @@ use uuid::Uuid;
 use crate::config::Config;
 use crate::middleware::auth::AuthenticatedUser;
 use crate::middleware::auth::check_site_access;
-use crate::models::file::{File, FileReference, FileWithUrl};
+use crate::models::file::{BatchFileIds, File, FileReference, FileWithUrl};
 use crate::storage::{FileSystemStorage, S3Storage};
 
 #[derive(Clone)]
@@ -41,6 +41,7 @@ pub struct FileListParams {
     pub page: Option<i64>,
     pub search: Option<String>,
     pub r#type: Option<String>,
+    pub trashed: Option<String>,
 }
 
 fn file_to_with_url(file: &File, storage: &StorageManager) -> FileWithUrl {
@@ -212,11 +213,21 @@ pub async fn list_files(
     let per_page: i64 = 30;
     let offset = (page - 1) * per_page;
 
-    let mut query = String::from(
-        "SELECT id, site_id, filename, original_name, mime_type, size, storage_provider, storage_key, thumbnail_key, width, height, deleted_at, created_by, created_at FROM files WHERE site_id = ? AND deleted_at IS NULL",
+    let is_trashed = params.trashed.as_deref() == Some("true");
+    let deleted_clause = if is_trashed {
+        "deleted_at IS NOT NULL"
+    } else {
+        "deleted_at IS NULL"
+    };
+
+    let mut query = format!(
+        "SELECT id, site_id, filename, original_name, mime_type, size, storage_provider, storage_key, thumbnail_key, width, height, deleted_at, created_by, created_at FROM files WHERE site_id = ? AND {}",
+        deleted_clause,
     );
-    let mut count_query =
-        String::from("SELECT COUNT(*) FROM files WHERE site_id = ? AND deleted_at IS NULL");
+    let mut count_query = format!(
+        "SELECT COUNT(*) FROM files WHERE site_id = ? AND {}",
+        deleted_clause,
+    );
 
     let mut bindings: Vec<String> = vec![site_id.clone()];
 
@@ -680,6 +691,207 @@ pub async fn restore_file(
         )
             .into_response(),
         Ok(_) => (StatusCode::OK, Json(json!({"message": "File restored"}))).into_response(),
+        Err(err) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({"error": err.to_string()})),
+        )
+            .into_response(),
+    }
+}
+
+#[utoipa::path(
+    post,
+    path = "/api/v1/sites/{site_id}/files/batch-delete",
+    params(
+        ("site_id" = String, Path, description = "Site ID"),
+    ),
+    request_body = BatchFileIds,
+    responses(
+        (status = 200, description = "Files soft-deleted"),
+        (status = 400, description = "Bad request"),
+    ),
+    security(("bearer" = [])),
+    tag = "files"
+)]
+pub async fn batch_delete_files(
+    auth: AuthenticatedUser,
+    Path(site_id): Path<String>,
+    Extension(pool): Extension<SqlitePool>,
+    Json(body): Json<BatchFileIds>,
+) -> Response {
+    if let Err((status, err)) = check_site_access(&pool, &auth.user_id, &site_id, "editor").await {
+        return (status, Json(err)).into_response();
+    }
+
+    if body.ids.is_empty() {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(json!({"error": "No file IDs provided"})),
+        )
+            .into_response();
+    }
+
+    let placeholders = body.ids.iter().map(|_| "?").collect::<Vec<_>>().join(",");
+    let query = format!(
+        "UPDATE files SET deleted_at = datetime('now') WHERE site_id = ? AND id IN ({}) AND deleted_at IS NULL",
+        placeholders
+    );
+
+    let mut q = sqlx::query(&query).bind(&site_id);
+    for id in &body.ids {
+        q = q.bind(id);
+    }
+
+    match q.execute(&pool).await {
+        Ok(r) => (
+            StatusCode::OK,
+            Json(json!({"deleted": r.rows_affected()})),
+        )
+            .into_response(),
+        Err(err) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({"error": err.to_string()})),
+        )
+            .into_response(),
+    }
+}
+
+#[utoipa::path(
+    post,
+    path = "/api/v1/sites/{site_id}/files/batch-restore",
+    params(
+        ("site_id" = String, Path, description = "Site ID"),
+    ),
+    request_body = BatchFileIds,
+    responses(
+        (status = 200, description = "Files restored"),
+        (status = 400, description = "Bad request"),
+    ),
+    security(("bearer" = [])),
+    tag = "files"
+)]
+pub async fn batch_restore_files(
+    auth: AuthenticatedUser,
+    Path(site_id): Path<String>,
+    Extension(pool): Extension<SqlitePool>,
+    Json(body): Json<BatchFileIds>,
+) -> Response {
+    if let Err((status, err)) = check_site_access(&pool, &auth.user_id, &site_id, "editor").await {
+        return (status, Json(err)).into_response();
+    }
+
+    if body.ids.is_empty() {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(json!({"error": "No file IDs provided"})),
+        )
+            .into_response();
+    }
+
+    let placeholders = body.ids.iter().map(|_| "?").collect::<Vec<_>>().join(",");
+    let query = format!(
+        "UPDATE files SET deleted_at = NULL WHERE site_id = ? AND id IN ({}) AND deleted_at IS NOT NULL",
+        placeholders
+    );
+
+    let mut q = sqlx::query(&query).bind(&site_id);
+    for id in &body.ids {
+        q = q.bind(id);
+    }
+
+    match q.execute(&pool).await {
+        Ok(r) => (
+            StatusCode::OK,
+            Json(json!({"restored": r.rows_affected()})),
+        )
+            .into_response(),
+        Err(err) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({"error": err.to_string()})),
+        )
+            .into_response(),
+    }
+}
+
+#[utoipa::path(
+    post,
+    path = "/api/v1/sites/{site_id}/files/batch-permanent-delete",
+    params(
+        ("site_id" = String, Path, description = "Site ID"),
+    ),
+    request_body = BatchFileIds,
+    responses(
+        (status = 200, description = "Files permanently deleted"),
+        (status = 400, description = "Bad request"),
+    ),
+    security(("bearer" = [])),
+    tag = "files"
+)]
+pub async fn batch_permanent_delete_files(
+    auth: AuthenticatedUser,
+    Path(site_id): Path<String>,
+    Extension(pool): Extension<SqlitePool>,
+    Extension(storage): Extension<StorageManager>,
+    Json(body): Json<BatchFileIds>,
+) -> Response {
+    if let Err((status, err)) = check_site_access(&pool, &auth.user_id, &site_id, "editor").await {
+        return (status, Json(err)).into_response();
+    }
+
+    if body.ids.is_empty() {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(json!({"error": "No file IDs provided"})),
+        )
+            .into_response();
+    }
+
+    let placeholders = body.ids.iter().map(|_| "?").collect::<Vec<_>>().join(",");
+    let query = format!(
+        "SELECT id, site_id, filename, original_name, mime_type, size, storage_provider, storage_key, thumbnail_key, width, height, deleted_at, created_by, created_at FROM files WHERE site_id = ? AND id IN ({}) AND deleted_at IS NOT NULL",
+        placeholders
+    );
+
+    let mut q = sqlx::query_as::<_, File>(&query).bind(&site_id);
+    for id in &body.ids {
+        q = q.bind(id);
+    }
+
+    let files = match q.fetch_all(&pool).await {
+        Ok(f) => f,
+        Err(err) => {
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({"error": err.to_string()})),
+            )
+                .into_response();
+        }
+    };
+
+    for file in &files {
+        let _ = remove_from_storage(&storage, &file.storage_provider, &file.storage_key).await;
+        if let Some(ref tk) = file.thumbnail_key {
+            let _ = remove_from_storage(&storage, &file.storage_provider, tk).await;
+        }
+    }
+
+    let placeholders = body.ids.iter().map(|_| "?").collect::<Vec<_>>().join(",");
+    let delete_query = format!(
+        "DELETE FROM files WHERE site_id = ? AND id IN ({}) AND deleted_at IS NOT NULL",
+        placeholders
+    );
+
+    let mut dq = sqlx::query(&delete_query).bind(&site_id);
+    for id in &body.ids {
+        dq = dq.bind(id);
+    }
+
+    match dq.execute(&pool).await {
+        Ok(r) => (
+            StatusCode::OK,
+            Json(json!({"deleted": r.rows_affected()})),
+        )
+            .into_response(),
         Err(err) => (
             StatusCode::INTERNAL_SERVER_ERROR,
             Json(json!({"error": err.to_string()})),

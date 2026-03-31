@@ -1,4 +1,4 @@
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use sqlx::FromRow;
 use utoipa::ToSchema;
 
@@ -45,4 +45,9 @@ pub struct FileReference {
     pub content_id: String,
     pub collection_name: String,
     pub field_name: String,
+}
+
+#[derive(Deserialize, ToSchema)]
+pub struct BatchFileIds {
+    pub ids: Vec<String>,
 }

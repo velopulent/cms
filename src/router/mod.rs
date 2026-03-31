@@ -21,8 +21,9 @@ use crate::handlers::content_handler::{
     update_content,
 };
 use crate::handlers::file_handler::{
-    StorageManager, delete_file_handler, get_file, get_file_references, list_files, restore_file,
-    serve_file, serve_file_thumbnail, upload_file,
+    StorageManager, batch_delete_files, batch_permanent_delete_files, batch_restore_files,
+    delete_file_handler, get_file, get_file_references, list_files, restore_file, serve_file,
+    serve_file_thumbnail, upload_file,
 };
 use crate::handlers::site_handler::{
     create_site, delete_site, get_site, invite_member, list_members, list_sites, remove_member,
@@ -33,7 +34,7 @@ use crate::handlers::ui_handler::ui_handler;
 use crate::models::api_key::{ApiKey, ApiKeyResponse, CreateApiKey};
 use crate::models::collection::{Collection, CreateCollection, UpdateCollection};
 use crate::models::content::{Content, CreateContent, UpdateContent};
-use crate::models::file::{File, FileReference, FileWithUrl};
+use crate::models::file::{BatchFileIds, File, FileReference, FileWithUrl};
 use crate::models::site::{
     CreateSite, InviteMember, Site, SiteMember, SiteWithRole, UpdateMemberRole, UpdateSite,
 };
@@ -91,6 +92,9 @@ use crate::models::user::{AuthResponse, CreateUser, LoginRequest, UserPublic};
         crate::handlers::file_handler::delete_file_handler,
         crate::handlers::file_handler::get_file_references,
         crate::handlers::file_handler::restore_file,
+        crate::handlers::file_handler::batch_delete_files,
+        crate::handlers::file_handler::batch_restore_files,
+        crate::handlers::file_handler::batch_permanent_delete_files,
     ),
     components(schemas(
         // User
@@ -104,7 +108,7 @@ use crate::models::user::{AuthResponse, CreateUser, LoginRequest, UserPublic};
         // Content
         Content, CreateContent, UpdateContent,
         // File
-        File, FileWithUrl, FileReference,
+        File, FileWithUrl, FileReference, BatchFileIds,
     )),
     modifiers(&SecurityAddon),
     tags(
@@ -222,6 +226,18 @@ pub fn create_router(pool: SqlitePool, config: Config, storage: StorageManager) 
                 .route("/api/v1/sites/{site_id}/files", post(upload_file))
                 .layer(DefaultBodyLimit::disable())
                 .layer(RequestBodyLimitLayer::new(max_upload_bytes)),
+        )
+        .route(
+            "/api/v1/sites/{site_id}/files/batch-delete",
+            post(batch_delete_files),
+        )
+        .route(
+            "/api/v1/sites/{site_id}/files/batch-restore",
+            post(batch_restore_files),
+        )
+        .route(
+            "/api/v1/sites/{site_id}/files/batch-permanent-delete",
+            post(batch_permanent_delete_files),
         )
         .route("/api/v1/sites/{site_id}/files/{id}", get(get_file))
         .route(
