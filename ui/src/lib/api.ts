@@ -425,12 +425,14 @@ export async function getFiles(
     page?: number;
     search?: string;
     type?: string;
+    trashed?: boolean;
   },
 ) {
   const query = new URLSearchParams();
   if (params.page) query.set("page", String(params.page));
   if (params.search) query.set("search", params.search);
   if (params.type) query.set("type", params.type);
+  if (params.trashed) query.set("trashed", "true");
   const qs = query.toString();
   return api<FileListResponse>(`/sites/${siteId}/files${qs ? `?${qs}` : ""}`);
 }
@@ -480,4 +482,28 @@ export async function restoreFile(siteId: string, fileId: string) {
   return api<{ message: string }>(`/sites/${siteId}/files/${fileId}/restore`, {
     method: "POST",
   });
+}
+
+export async function batchDeleteFiles(siteId: string, ids: string[]) {
+  return api<{ deleted: number }>(`/sites/${siteId}/files/batch-delete`, {
+    method: "POST",
+    body: JSON.stringify({ ids }),
+  });
+}
+
+export async function batchRestoreFiles(siteId: string, ids: string[]) {
+  return api<{ restored: number }>(`/sites/${siteId}/files/batch-restore`, {
+    method: "POST",
+    body: JSON.stringify({ ids }),
+  });
+}
+
+export async function batchPermanentDeleteFiles(siteId: string, ids: string[]) {
+  return api<{ deleted: number }>(
+    `/sites/${siteId}/files/batch-permanent-delete`,
+    {
+      method: "POST",
+      body: JSON.stringify({ ids }),
+    },
+  );
 }
