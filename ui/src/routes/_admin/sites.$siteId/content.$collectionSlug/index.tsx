@@ -1,21 +1,10 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { Globe, GlobeLock, Pencil, Plus, Search, Trash2 } from "lucide-react";
-import { useState } from "react";
+import { Plus, Search } from "lucide-react";
+import { useMemo, useState } from "react";
 import { toast } from "sonner";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-  AlertDialogTrigger,
-} from "@/components/ui/alert-dialog";
-import { Badge } from "@/components/ui/badge";
-import { Button, buttonVariants } from "@/components/ui/button";
+import { buttonVariants } from "@/components/ui/button";
+import { DataTable } from "@/components/ui/data-table";
 import { Input } from "@/components/ui/input";
 import {
   Select,
@@ -25,23 +14,14 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Skeleton } from "@/components/ui/skeleton";
 import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
-import {
-  type Content,
   deleteContent,
   getCollection,
   getContent,
   publishContent,
   unpublishContent,
 } from "@/lib/api";
+import { createColumns } from "@/components/content/columns";
 
 export const Route = createFileRoute(
   "/_admin/sites/$siteId/content/$collectionSlug/",
@@ -106,6 +86,30 @@ function ContentListPage() {
   const isLoading = collectionLoading || itemsLoading;
   const collectionName = collection?.name ?? collectionSlug;
 
+  const columns = useMemo(
+    () =>
+      createColumns({
+        siteId,
+        collectionSlug,
+        onPublish: publishMutation.mutate,
+        onUnpublish: unpublishMutation.mutate,
+        onDelete: deleteMutation.mutate,
+        isPublishPending: publishMutation.isPending,
+        isUnpublishPending: unpublishMutation.isPending,
+        isDeletePending: deleteMutation.isPending,
+      }),
+    [
+      siteId,
+      collectionSlug,
+      publishMutation.mutate,
+      publishMutation.isPending,
+      unpublishMutation.mutate,
+      unpublishMutation.isPending,
+      deleteMutation.mutate,
+      deleteMutation.isPending,
+    ],
+  );
+
   return (
     <div className="flex flex-col gap-6 p-6">
       <div className="flex items-center justify-between">
@@ -157,127 +161,13 @@ function ContentListPage() {
         </Select>
       </div>
 
-      {isLoading ? (
-        <div className="flex flex-col gap-2">
-          <Skeleton className="h-12 w-full" />
-          <Skeleton className="h-12 w-full" />
-          <Skeleton className="h-12 w-full" />
-        </div>
-      ) : !items?.length ? (
-        <div className="flex flex-col items-center justify-center py-12">
-          <p className="text-lg font-medium">No content yet</p>
-          <p className="text-sm text-muted-foreground">
-            Create your first {collectionName.toLowerCase()} to get started.
-          </p>
-        </div>
-      ) : (
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Title</TableHead>
-              <TableHead>Slug</TableHead>
-              <TableHead>Status</TableHead>
-              <TableHead>Updated</TableHead>
-              <TableHead className="text-right">Actions</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {items.map((item: Content) => {
-              let title: string;
-              try {
-                const parsedData =
-                  typeof item.data === "string"
-                    ? JSON.parse(item.data)
-                    : item.data;
-                title =
-                  (parsedData.title as string) ||
-                  (parsedData.name as string) ||
-                  item.slug;
-              } catch {
-                title = item.slug;
-              }
-
-              return (
-                <TableRow key={item.id}>
-                  <TableCell className="font-medium">{title}</TableCell>
-                  <TableCell>
-                    <Badge variant="outline">{item.slug}</Badge>
-                  </TableCell>
-                  <TableCell>
-                    <Badge
-                      variant={
-                        item.status === "published" ? "default" : "secondary"
-                      }
-                    >
-                      {item.status}
-                    </Badge>
-                  </TableCell>
-                  <TableCell className="text-sm text-muted-foreground">
-                    {new Date(item.updated_at).toLocaleDateString()}
-                  </TableCell>
-                  <TableCell className="text-right">
-                    <div className="flex justify-end gap-1">
-                      <Link
-                        to="/sites/$siteId/content/$collectionSlug/$id/edit"
-                        params={{ siteId, collectionSlug, id: item.id }}
-                        className={buttonVariants({
-                          variant: "ghost",
-                          size: "icon",
-                        })}
-                      >
-                        <Pencil />
-                      </Link>
-                      {item.status === "draft" ? (
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => publishMutation.mutate(item.id)}
-                          disabled={publishMutation.isPending}
-                        >
-                          <Globe />
-                        </Button>
-                      ) : (
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => unpublishMutation.mutate(item.id)}
-                          disabled={unpublishMutation.isPending}
-                        >
-                          <GlobeLock />
-                        </Button>
-                      )}
-                      <AlertDialog>
-                        <AlertDialogTrigger
-                          render={<Button variant="ghost" size="icon" />}
-                        >
-                          <Trash2 />
-                        </AlertDialogTrigger>
-                        <AlertDialogContent>
-                          <AlertDialogHeader>
-                            <AlertDialogTitle>Delete content?</AlertDialogTitle>
-                            <AlertDialogDescription>
-                              This will permanently delete &quot;{title}&quot;.
-                              This action cannot be undone.
-                            </AlertDialogDescription>
-                          </AlertDialogHeader>
-                          <AlertDialogFooter>
-                            <AlertDialogCancel>Cancel</AlertDialogCancel>
-                            <AlertDialogAction
-                              onClick={() => deleteMutation.mutate(item.id)}
-                            >
-                              Delete
-                            </AlertDialogAction>
-                          </AlertDialogFooter>
-                        </AlertDialogContent>
-                      </AlertDialog>
-                    </div>
-                  </TableCell>
-                </TableRow>
-              );
-            })}
-          </TableBody>
-        </Table>
-      )}
+      <DataTable
+        columns={columns}
+        data={items ?? []}
+        isLoading={isLoading}
+        emptyMessage="No content yet"
+        emptyDescription={`Create your first ${collectionName.toLowerCase()} to get started.`}
+      />
     </div>
   );
 }
