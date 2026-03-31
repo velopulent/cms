@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
 import {
+  Check,
   Download,
   ImagePlus,
   RotateCcw,
@@ -25,7 +26,6 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { Checkbox } from "@/components/ui/checkbox";
 import {
   Dialog,
   DialogContent,
@@ -66,6 +66,18 @@ function formatDate(dateStr: string): string {
     day: "numeric",
     year: "numeric",
   });
+}
+
+function formatDeletedDate(dateStr: string): string {
+  const date = new Date(dateStr);
+  const now = new Date();
+  const diffMs = now.getTime() - date.getTime();
+  const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+
+  if (diffDays === 0) return "Deleted today";
+  if (diffDays === 1) return "Deleted yesterday";
+  if (diffDays < 30) return `Deleted ${diffDays} days ago`;
+  return `Deleted ${formatDate(dateStr)}`;
 }
 
 function FilesPage() {
@@ -116,7 +128,7 @@ function FilesPage() {
       queryClient.invalidateQueries({ queryKey: ["files", siteId] });
       setDetailsOpen(false);
       setSelectedFile(null);
-      toast.success("File deleted");
+      toast.success("File moved to trash");
     },
     onError: (err: Error) => toast.error(err.message),
   });
@@ -137,7 +149,7 @@ function FilesPage() {
     onSuccess: (_data, ids) => {
       queryClient.invalidateQueries({ queryKey: ["files", siteId] });
       setSelectedIds(new Set());
-      toast.success(`${ids.length} file(s) deleted`);
+      toast.success(`${ids.length} file(s) moved to trash`);
     },
     onError: (err: Error) => toast.error(err.message),
   });
@@ -191,7 +203,8 @@ function FilesPage() {
     }
   };
 
-  const toggleSelect = (fileId: string) => {
+  const toggleSelect = (fileId: string, e?: React.MouseEvent) => {
+    if (e) e.stopPropagation();
     setSelectedIds((prev) => {
       const next = new Set(prev);
       if (next.has(fileId)) {
@@ -203,14 +216,13 @@ function FilesPage() {
     });
   };
 
-  const toggleSelectAll = () => {
-    if (!data?.items) return;
-    if (selectedIds.size === data.items.length) {
-      setSelectedIds(new Set());
-    } else {
-      setSelectedIds(new Set(data.items.map((f) => f.id)));
-    }
+  const handleViewChange = (v: string) => {
+    setView(v as "all" | "trash");
+    setSelectedIds(new Set());
+    setPage(1);
   };
+
+  const hasSelection = selectedIds.size > 0;
 
   const handleBatchDelete = () => {
     batchDeleteMutation.mutate(Array.from(selectedIds));
@@ -226,24 +238,16 @@ function FilesPage() {
     setBatchPermanentDeleteConfirm(false);
   };
 
-  const hasSelection = selectedIds.size > 0;
-  const allSelected =
-    data?.items && data.items.length > 0 && selectedIds.size === data.items.length;
-
-  // Clear selection when view or page changes
-  const handleViewChange = (v: string) => {
-    setView(v as "all" | "trash");
-    setSelectedIds(new Set());
-    setPage(1);
-  };
-
   return (
     <div className="flex flex-col gap-6 p-6">
+      {/* Header */}
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-semibold">Files</h1>
           <p className="text-sm text-muted-foreground">
-            Upload and manage files for your site
+            {isTrash
+              ? "Deleted files are kept here until permanently removed"
+              : "Upload and manage files for your site"}
           </p>
         </div>
         {!isTrash && (
@@ -276,14 +280,15 @@ function FilesPage() {
         )}
       </div>
 
-      <div className="flex items-center gap-3">
+      {/* Tabs + Search + Filters */}
+      <div className="flex flex-wrap items-center gap-3">
         <Tabs value={view} onValueChange={handleViewChange}>
           <TabsList>
             <TabsTrigger value="all">All Files</TabsTrigger>
             <TabsTrigger value="trash">Trash</TabsTrigger>
           </TabsList>
         </Tabs>
-        <div className="relative flex-1">
+        <div className="relative min-w-0 flex-1">
           <Search className="absolute left-2.5 top-2.5 size-4 text-muted-foreground" />
           <Input
             placeholder="Search files..."
@@ -306,15 +311,16 @@ function FilesPage() {
             <TabsTrigger value="all">All</TabsTrigger>
             <TabsTrigger value="image">Images</TabsTrigger>
             <TabsTrigger value="video">Videos</TabsTrigger>
-            <TabsTrigger value="document">Documents</TabsTrigger>
+            <TabsTrigger value="document">Docs</TabsTrigger>
           </TabsList>
         </Tabs>
       </div>
 
+      {/* Drop overlay */}
       {dragOver && !isTrash && (
-        <div className="flex items-center justify-center rounded-lg border-2 border-dashed border-primary bg-primary/5 p-8">
+        <div className="flex items-center justify-center rounded-xl border-2 border-dashed border-primary bg-primary/5 p-12">
           <div className="text-center">
-            <Upload className="mx-auto size-8 text-primary" />
+            <Upload className="mx-auto size-10 text-primary" />
             <p className="mt-2 font-medium text-primary">
               Drop files here to upload
             </p>
@@ -322,10 +328,15 @@ function FilesPage() {
         </div>
       )}
 
+      {/* Content */}
       {isLoading ? (
-        <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
-          {["a", "b", "c", "d", "e", "f", "g", "h", "i", "j"].map((id) => (
-            <Skeleton key={id} className="aspect-square rounded-lg" />
+        <div className="columns-2 gap-3 sm:columns-3 md:columns-4 lg:columns-5 xl:columns-6">
+          {Array.from({ length: 12 }).map((_, i) => (
+            <Skeleton
+              key={i.toString()}
+              className="mb-3 w-full rounded-lg"
+              style={{ height: `${120 + (i % 3) * 60}px` }}
+            />
           ))}
         </div>
       ) : !data?.items.length ? (
@@ -335,7 +346,7 @@ function FilesPage() {
               <>
                 <Trash2 className="mb-4 size-12 text-muted-foreground" />
                 <p className="text-lg font-medium">Trash is empty</p>
-                <p className="mb-4 text-sm text-muted-foreground">
+                <p className="text-sm text-muted-foreground">
                   Deleted files will appear here
                 </p>
               </>
@@ -356,79 +367,16 @@ function FilesPage() {
         </Card>
       ) : (
         <>
-          {/* Selection toolbar */}
-          <div className="flex items-center justify-between rounded-lg border bg-muted/30 px-4 py-2">
-            <div className="flex items-center gap-3">
-              <Checkbox
-                checked={allSelected}
-                onCheckedChange={toggleSelectAll}
-              />
-              <span className="text-sm text-muted-foreground">
-                {hasSelection
-                  ? `${selectedIds.size} of ${data.items.length} selected`
-                  : `${data.items.length} file(s)`}
-              </span>
-            </div>
-            {hasSelection && (
-              <div className="flex items-center gap-2">
-                {!isTrash ? (
-                  <Button
-                    variant="destructive"
-                    size="sm"
-                    onClick={() => setBatchDeleteConfirm(true)}
-                    disabled={batchDeleteMutation.isPending}
-                  >
-                    <Trash2 />
-                    {batchDeleteMutation.isPending
-                      ? "Deleting..."
-                      : `Delete ${selectedIds.size}`}
-                  </Button>
-                ) : (
-                  <>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={handleBatchRestore}
-                      disabled={batchRestoreMutation.isPending}
-                    >
-                      <RotateCcw />
-                      {batchRestoreMutation.isPending
-                        ? "Restoring..."
-                        : `Restore ${selectedIds.size}`}
-                    </Button>
-                    <Button
-                      variant="destructive"
-                      size="sm"
-                      onClick={() => setBatchPermanentDeleteConfirm(true)}
-                      disabled={batchPermanentDeleteMutation.isPending}
-                    >
-                      <Trash2 />
-                      {batchPermanentDeleteMutation.isPending
-                        ? "Deleting..."
-                        : `Delete ${selectedIds.size}`}
-                    </Button>
-                  </>
-                )}
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => setSelectedIds(new Set())}
-                >
-                  <X />
-                  Clear
-                </Button>
-              </div>
-            )}
-          </div>
-
-          <div className="grid grid-cols-2 gap-4 sm:grid-cols-4 md:grid-cols-4 lg:grid-cols-8">
+          {/* Masonry grid */}
+          <div className="columns-2 gap-3 sm:columns-3 md:columns-4 lg:columns-5 xl:columns-6">
             {data.items.map((file) => (
               <FileCard
                 key={file.id}
                 file={file}
                 isTrash={isTrash}
                 selected={selectedIds.has(file.id)}
-                onToggleSelect={() => toggleSelect(file.id)}
+                hasAnySelection={hasSelection}
+                onToggleSelect={(e) => toggleSelect(file.id, e)}
                 onClick={() => {
                   setSelectedFile(file);
                   setDetailsOpen(true);
@@ -437,8 +385,9 @@ function FilesPage() {
             ))}
           </div>
 
+          {/* Pagination */}
           {data.total > data.per_page && (
-            <div className="flex items-center justify-between text-sm text-muted-foreground">
+            <div className="flex items-center justify-between pt-2 text-sm text-muted-foreground">
               <span>
                 Showing {data.items.length} of {data.total} files
               </span>
@@ -469,6 +418,64 @@ function FilesPage() {
             </div>
           )}
         </>
+      )}
+
+      {/* Floating Action Bar */}
+      {hasSelection && (
+        <div className="animate-in fade-in-0 slide-in-from-bottom-2 fixed inset-x-0 bottom-6 z-50 mx-auto flex w-fit items-center gap-3 rounded-xl border bg-background/95 px-4 py-3 shadow-lg backdrop-blur supports-[backdrop-filter]:bg-background/80">
+          <span className="text-sm font-medium">
+            {selectedIds.size} selected
+          </span>
+          <div className="h-5 w-px bg-border" />
+          {!isTrash ? (
+            <Button
+              variant="ghost"
+              size="sm"
+              className="text-destructive hover:text-destructive"
+              onClick={() => setBatchDeleteConfirm(true)}
+              disabled={batchDeleteMutation.isPending}
+            >
+              <Trash2 />
+              {batchDeleteMutation.isPending
+                ? "Deleting..."
+                : "Move to Trash"}
+            </Button>
+          ) : (
+            <>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={handleBatchRestore}
+                disabled={batchRestoreMutation.isPending}
+              >
+                <RotateCcw />
+                {batchRestoreMutation.isPending
+                  ? "Restoring..."
+                  : "Restore"}
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="text-destructive hover:text-destructive"
+                onClick={() => setBatchPermanentDeleteConfirm(true)}
+                disabled={batchPermanentDeleteMutation.isPending}
+              >
+                <Trash2 />
+                {batchPermanentDeleteMutation.isPending
+                  ? "Deleting..."
+                  : "Delete Forever"}
+              </Button>
+            </>
+          )}
+          <div className="h-5 w-px bg-border" />
+          <button
+            type="button"
+            onClick={() => setSelectedIds(new Set())}
+            className="text-muted-foreground transition-colors hover:text-foreground"
+          >
+            <X className="size-4" />
+          </button>
+        </div>
       )}
 
       {/* Details Dialog */}
@@ -558,9 +565,7 @@ function FilesPage() {
                   <Button
                     variant="outline"
                     size="sm"
-                    onClick={() => {
-                      restoreMutation.mutate(selectedFile.id);
-                    }}
+                    onClick={() => restoreMutation.mutate(selectedFile.id)}
                     disabled={restoreMutation.isPending}
                   >
                     <RotateCcw />
@@ -574,10 +579,11 @@ function FilesPage() {
                     disabled={deleteMutation.isPending}
                   >
                     <Trash2 />
-                    {deleteMutation.isPending ? "Deleting..." : "Delete"}
+                    {deleteMutation.isPending
+                      ? "Deleting..."
+                      : "Move to Trash"}
                   </Button>
                 )}
-
                 <div className="flex gap-2">
                   {isTrash ? (
                     <Button
@@ -592,7 +598,7 @@ function FilesPage() {
                       <Trash2 />
                       {batchPermanentDeleteMutation.isPending
                         ? "Deleting..."
-                        : "Permanently Delete"}
+                        : "Delete Forever"}
                     </Button>
                   ) : (
                     <>
@@ -669,11 +675,11 @@ function FilesPage() {
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>
-              Delete {selectedIds.size} file(s)?
+              Move {selectedIds.size} file(s) to trash?
             </AlertDialogTitle>
             <AlertDialogDescription>
-              This will move {selectedIds.size} file(s) to the trash. You can
-              restore them later from the Trash tab.
+              Files in trash can be restored later. They will be permanently
+              deleted after 30 days.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -683,7 +689,9 @@ function FilesPage() {
               onClick={handleBatchDelete}
               disabled={batchDeleteMutation.isPending}
             >
-              {batchDeleteMutation.isPending ? "Deleting..." : "Delete"}
+              {batchDeleteMutation.isPending
+                ? "Moving..."
+                : "Move to Trash"}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -700,8 +708,8 @@ function FilesPage() {
               Permanently delete {selectedIds.size} file(s)?
             </AlertDialogTitle>
             <AlertDialogDescription>
-              This action cannot be undone. {selectedIds.size} file(s) will be
-              permanently removed from storage and cannot be recovered.
+              This action cannot be undone. These files will be permanently
+              removed from storage and cannot be recovered.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -713,7 +721,7 @@ function FilesPage() {
             >
               {batchPermanentDeleteMutation.isPending
                 ? "Deleting..."
-                : "Permanently Delete"}
+                : "Delete Forever"}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -722,31 +730,41 @@ function FilesPage() {
   );
 }
 
+/* ------------------------------------------------------------------ */
+/*  File Card                                                          */
+/* ------------------------------------------------------------------ */
+
 function FileCard({
   file,
   isTrash,
   selected,
+  hasAnySelection,
   onToggleSelect,
   onClick,
 }: {
   file: FileItem;
   isTrash: boolean;
   selected: boolean;
-  onToggleSelect: () => void;
+  hasAnySelection: boolean;
+  onToggleSelect: (e: React.MouseEvent) => void;
   onClick: () => void;
 }) {
   const isImage = file.mime_type.startsWith("image/");
   const isVideo = file.mime_type.startsWith("video/");
+  const showIndicator = hasAnySelection || selected;
 
   return (
     <div
-      className={`group relative aspect-square cursor-pointer overflow-hidden rounded-lg border text-left transition-shadow hover:shadow-md ${
-        selected ? "ring-2 ring-primary" : ""
-      } ${isTrash ? "opacity-70" : ""}`}
+      className={`group/card relative mb-3 cursor-pointer overflow-hidden rounded-lg transition-all duration-150 ${
+        selected
+          ? "ring-2 ring-primary ring-offset-2 ring-offset-background"
+          : "hover:shadow-lg"
+      } ${isTrash ? "opacity-60" : ""}`}
     >
+      {/* Main clickable area — opens details */}
       <button
         type="button"
-        className="size-full"
+        className="block w-full text-left"
         onClick={onClick}
         onKeyDown={(e) => {
           if (e.key === "Enter" || e.key === " ") {
@@ -759,45 +777,69 @@ function FileCard({
           <img
             src={file.thumbnail_url || file.url}
             alt={file.original_name}
-            className="size-full object-cover"
+            className="block w-full"
+            loading="lazy"
           />
-        ) : isVideo && file.thumbnail_url ? (
-          <img
-            src={file.thumbnail_url}
-            alt={file.original_name}
-            className="size-full object-cover"
-          />
+        ) : isVideo ? (
+          <div className="relative aspect-video bg-black">
+            {file.thumbnail_url ? (
+              <img
+                src={file.thumbnail_url}
+                alt={file.original_name}
+                className="size-full object-cover"
+                loading="lazy"
+              />
+            ) : (
+              <div className="flex size-full items-center justify-center">
+                <Badge variant="secondary">VIDEO</Badge>
+              </div>
+            )}
+          </div>
         ) : (
-          <div className="flex size-full flex-col items-center justify-center bg-muted p-2">
-            <Badge variant="secondary" className="text-xs">
+          <div className="flex aspect-[3/4] flex-col items-center justify-center bg-muted p-3">
+            <Badge variant="secondary">
               {file.mime_type.split("/")[1]?.toUpperCase() || "FILE"}
             </Badge>
-            <p className="mt-1 truncate text-center text-xs text-muted-foreground">
+            <p className="mt-2 line-clamp-2 text-center text-xs text-muted-foreground">
               {file.original_name}
             </p>
           </div>
         )}
-        <div className="absolute bottom-0 left-0 right-0 bg-linear-to-t from-black/60 to-transparent p-2">
-          <p className="truncate text-xs text-white">{file.original_name}</p>
-          <p className="text-[10px] text-white/70">
+      </button>
+
+      {/* Bottom overlay — filename + size */}
+      <div className="pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/70 via-black/20 to-transparent px-2.5 pb-2 pt-8">
+        <p className="truncate text-xs font-medium text-white">
+          {file.original_name}
+        </p>
+        <div className="flex items-center justify-between">
+          <p className="text-[10px] text-white/60">
             {formatFileSize(file.size)}
           </p>
+          {isTrash && file.deleted_at && (
+            <p className="text-[10px] text-white/60">
+              {formatDeletedDate(file.deleted_at)}
+            </p>
+          )}
         </div>
-      </button>
+      </div>
+
+      {/* Selection circle — Google Photos style */}
       <button
         type="button"
-        className="absolute top-2 left-2 z-10 flex size-5 items-center justify-center rounded bg-background/80 shadow-sm transition-opacity group-hover:opacity-100"
-        style={{ opacity: selected ? 1 : undefined }}
-        onClick={(e) => {
-          e.stopPropagation();
-          onToggleSelect();
-        }}
+        aria-label={selected ? "Deselect file" : "Select file"}
+        className={`absolute left-2 top-2 z-10 flex size-7 items-center justify-center rounded-full border-2 transition-all duration-150 ${
+          showIndicator
+            ? "opacity-100"
+            : "opacity-0 group-hover/card:opacity-100"
+        } ${
+          selected
+            ? "border-primary bg-primary text-primary-foreground shadow-sm"
+            : "border-white/80 bg-white/20 text-white shadow-sm backdrop-blur-sm hover:bg-white/40"
+        }`}
+        onClick={onToggleSelect}
       >
-        <Checkbox
-          checked={selected}
-          onCheckedChange={() => onToggleSelect()}
-          className="size-3.5"
-        />
+        {selected && <Check className="size-4" strokeWidth={3} />}
       </button>
     </div>
   );
