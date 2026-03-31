@@ -327,6 +327,9 @@ function SortableFieldItem({
     isDragging,
   } = useSortable({ id: field._id });
 
+  const [nameTouched, setNameTouched] = useState(false);
+  const nameInvalid = nameTouched && !field.name.trim();
+
   const style = {
     transform: CSS.Transform.toString(transform),
     transition,
@@ -349,14 +352,20 @@ function SortableFieldItem({
       </button>
       <div className="flex flex-1 flex-col gap-2">
         <div className="flex gap-2">
-          <Input
-            placeholder="Field name"
-            value={field.name}
-            onChange={(e) =>
-              form.setFieldValue(`fields[${index}].name`, e.target.value)
-            }
-            className="flex-1"
-          />
+          <Field data-invalid={nameInvalid} className="flex-1">
+            <Input
+              placeholder="Field name"
+              value={field.name}
+              onBlur={() => setNameTouched(true)}
+              onChange={(e) =>
+                form.setFieldValue(`fields[${index}].name`, e.target.value)
+              }
+              aria-invalid={nameInvalid}
+            />
+            {nameInvalid && (
+              <FieldError errors={[{ message: "Field name is required" }]} />
+            )}
+          </Field>
           <Select
             items={[
               ...FIELD_TYPES.map((ft) => ({
@@ -454,10 +463,10 @@ function CollectionForm({
           _id: `init-${i}`,
         }));
       } catch {
-    return [{ name: "", type: "text", required: false, _id: "default-0" }];
+        return [];
       }
     }
-    return [];
+    return [{ name: "", type: "text", required: false, _id: "default-0" }];
   })();
 
   const form = useForm({
@@ -605,9 +614,14 @@ function CollectionForm({
                 </Button>
               </div>
               {fields.length === 0 && (
-                <p className="text-sm text-muted-foreground">
-                  No fields defined. Add at least one field.
-                </p>
+                <Field data-invalid={!arrayField.state.meta.isValid}>
+                  <p className="text-sm text-muted-foreground">
+                    No fields defined yet.
+                  </p>
+                  {!arrayField.state.meta.isValid && (
+                    <FieldError errors={arrayField.state.meta.errors} />
+                  )}
+                </Field>
               )}
               <DndContext
                 sensors={sensors}
