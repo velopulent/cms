@@ -1,14 +1,60 @@
+import { useForm } from "@tanstack/react-form";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { ArrowLeft } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { toast } from "sonner";
+import { z } from "zod";
 import { DynamicForm } from "@/components/dynamic-form";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Field,
+  FieldError,
+  FieldGroup,
+  FieldLabel,
+} from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { createContent, getCollection, type SchemaDefinition } from "@/lib/api";
+
+function buildDefaultValues(schema: SchemaDefinition) {
+  const defaults: Record<string, unknown> = {};
+  for (const f of schema.fields) {
+    switch (f.type) {
+      case "number":
+        defaults[f.name] = 0;
+        break;
+      case "boolean":
+        defaults[f.name] = false;
+        break;
+      default:
+        defaults[f.name] = "";
+    }
+  }
+  return defaults;
+}
+
+function buildDataSchema(schema: SchemaDefinition) {
+  const shape: Record<string, z.ZodTypeAny> = {};
+  for (const f of schema.fields) {
+    switch (f.type) {
+      case "number":
+        shape[f.name] = f.required
+          ? z.number({ error: `${f.name} is required` })
+          : z.number().optional();
+        break;
+      case "boolean":
+        shape[f.name] = z.boolean().optional();
+        break;
+      default:
+        shape[f.name] = f.required
+          ? z.string().min(1, `${f.name.replace(/_/g, " ")} is required`)
+          : z.string().optional();
+    }
+  }
+  return z.object(shape);
+}
 
 export const Route = createFileRoute(
   "/_admin/sites/$siteId/content/$collectionSlug/new",
@@ -19,30 +65,11 @@ export const Route = createFileRoute(
 function CreateContentPage() {
   const { siteId, collectionSlug } = Route.useParams();
   const navigate = useNavigate();
-  const [data, setData] = useState<Record<string, unknown>>({});
-  const [slug, setSlug] = useState("");
-  const [slugManuallyEdited, setSlugManuallyEdited] = useState(false);
+  const [schemaReady, setSchemaReady] = useState(false);
 
   const { data: collection, isLoading } = useQuery({
     queryKey: ["collection", siteId, collectionSlug],
     queryFn: () => getCollection(siteId, collectionSlug),
-  });
-
-  const createMutation = useMutation({
-    mutationFn: () =>
-      createContent(siteId, {
-        collection_id: collection!.id,
-        data,
-        slug,
-      }),
-    onSuccess: () => {
-      toast.success("Content created");
-      navigate({
-        to: "/sites/$siteId/content/$collectionSlug",
-        params: { siteId, collectionSlug },
-      });
-    },
-    onError: (err: Error) => toast.error(err.message),
   });
 
   let collectionDef: SchemaDefinition | null = null;
@@ -54,28 +81,56 @@ function CreateContentPage() {
     }
   }
 
-  const handleDataChange = (newData: Record<string, unknown>) => {
-    setData(newData);
-    if (!slugManuallyEdited) {
-      const titleField = newData.title ?? newData.name ?? "";
-      if (typeof titleField === "string" && titleField) {
-        setSlug(
-          titleField
-            .toLowerCase()
-            .trim()
-            .replace(/[^\w\s-]/g, "")
-            .replace(/[\s_]+/g, "-")
-            .replace(/-+/g, "-"),
-        );
-      }
-    }
-  };
+  const contentSchema = z.object({
+    data: collectionDef ? buildDataSchema(collectionDef) : z.object({}),
+    slug: z.string().min(1, "Slug is required"),
+  });
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!slug.trim() || !collection) return;
-    createMutation.mutate();
-  };
+  const form = useForm({
+    defaultValues: {
+      data: {} as Record<string, unknown>,
+      slug: "",
+    },
+    validators: {
+      onSubmit: contentSchema,
+    },
+    onSubmit: async ({ value }) => {
+      if (!collection) return;
+      createMutation.mutate({
+        collection_id: collection.id,
+        data: value.data,
+        slug: value.slug,
+      });
+    },
+  });
+
+  const createMutation = useMutation({
+    mutationFn: ({
+      collection_id,
+      data,
+      slug,
+    }: {
+      collection_id: string;
+      data: Record<string, unknown>;
+      slug: string;
+    }) => createContent(siteId, { collection_id, data, slug }),
+    onSuccess: () => {
+      toast.success("Content created");
+      navigate({
+        to: "/sites/$siteId/content/$collectionSlug",
+        params: { siteId, collectionSlug },
+      });
+    },
+    onError: (err: Error) => toast.error(err.message),
+  });
+
+  useEffect(() => {
+    if (collectionDef && !schemaReady) {
+      const defaults = buildDefaultValues(collectionDef);
+      form.setFieldValue("data", defaults);
+      setSchemaReady(true);
+    }
+  }, [collectionDef, schemaReady, form]);
 
   if (isLoading) {
     return (
@@ -112,22 +167,28 @@ function CreateContentPage() {
         </div>
       </div>
 
-      <form onSubmit={handleSubmit} className="flex flex-col gap-6">
+      <form
+        onSubmit={(e) => {
+          e.preventDefault();
+          form.handleSubmit();
+        }}
+        className="flex flex-col gap-6"
+      >
         <Card>
           <CardHeader>
             <CardTitle>Content</CardTitle>
           </CardHeader>
           <CardContent>
-            {collectionDef ? (
+            {collectionDef && schemaReady ? (
               <DynamicForm
                 fields={collectionDef.fields}
-                values={data}
-                onChange={handleDataChange}
+                form={form}
+                prefix="data"
                 siteId={siteId}
               />
             ) : (
               <p className="text-sm text-muted-foreground">
-                Invalid collection definition.
+                Loading collection schema...
               </p>
             )}
           </CardContent>
@@ -138,28 +199,38 @@ function CreateContentPage() {
             <CardTitle>Settings</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="flex flex-col gap-2">
-              <label htmlFor="content-slug" className="text-sm font-medium">
-                Slug
-              </label>
-              <Input
-                id="content-slug"
-                placeholder="my-content-slug"
-                value={slug}
-                onChange={(e) => {
-                  setSlug(e.target.value);
-                  setSlugManuallyEdited(true);
+            <FieldGroup>
+              <form.Field
+                name="slug"
+                children={(field) => {
+                  const isInvalid =
+                    field.state.meta.isTouched && !field.state.meta.isValid;
+                  return (
+                    <Field data-invalid={isInvalid}>
+                      <FieldLabel htmlFor={field.name}>Slug</FieldLabel>
+                      <Input
+                        id={field.name}
+                        placeholder="my-content-slug"
+                        value={field.state.value}
+                        onBlur={field.handleBlur}
+                        onChange={(e) => {
+                          field.handleChange(e.target.value);
+                        }}
+                        aria-invalid={isInvalid}
+                      />
+                      {isInvalid && (
+                        <FieldError errors={field.state.meta.errors} />
+                      )}
+                    </Field>
+                  );
                 }}
               />
-            </div>
+            </FieldGroup>
           </CardContent>
         </Card>
 
         <div className="flex gap-2">
-          <Button
-            type="submit"
-            disabled={createMutation.isPending || !slug.trim()}
-          >
+          <Button type="submit" disabled={createMutation.isPending}>
             {createMutation.isPending ? "Creating..." : "Create"}
           </Button>
           <Link
