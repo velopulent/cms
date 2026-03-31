@@ -1,8 +1,10 @@
+import { useForm } from "@tanstack/react-form";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
 import { AlertTriangle, Cloud, HardDrive } from "lucide-react";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
+import { z } from "zod";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -11,8 +13,13 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import {
+  Field,
+  FieldError,
+  FieldGroup,
+  FieldLabel,
+} from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import {
   Select,
   SelectContent,
@@ -35,11 +42,18 @@ export const Route = createFileRoute("/_admin/sites/$siteId/settings")({
   component: SiteSettingsPage,
 });
 
+const siteSettingsSchema = z.object({
+  name: z.string().min(1, "Site name is required"),
+  storageProvider: z.string(),
+});
+
+const apiKeySchema = z.object({
+  name: z.string().min(1, "Key name is required"),
+});
+
 function SiteSettingsPage() {
   const { siteId } = Route.useParams();
   const queryClient = useQueryClient();
-  const [name, setName] = useState("");
-  const [storageProvider, setStorageProvider] = useState("");
   const [initialized, setInitialized] = useState(false);
 
   const { data: site, isLoading } = useQuery({
@@ -47,17 +61,31 @@ function SiteSettingsPage() {
     queryFn: () => getSite(siteId),
   });
 
-  useEffect(() => {
-    if (site && !initialized) {
-      setName(site.name);
-      setStorageProvider(site.default_storage_provider);
-      setInitialized(true);
-    }
-  }, [site, initialized]);
+  const form = useForm({
+    defaultValues: {
+      name: "",
+      storageProvider: "",
+    },
+    validators: {
+      onSubmit: siteSettingsSchema,
+    },
+    onSubmit: async ({ value }) => {
+      updateMutation.mutate(value);
+    },
+  });
 
   const updateMutation = useMutation({
-    mutationFn: () =>
-      updateSite(siteId, { name, default_storage_provider: storageProvider }),
+    mutationFn: ({
+      name,
+      storageProvider,
+    }: {
+      name: string;
+      storageProvider: string;
+    }) =>
+      updateSite(siteId, {
+        name,
+        default_storage_provider: storageProvider,
+      }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["site", siteId] });
       queryClient.invalidateQueries({ queryKey: ["sites"] });
@@ -66,11 +94,14 @@ function SiteSettingsPage() {
     onError: (err: Error) => toast.error(err.message),
   });
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!name.trim()) return;
-    updateMutation.mutate();
-  };
+  useEffect(() => {
+    if (site && !initialized) {
+      form.reset();
+      form.setFieldValue("name", site.name);
+      form.setFieldValue("storageProvider", site.default_storage_provider);
+      setInitialized(true);
+    }
+  }, [site, initialized, form]);
 
   if (isLoading || !initialized) {
     return (
@@ -98,24 +129,45 @@ function SiteSettingsPage() {
         </p>
       </div>
 
-      <form onSubmit={handleSubmit} className="flex flex-col gap-6">
+      <form
+        onSubmit={(e) => {
+          e.preventDefault();
+          form.handleSubmit();
+        }}
+        className="flex flex-col gap-6"
+      >
         <Card>
           <CardHeader>
             <CardTitle>General</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="flex flex-col gap-2">
-              <label htmlFor="site-name" className="text-sm font-medium">
-                Site Name
-              </label>
-              <Input
-                id="site-name"
-                placeholder="My Site"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                className="max-w-md"
+            <FieldGroup>
+              <form.Field
+                name="name"
+                children={(field) => {
+                  const isInvalid =
+                    field.state.meta.isTouched && !field.state.meta.isValid;
+                  return (
+                    <Field data-invalid={isInvalid}>
+                      <FieldLabel htmlFor={field.name}>Site Name</FieldLabel>
+                      <Input
+                        id={field.name}
+                        name={field.name}
+                        placeholder="My Site"
+                        value={field.state.value}
+                        onBlur={field.handleBlur}
+                        onChange={(e) => field.handleChange(e.target.value)}
+                        className="max-w-md"
+                        aria-invalid={isInvalid}
+                      />
+                      {isInvalid && (
+                        <FieldError errors={field.state.meta.errors} />
+                      )}
+                    </Field>
+                  );
+                }}
               />
-            </div>
+            </FieldGroup>
           </CardContent>
         </Card>
 
@@ -127,46 +179,65 @@ function SiteSettingsPage() {
             </CardDescription>
           </CardHeader>
           <CardContent className="flex flex-col gap-4">
-            <div className="flex flex-col gap-2">
-              <Label htmlFor="storage-provider">Storage Provider</Label>
-              <Select
-                value={storageProvider}
-                onValueChange={(v) => v && setStorageProvider(v)}
-              >
-                <SelectTrigger id="storage-provider" className="w-full max-w-md">
-                  {storageProvider === "filesystem" ? (
-                    <div className="flex items-center gap-2">
-                      <HardDrive className="size-4" />
-                      <span>Filesystem</span>
-                    </div>
-                  ) : storageProvider === "s3" ? (
-                    <div className="flex items-center gap-2">
-                      <Cloud className="size-4" />
-                      <span>S3 / Cloud Storage</span>
-                    </div>
-                  ) : (
-                    <SelectValue placeholder="Select storage type" />
-                  )}
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="filesystem">
-                    <div className="flex items-center gap-2">
-                      <HardDrive className="size-4" />
-                      <span>Filesystem</span>
-                    </div>
-                  </SelectItem>
-                  <SelectItem value="s3">
-                    <div className="flex items-center gap-2">
-                      <Cloud className="size-4" />
-                      <span>S3 / Cloud Storage</span>
-                    </div>
-                  </SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
+            <FieldGroup>
+              <form.Field
+                name="storageProvider"
+                children={(field) => {
+                  return (
+                    <Field>
+                      <FieldLabel htmlFor={field.name}>
+                        Storage Provider
+                      </FieldLabel>
+                      <Select
+                        value={field.state.value}
+                        onValueChange={(v) => v && field.handleChange(v)}
+                      >
+                        <SelectTrigger
+                          id={field.name}
+                          className="w-full max-w-md"
+                          aria-invalid={
+                            field.state.meta.isTouched &&
+                            !field.state.meta.isValid
+                          }
+                        >
+                          {field.state.value === "filesystem" ? (
+                            <div className="flex items-center gap-2">
+                              <HardDrive className="size-4" />
+                              <span>Filesystem</span>
+                            </div>
+                          ) : field.state.value === "s3" ? (
+                            <div className="flex items-center gap-2">
+                              <Cloud className="size-4" />
+                              <span>S3 / Cloud Storage</span>
+                            </div>
+                          ) : (
+                            <SelectValue placeholder="Select storage type" />
+                          )}
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="filesystem">
+                            <div className="flex items-center gap-2">
+                              <HardDrive className="size-4" />
+                              <span>Filesystem</span>
+                            </div>
+                          </SelectItem>
+                          <SelectItem value="s3">
+                            <div className="flex items-center gap-2">
+                              <Cloud className="size-4" />
+                              <span>S3 / Cloud Storage</span>
+                            </div>
+                          </SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </Field>
+                  );
+                }}
+              />
+            </FieldGroup>
 
-            {(name !== site?.name ||
-              storageProvider !== site?.default_storage_provider) && (
+            {form.getFieldValue("name") !== site?.name ||
+            form.getFieldValue("storageProvider") !==
+              site?.default_storage_provider ? (
               <div className="flex items-start gap-2 rounded-md border border-amber-200 bg-amber-50 p-3">
                 <AlertTriangle className="mt-0.5 size-4 text-amber-600" />
                 <div className="text-sm text-amber-800">
@@ -179,14 +250,14 @@ function SiteSettingsPage() {
                   </p>
                 </div>
               </div>
-            )}
+            ) : null}
           </CardContent>
         </Card>
 
         <Button
           type="submit"
           className="w-fit"
-          disabled={updateMutation.isPending || !name.trim()}
+          disabled={updateMutation.isPending}
         >
           {updateMutation.isPending ? "Saving..." : "Save Changes"}
         </Button>
@@ -199,7 +270,6 @@ function SiteSettingsPage() {
 
 function ApiKeysSection({ siteId }: { siteId: string }) {
   const queryClient = useQueryClient();
-  const [newKeyName, setNewKeyName] = useState("");
   const [createdKey, setCreatedKey] = useState<ApiKeyResponse | null>(null);
 
   const { data: apiKeys, isLoading } = useQuery({
@@ -208,11 +278,11 @@ function ApiKeysSection({ siteId }: { siteId: string }) {
   });
 
   const createMutation = useMutation({
-    mutationFn: () => createApiKey(siteId, newKeyName),
+    mutationFn: ({ name }: { name: string }) => createApiKey(siteId, name),
     onSuccess: (key) => {
       queryClient.invalidateQueries({ queryKey: ["api-keys", siteId] });
       setCreatedKey(key);
-      setNewKeyName("");
+      apiKeyForm.reset();
       toast.success("API key created");
     },
     onError: (err: Error) => toast.error(err.message),
@@ -227,11 +297,17 @@ function ApiKeysSection({ siteId }: { siteId: string }) {
     onError: (err: Error) => toast.error(err.message),
   });
 
-  const handleCreate = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!newKeyName.trim()) return;
-    createMutation.mutate();
-  };
+  const apiKeyForm = useForm({
+    defaultValues: {
+      name: "",
+    },
+    validators: {
+      onSubmit: apiKeySchema,
+    },
+    onSubmit: async ({ value }) => {
+      createMutation.mutate(value);
+    },
+  });
 
   return (
     <Card>
@@ -283,17 +359,36 @@ function ApiKeysSection({ siteId }: { siteId: string }) {
           </div>
         )}
 
-        <form onSubmit={handleCreate} className="flex gap-2">
-          <Input
-            placeholder="Key name (e.g., Production Website)"
-            value={newKeyName}
-            onChange={(e) => setNewKeyName(e.target.value)}
-            className="max-w-sm"
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            apiKeyForm.handleSubmit();
+          }}
+          className="flex gap-2"
+        >
+          <apiKeyForm.Field
+            name="name"
+            children={(field) => {
+              const isInvalid =
+                field.state.meta.isTouched && !field.state.meta.isValid;
+              return (
+                <Field data-invalid={isInvalid} className="flex-1">
+                  <Input
+                    id={field.name}
+                    name={field.name}
+                    placeholder="Key name (e.g., Production Website)"
+                    value={field.state.value}
+                    onBlur={field.handleBlur}
+                    onChange={(e) => field.handleChange(e.target.value)}
+                    className="max-w-sm"
+                    aria-invalid={isInvalid}
+                  />
+                  {isInvalid && <FieldError errors={field.state.meta.errors} />}
+                </Field>
+              );
+            }}
           />
-          <Button
-            type="submit"
-            disabled={createMutation.isPending || !newKeyName.trim()}
-          >
+          <Button type="submit" disabled={createMutation.isPending}>
             {createMutation.isPending ? "Creating..." : "Create Key"}
           </Button>
         </form>
