@@ -423,7 +423,7 @@ const collectionFieldSchema = z.object({
 const collectionFormSchema = z.object({
   name: z.string().min(1, "Collection name is required"),
   slug: z.string().min(1, "Slug is required"),
-  fields: z.array(collectionFieldSchema),
+  fields: z.array(collectionFieldSchema).min(1, "Add at least one field"),
 });
 
 type CollectionFormValues = {
@@ -454,7 +454,7 @@ function CollectionForm({
           _id: `init-${i}`,
         }));
       } catch {
-        return [];
+    return [{ name: "", type: "text", required: false, _id: "default-0" }];
       }
     }
     return [];
