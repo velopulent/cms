@@ -7,7 +7,7 @@ pub type CmsSchema = Schema<QueryRoot, MutationRoot, EmptySubscription>;
 
 pub fn build_schema() -> CmsSchema {
     Schema::build(QueryRoot, MutationRoot, EmptySubscription)
-        .limit_depth(10)
-        .limit_complexity(200)
+        .limit_depth(15)
+        .limit_complexity(2000)
         .finish()
 }
