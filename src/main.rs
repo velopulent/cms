@@ -21,6 +21,7 @@ mod handlers {
     pub mod site_handler;
     pub mod ui_handler;
 }
+mod repository;
 mod router;
 mod storage;
 
@@ -92,20 +93,13 @@ async fn main() {
 }
 
 async fn seed_admin(pool: &sqlx::SqlitePool) {
-    let exists: Option<(String,)> = sqlx::query_as("SELECT id FROM users WHERE username = 'admin'")
-        .fetch_optional(pool)
+    if !repository::user::exists(pool, "admin")
         .await
-        .unwrap_or(None);
-
-    if exists.is_none() {
+        .unwrap_or(false)
+    {
         let id = Uuid::now_v7().to_string();
         let password_hash = hash("admin", DEFAULT_COST).expect("Failed to hash password");
-        sqlx::query("INSERT INTO users (id, username, email, password_hash) VALUES (?, ?, ?, ?)")
-            .bind(&id)
-            .bind("admin")
-            .bind("admin@cms.local")
-            .bind(&password_hash)
-            .execute(pool)
+        repository::user::create(pool, &id, "admin", "admin@cms.local", &password_hash)
             .await
             .expect("Failed to seed admin user");
 
