@@ -11,7 +11,8 @@ use uuid::Uuid;
 
 use crate::config::Config;
 use crate::middleware::auth::{AuthenticatedUser, create_token};
-use crate::models::user::{AuthResponse, CreateUser, LoginRequest, User, UserPublic};
+use crate::models::user::{AuthResponse, CreateUser, LoginRequest, UserPublic};
+use crate::repository::user as user_repo;
 
 #[utoipa::path(
     post,
@@ -49,16 +50,7 @@ pub async fn register(
 
     let id = Uuid::now_v7().to_string();
 
-    let result =
-        sqlx::query("INSERT INTO users (id, username, email, password_hash) VALUES (?, ?, ?, ?)")
-            .bind(&id)
-            .bind(&payload.username)
-            .bind(&payload.email)
-            .bind(&password_hash)
-            .execute(&pool)
-            .await;
-
-    match result {
+    match user_repo::create(&pool, &id, &payload.username, &payload.email, &password_hash).await {
         Ok(_) => {
             let token = match create_token(id.clone(), &config.jwt_secret) {
                 Ok(t) => t,
@@ -112,14 +104,7 @@ pub async fn login(
     Extension(config): Extension<Config>,
     Json(payload): Json<LoginRequest>,
 ) -> Response {
-    let user = sqlx::query_as::<_, User>(
-        "SELECT id, username, email, password_hash, created_at, updated_at FROM users WHERE username = ?",
-    )
-    .bind(&payload.username)
-    .fetch_optional(&pool)
-    .await;
-
-    let user = match user {
+    let user = match user_repo::find_by_username(&pool, &payload.username).await {
         Ok(Some(u)) => u,
         Ok(None) => {
             return (
@@ -184,14 +169,7 @@ pub async fn login(
     tag = "auth"
 )]
 pub async fn me(auth: AuthenticatedUser, Extension(pool): Extension<SqlitePool>) -> Response {
-    let user = sqlx::query_as::<_, User>(
-        "SELECT id, username, email, password_hash, created_at, updated_at FROM users WHERE id = ?",
-    )
-    .bind(auth.user_id)
-    .fetch_optional(&pool)
-    .await;
-
-    match user {
+    match user_repo::find_by_id(&pool, &auth.user_id).await {
         Ok(Some(u)) => (
             StatusCode::OK,
             Json(UserPublic {
