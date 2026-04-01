@@ -3,6 +3,7 @@ use uuid::Uuid;
 
 use crate::graphql::context::GqlContext;
 use crate::graphql::types::collection::*;
+use crate::repository::collection as collection_repo;
 
 pub struct CollectionMutation;
 
@@ -19,29 +20,17 @@ impl CollectionMutation {
         let definition_str = input.definition.to_string();
         let id = Uuid::now_v7().to_string();
 
-        let result = sqlx::query(
-            "INSERT INTO collections (id, site_id, name, slug, definition) VALUES (?, ?, ?, ?, ?)",
+        match collection_repo::create(
+            &gql_ctx.pool,
+            &id,
+            site_id,
+            &input.name,
+            &input.slug,
+            &definition_str,
         )
-        .bind(&id)
-        .bind(site_id)
-        .bind(&input.name)
-        .bind(&input.slug)
-        .bind(&definition_str)
-        .execute(&gql_ctx.pool)
-        .await;
-
-        match result {
-            Ok(_) => {
-                let db_collection = sqlx::query_as::<_, crate::models::collection::Collection>(
-                    "SELECT id, site_id, name, slug, definition, created_at, updated_at FROM collections WHERE id = ?",
-                )
-                .bind(&id)
-                .fetch_one(&gql_ctx.pool)
-                .await
-                .map_err(|e| async_graphql::Error::new(format!("Database error: {}", e)))?;
-
-                Ok(db_collection_to_gql(db_collection))
-            }
+        .await
+        {
+            Ok(db_collection) => Ok(db_collection_to_gql(db_collection)),
             Err(sqlx::Error::Database(ref db_err)) if db_err.is_unique_violation() => {
                 Err(async_graphql::Error::new(
                     "Collection with this name or slug already exists",
@@ -60,15 +49,10 @@ impl CollectionMutation {
         let gql_ctx = ctx.data::<GqlContext>()?;
         let site_id = gql_ctx.require_site()?;
 
-        let existing = sqlx::query_as::<_, crate::models::collection::Collection>(
-            "SELECT id, site_id, name, slug, definition, created_at, updated_at FROM collections WHERE site_id = ? AND slug = ?",
-        )
-        .bind(site_id)
-        .bind(&slug)
-        .fetch_optional(&gql_ctx.pool)
-        .await
-        .map_err(|e| async_graphql::Error::new(format!("Database error: {}", e)))?
-        .ok_or_else(|| async_graphql::Error::new("Collection not found"))?;
+        let existing = collection_repo::get_by_slug(&gql_ctx.pool, site_id, &slug)
+            .await
+            .map_err(|e| async_graphql::Error::new(format!("Database error: {}", e)))?
+            .ok_or_else(|| async_graphql::Error::new("Collection not found"))?;
 
         let name = input.name.unwrap_or(existing.name);
         let new_slug = input.slug.unwrap_or(existing.slug);
@@ -86,105 +70,28 @@ impl CollectionMutation {
                 serde_json::from_value(new_def_value.clone()).ok();
 
             if let (Some(old_d), Some(new_d)) = (old_def, new_def) {
-                let old_fields = old_d["fields"].as_array().cloned().unwrap_or_default();
-                let new_fields = new_d["fields"].as_array().cloned().unwrap_or_default();
-
-                let mut rename_map: std::collections::HashMap<String, String> =
-                    std::collections::HashMap::new();
-                let mut used_old = vec![false; old_fields.len()];
-                let mut used_new = vec![false; new_fields.len()];
-
-                for i in 0..old_fields.len().min(new_fields.len()) {
-                    let of = &old_fields[i];
-                    let nf = &new_fields[i];
-                    if of["name"] != nf["name"]
-                        && of["type"] == nf["type"]
-                        && of.get("required") == nf.get("required")
-                        && of.get("options") == nf.get("options")
-                    {
-                        if let (Some(on), Some(nn)) = (of["name"].as_str(), nf["name"].as_str())
-                        {
-                            rename_map.insert(on.to_string(), nn.to_string());
-                            used_old[i] = true;
-                            used_new[i] = true;
-                        }
-                    }
-                }
-
-                for (i, of) in old_fields.iter().enumerate() {
-                    if used_old[i] { continue; }
-                    for (j, nf) in new_fields.iter().enumerate() {
-                        if used_new[j] { continue; }
-                        if of["name"] != nf["name"]
-                            && of["type"] == nf["type"]
-                            && of.get("required") == nf.get("required")
-                            && of.get("options") == nf.get("options")
-                        {
-                            if let (Some(on), Some(nn)) = (of["name"].as_str(), nf["name"].as_str()) {
-                                rename_map.insert(on.to_string(), nn.to_string());
-                                used_old[i] = true;
-                                used_new[j] = true;
-                            }
-                            break;
-                        }
-                    }
-                }
+                let rename_map = compute_field_rename_map(&old_d, &new_d);
 
                 if !rename_map.is_empty() {
-                    let contents = sqlx::query_as::<_, crate::models::content::Content>(
-                        "SELECT id, site_id, collection_id, data, slug, status, created_at, updated_at, published_at FROM content WHERE collection_id = ?",
-                    )
-                    .bind(&existing.id)
-                    .fetch_all(&gql_ctx.pool)
-                    .await;
-
-                    if let Ok(items) = contents {
-                        for content in &items {
-                            if let Ok(mut data) =
-                                serde_json::from_str::<serde_json::Value>(&content.data)
-                            {
-                                if let Some(obj) = data.as_object_mut() {
-                                    let mut renamed = serde_json::Map::new();
-                                    for (key, value) in obj.iter() {
-                                        let new_key = rename_map.get(key).cloned().unwrap_or_else(|| key.clone());
-                                        renamed.insert(new_key, value.clone());
-                                    }
-                                    let new_data_str = serde_json::to_string(&serde_json::Value::Object(renamed))
-                                        .unwrap_or_else(|_| content.data.clone());
-
-                                    let _ = sqlx::query(
-                                        "UPDATE content SET data = ?, updated_at = datetime('now') WHERE id = ?",
-                                    )
-                                    .bind(&new_data_str)
-                                    .bind(&content.id)
-                                    .execute(&gql_ctx.pool)
-                                    .await;
-                                }
-                            }
-                        }
+                    if let Ok(items) =
+                        collection_repo::get_content_for_migration(&gql_ctx.pool, &existing.id)
+                            .await
+                    {
+                        collection_repo::migrate_content_field_renames(
+                            &gql_ctx.pool,
+                            &items,
+                            &rename_map,
+                        )
+                        .await;
                     }
                 }
             }
         }
 
-        sqlx::query(
-            "UPDATE collections SET name = ?, slug = ?, definition = ?, updated_at = datetime('now') WHERE id = ?",
-        )
-        .bind(&name)
-        .bind(&new_slug)
-        .bind(&definition_str)
-        .bind(&existing.id)
-        .execute(&gql_ctx.pool)
-        .await
-        .map_err(|e| async_graphql::Error::new(format!("Database error: {}", e)))?;
-
-        let db_collection = sqlx::query_as::<_, crate::models::collection::Collection>(
-            "SELECT id, site_id, name, slug, definition, created_at, updated_at FROM collections WHERE id = ?",
-        )
-        .bind(&existing.id)
-        .fetch_one(&gql_ctx.pool)
-        .await
-        .map_err(|e| async_graphql::Error::new(format!("Database error: {}", e)))?;
+        let db_collection =
+            collection_repo::update(&gql_ctx.pool, &existing.id, &name, &new_slug, &definition_str)
+                .await
+                .map_err(|e| async_graphql::Error::new(format!("Database error: {}", e)))?;
 
         Ok(db_collection_to_gql(db_collection))
     }
@@ -193,13 +100,60 @@ impl CollectionMutation {
         let gql_ctx = ctx.data::<GqlContext>()?;
         let site_id = gql_ctx.require_site()?;
 
-        let _ = sqlx::query("DELETE FROM collections WHERE site_id = ? AND slug = ?")
-            .bind(site_id)
-            .bind(&slug)
-            .execute(&gql_ctx.pool)
+        collection_repo::delete(&gql_ctx.pool, site_id, &slug)
             .await
             .map_err(|e| async_graphql::Error::new(format!("Database error: {}", e)))?;
 
         Ok(true)
     }
+}
+
+fn compute_field_rename_map(
+    old_def: &serde_json::Value,
+    new_def: &serde_json::Value,
+) -> std::collections::HashMap<String, String> {
+    let old_fields = old_def["fields"].as_array().cloned().unwrap_or_default();
+    let new_fields = new_def["fields"].as_array().cloned().unwrap_or_default();
+
+    let mut rename_map: std::collections::HashMap<String, String> =
+        std::collections::HashMap::new();
+    let mut used_old = vec![false; old_fields.len()];
+    let mut used_new = vec![false; new_fields.len()];
+
+    for i in 0..old_fields.len().min(new_fields.len()) {
+        let of = &old_fields[i];
+        let nf = &new_fields[i];
+        if of["name"] != nf["name"]
+            && of["type"] == nf["type"]
+            && of.get("required") == nf.get("required")
+            && of.get("options") == nf.get("options")
+        {
+            if let (Some(on), Some(nn)) = (of["name"].as_str(), nf["name"].as_str()) {
+                rename_map.insert(on.to_string(), nn.to_string());
+                used_old[i] = true;
+                used_new[i] = true;
+            }
+        }
+    }
+
+    for (i, of) in old_fields.iter().enumerate() {
+        if used_old[i] { continue; }
+        for (j, nf) in new_fields.iter().enumerate() {
+            if used_new[j] { continue; }
+            if of["name"] != nf["name"]
+                && of["type"] == nf["type"]
+                && of.get("required") == nf.get("required")
+                && of.get("options") == nf.get("options")
+            {
+                if let (Some(on), Some(nn)) = (of["name"].as_str(), nf["name"].as_str()) {
+                    rename_map.insert(on.to_string(), nn.to_string());
+                    used_old[i] = true;
+                    used_new[j] = true;
+                }
+                break;
+            }
+        }
+    }
+
+    rename_map
 }
