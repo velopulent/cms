@@ -4,7 +4,6 @@ use axum::{
     http::StatusCode,
     response::{IntoResponse, Response},
 };
-use regex::Regex;
 use serde::Deserialize;
 use serde_json::json;
 use sqlx::SqlitePool;
@@ -14,6 +13,7 @@ use crate::handlers::file_handler::StorageManager;
 use crate::middleware::auth::{AuthContext, AuthenticatedUser, check_site_access};
 use crate::models::content::{Content, CreateContent, UpdateContent};
 use crate::models::file::File;
+use crate::repository::content::{self as content_repo, ListContentParams};
 
 #[derive(Deserialize, utoipa::IntoParams)]
 pub struct ListParams {
@@ -62,43 +62,22 @@ pub async fn list_content(
         }
     }
 
-    let mut query = String::from(
-        "SELECT c.id, c.site_id, c.collection_id, c.data, c.slug, c.status, c.created_at, c.updated_at, c.published_at
-         FROM content c
-         JOIN collections s ON c.collection_id = s.id
-         WHERE c.site_id = ?",
-    );
+    let published_only = matches!(auth, AuthContext::ApiKey { .. });
 
-    let mut bindings: Vec<String> = vec![site_id];
+    let list_params = ListContentParams {
+        site_id: &site_id,
+        collection_slug: params.r#type.as_deref(),
+        collection_id: None,
+        status: if matches!(auth, AuthContext::Jwt { .. }) {
+            params.status.as_deref()
+        } else {
+            None
+        },
+        search: params.search.as_deref(),
+        published_only,
+    };
 
-    if matches!(auth, AuthContext::ApiKey { .. }) {
-        query.push_str(" AND c.status = 'published'");
-    }
-
-    if let Some(collection_slug) = &params.r#type {
-        query.push_str(" AND s.slug = ?");
-        bindings.push(collection_slug.clone());
-    }
-    if let Some(status) = &params.status {
-        if matches!(auth, AuthContext::Jwt { .. }) {
-            query.push_str(" AND c.status = ?");
-            bindings.push(status.clone());
-        }
-    }
-    if let Some(search) = &params.search {
-        query.push_str(" AND c.data LIKE ?");
-        bindings.push(format!("%{}%", search));
-    }
-    query.push_str(" ORDER BY c.updated_at DESC");
-
-    let mut q = sqlx::query_as::<_, Content>(&query);
-    for b in &bindings {
-        q = q.bind(b);
-    }
-
-    let result = q.fetch_all(&pool).await;
-
-    match result {
+    match content_repo::list(&pool, list_params).await {
         Ok(items) => (StatusCode::OK, Json(items)).into_response(),
         Err(err) => (
             StatusCode::INTERNAL_SERVER_ERROR,
@@ -149,21 +128,9 @@ pub async fn get_content(
         }
     }
 
-    let mut query = String::from(
-        "SELECT id, site_id, collection_id, data, slug, status, created_at, updated_at, published_at FROM content WHERE id = ? AND site_id = ?",
-    );
+    let published_only = matches!(auth, AuthContext::ApiKey { .. });
 
-    if matches!(auth, AuthContext::ApiKey { .. }) {
-        query.push_str(" AND status = 'published'");
-    }
-
-    let result = sqlx::query_as::<_, Content>(&query)
-        .bind(&id)
-        .bind(&site_id)
-        .fetch_optional(&pool)
-        .await;
-
-    match result {
+    match content_repo::get_by_id(&pool, &id, &site_id, published_only).await {
         Ok(Some(item)) => {
             let resolved = resolve_content_files(&item, &pool, &storage).await;
             (StatusCode::OK, Json(resolved)).into_response()
@@ -208,29 +175,9 @@ pub async fn create_content(
     let data_str = payload.data.to_string();
     let id = Uuid::now_v7().to_string();
 
-    let result = sqlx::query(
-        "INSERT INTO content (id, site_id, collection_id, data, slug) VALUES (?, ?, ?, ?, ?)",
-    )
-    .bind(&id)
-    .bind(&site_id)
-    .bind(&payload.collection_id)
-    .bind(&data_str)
-    .bind(&payload.slug)
-    .execute(&pool)
-    .await;
-
-    match result {
-        Ok(_) => {
-            sync_file_references(&pool, &id, &site_id, &payload.data).await;
-
-            let item = sqlx::query_as::<_, Content>(
-                "SELECT id, site_id, collection_id, data, slug, status, created_at, updated_at, published_at FROM content WHERE id = ?",
-            )
-            .bind(&id)
-            .fetch_one(&pool)
-            .await
-            .unwrap();
-
+    match content_repo::create(&pool, &id, &site_id, &payload.collection_id, &data_str, &payload.slug).await {
+        Ok(item) => {
+            content_repo::sync_file_references(&pool, &id, &site_id, &payload.data).await;
             (StatusCode::CREATED, Json(item)).into_response()
         }
         Err(sqlx::Error::Database(ref db_err)) if db_err.is_unique_violation() => (
@@ -272,15 +219,7 @@ pub async fn update_content(
         return (status, Json(err)).into_response();
     }
 
-    let existing = sqlx::query_as::<_, Content>(
-        "SELECT id, site_id, collection_id, data, slug, status, created_at, updated_at, published_at FROM content WHERE id = ? AND site_id = ?",
-    )
-    .bind(&id)
-    .bind(&site_id)
-    .fetch_optional(&pool)
-    .await;
-
-    let existing = match existing {
+    let existing = match content_repo::get_by_id(&pool, &id, &site_id, false).await {
         Ok(Some(c)) => c,
         Ok(None) => {
             return (
@@ -306,28 +245,9 @@ pub async fn update_content(
     let slug = payload.slug.unwrap_or(existing.slug);
     let status = payload.status.unwrap_or(existing.status);
 
-    let result = sqlx::query(
-        "UPDATE content SET data = ?, slug = ?, status = ?, updated_at = datetime('now') WHERE id = ?",
-    )
-    .bind(&data_str)
-    .bind(&slug)
-    .bind(&status)
-    .bind(&id)
-    .execute(&pool)
-    .await;
-
-    match result {
-        Ok(_) => {
-            sync_file_references(&pool, &id, &site_id, &resolved_data).await;
-
-            let item = sqlx::query_as::<_, Content>(
-                "SELECT id, site_id, collection_id, data, slug, status, created_at, updated_at, published_at FROM content WHERE id = ?",
-            )
-            .bind(&id)
-            .fetch_one(&pool)
-            .await
-            .unwrap();
-
+    match content_repo::update(&pool, &id, &data_str, &slug, &status).await {
+        Ok(item) => {
+            content_repo::sync_file_references(&pool, &id, &site_id, &resolved_data).await;
             (StatusCode::OK, Json(item)).into_response()
         }
         Err(sqlx::Error::Database(ref db_err)) if db_err.is_unique_violation() => (
@@ -367,13 +287,7 @@ pub async fn delete_content(
         return (status, Json(err)).into_response();
     }
 
-    let result = sqlx::query("DELETE FROM content WHERE id = ? AND site_id = ?")
-        .bind(&id)
-        .bind(&site_id)
-        .execute(&pool)
-        .await;
-
-    match result {
+    match content_repo::delete(&pool, &id, &site_id).await {
         Ok(_) => StatusCode::NO_CONTENT.into_response(),
         Err(err) => (
             StatusCode::INTERNAL_SERVER_ERROR,
@@ -408,31 +322,13 @@ pub async fn publish_content(
         return (status, Json(err)).into_response();
     }
 
-    let result = sqlx::query(
-        "UPDATE content SET status = 'published', published_at = datetime('now'), updated_at = datetime('now') WHERE id = ? AND site_id = ?",
-    )
-    .bind(&id)
-    .bind(&site_id)
-    .execute(&pool)
-    .await;
-
-    match result {
-        Ok(r) if r.rows_affected() == 0 => (
+    match content_repo::publish(&pool, &id, &site_id).await {
+        Ok(item) => (StatusCode::OK, Json(item)).into_response(),
+        Err(sqlx::Error::RowNotFound) => (
             StatusCode::NOT_FOUND,
             Json(json!({"error": "Content not found"})),
         )
             .into_response(),
-        Ok(_) => {
-            let item = sqlx::query_as::<_, Content>(
-                "SELECT id, site_id, collection_id, data, slug, status, created_at, updated_at, published_at FROM content WHERE id = ?",
-            )
-            .bind(&id)
-            .fetch_one(&pool)
-            .await
-            .unwrap();
-
-            (StatusCode::OK, Json(item)).into_response()
-        }
         Err(err) => (
             StatusCode::INTERNAL_SERVER_ERROR,
             Json(json!({"error": err.to_string()})),
@@ -466,31 +362,13 @@ pub async fn unpublish_content(
         return (status, Json(err)).into_response();
     }
 
-    let result = sqlx::query(
-        "UPDATE content SET status = 'draft', updated_at = datetime('now') WHERE id = ? AND site_id = ?",
-    )
-    .bind(&id)
-    .bind(&site_id)
-    .execute(&pool)
-    .await;
-
-    match result {
-        Ok(r) if r.rows_affected() == 0 => (
+    match content_repo::unpublish(&pool, &id, &site_id).await {
+        Ok(item) => (StatusCode::OK, Json(item)).into_response(),
+        Err(sqlx::Error::RowNotFound) => (
             StatusCode::NOT_FOUND,
             Json(json!({"error": "Content not found"})),
         )
             .into_response(),
-        Ok(_) => {
-            let item = sqlx::query_as::<_, Content>(
-                "SELECT id, site_id, collection_id, data, slug, status, created_at, updated_at, published_at FROM content WHERE id = ?",
-            )
-            .bind(&id)
-            .fetch_one(&pool)
-            .await
-            .unwrap();
-
-            (StatusCode::OK, Json(item)).into_response()
-        }
         Err(err) => (
             StatusCode::INTERNAL_SERVER_ERROR,
             Json(json!({"error": err.to_string()})),
@@ -499,79 +377,15 @@ pub async fn unpublish_content(
     }
 }
 
-// --- File resolution helpers ---
+// --- File resolution helpers (handler-level, uses StorageManager) ---
 
-fn extract_all_file_ids(value: &serde_json::Value) -> Vec<String> {
-    let mut ids = Vec::new();
-    extract_all_file_ids_recursive(value, &mut ids);
-    ids.sort();
-    ids.dedup();
-    ids
-}
-
-fn extract_all_file_ids_recursive(value: &serde_json::Value, ids: &mut Vec<String>) {
-    static FILE_URL_RE: std::sync::LazyLock<Regex> =
-        std::sync::LazyLock::new(|| Regex::new(r"/api/files/([^/]+)(?:/thumbnail)?").unwrap());
-
-    match value {
-        serde_json::Value::String(s) => {
-            // /api/files/<id> and /api/files/<id>/thumbnail URLs
-            for cap in FILE_URL_RE.captures_iter(s) {
-                if let Some(m) = cap.get(1) {
-                    ids.push(m.as_str().to_string());
-                }
-            }
-        }
-        serde_json::Value::Array(arr) => {
-            for item in arr {
-                extract_all_file_ids_recursive(item, ids);
-            }
-        }
-        serde_json::Value::Object(obj) => {
-            for val in obj.values() {
-                extract_all_file_ids_recursive(val, ids);
-            }
-        }
-        _ => {}
-    }
-}
-
-/// Sync file references for a content item into the content_file_references table
-async fn sync_file_references(
-    pool: &SqlitePool,
-    content_id: &str,
-    site_id: &str,
-    data: &serde_json::Value,
-) {
-    let file_ids = extract_all_file_ids(data);
-
-    // Clear existing references for this content
-    let _ = sqlx::query("DELETE FROM content_file_references WHERE content_id = ?")
-        .bind(content_id)
-        .execute(pool)
-        .await;
-
-    // Insert new references
-    for file_id in &file_ids {
-        let _ = sqlx::query(
-            "INSERT OR IGNORE INTO content_file_references (content_id, file_id, site_id) VALUES (?, ?, ?)",
-        )
-        .bind(content_id)
-        .bind(file_id)
-        .bind(site_id)
-        .execute(pool)
-        .await;
-    }
-}
-
-/// Resolve file URLs in content and return with a _files map
 async fn resolve_content_files(
     content: &Content,
     pool: &SqlitePool,
     storage: &StorageManager,
 ) -> serde_json::Value {
     let data: serde_json::Value = serde_json::from_str(&content.data).unwrap_or_default();
-    let file_ids = extract_all_file_ids(&data);
+    let file_ids = content_repo::extract_file_ids(&data);
 
     let mut file_map = serde_json::Map::new();
 
