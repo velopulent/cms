@@ -7,6 +7,8 @@ use sqlx::SqlitePool;
 
 use crate::config::Config;
 use crate::models::user::Claims;
+use crate::repository::api_key as api_key_repo;
+use crate::repository::user as user_repo;
 
 // --- Auth Context ---
 
@@ -146,13 +148,9 @@ pub(crate) async fn verify_api_key(
     // key_prefix is the first 16 chars of the raw key (e.g., "cms_a1b2c3d4e")
     let prefix: String = token.chars().take(16).collect();
 
-    let keys = sqlx::query_as::<_, (String, String, String, Option<String>)>(
-        "SELECT id, site_id, key_hash, expires_at FROM api_keys WHERE key_prefix = ?",
-    )
-    .bind(&prefix)
-    .fetch_all(pool)
-    .await
-    .map_err(|_| unauthorized_error("Internal server error"))?;
+    let keys = api_key_repo::find_by_prefix(pool, &prefix)
+        .await
+        .map_err(|_| unauthorized_error("Internal server error"))?;
 
     for (key_id, site_id, stored_hash, expires_at) in keys {
         if !bcrypt::verify(token, &stored_hash).unwrap_or(false) {
@@ -169,10 +167,7 @@ pub(crate) async fn verify_api_key(
         }
 
         // Update last_used_at (fire and forget)
-        let _ = sqlx::query("UPDATE api_keys SET last_used_at = datetime('now') WHERE id = ?")
-            .bind(&key_id)
-            .execute(pool)
-            .await;
+        api_key_repo::update_last_used(pool, &key_id).await;
 
         return Ok(AuthContext::ApiKey { site_id });
     }
@@ -198,22 +193,15 @@ pub async fn check_site_access(
 
     let min_level = role_order(min_role);
 
-    let result: Option<(String,)> = sqlx::query_as(
-        "SELECT sm.role FROM site_members sm WHERE sm.user_id = ? AND sm.site_id = ?",
-    )
-    .bind(user_id)
-    .bind(site_id)
-    .fetch_optional(pool)
-    .await
-    .map_err(|e| {
+    let role = user_repo::get_role(pool, user_id, site_id).await.map_err(|e| {
         (
             StatusCode::INTERNAL_SERVER_ERROR,
             serde_json::json!({"error": e.to_string()}),
         )
     })?;
 
-    match result {
-        Some((role,)) if role_order(&role) >= min_level => Ok(()),
+    match role {
+        Some(r) if role_order(&r) >= min_level => Ok(()),
         Some(_) => Err((
             StatusCode::FORBIDDEN,
             serde_json::json!({"error": "Insufficient permissions"}),
