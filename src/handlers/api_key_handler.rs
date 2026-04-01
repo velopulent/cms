@@ -11,6 +11,7 @@ use uuid::Uuid;
 
 use crate::middleware::auth::{AuthenticatedUser, check_site_access};
 use crate::models::api_key::{ApiKey, ApiKeyResponse, CreateApiKey};
+use crate::repository::api_key as api_key_repo;
 
 #[utoipa::path(
     get,
@@ -33,15 +34,7 @@ pub async fn list_api_keys(
         return (status, Json(err)).into_response();
     }
 
-    let result = sqlx::query_as::<_, ApiKey>(
-        "SELECT id, site_id, name, key_prefix, permissions, last_used_at, created_at, expires_at
-         FROM api_keys WHERE site_id = ? ORDER BY created_at DESC",
-    )
-    .bind(&site_id)
-    .fetch_all(&pool)
-    .await;
-
-    match result {
+    match api_key_repo::list(&pool, &site_id).await {
         Ok(items) => (StatusCode::OK, Json(items)).into_response(),
         Err(err) => (
             StatusCode::INTERNAL_SERVER_ERROR,
@@ -82,14 +75,11 @@ pub async fn create_api_key(
             .into_response();
     }
 
-    // Generate key: cms_{8chars}_{24chars} = 35 chars total
-    // Use UUIDs for randomness (no rand dependency needed)
     let random_chars = Uuid::new_v4().to_string().replace('-', "");
     let segment_a: String = random_chars.chars().take(8).collect();
     let segment_b: String = random_chars.chars().skip(8).take(24).collect();
     let raw_key = format!("cms_{}_{}", segment_a, segment_b);
 
-    // Prefix is first 16 chars for lookup
     let prefix: String = raw_key.chars().take(16).collect();
 
     let key_hash = match hash(&raw_key, DEFAULT_COST) {
@@ -105,18 +95,7 @@ pub async fn create_api_key(
 
     let id = Uuid::now_v7().to_string();
 
-    let result = sqlx::query(
-        "INSERT INTO api_keys (id, site_id, name, key_hash, key_prefix) VALUES (?, ?, ?, ?, ?)",
-    )
-    .bind(&id)
-    .bind(&site_id)
-    .bind(&payload.name)
-    .bind(&key_hash)
-    .bind(&prefix)
-    .execute(&pool)
-    .await;
-
-    match result {
+    match api_key_repo::create(&pool, &id, &site_id, &payload.name, &key_hash, &prefix).await {
         Ok(_) => {
             let now = chrono::Utc::now().format("%Y-%m-%d %H:%M:%S").to_string();
 
@@ -167,14 +146,8 @@ pub async fn delete_api_key(
         return (status, Json(err)).into_response();
     }
 
-    let result = sqlx::query("DELETE FROM api_keys WHERE id = ? AND site_id = ?")
-        .bind(&key_id)
-        .bind(&site_id)
-        .execute(&pool)
-        .await;
-
-    match result {
-        Ok(r) if r.rows_affected() == 0 => (
+    match api_key_repo::delete(&pool, &key_id, &site_id).await {
+        Ok(0) => (
             StatusCode::NOT_FOUND,
             Json(json!({"error": "API key not found"})),
         )
