@@ -139,7 +139,7 @@ where
     }
 }
 
-async fn verify_api_key(
+pub(crate) async fn verify_api_key(
     token: &str,
     pool: &SqlitePool,
 ) -> Result<AuthContext, (StatusCode, String)> {
