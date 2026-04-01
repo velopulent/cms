@@ -158,7 +158,6 @@ impl utoipa::Modify for SecurityAddon {
 async fn graphql_handler(
     axum::extract::Extension(schema): axum::extract::Extension<CmsSchema>,
     axum::extract::Extension(pool): axum::extract::Extension<SqlitePool>,
-    axum::extract::Extension(config): axum::extract::Extension<Config>,
     axum::extract::Extension(storage): axum::extract::Extension<StorageManager>,
     headers: HeaderMap,
     req: async_graphql_axum::GraphQLRequest,
@@ -167,7 +166,7 @@ async fn graphql_handler(
         .get("Authorization")
         .and_then(|v| v.to_str().ok());
 
-    let gql_ctx = GqlContext::from_request(pool, config, storage, auth_header).await;
+    let gql_ctx = GqlContext::from_request(pool, storage, auth_header).await;
 
     let response = schema.execute(req.into_inner().data(gql_ctx)).await;
     async_graphql_axum::GraphQLResponse::from(response)
