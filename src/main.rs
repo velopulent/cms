@@ -1,5 +1,6 @@
 mod config;
 mod database;
+mod graphql;
 mod middleware {
     pub mod auth;
 }
