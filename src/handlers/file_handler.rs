@@ -17,7 +17,8 @@ use uuid::Uuid;
 use crate::config::Config;
 use crate::middleware::auth::AuthenticatedUser;
 use crate::middleware::auth::check_site_access;
-use crate::models::file::{BatchFileIds, File, FileReference, FileWithUrl};
+use crate::models::file::{BatchFileIds, File, FileWithUrl};
+use crate::repository::file as file_repo;
 use crate::storage::{FileSystemStorage, S3Storage};
 
 #[derive(Clone)]
@@ -211,82 +212,21 @@ pub async fn list_files(
 
     let page = params.page.unwrap_or(1).max(1);
     let per_page: i64 = 30;
-    let offset = (page - 1) * per_page;
-
     let is_trashed = params.trashed.as_deref() == Some("true");
-    let deleted_clause = if is_trashed {
-        "deleted_at IS NOT NULL"
-    } else {
-        "deleted_at IS NULL"
+
+    let list_params = file_repo::ListFilesParams {
+        site_id: &site_id,
+        trashed: is_trashed,
+        search: params.search.as_deref(),
+        file_type: params.r#type.as_deref(),
+        page,
+        per_page,
     };
 
-    let mut query = format!(
-        "SELECT id, site_id, filename, original_name, mime_type, size, storage_provider, storage_key, thumbnail_key, width, height, deleted_at, created_by, created_at FROM files WHERE site_id = ? AND {}",
-        deleted_clause,
-    );
-    let mut count_query = format!(
-        "SELECT COUNT(*) FROM files WHERE site_id = ? AND {}",
-        deleted_clause,
-    );
-
-    let mut bindings: Vec<String> = vec![site_id.clone()];
-
-    if let Some(search) = &params.search {
-        query.push_str(" AND (original_name LIKE ? OR filename LIKE ?)");
-        count_query.push_str(" AND (original_name LIKE ? OR filename LIKE ?)");
-        let pattern = format!("%{}%", search);
-        bindings.push(pattern.clone());
-        bindings.push(pattern);
-    }
-
-    if let Some(type_filter) = &params.r#type {
-        match type_filter.as_str() {
-            "image" => {
-                query.push_str(" AND mime_type LIKE 'image/%'");
-                count_query.push_str(" AND mime_type LIKE 'image/%'");
-            }
-            "video" => {
-                query.push_str(" AND mime_type LIKE 'video/%'");
-                count_query.push_str(" AND mime_type LIKE 'video/%'");
-            }
-            "document" => {
-                query.push_str(
-                    " AND (mime_type LIKE 'application/pdf' OR mime_type LIKE 'application/%' OR mime_type LIKE 'text/%')",
-                );
-                count_query.push_str(
-                    " AND (mime_type LIKE 'application/pdf' OR mime_type LIKE 'application/%' OR mime_type LIKE 'text/%')",
-                );
-            }
-            _ => {}
-        }
-    }
-
-    let count_bindings = bindings.clone();
-
-    query.push_str(" ORDER BY created_at DESC LIMIT ? OFFSET ?");
-    bindings.push(per_page.to_string());
-    bindings.push(offset.to_string());
-
-    // Fetch count
-    let mut count_q = sqlx::query_scalar::<_, i64>(&count_query);
-    for b in &count_bindings {
-        count_q = count_q.bind(b);
-    }
-    let total: i64 = count_q
-        .fetch_optional(&pool)
-        .await
-        .unwrap_or(Some(0))
-        .unwrap_or(0);
-
-    // Fetch items
-    let mut q = sqlx::query_as::<_, File>(&query);
-    for b in &bindings {
-        q = q.bind(b);
-    }
-
-    match q.fetch_all(&pool).await {
-        Ok(items) => {
-            let with_urls: Vec<FileWithUrl> = items
+    match file_repo::list(&pool, list_params).await {
+        Ok(result) => {
+            let with_urls: Vec<FileWithUrl> = result
+                .items
                 .into_iter()
                 .map(|f| file_to_with_url(&f, &storage))
                 .collect();
@@ -295,9 +235,9 @@ pub async fn list_files(
                 StatusCode::OK,
                 Json(json!({
                     "items": with_urls,
-                    "total": total,
-                    "page": page,
-                    "per_page": per_page,
+                    "total": result.total,
+                    "page": result.page,
+                    "per_page": result.per_page,
                 })),
             )
                 .into_response()
@@ -335,13 +275,9 @@ pub async fn upload_file(
         return (status, Json(err)).into_response();
     }
 
-    let mut storage_provider =
-        sqlx::query_scalar::<_, String>("SELECT default_storage_provider FROM sites WHERE id = ?")
-            .bind(&site_id)
-            .fetch_optional(&pool)
-            .await
-            .unwrap_or(Some("filesystem".into()))
-            .unwrap_or("filesystem".into());
+    let mut storage_provider = file_repo::get_storage_provider(&pool, &site_id)
+        .await
+        .unwrap_or_else(|_| "filesystem".into());
 
     let mut file_data: Option<Bytes> = None;
     let mut file_name: Option<String> = None;
@@ -464,35 +400,26 @@ pub async fn upload_file(
         .await;
     }
 
-    let thumb_key_str = thumbnail_key.clone();
-    let result = sqlx::query(
-        "INSERT INTO files (id, site_id, filename, original_name, mime_type, size, storage_provider, storage_key, thumbnail_key, width, height, created_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+    let thumb_key_str = thumbnail_key.as_deref();
+
+    match file_repo::create(
+        &pool,
+        &file_id,
+        &site_id,
+        &filename,
+        &original_name,
+        &mime_type,
+        file_size,
+        &storage_provider,
+        &storage_key,
+        thumb_key_str,
+        width,
+        height,
+        &auth.user_id,
     )
-    .bind(&file_id)
-    .bind(&site_id)
-    .bind(&filename)
-    .bind(&original_name)
-    .bind(&mime_type)
-    .bind(file_size)
-    .bind(&storage_provider)
-    .bind(&storage_key)
-    .bind(&thumb_key_str)
-    .bind(width)
-    .bind(height)
-    .bind(&auth.user_id)
-    .execute(&pool)
-    .await;
-
-    match result {
-        Ok(_) => {
-            let file = sqlx::query_as::<_, File>(
-                "SELECT id, site_id, filename, original_name, mime_type, size, storage_provider, storage_key, thumbnail_key, width, height, deleted_at, created_by, created_at FROM files WHERE id = ?",
-            )
-            .bind(&file_id)
-            .fetch_one(&pool)
-            .await
-            .unwrap();
-
+    .await
+    {
+        Ok(file) => {
             let with_url = file_to_with_url(&file, &storage);
             (StatusCode::CREATED, Json(with_url)).into_response()
         }
@@ -534,14 +461,7 @@ pub async fn get_file(
         return (status, Json(err)).into_response();
     }
 
-    match sqlx::query_as::<_, File>(
-        "SELECT id, site_id, filename, original_name, mime_type, size, storage_provider, storage_key, thumbnail_key, width, height, deleted_at, created_by, created_at FROM files WHERE id = ? AND site_id = ?",
-    )
-    .bind(&id)
-    .bind(&site_id)
-    .fetch_optional(&pool)
-    .await
-    {
+    match file_repo::get_by_id(&pool, &id, &site_id).await {
         Ok(Some(file)) => {
             let with_url = file_to_with_url(&file, &storage);
             (StatusCode::OK, Json(with_url)).into_response()
@@ -582,16 +502,8 @@ pub async fn delete_file_handler(
         return (status, Json(err)).into_response();
     }
 
-    let result = sqlx::query(
-        "UPDATE files SET deleted_at = datetime('now') WHERE id = ? AND site_id = ? AND deleted_at IS NULL",
-    )
-    .bind(&id)
-    .bind(&site_id)
-    .execute(&pool)
-    .await;
-
-    match result {
-        Ok(r) if r.rows_affected() == 0 => (
+    match file_repo::soft_delete(&pool, &id, &site_id).await {
+        Ok(0) => (
             StatusCode::NOT_FOUND,
             Json(json!({"error": "File not found"})),
         )
@@ -613,7 +525,7 @@ pub async fn delete_file_handler(
         ("id" = String, Path, description = "File ID"),
     ),
     responses(
-        (status = 200, description = "References found", body = Vec<FileReference>),
+        (status = 200, description = "References found", body = Vec<crate::models::file::FileReference>),
     ),
     security(("bearer" = [])),
     tag = "files"
@@ -627,24 +539,8 @@ pub async fn get_file_references(
         return (status, Json(err)).into_response();
     }
 
-    match sqlx::query_as::<_, (String, String)>(
-        "SELECT DISTINCT c.id, col.name FROM content_file_references cfr JOIN content c ON cfr.content_id = c.id JOIN collections col ON c.collection_id = col.id WHERE cfr.file_id = ?",
-    )
-    .bind(&id)
-    .fetch_all(&pool)
-    .await
-    {
-        Ok(rows) => {
-            let refs: Vec<FileReference> = rows
-                .into_iter()
-                .map(|(content_id, collection_name)| FileReference {
-                    content_id,
-                    collection_name,
-                    field_name: String::new(),
-                })
-                .collect();
-            (StatusCode::OK, Json(refs)).into_response()
-        }
+    match file_repo::get_references(&pool, &id).await {
+        Ok(refs) => (StatusCode::OK, Json(refs)).into_response(),
         Err(err) => (
             StatusCode::INTERNAL_SERVER_ERROR,
             Json(json!({"error": err.to_string()})),
@@ -676,16 +572,8 @@ pub async fn restore_file(
         return (status, Json(err)).into_response();
     }
 
-    let result = sqlx::query(
-        "UPDATE files SET deleted_at = NULL WHERE id = ? AND site_id = ? AND deleted_at IS NOT NULL",
-    )
-    .bind(&id)
-    .bind(&site_id)
-    .execute(&pool)
-    .await;
-
-    match result {
-        Ok(r) if r.rows_affected() == 0 => (
+    match file_repo::restore(&pool, &id, &site_id).await {
+        Ok(0) => (
             StatusCode::NOT_FOUND,
             Json(json!({"error": "File not found or not deleted"})),
         )
@@ -731,21 +619,10 @@ pub async fn batch_delete_files(
             .into_response();
     }
 
-    let placeholders = body.ids.iter().map(|_| "?").collect::<Vec<_>>().join(",");
-    let query = format!(
-        "UPDATE files SET deleted_at = datetime('now') WHERE site_id = ? AND id IN ({}) AND deleted_at IS NULL",
-        placeholders
-    );
-
-    let mut q = sqlx::query(&query).bind(&site_id);
-    for id in &body.ids {
-        q = q.bind(id);
-    }
-
-    match q.execute(&pool).await {
-        Ok(r) => (
+    match file_repo::batch_soft_delete(&pool, &site_id, &body.ids).await {
+        Ok(count) => (
             StatusCode::OK,
-            Json(json!({"deleted": r.rows_affected()})),
+            Json(json!({"deleted": count})),
         )
             .into_response(),
         Err(err) => (
@@ -788,21 +665,10 @@ pub async fn batch_restore_files(
             .into_response();
     }
 
-    let placeholders = body.ids.iter().map(|_| "?").collect::<Vec<_>>().join(",");
-    let query = format!(
-        "UPDATE files SET deleted_at = NULL WHERE site_id = ? AND id IN ({}) AND deleted_at IS NOT NULL",
-        placeholders
-    );
-
-    let mut q = sqlx::query(&query).bind(&site_id);
-    for id in &body.ids {
-        q = q.bind(id);
-    }
-
-    match q.execute(&pool).await {
-        Ok(r) => (
+    match file_repo::batch_restore(&pool, &site_id, &body.ids).await {
+        Ok(count) => (
             StatusCode::OK,
-            Json(json!({"restored": r.rows_affected()})),
+            Json(json!({"restored": count})),
         )
             .into_response(),
         Err(err) => (
@@ -846,18 +712,7 @@ pub async fn batch_permanent_delete_files(
             .into_response();
     }
 
-    let placeholders = body.ids.iter().map(|_| "?").collect::<Vec<_>>().join(",");
-    let query = format!(
-        "SELECT id, site_id, filename, original_name, mime_type, size, storage_provider, storage_key, thumbnail_key, width, height, deleted_at, created_by, created_at FROM files WHERE site_id = ? AND id IN ({}) AND deleted_at IS NOT NULL",
-        placeholders
-    );
-
-    let mut q = sqlx::query_as::<_, File>(&query).bind(&site_id);
-    for id in &body.ids {
-        q = q.bind(id);
-    }
-
-    let files = match q.fetch_all(&pool).await {
+    let files = match file_repo::get_deleted_by_ids(&pool, &site_id, &body.ids).await {
         Ok(f) => f,
         Err(err) => {
             return (
@@ -875,21 +730,10 @@ pub async fn batch_permanent_delete_files(
         }
     }
 
-    let placeholders = body.ids.iter().map(|_| "?").collect::<Vec<_>>().join(",");
-    let delete_query = format!(
-        "DELETE FROM files WHERE site_id = ? AND id IN ({}) AND deleted_at IS NOT NULL",
-        placeholders
-    );
-
-    let mut dq = sqlx::query(&delete_query).bind(&site_id);
-    for id in &body.ids {
-        dq = dq.bind(id);
-    }
-
-    match dq.execute(&pool).await {
-        Ok(r) => (
+    match file_repo::batch_permanent_delete(&pool, &site_id, &body.ids).await {
+        Ok(count) => (
             StatusCode::OK,
-            Json(json!({"deleted": r.rows_affected()})),
+            Json(json!({"deleted": count})),
         )
             .into_response(),
         Err(err) => (
@@ -922,19 +766,12 @@ async fn serve_file_by_key(
     storage: &StorageManager,
     use_thumbnail: bool,
 ) -> Response {
-    let file = match sqlx::query_as::<_, File>(
-        "SELECT id, site_id, filename, original_name, mime_type, size, storage_provider, storage_key, thumbnail_key, width, height, deleted_at, created_by, created_at FROM files WHERE id = ?",
-    )
-    .bind(id)
-    .fetch_optional(pool)
-    .await
-    {
+    let file = match file_repo::get_by_id_any(pool, id).await {
         Ok(Some(f)) => f,
         Ok(None) => return (StatusCode::NOT_FOUND, "Not found").into_response(),
         Err(_) => return (StatusCode::INTERNAL_SERVER_ERROR, "Database error").into_response(),
     };
 
-    // Don't serve soft-deleted files
     if file.deleted_at.is_some() {
         return (StatusCode::NOT_FOUND, "Not found").into_response();
     }
