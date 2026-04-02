@@ -1,18 +1,57 @@
 use axum::{
     Json,
     extract::Extension,
-    http::StatusCode,
+    http::{HeaderValue, StatusCode, header::SET_COOKIE},
     response::{IntoResponse, Response},
 };
+use axum_extra::extract::cookie::Cookie;
 use bcrypt::{DEFAULT_COST, hash, verify};
 use serde_json::json;
 use sqlx::SqlitePool;
+use time::Duration;
 use uuid::Uuid;
 
 use crate::config::Config;
 use crate::middleware::auth::{AuthenticatedUser, create_token};
 use crate::models::user::{AuthResponse, CreateUser, LoginRequest, UserPublic};
 use crate::repository::user as user_repo;
+
+fn build_auth_cookies_response(
+    user: UserPublic,
+    jwt: &str,
+    config: &Config,
+) -> Response {
+    let token_cookie = Cookie::build(("token", jwt.to_string()))
+        .http_only(true)
+        .secure(config.cookie_secure)
+        .same_site(axum_extra::extract::cookie::SameSite::Strict)
+        .path("/")
+        .max_age(Duration::hours(24))
+        .build();
+
+    let csrf_cookie = Cookie::build(("csrf", Uuid::now_v7().to_string()))
+        .http_only(true)
+        .secure(config.cookie_secure)
+        .same_site(axum_extra::extract::cookie::SameSite::Strict)
+        .path("/")
+        .max_age(Duration::hours(24))
+        .build();
+
+    let mut response = (
+        StatusCode::OK,
+        Json(AuthResponse { user }),
+    )
+        .into_response();
+
+    if let Ok(val) = HeaderValue::from_str(&token_cookie.to_string()) {
+        response.headers_mut().insert(SET_COOKIE, val);
+    }
+    if let Ok(val) = HeaderValue::from_str(&csrf_cookie.to_string()) {
+        response.headers_mut().append(SET_COOKIE, val);
+    }
+
+    response
+}
 
 #[utoipa::path(
     post,
@@ -63,18 +102,15 @@ pub async fn register(
                 }
             };
 
-            (
-                StatusCode::CREATED,
-                Json(AuthResponse {
-                    token,
-                    user: UserPublic {
-                        id,
-                        username: payload.username,
-                        email: payload.email,
-                    },
-                }),
-            )
-                .into_response()
+            let user = UserPublic {
+                id,
+                username: payload.username,
+                email: payload.email,
+            };
+
+            let mut response = build_auth_cookies_response(user, &token, &config);
+            *response.status_mut() = StatusCode::CREATED;
+            response
         }
         Err(sqlx::Error::Database(ref db_err)) if db_err.is_unique_violation() => (
             StatusCode::CONFLICT,
@@ -131,7 +167,7 @@ pub async fn login(
             )
                 .into_response();
         }
-    }
+    };
 
     let token = match create_token(user.id.clone(), &config.jwt_secret) {
         Ok(t) => t,
@@ -144,18 +180,44 @@ pub async fn login(
         }
     };
 
-    (
-        StatusCode::OK,
-        Json(AuthResponse {
-            token,
-            user: UserPublic {
-                id: user.id,
-                username: user.username,
-                email: user.email,
-            },
-        }),
+    build_auth_cookies_response(
+        UserPublic {
+            id: user.id,
+            username: user.username,
+            email: user.email,
+        },
+        &token,
+        &config,
     )
-        .into_response()
+}
+
+pub async fn logout() -> Response {
+    let clear_token = Cookie::build(("token", ""))
+        .http_only(true)
+        .path("/")
+        .max_age(Duration::ZERO)
+        .build();
+
+    let clear_csrf = Cookie::build(("csrf", ""))
+        .http_only(true)
+        .path("/")
+        .max_age(Duration::ZERO)
+        .build();
+
+    let mut response = (
+        StatusCode::OK,
+        Json(json!({"message": "Logged out"})),
+    )
+        .into_response();
+
+    if let Ok(val) = HeaderValue::from_str(&clear_token.to_string()) {
+        response.headers_mut().insert(SET_COOKIE, val);
+    }
+    if let Ok(val) = HeaderValue::from_str(&clear_csrf.to_string()) {
+        response.headers_mut().append(SET_COOKIE, val);
+    }
+
+    response
 }
 
 pub async fn me(auth: AuthenticatedUser, Extension(pool): Extension<SqlitePool>) -> Response {
