@@ -19,6 +19,9 @@ pub struct Config {
 
     // Upload limits
     pub max_upload_size_bytes: usize,
+
+    // Cookie security
+    pub cookie_secure: bool,
 }
 
 impl Config {
@@ -43,6 +46,9 @@ impl Config {
                 .unwrap_or(50)
                 * 1024
                 * 1024,
+            cookie_secure: env::var("COOKIE_SECURE")
+                .map(|v| v == "true" || v == "1")
+                .unwrap_or(false),
         }
     }
 
