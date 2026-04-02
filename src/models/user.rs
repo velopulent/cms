@@ -34,7 +34,6 @@ pub struct Claims {
 
 #[derive(Serialize, ToSchema)]
 pub struct AuthResponse {
-    pub token: String,
     pub user: UserPublic,
 }
 
