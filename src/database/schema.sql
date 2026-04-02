@@ -31,6 +31,8 @@ CREATE TABLE IF NOT EXISTS collections (
     name TEXT NOT NULL,
     slug TEXT NOT NULL,
     definition JSON NOT NULL,
+    is_singleton INTEGER NOT NULL DEFAULT 0,
+    singleton_data TEXT,
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
     updated_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
