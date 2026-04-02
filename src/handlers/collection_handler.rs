@@ -139,6 +139,7 @@ pub async fn create_collection(
 
     let definition_str = payload.definition.to_string();
     let id = Uuid::now_v7().to_string();
+    let is_singleton = payload.is_singleton.unwrap_or(false);
 
     match collection_repo::create(
         &pool,
@@ -147,6 +148,7 @@ pub async fn create_collection(
         &payload.name,
         &payload.slug,
         &definition_str,
+        is_singleton,
     )
     .await
     {
@@ -208,8 +210,8 @@ pub async fn update_collection(
         }
     };
 
-    let name = payload.name.unwrap_or(existing.name);
-    let new_slug = payload.slug.unwrap_or(existing.slug);
+    let name = payload.name.unwrap_or_else(|| existing.name.clone());
+    let new_slug = payload.slug.unwrap_or_else(|| existing.slug.clone());
     let definition_str = payload
         .definition
         .as_ref()
@@ -224,7 +226,14 @@ pub async fn update_collection(
             let rename_map = compute_field_rename_map(&old_d, &new_d);
 
             if !rename_map.is_empty() {
-                if let Ok(items) =
+                if existing.is_singleton {
+                    collection_repo::migrate_singleton_field_renames(
+                        &pool,
+                        &existing,
+                        &rename_map,
+                    )
+                    .await;
+                } else if let Ok(items) =
                     collection_repo::get_content_for_migration(&pool, &existing.id).await
                 {
                     collection_repo::migrate_content_field_renames(&pool, &items, &rename_map)

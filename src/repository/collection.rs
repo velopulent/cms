@@ -5,7 +5,19 @@ use crate::models::content::Content;
 
 pub async fn list(pool: &SqlitePool, site_id: &str) -> Result<Vec<Collection>, sqlx::Error> {
     sqlx::query_as::<_, Collection>(
-        "SELECT id, site_id, name, slug, definition, created_at, updated_at FROM collections WHERE site_id = ? ORDER BY name",
+        "SELECT id, site_id, name, slug, definition, is_singleton, singleton_data, created_at, updated_at FROM collections WHERE site_id = ? ORDER BY name",
+    )
+    .bind(site_id)
+    .fetch_all(pool)
+    .await
+}
+
+pub async fn list_singletons_only(
+    pool: &SqlitePool,
+    site_id: &str,
+) -> Result<Vec<Collection>, sqlx::Error> {
+    sqlx::query_as::<_, Collection>(
+        "SELECT id, site_id, name, slug, definition, is_singleton, singleton_data, created_at, updated_at FROM collections WHERE site_id = ? AND is_singleton = 1 ORDER BY name",
     )
     .bind(site_id)
     .fetch_all(pool)
@@ -18,7 +30,7 @@ pub async fn get_by_slug(
     slug: &str,
 ) -> Result<Option<Collection>, sqlx::Error> {
     sqlx::query_as::<_, Collection>(
-        "SELECT id, site_id, name, slug, definition, created_at, updated_at FROM collections WHERE site_id = ? AND slug = ?",
+        "SELECT id, site_id, name, slug, definition, is_singleton, singleton_data, created_at, updated_at FROM collections WHERE site_id = ? AND slug = ?",
     )
     .bind(site_id)
     .bind(slug)
@@ -28,7 +40,7 @@ pub async fn get_by_slug(
 
 pub async fn get_by_id(pool: &SqlitePool, id: &str) -> Result<Option<Collection>, sqlx::Error> {
     sqlx::query_as::<_, Collection>(
-        "SELECT id, site_id, name, slug, definition, created_at, updated_at FROM collections WHERE id = ?",
+        "SELECT id, site_id, name, slug, definition, is_singleton, singleton_data, created_at, updated_at FROM collections WHERE id = ?",
     )
     .bind(id)
     .fetch_optional(pool)
@@ -42,15 +54,17 @@ pub async fn create(
     name: &str,
     slug: &str,
     definition: &str,
+    is_singleton: bool,
 ) -> Result<Collection, sqlx::Error> {
     sqlx::query(
-        "INSERT INTO collections (id, site_id, name, slug, definition) VALUES (?, ?, ?, ?, ?)",
+        "INSERT INTO collections (id, site_id, name, slug, definition, is_singleton) VALUES (?, ?, ?, ?, ?, ?)",
     )
     .bind(id)
     .bind(site_id)
     .bind(name)
     .bind(slug)
     .bind(definition)
+    .bind(is_singleton)
     .execute(pool)
     .await?;
 
@@ -72,6 +86,24 @@ pub async fn update(
     .bind(name)
     .bind(slug)
     .bind(definition)
+    .bind(id)
+    .execute(pool)
+    .await?;
+
+    get_by_id(pool, id)
+        .await?
+        .ok_or(sqlx::Error::RowNotFound)
+}
+
+pub async fn update_singleton_data(
+    pool: &SqlitePool,
+    id: &str,
+    data: &str,
+) -> Result<Collection, sqlx::Error> {
+    sqlx::query(
+        "UPDATE collections SET singleton_data = ?, updated_at = datetime('now') WHERE id = ?",
+    )
+    .bind(data)
     .bind(id)
     .execute(pool)
     .await?;
@@ -124,6 +156,31 @@ pub async fn migrate_content_field_renames(
 
                 let _ = crate::repository::content::update_data(pool, &content.id, &new_data_str)
                     .await;
+            }
+        }
+    }
+}
+
+pub async fn migrate_singleton_field_renames(
+    pool: &SqlitePool,
+    collection: &Collection,
+    rename_map: &std::collections::HashMap<String, String>,
+) {
+    if let Some(ref data_str) = collection.singleton_data {
+        if let Ok(mut data) = serde_json::from_str::<serde_json::Value>(data_str) {
+            if let Some(obj) = data.as_object_mut() {
+                let mut renamed = serde_json::Map::new();
+                for (key, value) in obj.iter() {
+                    let new_key = rename_map
+                        .get(key)
+                        .cloned()
+                        .unwrap_or_else(|| key.clone());
+                    renamed.insert(new_key, value.clone());
+                }
+                let new_data_str = serde_json::to_string(&serde_json::Value::Object(renamed))
+                    .unwrap_or_else(|_| data_str.clone());
+
+                let _ = update_singleton_data(pool, &collection.id, &new_data_str).await;
             }
         }
     }

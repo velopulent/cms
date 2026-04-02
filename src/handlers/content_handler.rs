@@ -379,6 +379,63 @@ pub async fn unpublish_content(
 
 // --- File resolution helpers (handler-level, uses StorageManager) ---
 
+pub async fn resolve_content_files_from_value(
+    data: &serde_json::Value,
+    pool: &SqlitePool,
+    storage: &StorageManager,
+) -> serde_json::Value {
+    let file_ids = content_repo::extract_file_ids(data);
+
+    let mut file_map = serde_json::Map::new();
+
+    if !file_ids.is_empty() {
+        let placeholders = file_ids.iter().map(|_| "?").collect::<Vec<_>>().join(",");
+        let query = format!(
+            "SELECT id, site_id, filename, original_name, mime_type, size, storage_provider, storage_key, thumbnail_key, width, height, deleted_at, created_by, created_at FROM files WHERE id IN ({}) AND deleted_at IS NULL",
+            placeholders
+        );
+
+        let mut q = sqlx::query_as::<_, File>(&query);
+        for id in &file_ids {
+            q = q.bind(id);
+        }
+
+        if let Ok(file_items) = q.fetch_all(pool).await {
+            for f in file_items {
+                let url = match f.storage_provider.as_str() {
+                    "s3" => storage
+                        .s3
+                        .as_ref()
+                        .map(|s| s.url(&f.storage_key))
+                        .unwrap_or_else(|| format!("/api/files/{}", f.id)),
+                    _ => format!("/api/files/{}", f.id),
+                };
+
+                file_map.insert(
+                    f.id.clone(),
+                    json!({
+                        "id": f.id,
+                        "url": url,
+                        "thumbnail_url": f.thumbnail_key.as_ref().map(|_| format!("/api/files/{}/thumbnail", f.id)),
+                        "filename": f.filename,
+                        "original_name": f.original_name,
+                        "mime_type": f.mime_type,
+                        "size": f.size,
+                        "width": f.width,
+                        "height": f.height,
+                    }),
+                );
+            }
+        }
+    }
+
+    let mut result = data.clone();
+    if let serde_json::Value::Object(ref mut obj) = result {
+        obj.insert("_files".to_string(), serde_json::Value::Object(file_map));
+    }
+    result
+}
+
 async fn resolve_content_files(
     content: &Content,
     pool: &SqlitePool,
