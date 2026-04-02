@@ -6,6 +6,7 @@ mod docs;
 mod files;
 mod graphql;
 mod openapi;
+mod singleton;
 mod sites;
 
 use axum::{
@@ -26,6 +27,7 @@ pub fn create_router(pool: SqlitePool, config: Config, storage: StorageManager) 
         .merge(api_keys::api_key_routes())
         .merge(collections::collection_routes())
         .merge(content::content_routes())
+        .merge(singleton::singleton_routes())
         .merge(files::file_routes(config.max_upload_size_bytes))
         .merge(graphql::graphql_routes())
         .merge(docs::docs_routes())

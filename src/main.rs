@@ -18,6 +18,7 @@ mod handlers {
     pub mod collection_handler;
     pub mod content_handler;
     pub mod file_handler;
+    pub mod singleton_handler;
     pub mod site_handler;
     pub mod ui_handler;
 }
