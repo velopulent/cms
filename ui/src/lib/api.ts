@@ -309,10 +309,10 @@ export async function getApiKeys(siteId: string) {
   return api<ApiKey[]>(`/sites/${siteId}/api-keys`);
 }
 
-export async function createApiKey(siteId: string, name: string) {
+export async function createApiKey(siteId: string, name: string, permissions?: string) {
   return api<ApiKeyResponse>(`/sites/${siteId}/api-keys`, {
     method: "POST",
-    body: JSON.stringify({ name }),
+    body: JSON.stringify({ name, permissions }),
   });
 }
 
