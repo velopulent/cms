@@ -2,8 +2,8 @@ import { createFileRoute, Outlet, redirect } from "@tanstack/react-router";
 
 export const Route = createFileRoute("/_admin")({
   beforeLoad: () => {
-    const token = localStorage.getItem("cms_token");
-    if (!token) {
+    const stored = localStorage.getItem("cms_user");
+    if (!stored) {
       throw redirect({ to: "/login" });
     }
   },
