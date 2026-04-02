@@ -17,13 +17,13 @@ import {
 import { CSS } from "@dnd-kit/utilities";
 import { useForm } from "@tanstack/react-form";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, Link } from "@tanstack/react-router";
 import { GripVertical, Layers, Pencil, Plus, Trash2 } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 import { z } from "zod";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
@@ -123,7 +123,7 @@ function CollectionsPage() {
     <div className="flex flex-col gap-6 p-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-semibold">Collections</h1>
+          <h1 className="text-2xl font-semibold">Content Types</h1>
           <p className="text-sm text-muted-foreground">
             Define the structure of your content
           </p>
@@ -131,15 +131,15 @@ function CollectionsPage() {
         <Sheet open={createOpen} onOpenChange={setCreateOpen}>
           <SheetTrigger render={<Button />}>
             <Plus data-icon="inline-start" />
-            New Collection
+            New
           </SheetTrigger>
           <SheetContent
             className={"data-[side=right]:w-full data-[side=right]:sm:max-w-xl"}
           >
             <SheetHeader>
-              <SheetTitle>Create Collection</SheetTitle>
+              <SheetTitle>Create Content Type</SheetTitle>
               <SheetDescription>
-                Define a new collection with custom fields.
+                Define a new content type with custom fields.
               </SheetDescription>
             </SheetHeader>
             <div className="flex-1 overflow-y-auto px-4">
@@ -151,7 +151,11 @@ function CollectionsPage() {
                         queryKey: ["collections", siteId],
                       });
                       setCreateOpen(false);
-                      toast.success("Collection created");
+                      toast.success(
+                        data.is_singleton
+                          ? "Singleton created"
+                          : "Collection created",
+                      );
                     })
                     .catch((err: Error) => toast.error(err.message));
                 }}
@@ -163,7 +167,7 @@ function CollectionsPage() {
                 form="collection-form-create"
                 disabled={false}
               >
-                Create Collection
+                Create
               </Button>
               <SheetClose
                 render={
@@ -186,9 +190,9 @@ function CollectionsPage() {
         <Card>
           <CardContent className="flex flex-col items-center justify-center py-12">
             <Layers className="mb-4 size-10 text-muted-foreground" />
-            <p className="text-lg font-medium">No collections yet</p>
+            <p className="text-lg font-medium">No content types yet</p>
             <p className="text-sm text-muted-foreground">
-              Create your first collection to get started.
+              Create your first collection or singleton to get started.
             </p>
           </CardContent>
         </Card>
@@ -198,6 +202,7 @@ function CollectionsPage() {
             <TableHeader>
               <TableRow>
                 <TableHead>Name</TableHead>
+                <TableHead>Type</TableHead>
                 <TableHead>Slug</TableHead>
                 <TableHead>Fields</TableHead>
                 <TableHead className="text-right">Actions</TableHead>
@@ -216,11 +221,25 @@ function CollectionsPage() {
                   <TableRow key={c.id}>
                     <TableCell className="font-medium">{c.name}</TableCell>
                     <TableCell>
+                      <Badge variant={c.is_singleton ? "secondary" : "outline"}>
+                        {c.is_singleton ? "Singleton" : "Collection"}
+                      </Badge>
+                    </TableCell>
+                    <TableCell>
                       <Badge variant="outline">{c.slug}</Badge>
                     </TableCell>
                     <TableCell>{fieldCount} fields</TableCell>
                     <TableCell className="text-right">
                       <div className="flex justify-end gap-1">
+                        {c.is_singleton ? (
+                          <Link
+                            to="/sites/$siteId/singletons/$slug"
+                            params={{ siteId, slug: c.slug }}
+                            className={buttonVariants({ variant: "ghost", size: "icon" })}
+                          >
+                            <Pencil />
+                          </Link>
+                        ) : (
                         <Sheet
                           open={editCollection?.id === c.id}
                           onOpenChange={(open) =>
@@ -283,6 +302,7 @@ function CollectionsPage() {
                             </SheetFooter>
                           </SheetContent>
                         </Sheet>
+                        )}
                         <Button
                           variant="ghost"
                           size="icon"
@@ -433,12 +453,14 @@ const collectionFormSchema = z.object({
   name: z.string().min(1, "Collection name is required"),
   slug: z.string().min(1, "Slug is required"),
   fields: z.array(collectionFieldSchema).min(1, "Add at least one field"),
+  is_singleton: z.boolean(),
 });
 
 type CollectionFormValues = {
   name: string;
   slug: string;
   fields: ContentFieldWithId[];
+  is_singleton: boolean;
 };
 
 function CollectionForm({
@@ -450,9 +472,11 @@ function CollectionForm({
     name: string;
     slug: string;
     definition: SchemaDefinition;
+    is_singleton?: boolean;
   }) => void;
 }) {
   const [slugManuallyEdited, setSlugManuallyEdited] = useState(!!initialData);
+  const isEdit = !!initialData;
 
   const initialFields: ContentFieldWithId[] = (() => {
     if (initialData) {
@@ -474,6 +498,7 @@ function CollectionForm({
       name: initialData?.name ?? "",
       slug: initialData?.slug ?? "",
       fields: initialFields,
+      is_singleton: initialData?.is_singleton ?? false,
     } as CollectionFormValues,
     validators: {
       onSubmit: collectionFormSchema,
@@ -486,6 +511,7 @@ function CollectionForm({
         name: value.name,
         slug: value.slug,
         definition: { fields: cleanFields },
+        is_singleton: value.is_singleton,
       });
     },
   });
@@ -594,6 +620,39 @@ function CollectionForm({
           }}
         />
       </FieldGroup>
+
+      {!isEdit && (
+        <form.Field
+          name="is_singleton"
+          children={(field) => (
+            <Field>
+              <FieldLabel>Type</FieldLabel>
+              <Select
+                items={[
+                  { label: "Collection (multiple entries)", value: "false" },
+                  { label: "Singleton (single entry)", value: "true" },
+                ]}
+                value={field.state.value ? "true" : "false"}
+                onValueChange={(val) => field.handleChange(val === "true")}
+              >
+                <SelectTrigger className="w-full">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectGroup>
+                    <SelectItem value="false">
+                      Collection (multiple entries)
+                    </SelectItem>
+                    <SelectItem value="true">
+                      Singleton (single entry)
+                    </SelectItem>
+                  </SelectGroup>
+                </SelectContent>
+              </Select>
+            </Field>
+          )}
+        />
+      )}
 
       <form.Field
         name="fields"

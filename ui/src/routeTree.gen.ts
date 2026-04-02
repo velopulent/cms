@@ -20,6 +20,7 @@ import { Route as AdminSitesSiteIdIndexRouteImport } from './routes/_admin/sites
 import { Route as AdminSitesSiteIdSettingsRouteImport } from './routes/_admin/sites.$siteId/settings'
 import { Route as AdminSitesSiteIdFilesRouteImport } from './routes/_admin/sites.$siteId/files'
 import { Route as AdminSitesSiteIdCollectionsRouteImport } from './routes/_admin/sites.$siteId/collections'
+import { Route as AdminSitesSiteIdSingletonsSlugRouteImport } from './routes/_admin/sites.$siteId/singletons.$slug'
 import { Route as AdminSitesSiteIdContentCollectionSlugRouteImport } from './routes/_admin/sites.$siteId/content.$collectionSlug'
 import { Route as AdminSitesSiteIdContentCollectionSlugIndexRouteImport } from './routes/_admin/sites.$siteId/content.$collectionSlug/index'
 import { Route as AdminSitesSiteIdContentCollectionSlugNewRouteImport } from './routes/_admin/sites.$siteId/content.$collectionSlug/new'
@@ -81,6 +82,12 @@ const AdminSitesSiteIdCollectionsRoute =
     path: '/collections',
     getParentRoute: () => AdminSitesSiteIdRoute,
   } as any)
+const AdminSitesSiteIdSingletonsSlugRoute =
+  AdminSitesSiteIdSingletonsSlugRouteImport.update({
+    id: '/singletons/$slug',
+    path: '/singletons/$slug',
+    getParentRoute: () => AdminSitesSiteIdRoute,
+  } as any)
 const AdminSitesSiteIdContentCollectionSlugRoute =
   AdminSitesSiteIdContentCollectionSlugRouteImport.update({
     id: '/content/$collectionSlug',
@@ -118,6 +125,7 @@ export interface FileRoutesByFullPath {
   '/sites/$siteId/settings': typeof AdminSitesSiteIdSettingsRoute
   '/sites/$siteId/': typeof AdminSitesSiteIdIndexRoute
   '/sites/$siteId/content/$collectionSlug': typeof AdminSitesSiteIdContentCollectionSlugRouteWithChildren
+  '/sites/$siteId/singletons/$slug': typeof AdminSitesSiteIdSingletonsSlugRoute
   '/sites/$siteId/content/$collectionSlug/new': typeof AdminSitesSiteIdContentCollectionSlugNewRoute
   '/sites/$siteId/content/$collectionSlug/': typeof AdminSitesSiteIdContentCollectionSlugIndexRoute
   '/sites/$siteId/content/$collectionSlug/$id/edit': typeof AdminSitesSiteIdContentCollectionSlugIdEditRoute
@@ -131,6 +139,7 @@ export interface FileRoutesByTo {
   '/sites/$siteId/files': typeof AdminSitesSiteIdFilesRoute
   '/sites/$siteId/settings': typeof AdminSitesSiteIdSettingsRoute
   '/sites/$siteId': typeof AdminSitesSiteIdIndexRoute
+  '/sites/$siteId/singletons/$slug': typeof AdminSitesSiteIdSingletonsSlugRoute
   '/sites/$siteId/content/$collectionSlug/new': typeof AdminSitesSiteIdContentCollectionSlugNewRoute
   '/sites/$siteId/content/$collectionSlug': typeof AdminSitesSiteIdContentCollectionSlugIndexRoute
   '/sites/$siteId/content/$collectionSlug/$id/edit': typeof AdminSitesSiteIdContentCollectionSlugIdEditRoute
@@ -149,6 +158,7 @@ export interface FileRoutesById {
   '/_admin/sites/$siteId/settings': typeof AdminSitesSiteIdSettingsRoute
   '/_admin/sites/$siteId/': typeof AdminSitesSiteIdIndexRoute
   '/_admin/sites/$siteId/content/$collectionSlug': typeof AdminSitesSiteIdContentCollectionSlugRouteWithChildren
+  '/_admin/sites/$siteId/singletons/$slug': typeof AdminSitesSiteIdSingletonsSlugRoute
   '/_admin/sites/$siteId/content/$collectionSlug/new': typeof AdminSitesSiteIdContentCollectionSlugNewRoute
   '/_admin/sites/$siteId/content/$collectionSlug/': typeof AdminSitesSiteIdContentCollectionSlugIndexRoute
   '/_admin/sites/$siteId/content/$collectionSlug/$id/edit': typeof AdminSitesSiteIdContentCollectionSlugIdEditRoute
@@ -167,6 +177,7 @@ export interface FileRouteTypes {
     | '/sites/$siteId/settings'
     | '/sites/$siteId/'
     | '/sites/$siteId/content/$collectionSlug'
+    | '/sites/$siteId/singletons/$slug'
     | '/sites/$siteId/content/$collectionSlug/new'
     | '/sites/$siteId/content/$collectionSlug/'
     | '/sites/$siteId/content/$collectionSlug/$id/edit'
@@ -180,6 +191,7 @@ export interface FileRouteTypes {
     | '/sites/$siteId/files'
     | '/sites/$siteId/settings'
     | '/sites/$siteId'
+    | '/sites/$siteId/singletons/$slug'
     | '/sites/$siteId/content/$collectionSlug/new'
     | '/sites/$siteId/content/$collectionSlug'
     | '/sites/$siteId/content/$collectionSlug/$id/edit'
@@ -197,6 +209,7 @@ export interface FileRouteTypes {
     | '/_admin/sites/$siteId/settings'
     | '/_admin/sites/$siteId/'
     | '/_admin/sites/$siteId/content/$collectionSlug'
+    | '/_admin/sites/$siteId/singletons/$slug'
     | '/_admin/sites/$siteId/content/$collectionSlug/new'
     | '/_admin/sites/$siteId/content/$collectionSlug/'
     | '/_admin/sites/$siteId/content/$collectionSlug/$id/edit'
@@ -287,6 +300,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AdminSitesSiteIdCollectionsRouteImport
       parentRoute: typeof AdminSitesSiteIdRoute
     }
+    '/_admin/sites/$siteId/singletons/$slug': {
+      id: '/_admin/sites/$siteId/singletons/$slug'
+      path: '/singletons/$slug'
+      fullPath: '/sites/$siteId/singletons/$slug'
+      preLoaderRoute: typeof AdminSitesSiteIdSingletonsSlugRouteImport
+      parentRoute: typeof AdminSitesSiteIdRoute
+    }
     '/_admin/sites/$siteId/content/$collectionSlug': {
       id: '/_admin/sites/$siteId/content/$collectionSlug'
       path: '/content/$collectionSlug'
@@ -345,6 +365,7 @@ interface AdminSitesSiteIdRouteChildren {
   AdminSitesSiteIdSettingsRoute: typeof AdminSitesSiteIdSettingsRoute
   AdminSitesSiteIdIndexRoute: typeof AdminSitesSiteIdIndexRoute
   AdminSitesSiteIdContentCollectionSlugRoute: typeof AdminSitesSiteIdContentCollectionSlugRouteWithChildren
+  AdminSitesSiteIdSingletonsSlugRoute: typeof AdminSitesSiteIdSingletonsSlugRoute
 }
 
 const AdminSitesSiteIdRouteChildren: AdminSitesSiteIdRouteChildren = {
@@ -354,6 +375,7 @@ const AdminSitesSiteIdRouteChildren: AdminSitesSiteIdRouteChildren = {
   AdminSitesSiteIdIndexRoute: AdminSitesSiteIdIndexRoute,
   AdminSitesSiteIdContentCollectionSlugRoute:
     AdminSitesSiteIdContentCollectionSlugRouteWithChildren,
+  AdminSitesSiteIdSingletonsSlugRoute: AdminSitesSiteIdSingletonsSlugRoute,
 }
 
 const AdminSitesSiteIdRouteWithChildren =

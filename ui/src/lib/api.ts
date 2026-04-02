@@ -121,6 +121,19 @@ export interface Collection {
   name: string;
   slug: string;
   definition: string;
+  is_singleton: boolean;
+  singleton_data: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface SingletonResponse {
+  id: string;
+  site_id: string;
+  name: string;
+  slug: string;
+  definition: SchemaDefinition;
+  data: Record<string, unknown> | null;
   created_at: string;
   updated_at: string;
 }
@@ -325,6 +338,7 @@ export async function createCollection(
     name: string;
     slug: string;
     definition: SchemaDefinition;
+    is_singleton?: boolean;
   },
 ) {
   return api<Collection>(`/sites/${siteId}/collections`, {
@@ -506,4 +520,25 @@ export async function batchPermanentDeleteFiles(siteId: string, ids: string[]) {
       body: JSON.stringify({ ids }),
     },
   );
+}
+
+// --- Singletons API (site-scoped) ---
+
+export async function getSingletons(siteId: string) {
+  return api<SingletonResponse[]>(`/sites/${siteId}/singletons`);
+}
+
+export async function getSingleton(siteId: string, slug: string) {
+  return api<SingletonResponse>(`/sites/${siteId}/singletons/${slug}`);
+}
+
+export async function updateSingletonData(
+  siteId: string,
+  slug: string,
+  data: Record<string, unknown>,
+) {
+  return api<SingletonResponse>(`/sites/${siteId}/singletons/${slug}`, {
+    method: "PUT",
+    body: JSON.stringify({ data }),
+  });
 }

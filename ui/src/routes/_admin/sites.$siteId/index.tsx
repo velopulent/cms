@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { FileText, Plus } from "lucide-react";
+import { FileText, Pencil, Plus, Square } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { buttonVariants } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -29,6 +29,10 @@ function DashboardPage() {
     queryFn: () => getContent(siteId, {}),
   });
 
+  const regularCollections =
+    collections?.filter((c) => !c.is_singleton) ?? [];
+  const singletons = collections?.filter((c) => c.is_singleton) ?? [];
+
   const publishedCount =
     allContent?.filter((c: Content) => c.status === "published").length ?? 0;
   const draftCount =
@@ -55,7 +59,7 @@ function DashboardPage() {
               <Skeleton className="h-8 w-12" />
             ) : (
               <p className="text-3xl font-semibold">
-                {collections?.length ?? 0}
+                {regularCollections.length}
               </p>
             )}
           </CardContent>
@@ -63,16 +67,14 @@ function DashboardPage() {
         <Card>
           <CardHeader>
             <CardTitle className="text-sm font-medium text-muted-foreground">
-              Total Content
+              Singletons
             </CardTitle>
           </CardHeader>
           <CardContent>
-            {contentLoading ? (
+            {collectionsLoading ? (
               <Skeleton className="h-8 w-12" />
             ) : (
-              <p className="text-3xl font-semibold">
-                {allContent?.length ?? 0}
-              </p>
+              <p className="text-3xl font-semibold">{singletons.length}</p>
             )}
           </CardContent>
         </Card>
@@ -106,11 +108,36 @@ function DashboardPage() {
         </Card>
       </div>
 
-      {collections && collections.length > 0 && (
+      {singletons.length > 0 && (
+        <div className="flex flex-col gap-4">
+          <h2 className="text-lg font-semibold">Singletons</h2>
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            {singletons.map((s: Collection) => (
+              <Card key={s.id}>
+                <CardContent className="flex items-center justify-between p-4">
+                  <div className="flex items-center gap-3">
+                    <Square className="size-4 text-muted-foreground" />
+                    <p className="text-sm font-medium">{s.name}</p>
+                  </div>
+                  <Link
+                    to="/sites/$siteId/singletons/$slug"
+                    params={{ siteId, slug: s.slug }}
+                    className={buttonVariants({ variant: "ghost", size: "sm" })}
+                  >
+                    <Pencil className="size-4" />
+                  </Link>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {regularCollections.length > 0 && (
         <div className="flex flex-col gap-4">
           <h2 className="text-lg font-semibold">Quick Create</h2>
           <div className="flex flex-wrap gap-2">
-            {collections.map((c: Collection) => (
+            {regularCollections.map((c: Collection) => (
               <Link
                 key={c.id}
                 to="/sites/$siteId/content/$collectionSlug/new"

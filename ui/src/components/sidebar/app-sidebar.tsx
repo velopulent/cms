@@ -13,6 +13,7 @@ import {
 import type * as React from "react";
 import { NavCollections } from "@/components/sidebar/nav-collections";
 import { NavMain } from "@/components/sidebar/nav-main";
+import { NavSingletons } from "@/components/sidebar/nav-singletons";
 import { NavUser } from "@/components/sidebar/nav-user";
 import { SiteSwitcher } from "@/components/sidebar/site-switcher";
 import {
@@ -69,11 +70,21 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
     },
   ];
 
-  const contentNavItems = (collections ?? []).map((c) => ({
-    name: c.name,
-    url: `/sites/${siteId}/content/${c.slug}`,
-    icon: <FileText className="size-4" />,
-  }));
+  const contentNavItems = (collections ?? [])
+    .filter((c) => !c.is_singleton)
+    .map((c) => ({
+      name: c.name,
+      url: `/sites/${siteId}/content/${c.slug}`,
+      icon: <FileText className="size-4" />,
+    }));
+
+  const singletonNavItems = (collections ?? [])
+    .filter((c) => c.is_singleton)
+    .map((c) => ({
+      name: c.name,
+      slug: c.slug,
+      url: `/sites/${siteId}/singletons/${c.slug}`,
+    }));
 
   const settingsUrl = `/sites/${siteId}/settings`;
 
@@ -90,6 +101,10 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
       </SidebarHeader>
       <SidebarContent>
         <NavMain items={navMain} />
+        <NavSingletons
+          singletons={singletonNavItems}
+          isLoading={collectionsLoading}
+        />
         <NavCollections
           collections={contentNavItems}
           isLoading={collectionsLoading}
