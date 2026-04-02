@@ -27,6 +27,7 @@ impl CollectionMutation {
             &input.name,
             &input.slug,
             &definition_str,
+            false,
         )
         .await
         {
@@ -54,8 +55,8 @@ impl CollectionMutation {
             .map_err(|e| async_graphql::Error::new(format!("Database error: {}", e)))?
             .ok_or_else(|| async_graphql::Error::new("Collection not found"))?;
 
-        let name = input.name.unwrap_or(existing.name);
-        let new_slug = input.slug.unwrap_or(existing.slug);
+        let name = input.name.unwrap_or_else(|| existing.name.clone());
+        let new_slug = input.slug.unwrap_or_else(|| existing.slug.clone());
         let definition_str = input
             .definition
             .as_ref()
@@ -73,7 +74,14 @@ impl CollectionMutation {
                 let rename_map = compute_field_rename_map(&old_d, &new_d);
 
                 if !rename_map.is_empty() {
-                    if let Ok(items) =
+                    if existing.is_singleton {
+                        collection_repo::migrate_singleton_field_renames(
+                            &gql_ctx.pool,
+                            &existing,
+                            &rename_map,
+                        )
+                        .await;
+                    } else if let Ok(items) =
                         collection_repo::get_content_for_migration(&gql_ctx.pool, &existing.id)
                             .await
                     {

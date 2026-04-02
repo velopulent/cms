@@ -13,6 +13,8 @@ pub struct Collection {
     pub name: String,
     pub slug: String,
     pub definition: Json,
+    pub is_singleton: bool,
+    pub singleton_data: Option<Json>,
     pub created_at: String,
     pub updated_at: String,
 }
@@ -57,12 +59,15 @@ pub struct UpdateCollectionInput {
 pub fn db_collection_to_gql(c: crate::models::collection::Collection) -> Collection {
     let definition =
         serde_json::from_str(&c.definition).unwrap_or(serde_json::Value::Object(Default::default()));
+    let singleton_data = c.singleton_data.as_ref().and_then(|d| serde_json::from_str(d).ok()).map(Json);
     Collection {
         id: c.id,
         site_id: c.site_id,
         name: c.name,
         slug: c.slug,
         definition: Json(definition),
+        is_singleton: c.is_singleton,
+        singleton_data,
         created_at: c.created_at,
         updated_at: c.updated_at,
     }
