@@ -10,6 +10,31 @@ use crate::models::user::Claims;
 use crate::repository::api_key as api_key_repo;
 use crate::repository::user as user_repo;
 
+// --- Cookie helpers ---
+
+fn extract_cookie_value(parts: &Parts, name: &str) -> Option<String> {
+    let cookie_header = parts.headers.get("cookie")?.to_str().ok()?;
+    for pair in cookie_header.split(';') {
+        let pair = pair.trim();
+        if let Some((key, value)) = pair.split_once('=') {
+            if key == name {
+                return Some(value.to_string());
+            }
+        }
+    }
+    None
+}
+
+fn extract_jwt_token(parts: &Parts) -> Option<String> {
+    // Prefer cookie over Authorization header
+    if let Some(token) = extract_cookie_value(parts, "token") {
+        return Some(token);
+    }
+    // Fallback to Authorization: Bearer header
+    let auth_header = parts.headers.get("Authorization")?.to_str().ok()?;
+    auth_header.strip_prefix("Bearer ").map(|s| s.to_string())
+}
+
 // --- Auth Context ---
 
 pub enum AuthContext {
@@ -73,22 +98,15 @@ where
     type Rejection = (StatusCode, String);
 
     async fn from_request_parts(parts: &mut Parts, _state: &S) -> Result<Self, Self::Rejection> {
-        let auth_header = parts
-            .headers
-            .get("Authorization")
-            .and_then(|v| v.to_str().ok())
-            .ok_or(unauthorized_error("Missing authorization header"))?;
-
-        let token = auth_header
-            .strip_prefix("Bearer ")
-            .ok_or(unauthorized_error("Invalid authorization format"))?;
+        let token = extract_jwt_token(parts)
+            .ok_or(unauthorized_error("Missing authentication"))?;
 
         let config = parts
             .extensions
             .get::<Config>()
             .ok_or(unauthorized_error("Internal server error"))?;
 
-        let claims = verify_token(token, &config.jwt_secret)
+        let claims = verify_token(&token, &config.jwt_secret)
             .map_err(|_| unauthorized_error("Invalid or expired token"))?;
 
         Ok(AuthenticatedUser {
@@ -106,38 +124,50 @@ where
     type Rejection = (StatusCode, String);
 
     async fn from_request_parts(parts: &mut Parts, _state: &S) -> Result<Self, Self::Rejection> {
-        let auth_header = parts
-            .headers
-            .get("Authorization")
-            .and_then(|v| v.to_str().ok())
-            .ok_or(unauthorized_error("Missing authorization header"))?;
+        // Check Authorization header first for API key (external clients)
+        if let Some(auth_header) = parts.headers.get("Authorization").and_then(|v| v.to_str().ok()) {
+            if let Some(token) = auth_header.strip_prefix("Bearer ") {
+                // API key auth (prefixed with "cms_")
+                if token.starts_with("cms_") {
+                    let pool = parts
+                        .extensions
+                        .get::<SqlitePool>()
+                        .ok_or(unauthorized_error("Internal server error"))?;
 
-        let token = auth_header
-            .strip_prefix("Bearer ")
-            .ok_or(unauthorized_error("Invalid authorization format"))?;
+                    return verify_api_key(token, pool).await;
+                }
 
-        // Try API key first (prefixed with "cms_")
-        if token.starts_with("cms_") {
-            let pool = parts
-                .extensions
-                .get::<SqlitePool>()
-                .ok_or(unauthorized_error("Internal server error"))?;
+                // JWT from Authorization header
+                let config = parts
+                    .extensions
+                    .get::<Config>()
+                    .ok_or(unauthorized_error("Internal server error"))?;
 
-            return verify_api_key(token, pool).await;
+                let claims = verify_token(token, &config.jwt_secret)
+                    .map_err(|_| unauthorized_error("Invalid or expired token"))?;
+
+                return Ok(AuthContext::Jwt {
+                    user_id: claims.sub,
+                });
+            }
         }
 
-        // Otherwise try JWT
-        let config = parts
-            .extensions
-            .get::<Config>()
-            .ok_or(unauthorized_error("Internal server error"))?;
+        // Fallback: JWT from cookie
+        if let Some(token) = extract_cookie_value(parts, "token") {
+            let config = parts
+                .extensions
+                .get::<Config>()
+                .ok_or(unauthorized_error("Internal server error"))?;
 
-        let claims = verify_token(token, &config.jwt_secret)
-            .map_err(|_| unauthorized_error("Invalid or expired token"))?;
+            let claims = verify_token(&token, &config.jwt_secret)
+                .map_err(|_| unauthorized_error("Invalid or expired token"))?;
 
-        Ok(AuthContext::Jwt {
-            user_id: claims.sub,
-        })
+            return Ok(AuthContext::Jwt {
+                user_id: claims.sub,
+            });
+        }
+
+        Err(unauthorized_error("Missing authentication"))
     }
 }
 
