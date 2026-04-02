@@ -49,7 +49,7 @@ function RegisterPage() {
       password: string;
     }) => apiRegister(username, email, password),
     onSuccess: (data: AuthResponse) => {
-      auth.login(data.token, data.user);
+      auth.login(data.user);
       toast.success("Account created!");
       navigate({ to: "/" });
     },

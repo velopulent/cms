@@ -43,7 +43,7 @@ function LoginPage() {
       password: string;
     }) => apiLogin(username, password),
     onSuccess: (data: AuthResponse) => {
-      auth.login(data.token, data.user);
+      auth.login(data.user);
       toast.success("Logged in!");
       navigate({ to: "/" });
     },
