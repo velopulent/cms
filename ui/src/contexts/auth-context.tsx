@@ -2,16 +2,14 @@ import {
   createContext,
   type ReactNode,
   useContext,
-  useEffect,
   useState,
 } from "react";
-import { clearToken, setToken, type UserPublic } from "@/lib/api";
+import { logoutApi, type UserPublic } from "@/lib/api";
 
 interface AuthContextValue {
   user: UserPublic | null;
-  token: string | null;
-  login: (token: string, user: UserPublic) => void;
-  logout: () => void;
+  login: (user: UserPublic) => void;
+  logout: () => Promise<void>;
   isAuthenticated: boolean;
 }
 
@@ -23,37 +21,28 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return stored ? JSON.parse(stored) : null;
   });
 
-  const [token, setTokenState] = useState<string | null>(() => {
-    return localStorage.getItem("cms_token");
-  });
-
-  const handleLogin = (newToken: string, newUser: UserPublic) => {
-    setToken(newToken);
+  const handleLogin = (newUser: UserPublic) => {
     localStorage.setItem("cms_user", JSON.stringify(newUser));
-    setTokenState(newToken);
     setUser(newUser);
   };
 
-  const handleLogout = () => {
-    clearToken();
-    setTokenState(null);
+  const handleLogout = async () => {
+    try {
+      await logoutApi();
+    } catch {
+      // Logout endpoint may fail if cookie is already expired — that's fine
+    }
+    localStorage.removeItem("cms_user");
     setUser(null);
   };
-
-  useEffect(() => {
-    if (!token) {
-      setUser(null);
-    }
-  }, [token]);
 
   return (
     <AuthContext.Provider
       value={{
         user,
-        token,
         login: handleLogin,
         logout: handleLogout,
-        isAuthenticated: !!token,
+        isAuthenticated: !!user,
       }}
     >
       {children}
