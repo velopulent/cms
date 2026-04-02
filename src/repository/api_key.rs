@@ -19,15 +19,17 @@ pub async fn create(
     name: &str,
     key_hash: &str,
     key_prefix: &str,
+    permissions: &str,
 ) -> Result<(), sqlx::Error> {
     sqlx::query(
-        "INSERT INTO api_keys (id, site_id, name, key_hash, key_prefix) VALUES (?, ?, ?, ?, ?)",
+        "INSERT INTO api_keys (id, site_id, name, key_hash, key_prefix, permissions) VALUES (?, ?, ?, ?, ?, ?)",
     )
     .bind(id)
     .bind(site_id)
     .bind(name)
     .bind(key_hash)
     .bind(key_prefix)
+    .bind(permissions)
     .execute(pool)
     .await?;
 
@@ -47,9 +49,9 @@ pub async fn delete(pool: &SqlitePool, id: &str, site_id: &str) -> Result<u64, s
 pub async fn find_by_prefix(
     pool: &SqlitePool,
     prefix: &str,
-) -> Result<Vec<(String, String, String, Option<String>)>, sqlx::Error> {
-    sqlx::query_as::<_, (String, String, String, Option<String>)>(
-        "SELECT id, site_id, key_hash, expires_at FROM api_keys WHERE key_prefix = ?",
+) -> Result<Vec<(String, String, String, Option<String>, String)>, sqlx::Error> {
+    sqlx::query_as::<_, (String, String, String, Option<String>, String)>(
+        "SELECT id, site_id, key_hash, expires_at, permissions FROM api_keys WHERE key_prefix = ?",
     )
     .bind(prefix)
     .fetch_all(pool)

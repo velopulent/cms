@@ -14,7 +14,7 @@ use crate::repository::user as user_repo;
 
 pub enum AuthContext {
     Jwt { user_id: String },
-    ApiKey { site_id: String },
+    ApiKey { site_id: String, permissions: String },
 }
 
 // --- JWT-only extractor (dashboard endpoints) ---
@@ -152,7 +152,7 @@ pub(crate) async fn verify_api_key(
         .await
         .map_err(|_| unauthorized_error("Internal server error"))?;
 
-    for (key_id, site_id, stored_hash, expires_at) in keys {
+    for (key_id, site_id, stored_hash, expires_at, permissions) in keys {
         if !bcrypt::verify(token, &stored_hash).unwrap_or(false) {
             continue;
         }
@@ -169,10 +169,68 @@ pub(crate) async fn verify_api_key(
         // Update last_used_at (fire and forget)
         api_key_repo::update_last_used(pool, &key_id).await;
 
-        return Ok(AuthContext::ApiKey { site_id });
+        return Ok(AuthContext::ApiKey { site_id, permissions });
     }
 
     Err(unauthorized_error("Invalid API key"))
+}
+
+// --- Unified access checks ---
+
+pub async fn check_read_access(
+    auth: &AuthContext,
+    pool: &SqlitePool,
+    site_id: &str,
+) -> Result<(), (StatusCode, serde_json::Value)> {
+    match auth {
+        AuthContext::Jwt { user_id } => {
+            check_site_access(pool, user_id, site_id, "viewer").await
+        }
+        AuthContext::ApiKey { site_id: key_site_id, .. } => {
+            if key_site_id == site_id {
+                Ok(())
+            } else {
+                Err((
+                    StatusCode::FORBIDDEN,
+                    serde_json::json!({"error": "API key does not have access to this site"}),
+                ))
+            }
+        }
+    }
+}
+
+pub async fn check_write_access(
+    auth: &AuthContext,
+    pool: &SqlitePool,
+    site_id: &str,
+) -> Result<(), (StatusCode, serde_json::Value)> {
+    match auth {
+        AuthContext::Jwt { user_id } => {
+            check_site_access(pool, user_id, site_id, "editor").await
+        }
+        AuthContext::ApiKey { site_id: key_site_id, permissions } => {
+            if key_site_id != site_id {
+                return Err((
+                    StatusCode::FORBIDDEN,
+                    serde_json::json!({"error": "API key does not have access to this site"}),
+                ));
+            }
+            if permissions != "write" {
+                return Err((
+                    StatusCode::FORBIDDEN,
+                    serde_json::json!({"error": "API key does not have write permissions"}),
+                ));
+            }
+            Ok(())
+        }
+    }
+}
+
+pub fn extract_user_id(auth: &AuthContext) -> Option<&str> {
+    match auth {
+        AuthContext::Jwt { user_id } => Some(user_id),
+        AuthContext::ApiKey { .. } => None,
+    }
 }
 
 // --- Site access checks ---

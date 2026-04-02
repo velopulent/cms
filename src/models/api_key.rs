@@ -17,6 +17,7 @@ pub struct ApiKey {
 #[derive(Deserialize, ToSchema)]
 pub struct CreateApiKey {
     pub name: String,
+    pub permissions: Option<String>,
 }
 
 #[derive(Serialize, ToSchema)]

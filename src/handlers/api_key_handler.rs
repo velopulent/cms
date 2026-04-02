@@ -75,6 +75,18 @@ pub async fn create_api_key(
             .into_response();
     }
 
+    let permissions = match payload.permissions.as_deref() {
+        Some("read") | None => "read",
+        Some("write") => "write",
+        Some(other) => {
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(json!({"error": format!("Invalid permissions '{}'. Must be 'read' or 'write'", other)})),
+            )
+                .into_response();
+        }
+    };
+
     let random_chars = Uuid::new_v4().to_string().replace('-', "");
     let segment_a: String = random_chars.chars().take(8).collect();
     let segment_b: String = random_chars.chars().skip(8).take(24).collect();
@@ -95,7 +107,7 @@ pub async fn create_api_key(
 
     let id = Uuid::now_v7().to_string();
 
-    match api_key_repo::create(&pool, &id, &site_id, &payload.name, &key_hash, &prefix).await {
+    match api_key_repo::create(&pool, &id, &site_id, &payload.name, &key_hash, &prefix, permissions).await {
         Ok(_) => {
             let now = chrono::Utc::now().format("%Y-%m-%d %H:%M:%S").to_string();
 
@@ -107,7 +119,7 @@ pub async fn create_api_key(
                     name: payload.name,
                     key: raw_key,
                     key_prefix: prefix,
-                    permissions: "read".to_string(),
+                    permissions: permissions.to_string(),
                     created_at: now,
                 }),
             )
