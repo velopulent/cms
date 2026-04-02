@@ -9,6 +9,8 @@ pub struct GqlContext {
     pub storage: crate::handlers::file_handler::StorageManager,
     /// The site_id this API key grants access to, if authenticated.
     pub site_id: Option<String>,
+    /// The permission level of the API key ("read" or "write").
+    pub permissions: Option<String>,
 }
 
 impl GqlContext {
@@ -18,15 +20,18 @@ impl GqlContext {
         auth_header: Option<&str>,
     ) -> Self {
         let mut site_id = None;
+        let mut permissions = None;
 
         if let Some(header) = auth_header {
             if let Some(token) = header.strip_prefix("Bearer ") {
                 if token.starts_with("cms_") {
                     if let Ok(crate::middleware::auth::AuthContext::ApiKey {
                         site_id: key_site_id,
+                        permissions: key_permissions,
                     }) = verify_api_key(token, &pool).await
                     {
                         site_id = Some(key_site_id);
+                        permissions = Some(key_permissions);
                     }
                 }
             }
@@ -36,6 +41,7 @@ impl GqlContext {
             pool,
             storage,
             site_id,
+            permissions,
         }
     }
 
@@ -44,6 +50,23 @@ impl GqlContext {
         self.site_id
             .as_deref()
             .ok_or_else(|| async_graphql::Error::new("API key authentication required"))
+    }
+
+    /// Require that the API key has write permissions.
+    pub fn require_write(&self) -> async_graphql::Result<()> {
+        match self.permissions.as_deref() {
+            Some("write") => Ok(()),
+            Some("read") => Err(async_graphql::Error::new(
+                "API key does not have write permissions",
+            )),
+            None => Err(async_graphql::Error::new(
+                "API key authentication required",
+            )),
+            Some(other) => Err(async_graphql::Error::new(format!(
+                "Unknown API key permission level: {}",
+                other
+            ))),
+        }
     }
 
     /// Require that the API key's site matches the requested site_id.

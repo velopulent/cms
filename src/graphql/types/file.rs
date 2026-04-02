@@ -14,7 +14,7 @@ pub struct File {
     pub thumbnail_url: Option<String>,
     pub width: Option<i32>,
     pub height: Option<i32>,
-    pub created_by: String,
+    pub created_by: Option<String>,
     pub created_at: String,
 }
 

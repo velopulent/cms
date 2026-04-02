@@ -16,6 +16,7 @@ impl CollectionMutation {
     ) -> Result<Collection> {
         let gql_ctx = ctx.data::<GqlContext>()?;
         let site_id = gql_ctx.require_site()?;
+        gql_ctx.require_write()?;
 
         let definition_str = input.definition.to_string();
         let id = Uuid::now_v7().to_string();
@@ -49,6 +50,7 @@ impl CollectionMutation {
     ) -> Result<Collection> {
         let gql_ctx = ctx.data::<GqlContext>()?;
         let site_id = gql_ctx.require_site()?;
+        gql_ctx.require_write()?;
 
         let existing = collection_repo::get_by_slug(&gql_ctx.pool, site_id, &slug)
             .await
@@ -107,6 +109,7 @@ impl CollectionMutation {
     pub async fn delete_collection(&self, ctx: &Context<'_>, slug: String) -> Result<bool> {
         let gql_ctx = ctx.data::<GqlContext>()?;
         let site_id = gql_ctx.require_site()?;
+        gql_ctx.require_write()?;
 
         collection_repo::delete(&gql_ctx.pool, site_id, &slug)
             .await

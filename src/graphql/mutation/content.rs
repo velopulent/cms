@@ -16,6 +16,7 @@ impl ContentMutation {
     ) -> Result<Content> {
         let gql_ctx = ctx.data::<GqlContext>()?;
         let site_id = gql_ctx.require_site()?;
+        gql_ctx.require_write()?;
 
         let data_str = input.data.to_string();
         let id = Uuid::now_v7().to_string();
@@ -48,6 +49,7 @@ impl ContentMutation {
     ) -> Result<Content> {
         let gql_ctx = ctx.data::<GqlContext>()?;
         let site_id = gql_ctx.require_site()?;
+        gql_ctx.require_write()?;
 
         let existing = content_repo::get_by_id(&gql_ctx.pool, &id, site_id, false)
             .await
@@ -72,6 +74,7 @@ impl ContentMutation {
     pub async fn delete_content(&self, ctx: &Context<'_>, id: String) -> Result<bool> {
         let gql_ctx = ctx.data::<GqlContext>()?;
         let site_id = gql_ctx.require_site()?;
+        gql_ctx.require_write()?;
 
         content_repo::delete(&gql_ctx.pool, &id, site_id)
             .await
@@ -83,6 +86,7 @@ impl ContentMutation {
     pub async fn publish_content(&self, ctx: &Context<'_>, id: String) -> Result<Content> {
         let gql_ctx = ctx.data::<GqlContext>()?;
         let site_id = gql_ctx.require_site()?;
+        gql_ctx.require_write()?;
 
         let db_content = content_repo::publish(&gql_ctx.pool, &id, site_id)
             .await
@@ -94,6 +98,7 @@ impl ContentMutation {
     pub async fn unpublish_content(&self, ctx: &Context<'_>, id: String) -> Result<Content> {
         let gql_ctx = ctx.data::<GqlContext>()?;
         let site_id = gql_ctx.require_site()?;
+        gql_ctx.require_write()?;
 
         let db_content = content_repo::unpublish(&gql_ctx.pool, &id, site_id)
             .await
