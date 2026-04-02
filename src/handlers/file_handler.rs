@@ -15,8 +15,7 @@ use std::io::Cursor;
 use uuid::Uuid;
 
 use crate::config::Config;
-use crate::middleware::auth::AuthenticatedUser;
-use crate::middleware::auth::check_site_access;
+use crate::middleware::auth::{AuthContext, check_read_access, check_write_access, extract_user_id};
 use crate::models::file::{BatchFileIds, File, FileWithUrl};
 use crate::repository::file as file_repo;
 use crate::storage::{FileSystemStorage, S3Storage};
@@ -196,17 +195,17 @@ async fn remove_from_storage(
         (status = 200, description = "List of files"),
         (status = 401, description = "Unauthorized"),
     ),
-    security(("bearer" = [])),
+    security(("bearer" = []), ("api_key" = [])),
     tag = "files"
 )]
 pub async fn list_files(
-    auth: AuthenticatedUser,
+    auth: AuthContext,
     Path(site_id): Path<String>,
     Query(params): Query<FileListParams>,
     Extension(pool): Extension<SqlitePool>,
     Extension(storage): Extension<StorageManager>,
 ) -> Response {
-    if let Err((status, err)) = check_site_access(&pool, &auth.user_id, &site_id, "viewer").await {
+    if let Err((status, err)) = check_read_access(&auth, &pool, &site_id).await {
         return (status, Json(err)).into_response();
     }
 
@@ -260,18 +259,18 @@ pub async fn list_files(
         (status = 401, description = "Unauthorized"),
         (status = 413, description = "File too large"),
     ),
-    security(("bearer" = [])),
+    security(("bearer" = []), ("api_key" = [])),
     tag = "files"
 )]
 pub async fn upload_file(
-    auth: AuthenticatedUser,
+    auth: AuthContext,
     Path(site_id): Path<String>,
     Extension(pool): Extension<SqlitePool>,
     Extension(storage): Extension<StorageManager>,
     Extension(config): Extension<Config>,
     mut multipart: Multipart,
 ) -> Response {
-    if let Err((status, err)) = check_site_access(&pool, &auth.user_id, &site_id, "editor").await {
+    if let Err((status, err)) = check_write_access(&auth, &pool, &site_id).await {
         return (status, Json(err)).into_response();
     }
 
@@ -402,6 +401,8 @@ pub async fn upload_file(
 
     let thumb_key_str = thumbnail_key.as_deref();
 
+    let created_by = extract_user_id(&auth);
+
     match file_repo::create(
         &pool,
         &file_id,
@@ -415,7 +416,7 @@ pub async fn upload_file(
         thumb_key_str,
         width,
         height,
-        &auth.user_id,
+        created_by,
     )
     .await
     {
@@ -448,16 +449,16 @@ pub async fn upload_file(
         (status = 200, description = "File item", body = FileWithUrl),
         (status = 404, description = "Not found"),
     ),
-    security(("bearer" = [])),
+    security(("bearer" = []), ("api_key" = [])),
     tag = "files"
 )]
 pub async fn get_file(
-    auth: AuthenticatedUser,
+    auth: AuthContext,
     Path((site_id, id)): Path<(String, String)>,
     Extension(pool): Extension<SqlitePool>,
     Extension(storage): Extension<StorageManager>,
 ) -> Response {
-    if let Err((status, err)) = check_site_access(&pool, &auth.user_id, &site_id, "viewer").await {
+    if let Err((status, err)) = check_read_access(&auth, &pool, &site_id).await {
         return (status, Json(err)).into_response();
     }
 
@@ -490,15 +491,15 @@ pub async fn get_file(
         (status = 200, description = "File soft-deleted"),
         (status = 404, description = "Not found"),
     ),
-    security(("bearer" = [])),
+    security(("bearer" = []), ("api_key" = [])),
     tag = "files"
 )]
 pub async fn delete_file_handler(
-    auth: AuthenticatedUser,
+    auth: AuthContext,
     Path((site_id, id)): Path<(String, String)>,
     Extension(pool): Extension<SqlitePool>,
 ) -> Response {
-    if let Err((status, err)) = check_site_access(&pool, &auth.user_id, &site_id, "editor").await {
+    if let Err((status, err)) = check_write_access(&auth, &pool, &site_id).await {
         return (status, Json(err)).into_response();
     }
 
@@ -527,15 +528,15 @@ pub async fn delete_file_handler(
     responses(
         (status = 200, description = "References found", body = Vec<crate::models::file::FileReference>),
     ),
-    security(("bearer" = [])),
+    security(("bearer" = []), ("api_key" = [])),
     tag = "files"
 )]
 pub async fn get_file_references(
-    auth: AuthenticatedUser,
+    auth: AuthContext,
     Path((site_id, id)): Path<(String, String)>,
     Extension(pool): Extension<SqlitePool>,
 ) -> Response {
-    if let Err((status, err)) = check_site_access(&pool, &auth.user_id, &site_id, "viewer").await {
+    if let Err((status, err)) = check_read_access(&auth, &pool, &site_id).await {
         return (status, Json(err)).into_response();
     }
 
@@ -560,15 +561,15 @@ pub async fn get_file_references(
         (status = 200, description = "File restored"),
         (status = 404, description = "Not found"),
     ),
-    security(("bearer" = [])),
+    security(("bearer" = []), ("api_key" = [])),
     tag = "files"
 )]
 pub async fn restore_file(
-    auth: AuthenticatedUser,
+    auth: AuthContext,
     Path((site_id, id)): Path<(String, String)>,
     Extension(pool): Extension<SqlitePool>,
 ) -> Response {
-    if let Err((status, err)) = check_site_access(&pool, &auth.user_id, &site_id, "editor").await {
+    if let Err((status, err)) = check_write_access(&auth, &pool, &site_id).await {
         return (status, Json(err)).into_response();
     }
 
@@ -598,16 +599,16 @@ pub async fn restore_file(
         (status = 200, description = "Files soft-deleted"),
         (status = 400, description = "Bad request"),
     ),
-    security(("bearer" = [])),
+    security(("bearer" = []), ("api_key" = [])),
     tag = "files"
 )]
 pub async fn batch_delete_files(
-    auth: AuthenticatedUser,
+    auth: AuthContext,
     Path(site_id): Path<String>,
     Extension(pool): Extension<SqlitePool>,
     Json(body): Json<BatchFileIds>,
 ) -> Response {
-    if let Err((status, err)) = check_site_access(&pool, &auth.user_id, &site_id, "editor").await {
+    if let Err((status, err)) = check_write_access(&auth, &pool, &site_id).await {
         return (status, Json(err)).into_response();
     }
 
@@ -644,16 +645,16 @@ pub async fn batch_delete_files(
         (status = 200, description = "Files restored"),
         (status = 400, description = "Bad request"),
     ),
-    security(("bearer" = [])),
+    security(("bearer" = []), ("api_key" = [])),
     tag = "files"
 )]
 pub async fn batch_restore_files(
-    auth: AuthenticatedUser,
+    auth: AuthContext,
     Path(site_id): Path<String>,
     Extension(pool): Extension<SqlitePool>,
     Json(body): Json<BatchFileIds>,
 ) -> Response {
-    if let Err((status, err)) = check_site_access(&pool, &auth.user_id, &site_id, "editor").await {
+    if let Err((status, err)) = check_write_access(&auth, &pool, &site_id).await {
         return (status, Json(err)).into_response();
     }
 
@@ -690,17 +691,17 @@ pub async fn batch_restore_files(
         (status = 200, description = "Files permanently deleted"),
         (status = 400, description = "Bad request"),
     ),
-    security(("bearer" = [])),
+    security(("bearer" = []), ("api_key" = [])),
     tag = "files"
 )]
 pub async fn batch_permanent_delete_files(
-    auth: AuthenticatedUser,
+    auth: AuthContext,
     Path(site_id): Path<String>,
     Extension(pool): Extension<SqlitePool>,
     Extension(storage): Extension<StorageManager>,
     Json(body): Json<BatchFileIds>,
 ) -> Response {
-    if let Err((status, err)) = check_site_access(&pool, &auth.user_id, &site_id, "editor").await {
+    if let Err((status, err)) = check_write_access(&auth, &pool, &site_id).await {
         return (status, Json(err)).into_response();
     }
 

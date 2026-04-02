@@ -8,7 +8,7 @@ use serde_json::json;
 use sqlx::SqlitePool;
 use uuid::Uuid;
 
-use crate::middleware::auth::{AuthContext, AuthenticatedUser, check_site_access};
+use crate::middleware::auth::{AuthContext, check_read_access, check_write_access};
 use crate::models::collection::{Collection, CreateCollection, UpdateCollection};
 use crate::repository::collection as collection_repo;
 
@@ -28,24 +28,8 @@ pub async fn list_collections(
     Path(site_id): Path<String>,
     Extension(pool): Extension<SqlitePool>,
 ) -> Response {
-    match &auth {
-        AuthContext::Jwt { user_id } => {
-            if let Err((status, err)) = check_site_access(&pool, user_id, &site_id, "viewer").await
-            {
-                return (status, Json(err)).into_response();
-            }
-        }
-        AuthContext::ApiKey {
-            site_id: key_site_id,
-        } => {
-            if key_site_id != &site_id {
-                return (
-                    StatusCode::FORBIDDEN,
-                    Json(json!({"error": "API key does not have access to this site"})),
-                )
-                    .into_response();
-            }
-        }
+    if let Err((status, err)) = check_read_access(&auth, &pool, &site_id).await {
+        return (status, Json(err)).into_response();
     }
 
     match collection_repo::list(&pool, &site_id).await {
@@ -78,24 +62,8 @@ pub async fn get_collection(
     Path((site_id, collection_slug)): Path<(String, String)>,
     Extension(pool): Extension<SqlitePool>,
 ) -> Response {
-    match &auth {
-        AuthContext::Jwt { user_id } => {
-            if let Err((status, err)) = check_site_access(&pool, user_id, &site_id, "viewer").await
-            {
-                return (status, Json(err)).into_response();
-            }
-        }
-        AuthContext::ApiKey {
-            site_id: key_site_id,
-        } => {
-            if key_site_id != &site_id {
-                return (
-                    StatusCode::FORBIDDEN,
-                    Json(json!({"error": "API key does not have access to this site"})),
-                )
-                    .into_response();
-            }
-        }
+    if let Err((status, err)) = check_read_access(&auth, &pool, &site_id).await {
+        return (status, Json(err)).into_response();
     }
 
     match collection_repo::get_by_slug(&pool, &site_id, &collection_slug).await {
@@ -124,16 +92,16 @@ pub async fn get_collection(
         (status = 403, description = "Insufficient permissions"),
         (status = 409, description = "Collection name or slug already exists"),
     ),
-    security(("bearer" = [])),
+    security(("bearer" = []), ("api_key" = [])),
     tag = "collections"
 )]
 pub async fn create_collection(
-    auth: AuthenticatedUser,
+    auth: AuthContext,
     Path(site_id): Path<String>,
     Extension(pool): Extension<SqlitePool>,
     Json(payload): Json<CreateCollection>,
 ) -> Response {
-    if let Err((status, err)) = check_site_access(&pool, &auth.user_id, &site_id, "editor").await {
+    if let Err((status, err)) = check_write_access(&auth, &pool, &site_id).await {
         return (status, Json(err)).into_response();
     }
 
@@ -179,16 +147,16 @@ pub async fn create_collection(
         (status = 401, description = "Unauthorized"),
         (status = 403, description = "Insufficient permissions"),
     ),
-    security(("bearer" = [])),
+    security(("bearer" = []), ("api_key" = [])),
     tag = "collections"
 )]
 pub async fn update_collection(
-    auth: AuthenticatedUser,
+    auth: AuthContext,
     Path((site_id, collection_slug)): Path<(String, String)>,
     Extension(pool): Extension<SqlitePool>,
     Json(payload): Json<UpdateCollection>,
 ) -> Response {
-    if let Err((status, err)) = check_site_access(&pool, &auth.user_id, &site_id, "editor").await {
+    if let Err((status, err)) = check_write_access(&auth, &pool, &site_id).await {
         return (status, Json(err)).into_response();
     }
 
@@ -265,15 +233,15 @@ pub async fn update_collection(
         (status = 401, description = "Unauthorized"),
         (status = 403, description = "Insufficient permissions"),
     ),
-    security(("bearer" = [])),
+    security(("bearer" = []), ("api_key" = [])),
     tag = "collections"
 )]
 pub async fn delete_collection(
-    auth: AuthenticatedUser,
+    auth: AuthContext,
     Path((site_id, collection_slug)): Path<(String, String)>,
     Extension(pool): Extension<SqlitePool>,
 ) -> Response {
-    if let Err((status, err)) = check_site_access(&pool, &auth.user_id, &site_id, "editor").await {
+    if let Err((status, err)) = check_write_access(&auth, &pool, &site_id).await {
         return (status, Json(err)).into_response();
     }
 

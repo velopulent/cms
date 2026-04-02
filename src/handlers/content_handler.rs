@@ -10,7 +10,7 @@ use sqlx::SqlitePool;
 use uuid::Uuid;
 
 use crate::handlers::file_handler::StorageManager;
-use crate::middleware::auth::{AuthContext, AuthenticatedUser, check_site_access};
+use crate::middleware::auth::{AuthContext, check_read_access, check_write_access};
 use crate::models::content::{Content, CreateContent, UpdateContent};
 use crate::models::file::File;
 use crate::repository::content::{self as content_repo, ListContentParams};
@@ -42,24 +42,8 @@ pub async fn list_content(
     Query(params): Query<ListParams>,
     Extension(pool): Extension<SqlitePool>,
 ) -> Response {
-    match &auth {
-        AuthContext::Jwt { user_id } => {
-            if let Err((status, err)) = check_site_access(&pool, user_id, &site_id, "viewer").await
-            {
-                return (status, Json(err)).into_response();
-            }
-        }
-        AuthContext::ApiKey {
-            site_id: key_site_id,
-        } => {
-            if key_site_id != &site_id {
-                return (
-                    StatusCode::FORBIDDEN,
-                    Json(json!({"error": "API key does not have access to this site"})),
-                )
-                    .into_response();
-            }
-        }
+    if let Err((status, err)) = check_read_access(&auth, &pool, &site_id).await {
+        return (status, Json(err)).into_response();
     }
 
     let published_only = matches!(auth, AuthContext::ApiKey { .. });
@@ -108,24 +92,8 @@ pub async fn get_content(
     Extension(pool): Extension<SqlitePool>,
     Extension(storage): Extension<StorageManager>,
 ) -> Response {
-    match &auth {
-        AuthContext::Jwt { user_id } => {
-            if let Err((status, err)) = check_site_access(&pool, user_id, &site_id, "viewer").await
-            {
-                return (status, Json(err)).into_response();
-            }
-        }
-        AuthContext::ApiKey {
-            site_id: key_site_id,
-        } => {
-            if key_site_id != &site_id {
-                return (
-                    StatusCode::FORBIDDEN,
-                    Json(json!({"error": "API key does not have access to this site"})),
-                )
-                    .into_response();
-            }
-        }
+    if let Err((status, err)) = check_read_access(&auth, &pool, &site_id).await {
+        return (status, Json(err)).into_response();
     }
 
     let published_only = matches!(auth, AuthContext::ApiKey { .. });
@@ -159,16 +127,16 @@ pub async fn get_content(
         (status = 403, description = "Insufficient permissions"),
         (status = 409, description = "Slug already exists"),
     ),
-    security(("bearer" = [])),
+    security(("bearer" = []), ("api_key" = [])),
     tag = "content"
 )]
 pub async fn create_content(
-    auth: AuthenticatedUser,
+    auth: AuthContext,
     Path(site_id): Path<String>,
     Extension(pool): Extension<SqlitePool>,
     Json(payload): Json<CreateContent>,
 ) -> Response {
-    if let Err((status, err)) = check_site_access(&pool, &auth.user_id, &site_id, "editor").await {
+    if let Err((status, err)) = check_write_access(&auth, &pool, &site_id).await {
         return (status, Json(err)).into_response();
     }
 
@@ -206,16 +174,16 @@ pub async fn create_content(
         (status = 401, description = "Unauthorized"),
         (status = 403, description = "Insufficient permissions"),
     ),
-    security(("bearer" = [])),
+    security(("bearer" = []), ("api_key" = [])),
     tag = "content"
 )]
 pub async fn update_content(
-    auth: AuthenticatedUser,
+    auth: AuthContext,
     Path((site_id, id)): Path<(String, String)>,
     Extension(pool): Extension<SqlitePool>,
     Json(payload): Json<UpdateContent>,
 ) -> Response {
-    if let Err((status, err)) = check_site_access(&pool, &auth.user_id, &site_id, "editor").await {
+    if let Err((status, err)) = check_write_access(&auth, &pool, &site_id).await {
         return (status, Json(err)).into_response();
     }
 
@@ -275,15 +243,15 @@ pub async fn update_content(
         (status = 401, description = "Unauthorized"),
         (status = 403, description = "Insufficient permissions"),
     ),
-    security(("bearer" = [])),
+    security(("bearer" = []), ("api_key" = [])),
     tag = "content"
 )]
 pub async fn delete_content(
-    auth: AuthenticatedUser,
+    auth: AuthContext,
     Path((site_id, id)): Path<(String, String)>,
     Extension(pool): Extension<SqlitePool>,
 ) -> Response {
-    if let Err((status, err)) = check_site_access(&pool, &auth.user_id, &site_id, "editor").await {
+    if let Err((status, err)) = check_write_access(&auth, &pool, &site_id).await {
         return (status, Json(err)).into_response();
     }
 
@@ -310,15 +278,15 @@ pub async fn delete_content(
         (status = 403, description = "Insufficient permissions"),
         (status = 404, description = "Content not found"),
     ),
-    security(("bearer" = [])),
+    security(("bearer" = []), ("api_key" = [])),
     tag = "content"
 )]
 pub async fn publish_content(
-    auth: AuthenticatedUser,
+    auth: AuthContext,
     Path((site_id, id)): Path<(String, String)>,
     Extension(pool): Extension<SqlitePool>,
 ) -> Response {
-    if let Err((status, err)) = check_site_access(&pool, &auth.user_id, &site_id, "editor").await {
+    if let Err((status, err)) = check_write_access(&auth, &pool, &site_id).await {
         return (status, Json(err)).into_response();
     }
 
@@ -350,15 +318,15 @@ pub async fn publish_content(
         (status = 403, description = "Insufficient permissions"),
         (status = 404, description = "Content not found"),
     ),
-    security(("bearer" = [])),
+    security(("bearer" = []), ("api_key" = [])),
     tag = "content"
 )]
 pub async fn unpublish_content(
-    auth: AuthenticatedUser,
+    auth: AuthContext,
     Path((site_id, id)): Path<(String, String)>,
     Extension(pool): Extension<SqlitePool>,
 ) -> Response {
-    if let Err((status, err)) = check_site_access(&pool, &auth.user_id, &site_id, "editor").await {
+    if let Err((status, err)) = check_write_access(&auth, &pool, &site_id).await {
         return (status, Json(err)).into_response();
     }
 

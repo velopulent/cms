@@ -9,7 +9,7 @@ use sqlx::SqlitePool;
 
 use crate::handlers::file_handler::StorageManager;
 use crate::handlers::content_handler::resolve_content_files_from_value;
-use crate::middleware::auth::{AuthContext, AuthenticatedUser, check_site_access};
+use crate::middleware::auth::{AuthContext, check_read_access, check_write_access};
 use crate::models::collection::{SingletonResponse, UpdateSingletonData};
 use crate::repository::collection as collection_repo;
 
@@ -49,24 +49,8 @@ pub async fn list_singletons(
     Path(site_id): Path<String>,
     Extension(pool): Extension<SqlitePool>,
 ) -> Response {
-    match &auth {
-        AuthContext::Jwt { user_id } => {
-            if let Err((status, err)) = check_site_access(&pool, user_id, &site_id, "viewer").await
-            {
-                return (status, Json(err)).into_response();
-            }
-        }
-        AuthContext::ApiKey {
-            site_id: key_site_id,
-        } => {
-            if key_site_id != &site_id {
-                return (
-                    StatusCode::FORBIDDEN,
-                    Json(json!({"error": "API key does not have access to this site"})),
-                )
-                    .into_response();
-            }
-        }
+    if let Err((status, err)) = check_read_access(&auth, &pool, &site_id).await {
+        return (status, Json(err)).into_response();
     }
 
     match collection_repo::list_singletons_only(&pool, &site_id).await {
@@ -104,24 +88,8 @@ pub async fn get_singleton(
     Extension(pool): Extension<SqlitePool>,
     Extension(storage): Extension<StorageManager>,
 ) -> Response {
-    match &auth {
-        AuthContext::Jwt { user_id } => {
-            if let Err((status, err)) = check_site_access(&pool, user_id, &site_id, "viewer").await
-            {
-                return (status, Json(err)).into_response();
-            }
-        }
-        AuthContext::ApiKey {
-            site_id: key_site_id,
-        } => {
-            if key_site_id != &site_id {
-                return (
-                    StatusCode::FORBIDDEN,
-                    Json(json!({"error": "API key does not have access to this site"})),
-                )
-                    .into_response();
-            }
-        }
+    if let Err((status, err)) = check_read_access(&auth, &pool, &site_id).await {
+        return (status, Json(err)).into_response();
     }
 
     match collection_repo::get_by_slug(&pool, &site_id, &slug).await {
@@ -171,16 +139,16 @@ pub async fn get_singleton(
         (status = 403, description = "Insufficient permissions"),
         (status = 404, description = "Singleton not found"),
     ),
-    security(("bearer" = [])),
+    security(("bearer" = []), ("api_key" = [])),
     tag = "singletons"
 )]
 pub async fn update_singleton(
-    auth: AuthenticatedUser,
+    auth: AuthContext,
     Path((site_id, slug)): Path<(String, String)>,
     Extension(pool): Extension<SqlitePool>,
     Json(payload): Json<UpdateSingletonData>,
 ) -> Response {
-    if let Err((status, err)) = check_site_access(&pool, &auth.user_id, &site_id, "editor").await {
+    if let Err((status, err)) = check_write_access(&auth, &pool, &site_id).await {
         return (status, Json(err)).into_response();
     }
 
