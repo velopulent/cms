@@ -10,21 +10,9 @@ use sqlx::SqlitePool;
 use uuid::Uuid;
 
 use crate::middleware::auth::{AuthenticatedUser, check_site_access};
-use crate::models::api_key::{ApiKey, ApiKeyResponse, CreateApiKey};
+use crate::models::api_key::{ApiKeyResponse, CreateApiKey};
 use crate::repository::api_key as api_key_repo;
 
-#[utoipa::path(
-    get,
-    path = "/api/v1/sites/{site_id}/api-keys",
-    params(("site_id" = String, Path, description = "Site ID")),
-    responses(
-        (status = 200, description = "List of API keys", body = Vec<ApiKey>),
-        (status = 401, description = "Unauthorized"),
-        (status = 403, description = "Insufficient permissions"),
-    ),
-    security(("bearer" = [])),
-    tag = "api-keys"
-)]
 pub async fn list_api_keys(
     auth: AuthenticatedUser,
     Path(site_id): Path<String>,
@@ -44,19 +32,6 @@ pub async fn list_api_keys(
     }
 }
 
-#[utoipa::path(
-    post,
-    path = "/api/v1/sites/{site_id}/api-keys",
-    params(("site_id" = String, Path, description = "Site ID")),
-    request_body = CreateApiKey,
-    responses(
-        (status = 201, description = "API key created (key shown only once)", body = ApiKeyResponse),
-        (status = 401, description = "Unauthorized"),
-        (status = 403, description = "Insufficient permissions"),
-    ),
-    security(("bearer" = [])),
-    tag = "api-keys"
-)]
 pub async fn create_api_key(
     auth: AuthenticatedUser,
     Path(site_id): Path<String>,
@@ -133,22 +108,6 @@ pub async fn create_api_key(
     }
 }
 
-#[utoipa::path(
-    delete,
-    path = "/api/v1/sites/{site_id}/api-keys/{key_id}",
-    params(
-        ("site_id" = String, Path, description = "Site ID"),
-        ("key_id" = String, Path, description = "API Key ID"),
-    ),
-    responses(
-        (status = 204, description = "API key deleted"),
-        (status = 401, description = "Unauthorized"),
-        (status = 403, description = "Insufficient permissions"),
-        (status = 404, description = "API key not found"),
-    ),
-    security(("bearer" = [])),
-    tag = "api-keys"
-)]
 pub async fn delete_api_key(
     auth: AuthenticatedUser,
     Path((site_id, key_id)): Path<(String, String)>,

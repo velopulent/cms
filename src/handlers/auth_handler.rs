@@ -158,16 +158,6 @@ pub async fn login(
         .into_response()
 }
 
-#[utoipa::path(
-    get,
-    path = "/api/auth/me",
-    responses(
-        (status = 200, description = "Current user", body = UserPublic),
-        (status = 401, description = "Unauthorized"),
-    ),
-    security(("bearer" = [])),
-    tag = "auth"
-)]
 pub async fn me(auth: AuthenticatedUser, Extension(pool): Extension<SqlitePool>) -> Response {
     match user_repo::find_by_id(&pool, &auth.user_id).await {
         Ok(Some(u)) => (
