@@ -1,31 +1,22 @@
 const BASE_URL = "/api/v1";
 const AUTH_URL = "/api/auth";
 
-async function getToken(): Promise<string | null> {
-  return localStorage.getItem("cms_token");
-}
-
 export async function api<T>(
   path: string,
   options: RequestInit = {},
 ): Promise<T> {
-  const token = await getToken();
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
     ...(options.headers as Record<string, string>),
   };
 
-  if (token) {
-    headers.Authorization = `Bearer ${token}`;
-  }
-
   const res = await fetch(`${BASE_URL}${path}`, {
     ...options,
     headers,
+    credentials: "include",
   });
 
   if (res.status === 401) {
-    localStorage.removeItem("cms_token");
     localStorage.removeItem("cms_user");
     window.location.href = "/login";
     throw new Error("Unauthorized");
@@ -56,6 +47,7 @@ export async function authApi<T>(
   const res = await fetch(`${AUTH_URL}${path}`, {
     ...options,
     headers,
+    credentials: "include",
   });
 
   if (!res.ok) {
@@ -70,15 +62,6 @@ export async function authApi<T>(
   return res.json();
 }
 
-export function setToken(token: string) {
-  localStorage.setItem("cms_token", token);
-}
-
-export function clearToken() {
-  localStorage.removeItem("cms_token");
-  localStorage.removeItem("cms_user");
-}
-
 // --- Types ---
 
 export interface UserPublic {
@@ -88,7 +71,6 @@ export interface UserPublic {
 }
 
 export interface AuthResponse {
-  token: string;
   user: UserPublic;
 }
 
@@ -236,6 +218,10 @@ export async function register(
 
 export async function getMe() {
   return authApi<UserPublic>("/me");
+}
+
+export async function logoutApi() {
+  return authApi<void>("/logout", { method: "POST" });
 }
 
 // --- Sites API ---
@@ -456,19 +442,17 @@ export async function uploadFile(
   file: File,
   provider: "filesystem" | "s3",
 ): Promise<FileItem> {
-  const token = await getToken();
   const formData = new FormData();
   formData.append("file", file);
   formData.append("storage_provider", provider);
 
   const res = await fetch(`${BASE_URL}/sites/${siteId}/files`, {
     method: "POST",
-    headers: token ? { Authorization: `Bearer ${token}` } : {},
+    credentials: "include",
     body: formData,
   });
 
   if (res.status === 401) {
-    localStorage.removeItem("cms_token");
     localStorage.removeItem("cms_user");
     window.location.href = "/login";
     throw new Error("Unauthorized");
