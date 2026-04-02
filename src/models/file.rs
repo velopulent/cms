@@ -16,7 +16,7 @@ pub struct File {
     pub width: Option<i32>,
     pub height: Option<i32>,
     pub deleted_at: Option<String>,
-    pub created_by: String,
+    pub created_by: Option<String>,
     pub created_at: String,
 }
 
@@ -34,7 +34,7 @@ pub struct FileWithUrl {
     pub width: Option<i32>,
     pub height: Option<i32>,
     pub deleted_at: Option<String>,
-    pub created_by: String,
+    pub created_by: Option<String>,
     pub created_at: String,
     pub url: String,
     pub thumbnail_url: Option<String>,

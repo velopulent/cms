@@ -135,7 +135,7 @@ pub async fn create(
     thumbnail_key: Option<&str>,
     width: Option<i32>,
     height: Option<i32>,
-    created_by: &str,
+    created_by: Option<&str>,
 ) -> Result<File, sqlx::Error> {
     sqlx::query(
         "INSERT INTO files (id, site_id, filename, original_name, mime_type, size, storage_provider, storage_key, thumbnail_key, width, height, created_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",

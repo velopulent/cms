@@ -88,7 +88,7 @@ CREATE TABLE IF NOT EXISTS files (
     width INTEGER,
     height INTEGER,
     deleted_at TEXT,
-    created_by TEXT NOT NULL REFERENCES users(id),
+    created_by TEXT REFERENCES users(id),
     created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
