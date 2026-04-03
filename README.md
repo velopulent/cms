@@ -1,23 +1,47 @@
 # CMS
 
-**CMS** is a content management system built with rust and react.
+A headless, API-first content management system built for developers.
+
+---
+
+## Features
+
+### Multi-Site Management
+Manage multiple websites from a single installation with role-based access control.
+
+### Custom Content Types
+Define collections with your fields: text, rich text, numbers, dates, images, and more.
+
+### API-First Design
+REST and GraphQL APIs out of the box with auto-generated OpenAPI documentation.
+
+### Media Management
+Upload, organize, and serve media with automatic thumbnails and S3 support.
+
+### Developer-Friendly
+Single binary deployment. No external dependencies. JWT auth and API keys for programmatic access.
 
 ---
 
 ## Stack
 
-#### Backend:
+### Backend
 
-- [Axum](https://docs.rs/axum) (API & File Server)
-- [SQLx](https://docs.rs/sqlx) (Async SQL toolkit)
-- SQLite (via SQLx)
-- [rust-embed](https://docs.rs/rust-embed) (Static asset embedding)
+- [Axum](https://docs.rs/axum) - HTTP server & routing
+- [SQLx](https://docs.rs/sqlx) - Async SQL toolkit
+- SQLite - Database
+- [rust-embed](https://docs.rs/rust-embed) - Static asset embedding
+- [async-graphql](https://async-graphql.github.io/async-graphql/en/) - GraphQL API
+- [utoipa](https://docs.rs/utoipa) - OpenAPI generation
 
-#### Frontend:
+### Frontend
 
-- [React](https://react.dev) (with [Tanstack Router](https://tanstack.com/router))
-- [Tanstack Query](https://tanstack.com/query)
-- [shadcn/ui](https://ui.shadcn.com)
+- [React](https://react.dev) - UI framework
+- [Tanstack Router](https://tanstack.com/router) - Routing
+- [Tanstack Query](https://tanstack.com/query) - Server state
+- [shadcn/ui](https://ui.shadcn.com) - UI components
+- [Tailwind CSS](https://tailwindcss.com) - Styling
+- [Tiptap](https://tiptap.dev) - Rich text editor
 
 ---
 
@@ -33,7 +57,21 @@ Result: one binary that serves both API and UI.
 
 ---
 
-## Development Workflow
+## Quick Start
+
+```bash
+# Build the project
+cargo build --release
+
+# Run the server
+./target/release/cms
+```
+
+Visit `http://localhost:3000` to access the admin UI.
+
+---
+
+## Development
 
 ### Backend
 
@@ -48,23 +86,16 @@ cd ui
 bun run dev
 ```
 
-During development, the React dev server can proxy API requests to the Rust backend.
+During development, the React dev server proxies API requests to the Rust backend.
 
 ---
 
-## Production Build
+## API Access
 
-```bash
-cargo build --release
-./target/release/cms
-```
-
-This will:
-
-- Build the React app
-- Embed the UI into the binary
-- Produce a single deployable executable
-
-No external runtime dependencies required.
+| Endpoint | Description |
+|----------|-------------|
+| `/api/v1/` | REST API |
+| `/api/graphql` | GraphQL API |
+| `/api/v1/docs` | OpenAPI documentation |
 
 ---
