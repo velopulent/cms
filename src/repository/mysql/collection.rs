@@ -1,0 +1,212 @@
+use async_trait::async_trait;
+use sqlx::MySqlPool;
+
+use crate::models::collection::Collection;
+use crate::models::content::Content;
+use crate::repository::error::RepositoryError;
+use crate::repository::traits::CollectionRepository;
+
+pub struct MysqlCollectionRepository {
+    pool: MySqlPool,
+}
+
+impl MysqlCollectionRepository {
+    pub fn new(pool: MySqlPool) -> Self {
+        Self { pool }
+    }
+}
+
+#[async_trait]
+impl CollectionRepository for MysqlCollectionRepository {
+    async fn list(&self, site_id: &str) -> Result<Vec<Collection>, RepositoryError> {
+        let result = sqlx::query_as::<_, Collection>(
+            "SELECT id, site_id, name, slug, definition, is_singleton, singleton_data, created_at, updated_at FROM collections WHERE site_id = ? ORDER BY name",
+        )
+        .bind(site_id)
+        .fetch_all(&self.pool)
+        .await?;
+
+        Ok(result)
+    }
+
+    async fn list_singletons_only(&self, site_id: &str) -> Result<Vec<Collection>, RepositoryError> {
+        let result = sqlx::query_as::<_, Collection>(
+            "SELECT id, site_id, name, slug, definition, is_singleton, singleton_data, created_at, updated_at FROM collections WHERE site_id = ? AND is_singleton = 1 ORDER BY name",
+        )
+        .bind(site_id)
+        .fetch_all(&self.pool)
+        .await?;
+
+        Ok(result)
+    }
+
+    async fn get_by_slug(&self, site_id: &str, slug: &str) -> Result<Option<Collection>, RepositoryError> {
+        let result = sqlx::query_as::<_, Collection>(
+            "SELECT id, site_id, name, slug, definition, is_singleton, singleton_data, created_at, updated_at FROM collections WHERE site_id = ? AND slug = ?",
+        )
+        .bind(site_id)
+        .bind(slug)
+        .fetch_optional(&self.pool)
+        .await?;
+
+        Ok(result)
+    }
+
+    async fn get_by_id(&self, id: &str) -> Result<Option<Collection>, RepositoryError> {
+        let result = sqlx::query_as::<_, Collection>(
+            "SELECT id, site_id, name, slug, definition, is_singleton, singleton_data, created_at, updated_at FROM collections WHERE id = ?",
+        )
+        .bind(id)
+        .fetch_optional(&self.pool)
+        .await?;
+
+        Ok(result)
+    }
+
+    async fn create(
+        &self,
+        id: &str,
+        site_id: &str,
+        name: &str,
+        slug: &str,
+        definition: &str,
+        is_singleton: bool,
+    ) -> Result<Collection, RepositoryError> {
+        sqlx::query(
+            "INSERT INTO collections (id, site_id, name, slug, definition, is_singleton) VALUES (?, ?, ?, ?, ?, ?)",
+        )
+        .bind(id)
+        .bind(site_id)
+        .bind(name)
+        .bind(slug)
+        .bind(definition)
+        .bind(is_singleton)
+        .execute(&self.pool)
+        .await?;
+
+        self.get_by_id(id)
+            .await?
+            .ok_or(RepositoryError::NotFound)
+    }
+
+    async fn update(
+        &self,
+        id: &str,
+        name: &str,
+        slug: &str,
+        definition: &str,
+    ) -> Result<Collection, RepositoryError> {
+        sqlx::query(
+            "UPDATE collections SET name = ?, slug = ?, definition = ?, updated_at = NOW() WHERE id = ?",
+        )
+        .bind(name)
+        .bind(slug)
+        .bind(definition)
+        .bind(id)
+        .execute(&self.pool)
+        .await?;
+
+        self.get_by_id(id)
+            .await?
+            .ok_or(RepositoryError::NotFound)
+    }
+
+    async fn update_singleton_data(&self, id: &str, data: &str) -> Result<Collection, RepositoryError> {
+        sqlx::query(
+            "UPDATE collections SET singleton_data = ?, updated_at = NOW() WHERE id = ?",
+        )
+        .bind(data)
+        .bind(id)
+        .execute(&self.pool)
+        .await?;
+
+        self.get_by_id(id)
+            .await?
+            .ok_or(RepositoryError::NotFound)
+    }
+
+    async fn delete(&self, site_id: &str, slug: &str) -> Result<u64, RepositoryError> {
+        let result = sqlx::query("DELETE FROM collections WHERE site_id = ? AND slug = ?")
+            .bind(site_id)
+            .bind(slug)
+            .execute(&self.pool)
+            .await?;
+
+        Ok(result.rows_affected())
+    }
+
+    async fn get_content_for_migration(&self, collection_id: &str) -> Result<Vec<Content>, RepositoryError> {
+        let result = sqlx::query_as::<_, Content>(
+            "SELECT id, site_id, collection_id, data, slug, status, created_at, updated_at, published_at FROM content WHERE collection_id = ?",
+        )
+        .bind(collection_id)
+        .fetch_all(&self.pool)
+        .await?;
+
+        Ok(result)
+    }
+
+    async fn migrate_content_field_renames(
+        &self,
+        content_items: &[Content],
+        rename_map: &std::collections::HashMap<String, String>,
+    ) -> Result<(), RepositoryError> {
+        for content in content_items {
+            if let Ok(mut data) = serde_json::from_str::<serde_json::Value>(&content.data) {
+                if let Some(obj) = data.as_object_mut() {
+                    let mut renamed = serde_json::Map::new();
+                    for (key, value) in obj.iter() {
+                        let new_key = rename_map
+                            .get(key)
+                            .cloned()
+                            .unwrap_or_else(|| key.clone());
+                        renamed.insert(new_key, value.clone());
+                    }
+                    let new_data_str = serde_json::to_string(&serde_json::Value::Object(renamed))
+                        .unwrap_or_else(|_| content.data.clone());
+
+                    sqlx::query(
+                        "UPDATE content SET data = ?, updated_at = NOW() WHERE id = ?",
+                    )
+                    .bind(&new_data_str)
+                    .bind(&content.id)
+                    .execute(&self.pool)
+                    .await?;
+                }
+            }
+        }
+        Ok(())
+    }
+
+    async fn migrate_singleton_field_renames(
+        &self,
+        collection: &Collection,
+        rename_map: &std::collections::HashMap<String, String>,
+    ) -> Result<(), RepositoryError> {
+        if let Some(ref data_str) = collection.singleton_data {
+            if let Ok(mut data) = serde_json::from_str::<serde_json::Value>(data_str) {
+                if let Some(obj) = data.as_object_mut() {
+                    let mut renamed = serde_json::Map::new();
+                    for (key, value) in obj.iter() {
+                        let new_key = rename_map
+                            .get(key)
+                            .cloned()
+                            .unwrap_or_else(|| key.clone());
+                        renamed.insert(new_key, value.clone());
+                    }
+                    let new_data_str = serde_json::to_string(&serde_json::Value::Object(renamed))
+                        .unwrap_or_else(|_| data_str.clone());
+
+                    sqlx::query(
+                        "UPDATE collections SET singleton_data = ?, updated_at = NOW() WHERE id = ?",
+                    )
+                    .bind(&new_data_str)
+                    .bind(&collection.id)
+                    .execute(&self.pool)
+                    .await?;
+                }
+            }
+        }
+        Ok(())
+    }
+}
