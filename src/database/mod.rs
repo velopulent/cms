@@ -1,31 +1,47 @@
+pub mod backend;
+pub mod pool;
+
+use backend::DatabaseBackend;
+use pool::DbPool;
 use regex::Regex;
 use serde_json;
-use sqlx::{SqlitePool, sqlite::SqliteConnectOptions, sqlite::SqlitePoolOptions};
-use std::str::FromStr;
 
-pub async fn init_db(database_url: &str) -> SqlitePool {
-    let options = SqliteConnectOptions::from_str(database_url)
-        .expect("Failed to parse database URL")
-        .create_if_missing(true);
+pub async fn init_db(database_url: &str) -> Result<DbPool, sqlx::Error> {
+    let pool = DbPool::from_url(database_url).await?;
+    let backend = pool.backend();
 
-    let pool = SqlitePoolOptions::new()
-        .connect_with(options)
-        .await
-        .expect("Failed to connect to database");
-
-    sqlx::query(include_str!("schema.sql"))
-        .execute(&pool)
-        .await
-        .expect("Failed to create tables");
+    run_schema(&pool, backend).await?;
 
     backfill_file_references(&pool).await;
 
-    pool
+    Ok(pool)
 }
 
-/// One-time backfill: scan existing content rows and populate content_file_references.
-/// Idempotent — skips if references already exist.
-async fn backfill_file_references(pool: &SqlitePool) {
+async fn run_schema(pool: &DbPool, backend: DatabaseBackend) -> Result<(), sqlx::Error> {
+    let schema = match backend {
+        DatabaseBackend::Postgres => include_str!("schema/postgres.sql"),
+        DatabaseBackend::MySQL => include_str!("schema/mysql.sql"),
+        DatabaseBackend::SQLite => include_str!("schema/sqlite.sql"),
+    };
+
+    for statement in schema.split(';').filter(|s| !s.trim().is_empty()) {
+        pool.execute(statement).await?;
+    }
+
+    Ok(())
+}
+
+async fn backfill_file_references(pool: &DbPool) {
+    let file_url_re = Regex::new(r"/api/files/([^/]+)(?:/thumbnail)?").expect("Invalid regex");
+
+    match pool {
+        DbPool::Sqlite(sqlite_pool) => backfill_sqlite(sqlite_pool, &file_url_re).await,
+        DbPool::MySql(mysql_pool) => backfill_mysql(mysql_pool, &file_url_re).await,
+        DbPool::Postgres(pg_pool) => backfill_postgres(pg_pool, &file_url_re).await,
+    }
+}
+
+async fn backfill_sqlite(pool: &sqlx::SqlitePool, file_url_re: &Regex) {
     let has_content: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM content LIMIT 1)")
         .fetch_one(pool)
         .await
@@ -41,7 +57,45 @@ async fn backfill_file_references(pool: &SqlitePool) {
         return;
     }
 
-    let file_url_re = Regex::new(r"/api/files/([^/]+)(?:/thumbnail)?").expect("Invalid regex");
+    let rows =
+        sqlx::query_as::<_, (String, String, String)>("SELECT id, site_id, data FROM content")
+            .fetch_all(pool)
+            .await
+            .unwrap_or_default();
+
+    for (content_id, site_id, data_str) in rows {
+        if let Ok(data) = serde_json::from_str::<serde_json::Value>(&data_str) {
+            let file_ids = extract_file_ids_from_value(&data, file_url_re);
+
+            for file_id in file_ids {
+                let _ = sqlx::query(
+                    "INSERT OR IGNORE INTO content_file_references (content_id, file_id, site_id) VALUES (?, ?, ?)",
+                )
+                .bind(&content_id)
+                .bind(&file_id)
+                .bind(&site_id)
+                .execute(pool)
+                .await;
+            }
+        }
+    }
+}
+
+async fn backfill_mysql(pool: &sqlx::MySqlPool, file_url_re: &Regex) {
+    let has_content: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM content LIMIT 1)")
+        .fetch_one(pool)
+        .await
+        .unwrap_or(false);
+
+    let has_references: bool =
+        sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM content_file_references LIMIT 1)")
+            .fetch_one(pool)
+            .await
+            .unwrap_or(false);
+
+    if !has_content || has_references {
+        return;
+    }
 
     let rows =
         sqlx::query_as::<_, (String, String, String)>("SELECT id, site_id, data FROM content")
@@ -50,21 +104,59 @@ async fn backfill_file_references(pool: &SqlitePool) {
             .unwrap_or_default();
 
     for (content_id, site_id, data_str) in rows {
-        let Ok(data) = serde_json::from_str::<serde_json::Value>(&data_str) else {
-            continue;
-        };
+        if let Ok(data) = serde_json::from_str::<serde_json::Value>(&data_str) {
+            let file_ids = extract_file_ids_from_value(&data, file_url_re);
 
-        let file_ids = extract_file_ids_from_value(&data, &file_url_re);
+            for file_id in file_ids {
+                let _ = sqlx::query(
+                    "INSERT IGNORE INTO content_file_references (content_id, file_id, site_id) VALUES (?, ?, ?)",
+                )
+                .bind(&content_id)
+                .bind(&file_id)
+                .bind(&site_id)
+                .execute(pool)
+                .await;
+            }
+        }
+    }
+}
 
-        for file_id in file_ids {
-            let _ = sqlx::query(
-                "INSERT OR IGNORE INTO content_file_references (content_id, file_id, site_id) VALUES (?, ?, ?)",
-            )
-            .bind(&content_id)
-            .bind(&file_id)
-            .bind(&site_id)
-            .execute(pool)
-            .await;
+async fn backfill_postgres(pool: &sqlx::PgPool, file_url_re: &Regex) {
+    let has_content: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM content LIMIT 1)")
+        .fetch_one(pool)
+        .await
+        .unwrap_or(false);
+
+    let has_references: bool =
+        sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM content_file_references LIMIT 1)")
+            .fetch_one(pool)
+            .await
+            .unwrap_or(false);
+
+    if !has_content || has_references {
+        return;
+    }
+
+    let rows =
+        sqlx::query_as::<_, (String, String, String)>("SELECT id, site_id, data FROM content")
+            .fetch_all(pool)
+            .await
+            .unwrap_or_default();
+
+    for (content_id, site_id, data_str) in rows {
+        if let Ok(data) = serde_json::from_str::<serde_json::Value>(&data_str) {
+            let file_ids = extract_file_ids_from_value(&data, file_url_re);
+
+            for file_id in file_ids {
+                let _ = sqlx::query(
+                    "INSERT INTO content_file_references (content_id, file_id, site_id) VALUES ($1, $2, $3) ON CONFLICT DO NOTHING",
+                )
+                .bind(&content_id)
+                .bind(&file_id)
+                .bind(&site_id)
+                .execute(pool)
+                .await;
+            }
         }
     }
 }

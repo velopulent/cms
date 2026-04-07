@@ -1,0 +1,120 @@
+CREATE TABLE IF NOT EXISTS users (
+    id VARCHAR(36) PRIMARY KEY NOT NULL,
+    username VARCHAR(255) UNIQUE NOT NULL,
+    email VARCHAR(255) UNIQUE NOT NULL,
+    password_hash TEXT NOT NULL,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS sites (
+    id VARCHAR(36) PRIMARY KEY NOT NULL,
+    name VARCHAR(255) NOT NULL,
+    default_storage_provider VARCHAR(50) NOT NULL DEFAULT 'filesystem',
+    created_by VARCHAR(36) NOT NULL,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    FOREIGN KEY (created_by) REFERENCES users(id)
+);
+
+CREATE TABLE IF NOT EXISTS site_members (
+    id VARCHAR(36) PRIMARY KEY NOT NULL,
+    site_id VARCHAR(36) NOT NULL,
+    user_id VARCHAR(36) NOT NULL,
+    role VARCHAR(20) NOT NULL,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (site_id) REFERENCES sites(id) ON DELETE CASCADE,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+    UNIQUE KEY unique_site_user (site_id, user_id),
+    CHECK (role IN ('owner', 'admin', 'editor', 'viewer'))
+);
+
+CREATE TABLE IF NOT EXISTS collections (
+    id VARCHAR(36) PRIMARY KEY NOT NULL,
+    site_id VARCHAR(36) NOT NULL,
+    name VARCHAR(255) NOT NULL,
+    slug VARCHAR(255) NOT NULL,
+    definition JSON NOT NULL,
+    is_singleton TINYINT(1) NOT NULL DEFAULT 0,
+    singleton_data TEXT,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    FOREIGN KEY (site_id) REFERENCES sites(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS content (
+    id VARCHAR(36) PRIMARY KEY NOT NULL,
+    site_id VARCHAR(36) NOT NULL,
+    collection_id VARCHAR(36) NOT NULL,
+    data JSON NOT NULL,
+    slug VARCHAR(255) NOT NULL,
+    status VARCHAR(20) NOT NULL DEFAULT 'draft',
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    published_at DATETIME,
+    FOREIGN KEY (site_id) REFERENCES sites(id) ON DELETE CASCADE,
+    FOREIGN KEY (collection_id) REFERENCES collections(id) ON DELETE CASCADE,
+    CHECK (status IN ('draft', 'published'))
+);
+
+CREATE INDEX idx_site_members_user ON site_members(user_id);
+CREATE INDEX idx_site_members_site ON site_members(site_id);
+CREATE INDEX idx_collections_site ON collections(site_id);
+CREATE UNIQUE INDEX idx_collections_site_name ON collections(site_id, name);
+CREATE UNIQUE INDEX idx_collections_site_slug ON collections(site_id, slug);
+CREATE INDEX idx_content_site ON content(site_id);
+CREATE INDEX idx_content_slug ON content(slug);
+CREATE INDEX idx_content_collection ON content(collection_id);
+CREATE INDEX idx_content_status ON content(status);
+CREATE UNIQUE INDEX idx_content_collection_slug ON content(collection_id, slug);
+
+CREATE TABLE IF NOT EXISTS api_keys (
+    id VARCHAR(36) PRIMARY KEY NOT NULL,
+    site_id VARCHAR(36) NOT NULL,
+    name VARCHAR(255) NOT NULL,
+    key_hash TEXT NOT NULL,
+    key_prefix VARCHAR(50) NOT NULL,
+    permissions VARCHAR(20) NOT NULL DEFAULT 'read',
+    last_used_at DATETIME,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    expires_at DATETIME,
+    FOREIGN KEY (site_id) REFERENCES sites(id) ON DELETE CASCADE
+);
+
+CREATE UNIQUE INDEX idx_api_keys_hash ON api_keys(key_hash);
+CREATE INDEX idx_api_keys_site ON api_keys(site_id);
+
+CREATE TABLE IF NOT EXISTS files (
+    id VARCHAR(36) PRIMARY KEY NOT NULL,
+    site_id VARCHAR(36) NOT NULL,
+    filename VARCHAR(255) NOT NULL,
+    original_name VARCHAR(255) NOT NULL,
+    mime_type VARCHAR(100) NOT NULL,
+    size BIGINT NOT NULL,
+    storage_provider VARCHAR(50) NOT NULL,
+    storage_key TEXT NOT NULL,
+    thumbnail_key TEXT,
+    width INT,
+    height INT,
+    deleted_at DATETIME,
+    created_by VARCHAR(36),
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (site_id) REFERENCES sites(id) ON DELETE CASCADE,
+    FOREIGN KEY (created_by) REFERENCES users(id),
+    CHECK (storage_provider IN ('filesystem', 's3'))
+);
+
+CREATE INDEX idx_files_site ON files(site_id);
+CREATE INDEX idx_files_created_by ON files(created_by);
+
+CREATE TABLE IF NOT EXISTS content_file_references (
+    content_id VARCHAR(36) NOT NULL,
+    file_id VARCHAR(36) NOT NULL,
+    site_id VARCHAR(36) NOT NULL,
+    PRIMARY KEY (content_id, file_id),
+    FOREIGN KEY (content_id) REFERENCES content(id) ON DELETE CASCADE,
+    FOREIGN KEY (file_id) REFERENCES files(id) ON DELETE CASCADE,
+    FOREIGN KEY (site_id) REFERENCES sites(id) ON DELETE CASCADE
+);
+CREATE INDEX idx_cfr_file ON content_file_references(file_id);
+CREATE INDEX idx_cfr_content ON content_file_references(content_id);
