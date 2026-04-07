@@ -85,13 +85,11 @@ impl ContentRepository for PostgresContentRepository {
         if let Some(status) = params.status {
             query.push_str(&format!(" AND c.status = ${}", param_index));
             bindings.push(status.to_string());
-            param_index += 1;
         }
 
         if let Some(search) = params.search {
             query.push_str(&format!(" AND c.data LIKE ${}", param_index));
             bindings.push(format!("%{}%", search));
-            param_index += 1;
         }
 
         query.push_str(" ORDER BY c.updated_at DESC");
@@ -116,12 +114,11 @@ impl ContentRepository for PostgresContentRepository {
              FROM content WHERE collection_id = $1",
         );
         let mut bindings: Vec<String> = vec![collection_id.to_string()];
-        let mut param_index = 2;
+        let param_index = 2;
 
         if let Some(s) = status {
             query.push_str(&format!(" AND status = ${}", param_index));
             bindings.push(s.to_string());
-            param_index += 1;
         } else if published_only {
             query.push_str(" AND status = 'published'");
         }
@@ -181,18 +178,6 @@ impl ContentRepository for PostgresContentRepository {
         self.get_by_id_any_site(id)
             .await?
             .ok_or(RepositoryError::NotFound)
-    }
-
-    async fn update_data(&self, id: &str, data: &str) -> Result<u64, RepositoryError> {
-        let result = sqlx::query(
-            "UPDATE content SET data = $1::jsonb, updated_at = NOW() WHERE id = $2",
-        )
-        .bind(data)
-        .bind(id)
-        .execute(&self.pool)
-        .await?;
-
-        Ok(result.rows_affected())
     }
 
     async fn delete(&self, id: &str, site_id: &str) -> Result<u64, RepositoryError> {

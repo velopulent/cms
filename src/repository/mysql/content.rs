@@ -176,18 +176,6 @@ impl ContentRepository for MysqlContentRepository {
             .ok_or(RepositoryError::NotFound)
     }
 
-    async fn update_data(&self, id: &str, data: &str) -> Result<u64, RepositoryError> {
-        let result = sqlx::query(
-            "UPDATE content SET data = ?, updated_at = NOW() WHERE id = ?",
-        )
-        .bind(data)
-        .bind(id)
-        .execute(&self.pool)
-        .await?;
-
-        Ok(result.rows_affected())
-    }
-
     async fn delete(&self, id: &str, site_id: &str) -> Result<u64, RepositoryError> {
         let result = sqlx::query("DELETE FROM content WHERE id = ? AND site_id = ?")
             .bind(id)

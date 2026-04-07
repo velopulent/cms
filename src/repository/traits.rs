@@ -57,7 +57,6 @@ pub trait ContentRepository: Send + Sync {
     async fn get_by_collection_id(&self, collection_id: &str, status: Option<&str>, published_only: bool) -> Result<Vec<Content>, RepositoryError>;
     async fn create(&self, id: &str, site_id: &str, collection_id: &str, data: &str, slug: &str) -> Result<Content, RepositoryError>;
     async fn update(&self, id: &str, data: &str, slug: &str, status: &str) -> Result<Content, RepositoryError>;
-    async fn update_data(&self, id: &str, data: &str) -> Result<u64, RepositoryError>;
     async fn delete(&self, id: &str, site_id: &str) -> Result<u64, RepositoryError>;
     async fn publish(&self, id: &str, site_id: &str) -> Result<Content, RepositoryError>;
     async fn unpublish(&self, id: &str, site_id: &str) -> Result<Content, RepositoryError>;
