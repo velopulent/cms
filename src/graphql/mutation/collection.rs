@@ -3,7 +3,7 @@ use uuid::Uuid;
 
 use crate::graphql::context::GqlContext;
 use crate::graphql::types::collection::*;
-use crate::repository::collection as collection_repo;
+use crate::repository::error::RepositoryError;
 
 pub struct CollectionMutation;
 
@@ -21,8 +21,7 @@ impl CollectionMutation {
         let definition_str = input.definition.to_string();
         let id = Uuid::now_v7().to_string();
 
-        match collection_repo::create(
-            &gql_ctx.pool,
+        match gql_ctx.repository.collection.create(
             &id,
             site_id,
             &input.name,
@@ -33,7 +32,7 @@ impl CollectionMutation {
         .await
         {
             Ok(db_collection) => Ok(db_collection_to_gql(db_collection)),
-            Err(sqlx::Error::Database(ref db_err)) if db_err.is_unique_violation() => {
+            Err(RepositoryError::UniqueViolation(_)) => {
                 Err(async_graphql::Error::new(
                     "Collection with this name or slug already exists",
                 ))
@@ -52,7 +51,7 @@ impl CollectionMutation {
         let site_id = gql_ctx.require_site()?;
         gql_ctx.require_write()?;
 
-        let existing = collection_repo::get_by_slug(&gql_ctx.pool, site_id, &slug)
+        let existing = gql_ctx.repository.collection.get_by_slug(site_id, &slug)
             .await
             .map_err(|e| async_graphql::Error::new(format!("Database error: {}", e)))?
             .ok_or_else(|| async_graphql::Error::new("Collection not found"))?;
@@ -77,29 +76,22 @@ impl CollectionMutation {
 
                 if !rename_map.is_empty() {
                     if existing.is_singleton {
-                        collection_repo::migrate_singleton_field_renames(
-                            &gql_ctx.pool,
+                        gql_ctx.repository.collection.migrate_singleton_field_renames(
                             &existing,
                             &rename_map,
-                        )
-                        .await;
-                    } else if let Ok(items) =
-                        collection_repo::get_content_for_migration(&gql_ctx.pool, &existing.id)
-                            .await
-                    {
-                        collection_repo::migrate_content_field_renames(
-                            &gql_ctx.pool,
+                        ).await;
+                    } else if let Ok(items) = gql_ctx.repository.collection.get_content_for_migration(&existing.id).await {
+                        gql_ctx.repository.collection.migrate_content_field_renames(
                             &items,
                             &rename_map,
-                        )
-                        .await;
+                        ).await;
                     }
                 }
             }
         }
 
         let db_collection =
-            collection_repo::update(&gql_ctx.pool, &existing.id, &name, &new_slug, &definition_str)
+            gql_ctx.repository.collection.update(&existing.id, &name, &new_slug, &definition_str)
                 .await
                 .map_err(|e| async_graphql::Error::new(format!("Database error: {}", e)))?;
 
@@ -111,7 +103,7 @@ impl CollectionMutation {
         let site_id = gql_ctx.require_site()?;
         gql_ctx.require_write()?;
 
-        collection_repo::delete(&gql_ctx.pool, site_id, &slug)
+        gql_ctx.repository.collection.delete(site_id, &slug)
             .await
             .map_err(|e| async_graphql::Error::new(format!("Database error: {}", e)))?;
 

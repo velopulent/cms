@@ -6,10 +6,7 @@ use super::types::content::Content;
 use super::types::file::File;
 use super::types::site::Site;
 
-use crate::repository::collection as collection_repo;
-use crate::repository::content as content_repo;
-use crate::repository::file as file_repo;
-use crate::repository::site as site_repo;
+use crate::repository::traits::{ListContentParams, ListFilesParams};
 
 pub struct QueryRoot;
 
@@ -19,7 +16,7 @@ impl QueryRoot {
         let gql_ctx = ctx.data::<GqlContext>()?;
         let site_id = gql_ctx.require_site()?;
 
-        let db_site = site_repo::get_by_id(&gql_ctx.pool, site_id)
+        let db_site = gql_ctx.repository.site.get_by_id(site_id)
             .await
             .map_err(|e| async_graphql::Error::new(format!("Database error: {}", e)))?;
 
@@ -40,7 +37,7 @@ impl QueryRoot {
         let gql_ctx = ctx.data::<GqlContext>()?;
         let site_id = gql_ctx.require_site()?;
 
-        let db_collections = collection_repo::list(&gql_ctx.pool, site_id)
+        let db_collections = gql_ctx.repository.collection.list(site_id)
             .await
             .map_err(|e| async_graphql::Error::new(format!("Database error: {}", e)))?;
 
@@ -54,7 +51,7 @@ impl QueryRoot {
         let gql_ctx = ctx.data::<GqlContext>()?;
         let site_id = gql_ctx.require_site()?;
 
-        let db_collection = collection_repo::get_by_slug(&gql_ctx.pool, site_id, &slug)
+        let db_collection = gql_ctx.repository.collection.get_by_slug(site_id, &slug)
             .await
             .map_err(|e| async_graphql::Error::new(format!("Database error: {}", e)))?;
 
@@ -77,7 +74,7 @@ impl QueryRoot {
 
         let status_filter = status.as_deref();
 
-        let params = content_repo::ListContentParams {
+        let params = ListContentParams {
             site_id,
             collection_slug: r#type.as_deref(),
             collection_id: collection_id.as_deref(),
@@ -86,7 +83,7 @@ impl QueryRoot {
             published_only: status_filter.is_none(),
         };
 
-        let items = content_repo::list(&gql_ctx.pool, params)
+        let items = gql_ctx.repository.content.list(params)
             .await
             .map_err(|e| async_graphql::Error::new(format!("Database error: {}", e)))?;
 
@@ -100,7 +97,7 @@ impl QueryRoot {
         let gql_ctx = ctx.data::<GqlContext>()?;
         let site_id = gql_ctx.require_site()?;
 
-        let content = content_repo::get_by_id(&gql_ctx.pool, &id, site_id, false)
+        let content = gql_ctx.repository.content.get_by_id(&id, site_id, false)
             .await
             .map_err(|e| async_graphql::Error::new(format!("Database error: {}", e)))?;
 
@@ -123,7 +120,7 @@ impl QueryRoot {
         let page = page.unwrap_or(1).max(1);
         let per_page: i64 = 30;
 
-        let params = file_repo::ListFilesParams {
+        let params = ListFilesParams {
             site_id,
             trashed: false,
             search: search.as_deref(),
@@ -132,7 +129,7 @@ impl QueryRoot {
             per_page,
         };
 
-        let result = file_repo::list(&gql_ctx.pool, params)
+        let result = gql_ctx.repository.file.list(params)
             .await
             .map_err(|e| async_graphql::Error::new(format!("Database error: {}", e)))?;
 
@@ -147,7 +144,7 @@ impl QueryRoot {
         let gql_ctx = ctx.data::<GqlContext>()?;
         let site_id = gql_ctx.require_site()?;
 
-        let db_file = file_repo::get_by_id(&gql_ctx.pool, &id, site_id)
+        let db_file = gql_ctx.repository.file.get_by_id(&id, site_id)
             .await
             .map_err(|e| async_graphql::Error::new(format!("Database error: {}", e)))?;
 
@@ -165,7 +162,7 @@ impl QueryRoot {
         let gql_ctx = ctx.data::<GqlContext>()?;
         let site_id = gql_ctx.require_site()?;
 
-        let refs = file_repo::get_references_for_site(&gql_ctx.pool, &file_id, site_id)
+        let refs = gql_ctx.repository.file.get_references_for_site(&file_id, site_id)
             .await
             .map_err(|e| async_graphql::Error::new(format!("Database error: {}", e)))?;
 

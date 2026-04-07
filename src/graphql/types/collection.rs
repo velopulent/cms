@@ -3,8 +3,6 @@ use async_graphql::{ComplexObject, InputObject, SimpleObject};
 use super::content::Content;
 use super::json::Json;
 
-use crate::repository::content as content_repo;
-
 #[derive(SimpleObject)]
 #[graphql(complex)]
 pub struct Collection {
@@ -29,8 +27,7 @@ impl Collection {
         let gql_ctx = ctx.data::<crate::graphql::context::GqlContext>()?;
         let published_only = gql_ctx.site_id.is_some();
 
-        let items = content_repo::get_by_collection_id(
-            &gql_ctx.pool,
+        let items = gql_ctx.repository.content.get_by_collection_id(
             &self.id,
             status.as_deref(),
             published_only,

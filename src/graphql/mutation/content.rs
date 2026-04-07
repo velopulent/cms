@@ -3,7 +3,7 @@ use uuid::Uuid;
 
 use crate::graphql::context::GqlContext;
 use crate::graphql::types::content::*;
-use crate::repository::content as content_repo;
+use crate::repository::error::RepositoryError;
 
 pub struct ContentMutation;
 
@@ -21,8 +21,7 @@ impl ContentMutation {
         let data_str = input.data.to_string();
         let id = Uuid::now_v7().to_string();
 
-        match content_repo::create(
-            &gql_ctx.pool,
+        match gql_ctx.repository.content.create(
             &id,
             site_id,
             &input.collection_id,
@@ -32,7 +31,7 @@ impl ContentMutation {
         .await
         {
             Ok(db_content) => Ok(db_content_to_gql(db_content)),
-            Err(sqlx::Error::Database(ref db_err)) if db_err.is_unique_violation() => {
+            Err(RepositoryError::UniqueViolation(_)) => {
                 Err(async_graphql::Error::new(
                     "Content with this slug already exists for this collection",
                 ))
@@ -51,7 +50,7 @@ impl ContentMutation {
         let site_id = gql_ctx.require_site()?;
         gql_ctx.require_write()?;
 
-        let existing = content_repo::get_by_id(&gql_ctx.pool, &id, site_id, false)
+        let existing = gql_ctx.repository.content.get_by_id(&id, site_id, false)
             .await
             .map_err(|e| async_graphql::Error::new(format!("Database error: {}", e)))?
             .ok_or_else(|| async_graphql::Error::new("Content not found"))?;
@@ -64,7 +63,7 @@ impl ContentMutation {
         let slug = input.slug.unwrap_or(existing.slug);
         let status = input.status.unwrap_or(existing.status);
 
-        let db_content = content_repo::update(&gql_ctx.pool, &id, &data_str, &slug, &status)
+        let db_content = gql_ctx.repository.content.update(&id, &data_str, &slug, &status)
             .await
             .map_err(|e| async_graphql::Error::new(format!("Database error: {}", e)))?;
 
@@ -76,7 +75,7 @@ impl ContentMutation {
         let site_id = gql_ctx.require_site()?;
         gql_ctx.require_write()?;
 
-        content_repo::delete(&gql_ctx.pool, &id, site_id)
+        gql_ctx.repository.content.delete(&id, site_id)
             .await
             .map_err(|e| async_graphql::Error::new(format!("Database error: {}", e)))?;
 
@@ -88,7 +87,7 @@ impl ContentMutation {
         let site_id = gql_ctx.require_site()?;
         gql_ctx.require_write()?;
 
-        let db_content = content_repo::publish(&gql_ctx.pool, &id, site_id)
+        let db_content = gql_ctx.repository.content.publish(&id, site_id)
             .await
             .map_err(|e| async_graphql::Error::new(format!("Database error: {}", e)))?;
 
@@ -100,7 +99,7 @@ impl ContentMutation {
         let site_id = gql_ctx.require_site()?;
         gql_ctx.require_write()?;
 
-        let db_content = content_repo::unpublish(&gql_ctx.pool, &id, site_id)
+        let db_content = gql_ctx.repository.content.unpublish(&id, site_id)
             .await
             .map_err(|e| async_graphql::Error::new(format!("Database error: {}", e)))?;
 

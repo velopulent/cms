@@ -1,21 +1,17 @@
-use sqlx::SqlitePool;
+use crate::repository::Repository;
 
 use crate::middleware::auth::verify_api_key;
 
-/// GraphQL context injected per-request.
-/// Only API key authentication is supported — JWT is for the dashboard REST API.
 pub struct GqlContext {
-    pub pool: SqlitePool,
+    pub repository: Repository,
     pub storage: crate::handlers::file_handler::StorageManager,
-    /// The site_id this API key grants access to, if authenticated.
     pub site_id: Option<String>,
-    /// The permission level of the API key ("read" or "write").
     pub permissions: Option<String>,
 }
 
 impl GqlContext {
     pub async fn from_request(
-        pool: SqlitePool,
+        repository: Repository,
         storage: crate::handlers::file_handler::StorageManager,
         auth_header: Option<&str>,
     ) -> Self {
@@ -28,7 +24,7 @@ impl GqlContext {
                     if let Ok(crate::middleware::auth::AuthContext::ApiKey {
                         site_id: key_site_id,
                         permissions: key_permissions,
-                    }) = verify_api_key(token, &pool).await
+                    }) = verify_api_key(token, &repository).await
                     {
                         site_id = Some(key_site_id);
                         permissions = Some(key_permissions);
@@ -38,21 +34,19 @@ impl GqlContext {
         }
 
         Self {
-            pool,
+            repository,
             storage,
             site_id,
             permissions,
         }
     }
 
-    /// Require that an API key is present and return its site_id.
     pub fn require_site(&self) -> async_graphql::Result<&str> {
         self.site_id
             .as_deref()
             .ok_or_else(|| async_graphql::Error::new("API key authentication required"))
     }
 
-    /// Require that the API key has write permissions.
     pub fn require_write(&self) -> async_graphql::Result<()> {
         match self.permissions.as_deref() {
             Some("write") => Ok(()),
@@ -69,7 +63,6 @@ impl GqlContext {
         }
     }
 
-    /// Require that the API key's site matches the requested site_id.
     #[allow(dead_code)]
     pub fn require_site_match(&self, site_id: &str) -> async_graphql::Result<()> {
         let key_site = self.require_site()?;

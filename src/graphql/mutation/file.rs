@@ -1,7 +1,6 @@
 use async_graphql::{Context, Object, Result};
 
 use crate::graphql::context::GqlContext;
-use crate::repository::file as file_repo;
 
 pub struct FileMutation;
 
@@ -12,7 +11,7 @@ impl FileMutation {
         let site_id = gql_ctx.require_site()?;
         gql_ctx.require_write()?;
 
-        file_repo::soft_delete(&gql_ctx.pool, &id, site_id)
+        gql_ctx.repository.file.soft_delete(&id, site_id)
             .await
             .map_err(|e| async_graphql::Error::new(format!("Database error: {}", e)))?;
 
@@ -24,7 +23,7 @@ impl FileMutation {
         let site_id = gql_ctx.require_site()?;
         gql_ctx.require_write()?;
 
-        file_repo::restore(&gql_ctx.pool, &id, site_id)
+        gql_ctx.repository.file.restore(&id, site_id)
             .await
             .map_err(|e| async_graphql::Error::new(format!("Database error: {}", e)))?;
 
@@ -36,7 +35,7 @@ impl FileMutation {
         let site_id = gql_ctx.require_site()?;
         gql_ctx.require_write()?;
 
-        let count = file_repo::batch_soft_delete(&gql_ctx.pool, site_id, &ids)
+        let count = gql_ctx.repository.file.batch_soft_delete(site_id, &ids)
             .await
             .map_err(|e| async_graphql::Error::new(format!("Database error: {}", e)))?;
 
@@ -48,7 +47,7 @@ impl FileMutation {
         let site_id = gql_ctx.require_site()?;
         gql_ctx.require_write()?;
 
-        let count = file_repo::batch_restore(&gql_ctx.pool, site_id, &ids)
+        let count = gql_ctx.repository.file.batch_restore(site_id, &ids)
             .await
             .map_err(|e| async_graphql::Error::new(format!("Database error: {}", e)))?;
 
