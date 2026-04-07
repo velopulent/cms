@@ -3,14 +3,10 @@ use axum::{
     http::{StatusCode, request::Parts},
 };
 use jsonwebtoken::{Algorithm, DecodingKey, Validation, decode};
-use sqlx::SqlitePool;
 
 use crate::config::Config;
 use crate::models::user::Claims;
-use crate::repository::api_key as api_key_repo;
-use crate::repository::user as user_repo;
-
-// --- Cookie helpers ---
+use crate::repository::Repository;
 
 fn extract_cookie_value(parts: &Parts, name: &str) -> Option<String> {
     let cookie_header = parts.headers.get("cookie")?.to_str().ok()?;
@@ -26,23 +22,17 @@ fn extract_cookie_value(parts: &Parts, name: &str) -> Option<String> {
 }
 
 fn extract_jwt_token(parts: &Parts) -> Option<String> {
-    // Prefer cookie over Authorization header
     if let Some(token) = extract_cookie_value(parts, "token") {
         return Some(token);
     }
-    // Fallback to Authorization: Bearer header
     let auth_header = parts.headers.get("Authorization")?.to_str().ok()?;
     auth_header.strip_prefix("Bearer ").map(|s| s.to_string())
 }
-
-// --- Auth Context ---
 
 pub enum AuthContext {
     Jwt { user_id: String },
     ApiKey { site_id: String, permissions: String },
 }
-
-// --- JWT-only extractor (dashboard endpoints) ---
 
 pub struct AuthenticatedUser {
     pub user_id: String,
@@ -89,8 +79,6 @@ fn unauthorized_error(msg: &str) -> (StatusCode, String) {
     )
 }
 
-// --- AuthenticatedUser: JWT-only extractor ---
-
 impl<S> FromRequestParts<S> for AuthenticatedUser
 where
     S: Send + Sync,
@@ -115,8 +103,6 @@ where
     }
 }
 
-// --- AuthContext: Dual JWT + API key extractor ---
-
 impl<S> FromRequestParts<S> for AuthContext
 where
     S: Send + Sync,
@@ -124,20 +110,17 @@ where
     type Rejection = (StatusCode, String);
 
     async fn from_request_parts(parts: &mut Parts, _state: &S) -> Result<Self, Self::Rejection> {
-        // Check Authorization header first for API key (external clients)
         if let Some(auth_header) = parts.headers.get("Authorization").and_then(|v| v.to_str().ok()) {
             if let Some(token) = auth_header.strip_prefix("Bearer ") {
-                // API key auth (prefixed with "cms_")
                 if token.starts_with("cms_") {
-                    let pool = parts
+                    let repository = parts
                         .extensions
-                        .get::<SqlitePool>()
+                        .get::<Repository>()
                         .ok_or(unauthorized_error("Internal server error"))?;
 
-                    return verify_api_key(token, pool).await;
+                    return verify_api_key(token, repository).await;
                 }
 
-                // JWT from Authorization header
                 let config = parts
                     .extensions
                     .get::<Config>()
@@ -152,7 +135,6 @@ where
             }
         }
 
-        // Fallback: JWT from cookie
         if let Some(token) = extract_cookie_value(parts, "token") {
             let config = parts
                 .extensions
@@ -173,12 +155,11 @@ where
 
 pub(crate) async fn verify_api_key(
     token: &str,
-    pool: &SqlitePool,
+    repository: &Repository,
 ) -> Result<AuthContext, (StatusCode, String)> {
-    // key_prefix is the first 16 chars of the raw key (e.g., "cms_a1b2c3d4e")
     let prefix: String = token.chars().take(16).collect();
 
-    let keys = api_key_repo::find_by_prefix(pool, &prefix)
+    let keys = repository.api_key.find_by_prefix(&prefix)
         .await
         .map_err(|_| unauthorized_error("Internal server error"))?;
 
@@ -187,7 +168,6 @@ pub(crate) async fn verify_api_key(
             continue;
         }
 
-        // Check expiry
         if let Some(exp) = expires_at {
             if let Ok(expiry) = chrono::NaiveDateTime::parse_from_str(&exp, "%Y-%m-%d %H:%M:%S") {
                 if expiry < chrono::Utc::now().naive_utc() {
@@ -196,8 +176,7 @@ pub(crate) async fn verify_api_key(
             }
         }
 
-        // Update last_used_at (fire and forget)
-        api_key_repo::update_last_used(pool, &key_id).await;
+        repository.api_key.update_last_used(&key_id).await;
 
         return Ok(AuthContext::ApiKey { site_id, permissions });
     }
@@ -205,16 +184,14 @@ pub(crate) async fn verify_api_key(
     Err(unauthorized_error("Invalid API key"))
 }
 
-// --- Unified access checks ---
-
-pub async fn check_read_access(
+pub async fn check_read_access_repo(
     auth: &AuthContext,
-    pool: &SqlitePool,
+    repository: &Repository,
     site_id: &str,
 ) -> Result<(), (StatusCode, serde_json::Value)> {
     match auth {
         AuthContext::Jwt { user_id } => {
-            check_site_access(pool, user_id, site_id, "viewer").await
+            check_site_access_repo(repository, user_id, site_id, "viewer").await
         }
         AuthContext::ApiKey { site_id: key_site_id, .. } => {
             if key_site_id == site_id {
@@ -229,14 +206,14 @@ pub async fn check_read_access(
     }
 }
 
-pub async fn check_write_access(
+pub async fn check_write_access_repo(
     auth: &AuthContext,
-    pool: &SqlitePool,
+    repository: &Repository,
     site_id: &str,
 ) -> Result<(), (StatusCode, serde_json::Value)> {
     match auth {
         AuthContext::Jwt { user_id } => {
-            check_site_access(pool, user_id, site_id, "editor").await
+            check_site_access_repo(repository, user_id, site_id, "editor").await
         }
         AuthContext::ApiKey { site_id: key_site_id, permissions } => {
             if key_site_id != site_id {
@@ -263,10 +240,8 @@ pub fn extract_user_id(auth: &AuthContext) -> Option<&str> {
     }
 }
 
-// --- Site access checks ---
-
-pub async fn check_site_access(
-    pool: &SqlitePool,
+pub async fn check_site_access_repo(
+    repository: &Repository,
     user_id: &str,
     site_id: &str,
     min_role: &str,
@@ -281,7 +256,7 @@ pub async fn check_site_access(
 
     let min_level = role_order(min_role);
 
-    let role = user_repo::get_role(pool, user_id, site_id).await.map_err(|e| {
+    let role = repository.user.get_role(user_id, site_id).await.map_err(|e| {
         (
             StatusCode::INTERNAL_SERVER_ERROR,
             serde_json::json!({"error": e.to_string()}),
