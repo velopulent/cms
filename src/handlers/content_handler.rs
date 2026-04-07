@@ -11,7 +11,6 @@ use uuid::Uuid;
 use crate::handlers::file_handler::StorageManager;
 use crate::middleware::auth::{AuthContext, check_read_access_repo, check_write_access_repo};
 use crate::models::content::{Content, CreateContent, UpdateContent};
-use crate::models::file::File;
 use crate::repository::sqlite::content::extract_file_ids_from_value;
 use crate::repository::traits::ListContentParams;
 use crate::repository::Repository;
@@ -146,7 +145,7 @@ pub async fn create_content(
 
     match repository.content.create(&id, &site_id, &payload.collection_id, &data_str, &payload.slug).await {
         Ok(item) => {
-            repository.content.sync_file_references(&id, &site_id, &payload.data).await;
+            let _ = repository.content.sync_file_references(&id, &site_id, &payload.data).await;
             (StatusCode::CREATED, Json(item)).into_response()
         }
         Err(crate::repository::error::RepositoryError::UniqueViolation(_)) => (
@@ -216,7 +215,7 @@ pub async fn update_content(
 
     match repository.content.update(&id, &data_str, &slug, &status).await {
         Ok(item) => {
-            repository.content.sync_file_references(&id, &site_id, &resolved_data).await;
+            let _ = repository.content.sync_file_references(&id, &site_id, &resolved_data).await;
             (StatusCode::OK, Json(item)).into_response()
         }
         Err(crate::repository::error::RepositoryError::UniqueViolation(_)) => (

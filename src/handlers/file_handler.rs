@@ -16,7 +16,7 @@ use uuid::Uuid;
 use crate::config::Config;
 use crate::middleware::auth::{AuthContext, check_read_access_repo, check_write_access_repo, extract_user_id};
 use crate::models::file::{BatchFileIds, File, FileWithUrl};
-use crate::repository::traits::{FileListResult, ListFilesParams};
+use crate::repository::traits::ListFilesParams;
 use crate::repository::Repository;
 use crate::storage::{FileSystemStorage, S3Storage};
 
