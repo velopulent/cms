@@ -193,12 +193,12 @@ pub async fn update_collection(
 
             if !rename_map.is_empty() {
                 if existing.is_singleton {
-                    repository.collection.migrate_singleton_field_renames(
+                    let _ = repository.collection.migrate_singleton_field_renames(
                         &existing,
                         &rename_map,
                     ).await;
                 } else if let Ok(items) = repository.collection.get_content_for_migration(&existing.id).await {
-                    repository.collection.migrate_content_field_renames(&items, &rename_map).await;
+                    let _ = repository.collection.migrate_content_field_renames(&items, &rename_map).await;
                 }
             }
         }

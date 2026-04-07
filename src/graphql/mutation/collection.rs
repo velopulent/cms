@@ -76,12 +76,12 @@ impl CollectionMutation {
 
                 if !rename_map.is_empty() {
                     if existing.is_singleton {
-                        gql_ctx.repository.collection.migrate_singleton_field_renames(
+                        let _ = gql_ctx.repository.collection.migrate_singleton_field_renames(
                             &existing,
                             &rename_map,
                         ).await;
                     } else if let Ok(items) = gql_ctx.repository.collection.get_content_for_migration(&existing.id).await {
-                        gql_ctx.repository.collection.migrate_content_field_renames(
+                        let _ = gql_ctx.repository.collection.migrate_content_field_renames(
                             &items,
                             &rename_map,
                         ).await;

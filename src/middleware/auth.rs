@@ -176,7 +176,7 @@ pub(crate) async fn verify_api_key(
             }
         }
 
-        repository.api_key.update_last_used(&key_id).await;
+        let _ = repository.api_key.update_last_used(&key_id).await;
 
         return Ok(AuthContext::ApiKey { site_id, permissions });
     }
