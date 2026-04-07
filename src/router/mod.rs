@@ -13,14 +13,14 @@ use axum::{
     Extension, Router,
     routing::get,
 };
-use sqlx::SqlitePool;
 use tower_http::cors::CorsLayer;
 
 use crate::config::Config;
 use crate::handlers::file_handler::StorageManager;
 use crate::handlers::ui_handler::ui_handler;
+use crate::repository::Repository;
 
-pub fn create_router(pool: SqlitePool, config: Config, storage: StorageManager) -> Router {
+pub fn create_router(repository: Repository, config: Config, storage: StorageManager) -> Router {
     Router::new()
         .merge(auth::auth_routes())
         .merge(sites::site_routes())
@@ -38,7 +38,7 @@ pub fn create_router(pool: SqlitePool, config: Config, storage: StorageManager) 
         )
         .route("/{*file}", get(ui_handler))
         .layer(CorsLayer::permissive())
-        .layer(Extension(pool))
+        .layer(Extension(repository))
         .layer(Extension(config))
         .layer(Extension(storage))
 }

@@ -34,17 +34,19 @@ use uuid::Uuid;
 use config::Config;
 use database::init_db;
 use handlers::file_handler::StorageManager;
+use repository::Repository;
 use router::create_router;
 
 #[tokio::main]
 async fn main() {
     let config = Config::from_env();
 
-    let pool = init_db(&config.database_url).await;
+    let pool = init_db(&config.database_url).await.expect("Failed to initialize database");
 
-    seed_admin(&pool).await;
+    let repository = Repository::new(&pool);
 
-    // Initialize storage providers
+    seed_admin(&repository).await;
+
     let mut storage_manager = StorageManager {
         filesystem: None,
         s3: None,
@@ -83,7 +85,7 @@ async fn main() {
         );
     }
 
-    let app = create_router(pool, config.clone(), storage_manager);
+    let app = create_router(repository, config.clone(), storage_manager);
 
     let addr: SocketAddr = config.bind_address.parse().expect("Invalid BIND_ADDRESS");
     println!("Server running on {}", addr);
@@ -93,14 +95,11 @@ async fn main() {
         .unwrap();
 }
 
-async fn seed_admin(pool: &sqlx::SqlitePool) {
-    if !repository::user::exists(pool, "admin")
-        .await
-        .unwrap_or(false)
-    {
+async fn seed_admin(repository: &Repository) {
+    if !repository.user.exists("admin").await.unwrap_or(false) {
         let id = Uuid::now_v7().to_string();
         let password_hash = hash("admin", DEFAULT_COST).expect("Failed to hash password");
-        repository::user::create(pool, &id, "admin", "admin@cms.local", &password_hash)
+        repository.user.create(&id, "admin", "admin@cms.local", &password_hash)
             .await
             .expect("Failed to seed admin user");
 
