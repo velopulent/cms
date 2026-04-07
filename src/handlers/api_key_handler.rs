@@ -6,23 +6,22 @@ use axum::{
 };
 use bcrypt::{DEFAULT_COST, hash};
 use serde_json::json;
-use sqlx::SqlitePool;
 use uuid::Uuid;
 
-use crate::middleware::auth::{AuthenticatedUser, check_site_access};
+use crate::middleware::auth::AuthenticatedUser;
 use crate::models::api_key::{ApiKeyResponse, CreateApiKey};
-use crate::repository::api_key as api_key_repo;
+use crate::repository::Repository;
 
 pub async fn list_api_keys(
     auth: AuthenticatedUser,
     Path(site_id): Path<String>,
-    Extension(pool): Extension<SqlitePool>,
+    Extension(repository): Extension<Repository>,
 ) -> Response {
-    if let Err((status, err)) = check_site_access(&pool, &auth.user_id, &site_id, "admin").await {
+    if let Err((status, err)) = check_site_access_repo(&repository, &auth.user_id, &site_id, "admin").await {
         return (status, Json(err)).into_response();
     }
 
-    match api_key_repo::list(&pool, &site_id).await {
+    match repository.api_key.list(&site_id).await {
         Ok(items) => (StatusCode::OK, Json(items)).into_response(),
         Err(err) => (
             StatusCode::INTERNAL_SERVER_ERROR,
@@ -35,10 +34,10 @@ pub async fn list_api_keys(
 pub async fn create_api_key(
     auth: AuthenticatedUser,
     Path(site_id): Path<String>,
-    Extension(pool): Extension<SqlitePool>,
+    Extension(repository): Extension<Repository>,
     Json(payload): Json<CreateApiKey>,
 ) -> Response {
-    if let Err((status, err)) = check_site_access(&pool, &auth.user_id, &site_id, "admin").await {
+    if let Err((status, err)) = check_site_access_repo(&repository, &auth.user_id, &site_id, "admin").await {
         return (status, Json(err)).into_response();
     }
 
@@ -82,7 +81,7 @@ pub async fn create_api_key(
 
     let id = Uuid::now_v7().to_string();
 
-    match api_key_repo::create(&pool, &id, &site_id, &payload.name, &key_hash, &prefix, permissions).await {
+    match repository.api_key.create(&id, &site_id, &payload.name, &key_hash, &prefix, permissions).await {
         Ok(_) => {
             let now = chrono::Utc::now().format("%Y-%m-%d %H:%M:%S").to_string();
 
@@ -111,13 +110,13 @@ pub async fn create_api_key(
 pub async fn delete_api_key(
     auth: AuthenticatedUser,
     Path((site_id, key_id)): Path<(String, String)>,
-    Extension(pool): Extension<SqlitePool>,
+    Extension(repository): Extension<Repository>,
 ) -> Response {
-    if let Err((status, err)) = check_site_access(&pool, &auth.user_id, &site_id, "admin").await {
+    if let Err((status, err)) = check_site_access_repo(&repository, &auth.user_id, &site_id, "admin").await {
         return (status, Json(err)).into_response();
     }
 
-    match api_key_repo::delete(&pool, &key_id, &site_id).await {
+    match repository.api_key.delete(&key_id, &site_id).await {
         Ok(0) => (
             StatusCode::NOT_FOUND,
             Json(json!({"error": "API key not found"})),
@@ -129,5 +128,41 @@ pub async fn delete_api_key(
             Json(json!({"error": err.to_string()})),
         )
             .into_response(),
+    }
+}
+
+async fn check_site_access_repo(
+    repository: &Repository,
+    user_id: &str,
+    site_id: &str,
+    min_role: &str,
+) -> Result<(), (StatusCode, serde_json::Value)> {
+    let role_order = |r: &str| match r {
+        "owner" => 4,
+        "admin" => 3,
+        "editor" => 2,
+        "viewer" => 1,
+        _ => 0,
+    };
+
+    let min_level = role_order(min_role);
+
+    let role = repository.user.get_role(user_id, site_id).await.map_err(|e| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            serde_json::json!({"error": e.to_string()}),
+        )
+    })?;
+
+    match role {
+        Some(r) if role_order(&r) >= min_level => Ok(()),
+        Some(_) => Err((
+            StatusCode::FORBIDDEN,
+            serde_json::json!({"error": "Insufficient permissions"}),
+        )),
+        None => Err((
+            StatusCode::NOT_FOUND,
+            serde_json::json!({"error": "Site not found"}),
+        )),
     }
 }

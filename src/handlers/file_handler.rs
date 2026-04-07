@@ -10,14 +10,14 @@ use bytes::Bytes;
 use image::{DynamicImage, ImageEncoder, ImageReader};
 use serde::Deserialize;
 use serde_json::json;
-use sqlx::SqlitePool;
 use std::io::Cursor;
 use uuid::Uuid;
 
 use crate::config::Config;
-use crate::middleware::auth::{AuthContext, check_read_access, check_write_access, extract_user_id};
+use crate::middleware::auth::{AuthContext, check_read_access_repo, check_write_access_repo, extract_user_id};
 use crate::models::file::{BatchFileIds, File, FileWithUrl};
-use crate::repository::file as file_repo;
+use crate::repository::traits::{FileListResult, ListFilesParams};
+use crate::repository::Repository;
 use crate::storage::{FileSystemStorage, S3Storage};
 
 #[derive(Clone)]
@@ -202,10 +202,10 @@ pub async fn list_files(
     auth: AuthContext,
     Path(site_id): Path<String>,
     Query(params): Query<FileListParams>,
-    Extension(pool): Extension<SqlitePool>,
+    Extension(repository): Extension<Repository>,
     Extension(storage): Extension<StorageManager>,
 ) -> Response {
-    if let Err((status, err)) = check_read_access(&auth, &pool, &site_id).await {
+    if let Err((status, err)) = check_read_access_repo(&auth, &repository, &site_id).await {
         return (status, Json(err)).into_response();
     }
 
@@ -213,7 +213,7 @@ pub async fn list_files(
     let per_page: i64 = 30;
     let is_trashed = params.trashed.as_deref() == Some("true");
 
-    let list_params = file_repo::ListFilesParams {
+    let list_params = ListFilesParams {
         site_id: &site_id,
         trashed: is_trashed,
         search: params.search.as_deref(),
@@ -222,7 +222,7 @@ pub async fn list_files(
         per_page,
     };
 
-    match file_repo::list(&pool, list_params).await {
+    match repository.file.list(list_params).await {
         Ok(result) => {
             let with_urls: Vec<FileWithUrl> = result
                 .items
@@ -265,16 +265,16 @@ pub async fn list_files(
 pub async fn upload_file(
     auth: AuthContext,
     Path(site_id): Path<String>,
-    Extension(pool): Extension<SqlitePool>,
+    Extension(repository): Extension<Repository>,
     Extension(storage): Extension<StorageManager>,
     Extension(config): Extension<Config>,
     mut multipart: Multipart,
 ) -> Response {
-    if let Err((status, err)) = check_write_access(&auth, &pool, &site_id).await {
+    if let Err((status, err)) = check_write_access_repo(&auth, &repository, &site_id).await {
         return (status, Json(err)).into_response();
     }
 
-    let mut storage_provider = file_repo::get_storage_provider(&pool, &site_id)
+    let mut storage_provider = repository.file.get_storage_provider(&site_id)
         .await
         .unwrap_or_else(|_| "filesystem".into());
 
@@ -403,8 +403,7 @@ pub async fn upload_file(
 
     let created_by = extract_user_id(&auth);
 
-    match file_repo::create(
-        &pool,
+    match repository.file.create(
         &file_id,
         &site_id,
         &filename,
@@ -455,14 +454,14 @@ pub async fn upload_file(
 pub async fn get_file(
     auth: AuthContext,
     Path((site_id, id)): Path<(String, String)>,
-    Extension(pool): Extension<SqlitePool>,
+    Extension(repository): Extension<Repository>,
     Extension(storage): Extension<StorageManager>,
 ) -> Response {
-    if let Err((status, err)) = check_read_access(&auth, &pool, &site_id).await {
+    if let Err((status, err)) = check_read_access_repo(&auth, &repository, &site_id).await {
         return (status, Json(err)).into_response();
     }
 
-    match file_repo::get_by_id(&pool, &id, &site_id).await {
+    match repository.file.get_by_id(&id, &site_id).await {
         Ok(Some(file)) => {
             let with_url = file_to_with_url(&file, &storage);
             (StatusCode::OK, Json(with_url)).into_response()
@@ -497,13 +496,13 @@ pub async fn get_file(
 pub async fn delete_file_handler(
     auth: AuthContext,
     Path((site_id, id)): Path<(String, String)>,
-    Extension(pool): Extension<SqlitePool>,
+    Extension(repository): Extension<Repository>,
 ) -> Response {
-    if let Err((status, err)) = check_write_access(&auth, &pool, &site_id).await {
+    if let Err((status, err)) = check_write_access_repo(&auth, &repository, &site_id).await {
         return (status, Json(err)).into_response();
     }
 
-    match file_repo::soft_delete(&pool, &id, &site_id).await {
+    match repository.file.soft_delete(&id, &site_id).await {
         Ok(0) => (
             StatusCode::NOT_FOUND,
             Json(json!({"error": "File not found"})),
@@ -534,13 +533,13 @@ pub async fn delete_file_handler(
 pub async fn get_file_references(
     auth: AuthContext,
     Path((site_id, id)): Path<(String, String)>,
-    Extension(pool): Extension<SqlitePool>,
+    Extension(repository): Extension<Repository>,
 ) -> Response {
-    if let Err((status, err)) = check_read_access(&auth, &pool, &site_id).await {
+    if let Err((status, err)) = check_read_access_repo(&auth, &repository, &site_id).await {
         return (status, Json(err)).into_response();
     }
 
-    match file_repo::get_references(&pool, &id).await {
+    match repository.file.get_references(&id).await {
         Ok(refs) => (StatusCode::OK, Json(refs)).into_response(),
         Err(err) => (
             StatusCode::INTERNAL_SERVER_ERROR,
@@ -567,13 +566,13 @@ pub async fn get_file_references(
 pub async fn restore_file(
     auth: AuthContext,
     Path((site_id, id)): Path<(String, String)>,
-    Extension(pool): Extension<SqlitePool>,
+    Extension(repository): Extension<Repository>,
 ) -> Response {
-    if let Err((status, err)) = check_write_access(&auth, &pool, &site_id).await {
+    if let Err((status, err)) = check_write_access_repo(&auth, &repository, &site_id).await {
         return (status, Json(err)).into_response();
     }
 
-    match file_repo::restore(&pool, &id, &site_id).await {
+    match repository.file.restore(&id, &site_id).await {
         Ok(0) => (
             StatusCode::NOT_FOUND,
             Json(json!({"error": "File not found or not deleted"})),
@@ -605,10 +604,10 @@ pub async fn restore_file(
 pub async fn batch_delete_files(
     auth: AuthContext,
     Path(site_id): Path<String>,
-    Extension(pool): Extension<SqlitePool>,
+    Extension(repository): Extension<Repository>,
     Json(body): Json<BatchFileIds>,
 ) -> Response {
-    if let Err((status, err)) = check_write_access(&auth, &pool, &site_id).await {
+    if let Err((status, err)) = check_write_access_repo(&auth, &repository, &site_id).await {
         return (status, Json(err)).into_response();
     }
 
@@ -620,7 +619,7 @@ pub async fn batch_delete_files(
             .into_response();
     }
 
-    match file_repo::batch_soft_delete(&pool, &site_id, &body.ids).await {
+    match repository.file.batch_soft_delete(&site_id, &body.ids).await {
         Ok(count) => (
             StatusCode::OK,
             Json(json!({"deleted": count})),
@@ -651,10 +650,10 @@ pub async fn batch_delete_files(
 pub async fn batch_restore_files(
     auth: AuthContext,
     Path(site_id): Path<String>,
-    Extension(pool): Extension<SqlitePool>,
+    Extension(repository): Extension<Repository>,
     Json(body): Json<BatchFileIds>,
 ) -> Response {
-    if let Err((status, err)) = check_write_access(&auth, &pool, &site_id).await {
+    if let Err((status, err)) = check_write_access_repo(&auth, &repository, &site_id).await {
         return (status, Json(err)).into_response();
     }
 
@@ -666,7 +665,7 @@ pub async fn batch_restore_files(
             .into_response();
     }
 
-    match file_repo::batch_restore(&pool, &site_id, &body.ids).await {
+    match repository.file.batch_restore(&site_id, &body.ids).await {
         Ok(count) => (
             StatusCode::OK,
             Json(json!({"restored": count})),
@@ -697,11 +696,11 @@ pub async fn batch_restore_files(
 pub async fn batch_permanent_delete_files(
     auth: AuthContext,
     Path(site_id): Path<String>,
-    Extension(pool): Extension<SqlitePool>,
+    Extension(repository): Extension<Repository>,
     Extension(storage): Extension<StorageManager>,
     Json(body): Json<BatchFileIds>,
 ) -> Response {
-    if let Err((status, err)) = check_write_access(&auth, &pool, &site_id).await {
+    if let Err((status, err)) = check_write_access_repo(&auth, &repository, &site_id).await {
         return (status, Json(err)).into_response();
     }
 
@@ -713,7 +712,7 @@ pub async fn batch_permanent_delete_files(
             .into_response();
     }
 
-    let files = match file_repo::get_deleted_by_ids(&pool, &site_id, &body.ids).await {
+    let files = match repository.file.get_deleted_by_ids(&site_id, &body.ids).await {
         Ok(f) => f,
         Err(err) => {
             return (
@@ -731,7 +730,7 @@ pub async fn batch_permanent_delete_files(
         }
     }
 
-    match file_repo::batch_permanent_delete(&pool, &site_id, &body.ids).await {
+    match repository.file.batch_permanent_delete(&site_id, &body.ids).await {
         Ok(count) => (
             StatusCode::OK,
             Json(json!({"deleted": count})),
@@ -747,27 +746,27 @@ pub async fn batch_permanent_delete_files(
 
 pub async fn serve_file(
     Path(id): Path<String>,
-    Extension(pool): Extension<SqlitePool>,
+    Extension(repository): Extension<Repository>,
     Extension(storage): Extension<StorageManager>,
 ) -> Response {
-    serve_file_by_key(&id, &pool, &storage, false).await
+    serve_file_by_key(&id, &repository, &storage, false).await
 }
 
 pub async fn serve_file_thumbnail(
     Path(id): Path<String>,
-    Extension(pool): Extension<SqlitePool>,
+    Extension(repository): Extension<Repository>,
     Extension(storage): Extension<StorageManager>,
 ) -> Response {
-    serve_file_by_key(&id, &pool, &storage, true).await
+    serve_file_by_key(&id, &repository, &storage, true).await
 }
 
 async fn serve_file_by_key(
     id: &str,
-    pool: &SqlitePool,
+    repository: &Repository,
     storage: &StorageManager,
     use_thumbnail: bool,
 ) -> Response {
-    let file = match file_repo::get_by_id_any(pool, id).await {
+    let file = match repository.file.get_by_id_any(id).await {
         Ok(Some(f)) => f,
         Ok(None) => return (StatusCode::NOT_FOUND, "Not found").into_response(),
         Err(_) => return (StatusCode::INTERNAL_SERVER_ERROR, "Database error").into_response(),

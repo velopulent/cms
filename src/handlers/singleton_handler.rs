@@ -5,13 +5,12 @@ use axum::{
     response::{IntoResponse, Response},
 };
 use serde_json::json;
-use sqlx::SqlitePool;
 
 use crate::handlers::file_handler::StorageManager;
 use crate::handlers::content_handler::resolve_content_files_from_value;
-use crate::middleware::auth::{AuthContext, check_read_access, check_write_access};
+use crate::middleware::auth::{AuthContext, check_read_access_repo, check_write_access_repo};
 use crate::models::collection::{SingletonResponse, UpdateSingletonData};
-use crate::repository::collection as collection_repo;
+use crate::repository::Repository;
 
 fn singleton_to_response(c: &crate::models::collection::Collection) -> SingletonResponse {
     let definition: serde_json::Value =
@@ -47,13 +46,13 @@ fn singleton_to_response(c: &crate::models::collection::Collection) -> Singleton
 pub async fn list_singletons(
     auth: AuthContext,
     Path(site_id): Path<String>,
-    Extension(pool): Extension<SqlitePool>,
+    Extension(repository): Extension<Repository>,
 ) -> Response {
-    if let Err((status, err)) = check_read_access(&auth, &pool, &site_id).await {
+    if let Err((status, err)) = check_read_access_repo(&auth, &repository, &site_id).await {
         return (status, Json(err)).into_response();
     }
 
-    match collection_repo::list_singletons_only(&pool, &site_id).await {
+    match repository.collection.list_singletons_only(&site_id).await {
         Ok(items) => {
             let responses: Vec<SingletonResponse> =
                 items.iter().map(singleton_to_response).collect();
@@ -85,14 +84,14 @@ pub async fn list_singletons(
 pub async fn get_singleton(
     auth: AuthContext,
     Path((site_id, slug)): Path<(String, String)>,
-    Extension(pool): Extension<SqlitePool>,
+    Extension(repository): Extension<Repository>,
     Extension(storage): Extension<StorageManager>,
 ) -> Response {
-    if let Err((status, err)) = check_read_access(&auth, &pool, &site_id).await {
+    if let Err((status, err)) = check_read_access_repo(&auth, &repository, &site_id).await {
         return (status, Json(err)).into_response();
     }
 
-    match collection_repo::get_by_slug(&pool, &site_id, &slug).await {
+    match repository.collection.get_by_slug(&site_id, &slug).await {
         Ok(Some(item)) => {
             if !item.is_singleton {
                 return (
@@ -106,7 +105,7 @@ pub async fn get_singleton(
 
             if let Some(ref data) = response.data {
                 let resolved =
-                    resolve_content_files_from_value(data, &pool, &storage).await;
+                    resolve_content_files_from_value(data, &repository, &storage).await;
                 response.data = Some(resolved);
             }
 
@@ -145,14 +144,14 @@ pub async fn get_singleton(
 pub async fn update_singleton(
     auth: AuthContext,
     Path((site_id, slug)): Path<(String, String)>,
-    Extension(pool): Extension<SqlitePool>,
+    Extension(repository): Extension<Repository>,
     Json(payload): Json<UpdateSingletonData>,
 ) -> Response {
-    if let Err((status, err)) = check_write_access(&auth, &pool, &site_id).await {
+    if let Err((status, err)) = check_write_access_repo(&auth, &repository, &site_id).await {
         return (status, Json(err)).into_response();
     }
 
-    match collection_repo::get_by_slug(&pool, &site_id, &slug).await {
+    match repository.collection.get_by_slug(&site_id, &slug).await {
         Ok(Some(item)) => {
             if !item.is_singleton {
                 return (
@@ -164,7 +163,7 @@ pub async fn update_singleton(
 
             let data_str = payload.data.to_string();
 
-            match collection_repo::update_singleton_data(&pool, &item.id, &data_str).await {
+            match repository.collection.update_singleton_data(&item.id, &data_str).await {
                 Ok(updated) => {
                     (StatusCode::OK, Json(singleton_to_response(&updated))).into_response()
                 }

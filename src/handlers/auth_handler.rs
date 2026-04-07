@@ -7,14 +7,14 @@ use axum::{
 use axum_extra::extract::cookie::Cookie;
 use bcrypt::{DEFAULT_COST, hash, verify};
 use serde_json::json;
-use sqlx::SqlitePool;
 use time::Duration;
 use uuid::Uuid;
 
 use crate::config::Config;
 use crate::middleware::auth::{AuthenticatedUser, create_token};
 use crate::models::user::{AuthResponse, CreateUser, LoginRequest, UserPublic};
-use crate::repository::user as user_repo;
+use crate::repository::error::RepositoryError;
+use crate::repository::Repository;
 
 fn build_auth_cookies_response(
     user: UserPublic,
@@ -64,7 +64,7 @@ fn build_auth_cookies_response(
     tag = "auth"
 )]
 pub async fn register(
-    Extension(pool): Extension<SqlitePool>,
+    Extension(repository): Extension<Repository>,
     Extension(config): Extension<Config>,
     Json(payload): Json<CreateUser>,
 ) -> Response {
@@ -89,7 +89,7 @@ pub async fn register(
 
     let id = Uuid::now_v7().to_string();
 
-    match user_repo::create(&pool, &id, &payload.username, &payload.email, &password_hash).await {
+    match repository.user.create(&id, &payload.username, &payload.email, &password_hash).await {
         Ok(_) => {
             let token = match create_token(id.clone(), &config.jwt_secret) {
                 Ok(t) => t,
@@ -112,7 +112,7 @@ pub async fn register(
             *response.status_mut() = StatusCode::CREATED;
             response
         }
-        Err(sqlx::Error::Database(ref db_err)) if db_err.is_unique_violation() => (
+        Err(RepositoryError::UniqueViolation(_)) => (
             StatusCode::CONFLICT,
             Json(json!({"error": "Username or email already exists"})),
         )
@@ -136,11 +136,11 @@ pub async fn register(
     tag = "auth"
 )]
 pub async fn login(
-    Extension(pool): Extension<SqlitePool>,
+    Extension(repository): Extension<Repository>,
     Extension(config): Extension<Config>,
     Json(payload): Json<LoginRequest>,
 ) -> Response {
-    let user = match user_repo::find_by_username(&pool, &payload.username).await {
+    let user = match repository.user.find_by_username(&payload.username).await {
         Ok(Some(u)) => u,
         Ok(None) => {
             return (
@@ -220,8 +220,8 @@ pub async fn logout() -> Response {
     response
 }
 
-pub async fn me(auth: AuthenticatedUser, Extension(pool): Extension<SqlitePool>) -> Response {
-    match user_repo::find_by_id(&pool, &auth.user_id).await {
+pub async fn me(auth: AuthenticatedUser, Extension(repository): Extension<Repository>) -> Response {
+    match repository.user.find_by_id(&auth.user_id).await {
         Ok(Some(u)) => (
             StatusCode::OK,
             Json(UserPublic {

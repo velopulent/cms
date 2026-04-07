@@ -5,12 +5,11 @@ use axum::{
     response::{IntoResponse, Response},
 };
 use serde_json::json;
-use sqlx::SqlitePool;
 use uuid::Uuid;
 
-use crate::middleware::auth::{AuthContext, check_read_access, check_write_access};
+use crate::middleware::auth::{AuthContext, check_read_access_repo, check_write_access_repo};
 use crate::models::collection::{Collection, CreateCollection, UpdateCollection};
-use crate::repository::collection as collection_repo;
+use crate::repository::Repository;
 
 #[utoipa::path(
     get,
@@ -26,13 +25,13 @@ use crate::repository::collection as collection_repo;
 pub async fn list_collections(
     auth: AuthContext,
     Path(site_id): Path<String>,
-    Extension(pool): Extension<SqlitePool>,
+    Extension(repository): Extension<Repository>,
 ) -> Response {
-    if let Err((status, err)) = check_read_access(&auth, &pool, &site_id).await {
+    if let Err((status, err)) = check_read_access_repo(&auth, &repository, &site_id).await {
         return (status, Json(err)).into_response();
     }
 
-    match collection_repo::list(&pool, &site_id).await {
+    match repository.collection.list(&site_id).await {
         Ok(items) => (StatusCode::OK, Json(items)).into_response(),
         Err(err) => (
             StatusCode::INTERNAL_SERVER_ERROR,
@@ -60,13 +59,13 @@ pub async fn list_collections(
 pub async fn get_collection(
     auth: AuthContext,
     Path((site_id, collection_slug)): Path<(String, String)>,
-    Extension(pool): Extension<SqlitePool>,
+    Extension(repository): Extension<Repository>,
 ) -> Response {
-    if let Err((status, err)) = check_read_access(&auth, &pool, &site_id).await {
+    if let Err((status, err)) = check_read_access_repo(&auth, &repository, &site_id).await {
         return (status, Json(err)).into_response();
     }
 
-    match collection_repo::get_by_slug(&pool, &site_id, &collection_slug).await {
+    match repository.collection.get_by_slug(&site_id, &collection_slug).await {
         Ok(Some(item)) => (StatusCode::OK, Json(item)).into_response(),
         Ok(None) => (
             StatusCode::NOT_FOUND,
@@ -98,10 +97,10 @@ pub async fn get_collection(
 pub async fn create_collection(
     auth: AuthContext,
     Path(site_id): Path<String>,
-    Extension(pool): Extension<SqlitePool>,
+    Extension(repository): Extension<Repository>,
     Json(payload): Json<CreateCollection>,
 ) -> Response {
-    if let Err((status, err)) = check_write_access(&auth, &pool, &site_id).await {
+    if let Err((status, err)) = check_write_access_repo(&auth, &repository, &site_id).await {
         return (status, Json(err)).into_response();
     }
 
@@ -109,8 +108,7 @@ pub async fn create_collection(
     let id = Uuid::now_v7().to_string();
     let is_singleton = payload.is_singleton.unwrap_or(false);
 
-    match collection_repo::create(
-        &pool,
+    match repository.collection.create(
         &id,
         &site_id,
         &payload.name,
@@ -121,7 +119,7 @@ pub async fn create_collection(
     .await
     {
         Ok(item) => (StatusCode::CREATED, Json(item)).into_response(),
-        Err(sqlx::Error::Database(ref db_err)) if db_err.is_unique_violation() => (
+        Err(crate::repository::error::RepositoryError::UniqueViolation(_)) => (
             StatusCode::CONFLICT,
             Json(json!({"error": "Collection with this name or slug already exists"})),
         )
@@ -153,14 +151,14 @@ pub async fn create_collection(
 pub async fn update_collection(
     auth: AuthContext,
     Path((site_id, collection_slug)): Path<(String, String)>,
-    Extension(pool): Extension<SqlitePool>,
+    Extension(repository): Extension<Repository>,
     Json(payload): Json<UpdateCollection>,
 ) -> Response {
-    if let Err((status, err)) = check_write_access(&auth, &pool, &site_id).await {
+    if let Err((status, err)) = check_write_access_repo(&auth, &repository, &site_id).await {
         return (status, Json(err)).into_response();
     }
 
-    let existing = match collection_repo::get_by_slug(&pool, &site_id, &collection_slug).await {
+    let existing = match repository.collection.get_by_slug(&site_id, &collection_slug).await {
         Ok(Some(item)) => item,
         Ok(None) => {
             return (
@@ -195,23 +193,18 @@ pub async fn update_collection(
 
             if !rename_map.is_empty() {
                 if existing.is_singleton {
-                    collection_repo::migrate_singleton_field_renames(
-                        &pool,
+                    repository.collection.migrate_singleton_field_renames(
                         &existing,
                         &rename_map,
-                    )
-                    .await;
-                } else if let Ok(items) =
-                    collection_repo::get_content_for_migration(&pool, &existing.id).await
-                {
-                    collection_repo::migrate_content_field_renames(&pool, &items, &rename_map)
-                        .await;
+                    ).await;
+                } else if let Ok(items) = repository.collection.get_content_for_migration(&existing.id).await {
+                    repository.collection.migrate_content_field_renames(&items, &rename_map).await;
                 }
             }
         }
     }
 
-    match collection_repo::update(&pool, &existing.id, &name, &new_slug, &definition_str).await {
+    match repository.collection.update(&existing.id, &name, &new_slug, &definition_str).await {
         Ok(item) => (StatusCode::OK, Json(item)).into_response(),
         Err(err) => (
             StatusCode::INTERNAL_SERVER_ERROR,
@@ -239,13 +232,13 @@ pub async fn update_collection(
 pub async fn delete_collection(
     auth: AuthContext,
     Path((site_id, collection_slug)): Path<(String, String)>,
-    Extension(pool): Extension<SqlitePool>,
+    Extension(repository): Extension<Repository>,
 ) -> Response {
-    if let Err((status, err)) = check_write_access(&auth, &pool, &site_id).await {
+    if let Err((status, err)) = check_write_access_repo(&auth, &repository, &site_id).await {
         return (status, Json(err)).into_response();
     }
 
-    match collection_repo::delete(&pool, &site_id, &collection_slug).await {
+    match repository.collection.delete(&site_id, &collection_slug).await {
         Ok(_) => StatusCode::NO_CONTENT.into_response(),
         Err(err) => (
             StatusCode::INTERNAL_SERVER_ERROR,

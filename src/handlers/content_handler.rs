@@ -6,14 +6,15 @@ use axum::{
 };
 use serde::Deserialize;
 use serde_json::json;
-use sqlx::SqlitePool;
 use uuid::Uuid;
 
 use crate::handlers::file_handler::StorageManager;
-use crate::middleware::auth::{AuthContext, check_read_access, check_write_access};
+use crate::middleware::auth::{AuthContext, check_read_access_repo, check_write_access_repo};
 use crate::models::content::{Content, CreateContent, UpdateContent};
 use crate::models::file::File;
-use crate::repository::content::{self as content_repo, ListContentParams};
+use crate::repository::sqlite::content::extract_file_ids_from_value;
+use crate::repository::traits::ListContentParams;
+use crate::repository::Repository;
 
 #[derive(Deserialize, utoipa::IntoParams)]
 pub struct ListParams {
@@ -40,9 +41,9 @@ pub async fn list_content(
     auth: AuthContext,
     Path(site_id): Path<String>,
     Query(params): Query<ListParams>,
-    Extension(pool): Extension<SqlitePool>,
+    Extension(repository): Extension<Repository>,
 ) -> Response {
-    if let Err((status, err)) = check_read_access(&auth, &pool, &site_id).await {
+    if let Err((status, err)) = check_read_access_repo(&auth, &repository, &site_id).await {
         return (status, Json(err)).into_response();
     }
 
@@ -61,7 +62,7 @@ pub async fn list_content(
         published_only,
     };
 
-    match content_repo::list(&pool, list_params).await {
+    match repository.content.list(list_params).await {
         Ok(items) => (StatusCode::OK, Json(items)).into_response(),
         Err(err) => (
             StatusCode::INTERNAL_SERVER_ERROR,
@@ -89,18 +90,18 @@ pub async fn list_content(
 pub async fn get_content(
     auth: AuthContext,
     Path((site_id, id)): Path<(String, String)>,
-    Extension(pool): Extension<SqlitePool>,
+    Extension(repository): Extension<Repository>,
     Extension(storage): Extension<StorageManager>,
 ) -> Response {
-    if let Err((status, err)) = check_read_access(&auth, &pool, &site_id).await {
+    if let Err((status, err)) = check_read_access_repo(&auth, &repository, &site_id).await {
         return (status, Json(err)).into_response();
     }
 
     let published_only = matches!(auth, AuthContext::ApiKey { .. });
 
-    match content_repo::get_by_id(&pool, &id, &site_id, published_only).await {
+    match repository.content.get_by_id(&id, &site_id, published_only).await {
         Ok(Some(item)) => {
-            let resolved = resolve_content_files(&item, &pool, &storage).await;
+            let resolved = resolve_content_files(&item, &repository, &storage).await;
             (StatusCode::OK, Json(resolved)).into_response()
         }
         Ok(None) => (
@@ -133,22 +134,22 @@ pub async fn get_content(
 pub async fn create_content(
     auth: AuthContext,
     Path(site_id): Path<String>,
-    Extension(pool): Extension<SqlitePool>,
+    Extension(repository): Extension<Repository>,
     Json(payload): Json<CreateContent>,
 ) -> Response {
-    if let Err((status, err)) = check_write_access(&auth, &pool, &site_id).await {
+    if let Err((status, err)) = check_write_access_repo(&auth, &repository, &site_id).await {
         return (status, Json(err)).into_response();
     }
 
     let data_str = payload.data.to_string();
     let id = Uuid::now_v7().to_string();
 
-    match content_repo::create(&pool, &id, &site_id, &payload.collection_id, &data_str, &payload.slug).await {
+    match repository.content.create(&id, &site_id, &payload.collection_id, &data_str, &payload.slug).await {
         Ok(item) => {
-            content_repo::sync_file_references(&pool, &id, &site_id, &payload.data).await;
+            repository.content.sync_file_references(&id, &site_id, &payload.data).await;
             (StatusCode::CREATED, Json(item)).into_response()
         }
-        Err(sqlx::Error::Database(ref db_err)) if db_err.is_unique_violation() => (
+        Err(crate::repository::error::RepositoryError::UniqueViolation(_)) => (
             StatusCode::CONFLICT,
             Json(json!({"error": "Content with this slug already exists for this collection"})),
         )
@@ -180,14 +181,14 @@ pub async fn create_content(
 pub async fn update_content(
     auth: AuthContext,
     Path((site_id, id)): Path<(String, String)>,
-    Extension(pool): Extension<SqlitePool>,
+    Extension(repository): Extension<Repository>,
     Json(payload): Json<UpdateContent>,
 ) -> Response {
-    if let Err((status, err)) = check_write_access(&auth, &pool, &site_id).await {
+    if let Err((status, err)) = check_write_access_repo(&auth, &repository, &site_id).await {
         return (status, Json(err)).into_response();
     }
 
-    let existing = match content_repo::get_by_id(&pool, &id, &site_id, false).await {
+    let existing = match repository.content.get_by_id(&id, &site_id, false).await {
         Ok(Some(c)) => c,
         Ok(None) => {
             return (
@@ -213,12 +214,12 @@ pub async fn update_content(
     let slug = payload.slug.unwrap_or(existing.slug);
     let status = payload.status.unwrap_or(existing.status);
 
-    match content_repo::update(&pool, &id, &data_str, &slug, &status).await {
+    match repository.content.update(&id, &data_str, &slug, &status).await {
         Ok(item) => {
-            content_repo::sync_file_references(&pool, &id, &site_id, &resolved_data).await;
+            repository.content.sync_file_references(&id, &site_id, &resolved_data).await;
             (StatusCode::OK, Json(item)).into_response()
         }
-        Err(sqlx::Error::Database(ref db_err)) if db_err.is_unique_violation() => (
+        Err(crate::repository::error::RepositoryError::UniqueViolation(_)) => (
             StatusCode::CONFLICT,
             Json(json!({"error": "Content with this slug already exists for this collection"})),
         )
@@ -249,13 +250,13 @@ pub async fn update_content(
 pub async fn delete_content(
     auth: AuthContext,
     Path((site_id, id)): Path<(String, String)>,
-    Extension(pool): Extension<SqlitePool>,
+    Extension(repository): Extension<Repository>,
 ) -> Response {
-    if let Err((status, err)) = check_write_access(&auth, &pool, &site_id).await {
+    if let Err((status, err)) = check_write_access_repo(&auth, &repository, &site_id).await {
         return (status, Json(err)).into_response();
     }
 
-    match content_repo::delete(&pool, &id, &site_id).await {
+    match repository.content.delete(&id, &site_id).await {
         Ok(_) => StatusCode::NO_CONTENT.into_response(),
         Err(err) => (
             StatusCode::INTERNAL_SERVER_ERROR,
@@ -284,15 +285,15 @@ pub async fn delete_content(
 pub async fn publish_content(
     auth: AuthContext,
     Path((site_id, id)): Path<(String, String)>,
-    Extension(pool): Extension<SqlitePool>,
+    Extension(repository): Extension<Repository>,
 ) -> Response {
-    if let Err((status, err)) = check_write_access(&auth, &pool, &site_id).await {
+    if let Err((status, err)) = check_write_access_repo(&auth, &repository, &site_id).await {
         return (status, Json(err)).into_response();
     }
 
-    match content_repo::publish(&pool, &id, &site_id).await {
+    match repository.content.publish(&id, &site_id).await {
         Ok(item) => (StatusCode::OK, Json(item)).into_response(),
-        Err(sqlx::Error::RowNotFound) => (
+        Err(crate::repository::error::RepositoryError::NotFound) => (
             StatusCode::NOT_FOUND,
             Json(json!({"error": "Content not found"})),
         )
@@ -324,15 +325,15 @@ pub async fn publish_content(
 pub async fn unpublish_content(
     auth: AuthContext,
     Path((site_id, id)): Path<(String, String)>,
-    Extension(pool): Extension<SqlitePool>,
+    Extension(repository): Extension<Repository>,
 ) -> Response {
-    if let Err((status, err)) = check_write_access(&auth, &pool, &site_id).await {
+    if let Err((status, err)) = check_write_access_repo(&auth, &repository, &site_id).await {
         return (status, Json(err)).into_response();
     }
 
-    match content_repo::unpublish(&pool, &id, &site_id).await {
+    match repository.content.unpublish(&id, &site_id).await {
         Ok(item) => (StatusCode::OK, Json(item)).into_response(),
-        Err(sqlx::Error::RowNotFound) => (
+        Err(crate::repository::error::RepositoryError::NotFound) => (
             StatusCode::NOT_FOUND,
             Json(json!({"error": "Content not found"})),
         )
@@ -345,30 +346,17 @@ pub async fn unpublish_content(
     }
 }
 
-// --- File resolution helpers (handler-level, uses StorageManager) ---
-
 pub async fn resolve_content_files_from_value(
     data: &serde_json::Value,
-    pool: &SqlitePool,
+    repository: &Repository,
     storage: &StorageManager,
 ) -> serde_json::Value {
-    let file_ids = content_repo::extract_file_ids(data);
+    let file_ids = extract_file_ids_from_value(data);
 
     let mut file_map = serde_json::Map::new();
 
     if !file_ids.is_empty() {
-        let placeholders = file_ids.iter().map(|_| "?").collect::<Vec<_>>().join(",");
-        let query = format!(
-            "SELECT id, site_id, filename, original_name, mime_type, size, storage_provider, storage_key, thumbnail_key, width, height, deleted_at, created_by, created_at FROM files WHERE id IN ({}) AND deleted_at IS NULL",
-            placeholders
-        );
-
-        let mut q = sqlx::query_as::<_, File>(&query);
-        for id in &file_ids {
-            q = q.bind(id);
-        }
-
-        if let Ok(file_items) = q.fetch_all(pool).await {
+        if let Ok(file_items) = repository.file.get_deleted_by_ids("", &file_ids).await {
             for f in file_items {
                 let url = match f.storage_provider.as_str() {
                     "s3" => storage
@@ -406,27 +394,16 @@ pub async fn resolve_content_files_from_value(
 
 async fn resolve_content_files(
     content: &Content,
-    pool: &SqlitePool,
+    repository: &Repository,
     storage: &StorageManager,
 ) -> serde_json::Value {
     let data: serde_json::Value = serde_json::from_str(&content.data).unwrap_or_default();
-    let file_ids = content_repo::extract_file_ids(&data);
+    let file_ids = extract_file_ids_from_value(&data);
 
     let mut file_map = serde_json::Map::new();
 
     if !file_ids.is_empty() {
-        let placeholders = file_ids.iter().map(|_| "?").collect::<Vec<_>>().join(",");
-        let query = format!(
-            "SELECT id, site_id, filename, original_name, mime_type, size, storage_provider, storage_key, thumbnail_key, width, height, deleted_at, created_by, created_at FROM files WHERE id IN ({}) AND deleted_at IS NULL",
-            placeholders
-        );
-
-        let mut q = sqlx::query_as::<_, File>(&query);
-        for id in &file_ids {
-            q = q.bind(id);
-        }
-
-        if let Ok(file_items) = q.fetch_all(pool).await {
+        if let Ok(file_items) = repository.file.get_deleted_by_ids("", &file_ids).await {
             for f in file_items {
                 let url = match f.storage_provider.as_str() {
                     "s3" => storage
