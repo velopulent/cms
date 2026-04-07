@@ -69,27 +69,6 @@ impl DbPool {
             }
         }
     }
-
-    pub fn as_sqlite(&self) -> Option<&SqlitePool> {
-        match self {
-            DbPool::Sqlite(pool) => Some(pool),
-            _ => None,
-        }
-    }
-
-    pub fn as_mysql(&self) -> Option<&MySqlPool> {
-        match self {
-            DbPool::MySql(pool) => Some(pool),
-            _ => None,
-        }
-    }
-
-    pub fn as_postgres(&self) -> Option<&PgPool> {
-        match self {
-            DbPool::Postgres(pool) => Some(pool),
-            _ => None,
-        }
-    }
 }
 
 

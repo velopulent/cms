@@ -10,9 +10,6 @@ pub enum RepositoryError {
 
     #[error("Database error: {0}")]
     Database(String),
-
-    #[error("Internal error: {0}")]
-    Internal(String),
 }
 
 impl From<sqlx::Error> for RepositoryError {
