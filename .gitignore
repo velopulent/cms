@@ -1,5 +1,7 @@
 /target
 cms.db
+cms.db-shm
+cms.db-wal
 !.env.example
 .env*
 /uploads
