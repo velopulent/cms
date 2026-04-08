@@ -20,6 +20,8 @@ pub struct ListParams {
     pub r#type: Option<String>,
     pub status: Option<String>,
     pub search: Option<String>,
+    pub page: Option<i64>,
+    pub per_page: Option<i64>,
 }
 
 #[utoipa::path(
@@ -48,6 +50,9 @@ pub async fn list_content(
 
     let published_only = matches!(auth, AuthContext::ApiKey { .. });
 
+    let page = params.page.unwrap_or(1).max(1);
+    let per_page = params.per_page.unwrap_or(50).clamp(1, 200);
+
     let list_params = ListContentParams {
         site_id: &site_id,
         collection_slug: params.r#type.as_deref(),
@@ -59,10 +64,24 @@ pub async fn list_content(
         },
         search: params.search.as_deref(),
         published_only,
+        page,
+        per_page,
     };
 
     match repository.content.list(list_params).await {
-        Ok(items) => (StatusCode::OK, Json(items)).into_response(),
+        Ok(result) => {
+            let items = resolve_content_list_files(&result.items, &repository, &site_id);
+            (
+                StatusCode::OK,
+                Json(json!({
+                    "items": items,
+                    "total": result.total,
+                    "page": result.page,
+                    "per_page": result.per_page,
+                })),
+            )
+                .into_response()
+        }
         Err(err) => (
             StatusCode::INTERNAL_SERVER_ERROR,
             Json(json!({"error": err.to_string()})),
@@ -349,13 +368,14 @@ pub async fn resolve_content_files_from_value(
     data: &serde_json::Value,
     repository: &Repository,
     storage: &StorageManager,
+    site_id: &str,
 ) -> serde_json::Value {
     let file_ids = extract_file_ids_from_value(data);
 
     let mut file_map = serde_json::Map::new();
 
     if !file_ids.is_empty() {
-        if let Ok(file_items) = repository.file.get_deleted_by_ids("", &file_ids).await {
+        if let Ok(file_items) = repository.file.get_by_ids(site_id, &file_ids).await {
             for f in file_items {
                 let url = match f.storage_provider.as_str() {
                     "s3" => storage
@@ -397,50 +417,21 @@ async fn resolve_content_files(
     storage: &StorageManager,
 ) -> serde_json::Value {
     let data: serde_json::Value = serde_json::from_str(&content.data).unwrap_or_default();
-    let file_ids = extract_file_ids_from_value(&data);
-
-    let mut file_map = serde_json::Map::new();
-
-    if !file_ids.is_empty() {
-        if let Ok(file_items) = repository.file.get_deleted_by_ids("", &file_ids).await {
-            for f in file_items {
-                let url = match f.storage_provider.as_str() {
-                    "s3" => storage
-                        .s3
-                        .as_ref()
-                        .map(|s| s.url(&f.storage_key))
-                        .unwrap_or_else(|| format!("/api/files/{}", f.id)),
-                    _ => format!("/api/files/{}", f.id),
-                };
-
-                file_map.insert(
-                    f.id.clone(),
-                    json!({
-                        "id": f.id,
-                        "url": url,
-                        "thumbnail_url": f.thumbnail_key.as_ref().map(|_| format!("/api/files/{}/thumbnail", f.id)),
-                        "filename": f.filename,
-                        "original_name": f.original_name,
-                        "mime_type": f.mime_type,
-                        "size": f.size,
-                        "width": f.width,
-                        "height": f.height,
-                    }),
-                );
-            }
-        }
-    }
-
+    let resolved_data = resolve_content_files_from_value(&data, repository, storage, &content.site_id).await;
     json!({
         "id": content.id,
         "site_id": content.site_id,
         "collection_id": content.collection_id,
-        "data": data,
+        "data": resolved_data.get("data").cloned().unwrap_or(data),
         "slug": content.slug,
         "status": content.status,
         "created_at": content.created_at,
         "updated_at": content.updated_at,
         "published_at": content.published_at,
-        "_files": file_map,
+        "_files": resolved_data.get("_files").cloned().unwrap_or(serde_json::Value::Object(serde_json::Map::new())),
     })
+}
+
+fn resolve_content_list_files(items: &[Content], _repository: &Repository, _site_id: &str) -> Vec<Content> {
+    items.to_vec()
 }
