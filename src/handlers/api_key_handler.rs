@@ -8,7 +8,7 @@ use bcrypt::{DEFAULT_COST, hash};
 use serde_json::json;
 use uuid::Uuid;
 
-use crate::middleware::auth::AuthenticatedUser;
+use crate::middleware::auth::{AuthenticatedUser, check_site_access_repo, compute_key_hmac};
 use crate::models::api_key::{ApiKeyResponse, CreateApiKey};
 use crate::repository::Repository;
 
@@ -35,6 +35,7 @@ pub async fn create_api_key(
     auth: AuthenticatedUser,
     Path(site_id): Path<String>,
     Extension(repository): Extension<Repository>,
+    Extension(config): Extension<crate::config::Config>,
     Json(payload): Json<CreateApiKey>,
 ) -> Response {
     if let Err((status, err)) = check_site_access_repo(&repository, &auth.user_id, &site_id, "admin").await {
@@ -79,9 +80,11 @@ pub async fn create_api_key(
         }
     };
 
+    let key_hmac = compute_key_hmac(&raw_key, &config.hmac_secret);
+
     let id = Uuid::now_v7().to_string();
 
-    match repository.api_key.create(&id, &site_id, &payload.name, &key_hash, &prefix, permissions).await {
+    match repository.api_key.create(&id, &site_id, &payload.name, &key_hash, &prefix, &key_hmac, permissions).await {
         Ok(_) => {
             let now = chrono::Utc::now().format("%Y-%m-%d %H:%M:%S").to_string();
 
@@ -128,41 +131,5 @@ pub async fn delete_api_key(
             Json(json!({"error": err.to_string()})),
         )
             .into_response(),
-    }
-}
-
-async fn check_site_access_repo(
-    repository: &Repository,
-    user_id: &str,
-    site_id: &str,
-    min_role: &str,
-) -> Result<(), (StatusCode, serde_json::Value)> {
-    let role_order = |r: &str| match r {
-        "owner" => 4,
-        "admin" => 3,
-        "editor" => 2,
-        "viewer" => 1,
-        _ => 0,
-    };
-
-    let min_level = role_order(min_role);
-
-    let role = repository.user.get_role(user_id, site_id).await.map_err(|e| {
-        (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            serde_json::json!({"error": e.to_string()}),
-        )
-    })?;
-
-    match role {
-        Some(r) if role_order(&r) >= min_level => Ok(()),
-        Some(_) => Err((
-            StatusCode::FORBIDDEN,
-            serde_json::json!({"error": "Insufficient permissions"}),
-        )),
-        None => Err((
-            StatusCode::NOT_FOUND,
-            serde_json::json!({"error": "Site not found"}),
-        )),
     }
 }
