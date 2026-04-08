@@ -6,6 +6,7 @@ use axum::{
 };
 use axum_extra::extract::cookie::Cookie;
 use bcrypt::{DEFAULT_COST, hash, verify};
+use regex::Regex;
 use serde_json::json;
 use time::Duration;
 use uuid::Uuid;
@@ -15,6 +16,9 @@ use crate::middleware::auth::{AuthenticatedUser, create_token};
 use crate::models::user::{AuthResponse, CreateUser, LoginRequest, UserPublic};
 use crate::repository::error::RepositoryError;
 use crate::repository::Repository;
+
+static EMAIL_RE: std::sync::LazyLock<Regex> =
+    std::sync::LazyLock::new(|| Regex::new(r"^[^@\s]+@[^@\s]+\.[^@\s]+$").unwrap());
 
 fn build_auth_cookies_response(
     user: UserPublic,
@@ -29,8 +33,9 @@ fn build_auth_cookies_response(
         .max_age(Duration::hours(24))
         .build();
 
-    let csrf_cookie = Cookie::build(("csrf", Uuid::now_v7().to_string()))
-        .http_only(true)
+    let csrf_token = Uuid::now_v7().to_string();
+    let csrf_cookie = Cookie::build(("csrf", csrf_token.clone()))
+        .http_only(false)
         .secure(config.cookie_secure)
         .same_site(axum_extra::extract::cookie::SameSite::Strict)
         .path("/")
@@ -68,15 +73,51 @@ pub async fn register(
     Extension(config): Extension<Config>,
     Json(payload): Json<CreateUser>,
 ) -> Response {
-    if payload.username.trim().is_empty() || payload.password.trim().is_empty() {
+    let username = payload.username.trim();
+    let password = payload.password.trim();
+    let email = payload.email.trim();
+
+    if username.is_empty() {
         return (
             StatusCode::BAD_REQUEST,
-            Json(json!({"error": "Username and password are required"})),
+            Json(json!({"error": "Username is required"})),
         )
             .into_response();
     }
 
-    let password_hash = match hash(&payload.password, DEFAULT_COST) {
+    if username.len() < 3 {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(json!({"error": "Username must be at least 3 characters"})),
+        )
+            .into_response();
+    }
+
+    if password.is_empty() {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(json!({"error": "Password is required"})),
+        )
+            .into_response();
+    }
+
+    if password.len() < 8 {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(json!({"error": "Password must be at least 8 characters"})),
+        )
+            .into_response();
+    }
+
+    if !EMAIL_RE.is_match(email) {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(json!({"error": "Invalid email address"})),
+        )
+            .into_response();
+    }
+
+    let password_hash = match hash(password, DEFAULT_COST) {
         Ok(h) => h,
         Err(e) => {
             return (
@@ -89,7 +130,7 @@ pub async fn register(
 
     let id = Uuid::now_v7().to_string();
 
-    match repository.user.create(&id, &payload.username, &payload.email, &password_hash).await {
+    match repository.user.create(&id, username, email, &password_hash).await {
         Ok(_) => {
             let token = match create_token(id.clone(), &config.jwt_secret) {
                 Ok(t) => t,
@@ -104,8 +145,8 @@ pub async fn register(
 
             let user = UserPublic {
                 id,
-                username: payload.username,
-                email: payload.email,
+                username: username.to_string(),
+                email: email.to_string(),
             };
 
             let mut response = build_auth_cookies_response(user, &token, &config);
@@ -199,7 +240,7 @@ pub async fn logout() -> Response {
         .build();
 
     let clear_csrf = Cookie::build(("csrf", ""))
-        .http_only(true)
+        .http_only(false)
         .path("/")
         .max_age(Duration::ZERO)
         .build();
