@@ -14,6 +14,7 @@ impl GqlContext {
         repository: Repository,
         storage: crate::handlers::file_handler::StorageManager,
         auth_header: Option<&str>,
+        hmac_secret: &str,
     ) -> Self {
         let mut site_id = None;
         let mut permissions = None;
@@ -24,7 +25,7 @@ impl GqlContext {
                     if let Ok(crate::middleware::auth::AuthContext::ApiKey {
                         site_id: key_site_id,
                         permissions: key_permissions,
-                    }) = verify_api_key(token, &repository).await
+                    }) = verify_api_key(token, &repository, hmac_secret).await
                     {
                         site_id = Some(key_site_id);
                         permissions = Some(key_permissions);
