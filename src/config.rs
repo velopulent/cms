@@ -22,16 +22,38 @@ pub struct Config {
 
     // Cookie security
     pub cookie_secure: bool,
+
+    // Database pool
+    pub db_max_connections: u32,
+    pub db_min_connections: u32,
+    pub db_acquire_timeout_secs: u64,
+    pub db_idle_timeout_secs: u64,
+
+    // Rate limiting
+    pub rate_limit_max_requests: u32,
+    pub rate_limit_window_secs: u64,
+
+    // Hash secret for API key fast lookup
+    pub hmac_secret: String,
 }
+
+static DEFAULT_JWT_SECRET: &str = "cms-jwt-secret-change-in-production";
 
 impl Config {
     pub fn from_env() -> Self {
         dotenvy::dotenv().ok();
 
+        let jwt_secret = env::var("JWT_SECRET").unwrap_or_else(|_| DEFAULT_JWT_SECRET.to_string());
+
+        if jwt_secret == DEFAULT_JWT_SECRET {
+            eprintln!("WARNING: Using default JWT secret. Set JWT_SECRET environment variable in production!");
+        }
+
+        let database_url = env::var("DATABASE_URL").unwrap_or_else(|_| "sqlite:cms.db".into());
+
         Self {
-            database_url: env::var("DATABASE_URL").unwrap_or_else(|_| "sqlite:cms.db".into()),
-            jwt_secret: env::var("JWT_SECRET")
-                .unwrap_or_else(|_| "cms-jwt-secret-change-in-production".into()),
+            jwt_secret,
+            database_url,
             bind_address: env::var("BIND_ADDRESS").unwrap_or_else(|_| "0.0.0.0:3000".into()),
             storage_fs_path: env::var("STORAGE_FS_PATH").ok(),
             s3_access_key_id: env::var("S3_ACCESS_KEY_ID").ok(),
@@ -49,13 +71,39 @@ impl Config {
             cookie_secure: env::var("COOKIE_SECURE")
                 .map(|v| v == "true" || v == "1")
                 .unwrap_or(false),
+            db_max_connections: env::var("DB_MAX_CONNECTIONS")
+                .ok()
+                .and_then(|v| v.parse().ok())
+                .unwrap_or(10),
+            db_min_connections: env::var("DB_MIN_CONNECTIONS")
+                .ok()
+                .and_then(|v| v.parse().ok())
+                .unwrap_or(2),
+            db_acquire_timeout_secs: env::var("DB_ACQUIRE_TIMEOUT_SECS")
+                .ok()
+                .and_then(|v| v.parse().ok())
+                .unwrap_or(30),
+            db_idle_timeout_secs: env::var("DB_IDLE_TIMEOUT_SECS")
+                .ok()
+                .and_then(|v| v.parse().ok())
+                .unwrap_or(600),
+            rate_limit_max_requests: env::var("RATE_LIMIT_MAX_REQUESTS")
+                .ok()
+                .and_then(|v| v.parse().ok())
+                .unwrap_or(100),
+            rate_limit_window_secs: env::var("RATE_LIMIT_WINDOW_SECS")
+                .ok()
+                .and_then(|v| v.parse().ok())
+                .unwrap_or(60),
+            hmac_secret: env::var("HMAC_SECRET").unwrap_or_else(|_| {
+                eprintln!("WARNING: Using default HMAC secret. Set HMAC_SECRET environment variable in production!");
+                "cms-hmac-secret-change-in-production".to_string()
+            }),
         }
     }
 
     pub fn has_s3(&self) -> bool {
-        self.s3_access_key_id.is_some()
-            && self.s3_secret_access_key.is_some()
-            && self.s3_bucket.is_some()
+        self.s3_access_key_id.is_some() && self.s3_secret_access_key.is_some() && self.s3_bucket.is_some()
     }
 }
 
@@ -78,6 +126,13 @@ mod tests {
             s3_public_url: None,
             max_upload_size_bytes: 50 * 1024 * 1024,
             cookie_secure: false,
+            db_max_connections: 10,
+            db_min_connections: 2,
+            db_acquire_timeout_secs: 30,
+            db_idle_timeout_secs: 600,
+            rate_limit_max_requests: 100,
+            rate_limit_window_secs: 60,
+            hmac_secret: "hmac".to_string(),
         };
 
         assert!(config.has_s3());
@@ -98,6 +153,13 @@ mod tests {
             s3_public_url: None,
             max_upload_size_bytes: 50 * 1024 * 1024,
             cookie_secure: false,
+            db_max_connections: 10,
+            db_min_connections: 2,
+            db_acquire_timeout_secs: 30,
+            db_idle_timeout_secs: 600,
+            rate_limit_max_requests: 100,
+            rate_limit_window_secs: 60,
+            hmac_secret: "hmac".to_string(),
         };
 
         assert!(!config.has_s3());
@@ -118,6 +180,13 @@ mod tests {
             s3_public_url: None,
             max_upload_size_bytes: 50 * 1024 * 1024,
             cookie_secure: false,
+            db_max_connections: 10,
+            db_min_connections: 2,
+            db_acquire_timeout_secs: 30,
+            db_idle_timeout_secs: 600,
+            rate_limit_max_requests: 100,
+            rate_limit_window_secs: 60,
+            hmac_secret: "hmac".to_string(),
         };
 
         assert!(!config.has_s3());
@@ -138,6 +207,13 @@ mod tests {
             s3_public_url: None,
             max_upload_size_bytes: 50 * 1024 * 1024,
             cookie_secure: false,
+            db_max_connections: 10,
+            db_min_connections: 2,
+            db_acquire_timeout_secs: 30,
+            db_idle_timeout_secs: 600,
+            rate_limit_max_requests: 100,
+            rate_limit_window_secs: 60,
+            hmac_secret: "hmac".to_string(),
         };
 
         assert!(!config.has_s3());
@@ -158,6 +234,13 @@ mod tests {
             s3_public_url: None,
             max_upload_size_bytes: 50 * 1024 * 1024,
             cookie_secure: true,
+            db_max_connections: 10,
+            db_min_connections: 2,
+            db_acquire_timeout_secs: 30,
+            db_idle_timeout_secs: 600,
+            rate_limit_max_requests: 100,
+            rate_limit_window_secs: 60,
+            hmac_secret: "hmac".to_string(),
         };
 
         assert!(!config.has_s3());
