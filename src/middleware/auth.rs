@@ -1,12 +1,16 @@
 use axum::{
     extract::FromRequestParts,
-    http::{StatusCode, request::Parts},
+    http::{request::Parts, StatusCode},
 };
-use jsonwebtoken::{Algorithm, DecodingKey, Validation, decode};
+use hmac::{Hmac, Mac};
+use jsonwebtoken::{Algorithm, DecodingKey, EncodingKey, Validation, decode, encode};
+use sha2::Sha256;
 
 use crate::config::Config;
 use crate::models::user::Claims;
 use crate::repository::Repository;
+
+type HmacSha256 = Hmac<Sha256>;
 
 fn extract_cookie_value(parts: &Parts, name: &str) -> Option<String> {
     let cookie_header = parts.headers.get("cookie")?.to_str().ok()?;
@@ -29,6 +33,11 @@ fn extract_jwt_token(parts: &Parts) -> Option<String> {
     auth_header.strip_prefix("Bearer ").map(|s| s.to_string())
 }
 
+fn extract_csrf_token(parts: &Parts) -> Option<String> {
+    let header = parts.headers.get("x-csrf-token")?.to_str().ok()?;
+    Some(header.to_string())
+}
+
 pub enum AuthContext {
     Jwt { user_id: String },
     ApiKey { site_id: String, permissions: String },
@@ -36,6 +45,13 @@ pub enum AuthContext {
 
 pub struct AuthenticatedUser {
     pub user_id: String,
+}
+
+pub fn compute_key_hmac(key: &str, hmac_secret: &str) -> String {
+    let mut mac = HmacSha256::new_from_slice(hmac_secret.as_bytes())
+        .expect("HMAC can take key of any size");
+    mac.update(key.as_bytes());
+    hex::encode(mac.finalize().into_bytes())
 }
 
 pub fn create_token(
@@ -52,10 +68,10 @@ pub fn create_token(
         exp: expiration,
     };
 
-    jsonwebtoken::encode(
+    encode(
         &jsonwebtoken::Header::default(),
         &claims,
-        &jsonwebtoken::EncodingKey::from_secret(jwt_secret.as_bytes()),
+        &EncodingKey::from_secret(jwt_secret.as_bytes()),
     )
 }
 
@@ -110,6 +126,7 @@ where
     type Rejection = (StatusCode, String);
 
     async fn from_request_parts(parts: &mut Parts, _state: &S) -> Result<Self, Self::Rejection> {
+        // Try Authorization header first
         if let Some(auth_header) = parts.headers.get("Authorization").and_then(|v| v.to_str().ok()) {
             if let Some(token) = auth_header.strip_prefix("Bearer ") {
                 if token.starts_with("cms_") {
@@ -118,7 +135,12 @@ where
                         .get::<Repository>()
                         .ok_or(unauthorized_error("Internal server error"))?;
 
-                    return verify_api_key(token, repository).await;
+                    let config = parts
+                        .extensions
+                        .get::<Config>()
+                        .ok_or(unauthorized_error("Internal server error"))?;
+
+                    return verify_api_key(token, repository, &config.hmac_secret).await;
                 }
 
                 let config = parts
@@ -135,6 +157,7 @@ where
             }
         }
 
+        // Try cookie
         if let Some(token) = extract_cookie_value(parts, "token") {
             let config = parts
                 .extensions
@@ -156,6 +179,7 @@ where
 pub(crate) async fn verify_api_key(
     token: &str,
     repository: &Repository,
+    hmac_secret: &str,
 ) -> Result<AuthContext, (StatusCode, String)> {
     let prefix: String = token.chars().take(16).collect();
 
@@ -163,9 +187,19 @@ pub(crate) async fn verify_api_key(
         .await
         .map_err(|_| unauthorized_error("Internal server error"))?;
 
-    for (key_id, site_id, stored_hash, expires_at, permissions) in keys {
-        if !bcrypt::verify(token, &stored_hash).unwrap_or(false) {
-            continue;
+    let token_hmac = compute_key_hmac(token, hmac_secret);
+
+    for (key_id, site_id, stored_hash, stored_hmac, expires_at, permissions) in keys {
+        // Fast path: compare HMAC-SHA256 (microseconds) instead of bcrypt (~100ms)
+        if let Some(ref stored) = stored_hmac {
+            if stored != &token_hmac {
+                continue;
+            }
+        } else {
+            // Legacy: fall back to bcrypt for keys created before HMAC was added
+            if !bcrypt::verify(token, &stored_hash).unwrap_or(false) {
+                continue;
+            }
         }
 
         if let Some(exp) = expires_at {
@@ -182,6 +216,24 @@ pub(crate) async fn verify_api_key(
     }
 
     Err(unauthorized_error("Invalid API key"))
+}
+
+pub fn verify_csrf(parts: &Parts, config: &Config) -> Result<(), (StatusCode, String)> {
+    if !config.cookie_secure {
+        return Ok(());
+    }
+
+    let csrf_cookie = extract_cookie_value(parts, "csrf")
+        .ok_or((StatusCode::FORBIDDEN, "Missing CSRF cookie".to_string()))?;
+
+    let csrf_header = extract_csrf_token(parts)
+        .ok_or((StatusCode::FORBIDDEN, "Missing CSRF token".to_string()))?;
+
+    if csrf_cookie != csrf_header {
+        return Err((StatusCode::FORBIDDEN, "CSRF token mismatch".to_string()));
+    }
+
+    Ok(())
 }
 
 pub async fn check_read_access_repo(
@@ -332,5 +384,22 @@ mod tests {
             permissions: "read".to_string(),
         };
         assert_eq!(extract_user_id(&auth), None);
+    }
+
+    #[test]
+    fn test_compute_key_hmac_deterministic() {
+        let key = "cms_abcdefgh_1234567890123456789012";
+        let secret = "test-hmac-secret";
+        let h1 = compute_key_hmac(key, secret);
+        let h2 = compute_key_hmac(key, secret);
+        assert_eq!(h1, h2);
+    }
+
+    #[test]
+    fn test_compute_key_hmac_different_keys_produce_different_hmacs() {
+        let secret = "test-hmac-secret";
+        let h1 = compute_key_hmac("key1", secret);
+        let h2 = compute_key_hmac("key2", secret);
+        assert_ne!(h1, h2);
     }
 }
