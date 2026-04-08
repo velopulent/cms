@@ -1,5 +1,5 @@
 use cms::config::Config;
-use cms::middleware::auth::{create_token, verify_token, check_read_access_repo, check_write_access_repo, AuthContext, extract_user_id};
+use cms::middleware::auth::{create_token, verify_token, check_read_access_repo, check_write_access_repo, AuthContext, extract_user_id, compute_key_hmac};
 use cms::repository::Repository;
 use cms::database::pool::DbPool;
 use sqlx::sqlite::SqlitePoolOptions;
@@ -45,9 +45,6 @@ fn test_verify_token_malformed_fails() {
 
 #[test]
 fn test_verify_token_expired_fails() {
-    // Tokens created by create_token expire in 24h so we can't easily test
-    // expiry in a unit test without mocking time. Verify that a freshly
-    // created token with correct secret succeeds.
     let token = create_token("user-1".to_string(), "s").unwrap();
     assert!(verify_token(&token, "s").is_ok());
 }
@@ -61,6 +58,23 @@ fn test_extract_user_id_from_auth_context() {
     assert_eq!(extract_user_id(&api_ctx), None);
 }
 
+#[test]
+fn test_compute_key_hmac_deterministic() {
+    let key = "cms_abcdefgh_1234567890123456789012";
+    let secret = "test-hmac-secret";
+    let h1 = compute_key_hmac(key, secret);
+    let h2 = compute_key_hmac(key, secret);
+    assert_eq!(h1, h2);
+}
+
+#[test]
+fn test_compute_key_hmac_different_keys() {
+    let secret = "test-hmac-secret";
+    let h1 = compute_key_hmac("key1", secret);
+    let h2 = compute_key_hmac("key2", secret);
+    assert_ne!(h1, h2);
+}
+
 #[tokio::test]
 async fn test_check_read_access_with_jwt_viewer_role() {
     let (_pool, repo) = setup_test_db().await;
@@ -68,7 +82,6 @@ async fn test_check_read_access_with_jwt_viewer_role() {
     repo.site.create("s1", "Site", "filesystem", "u1").await.unwrap();
 
     let auth = AuthContext::Jwt { user_id: "u1".to_string() };
-    // site.create gives u1 the "owner" role, which satisfies "viewer"
     let result = check_read_access_repo(&auth, &repo, "s1").await;
     assert!(result.is_ok());
 }
@@ -80,7 +93,6 @@ async fn test_check_read_access_with_jwt_no_membership() {
     repo.user.create("u2", "bob", "bob@t.com", "h").await.unwrap();
     repo.site.create("s1", "Site", "filesystem", "u1").await.unwrap();
 
-    // bob has no membership in s1
     let auth = AuthContext::Jwt { user_id: "u2".to_string() };
     let result = check_read_access_repo(&auth, &repo, "s1").await;
     assert!(result.is_err());
@@ -168,6 +180,13 @@ fn test_config_has_s3() {
         s3_public_url: None,
         max_upload_size_bytes: 50 * 1024 * 1024,
         cookie_secure: false,
+        db_max_connections: 10,
+        db_min_connections: 2,
+        db_acquire_timeout_secs: 30,
+        db_idle_timeout_secs: 600,
+        rate_limit_max_requests: 100,
+        rate_limit_window_secs: 60,
+        hmac_secret: "hmac".into(),
     };
     assert!(with_s3.has_s3());
 
@@ -184,6 +203,13 @@ fn test_config_has_s3() {
         s3_public_url: None,
         max_upload_size_bytes: 50 * 1024 * 1024,
         cookie_secure: false,
+        db_max_connections: 10,
+        db_min_connections: 2,
+        db_acquire_timeout_secs: 30,
+        db_idle_timeout_secs: 600,
+        rate_limit_max_requests: 100,
+        rate_limit_window_secs: 60,
+        hmac_secret: "hmac".into(),
     };
     assert!(!without_bucket.has_s3());
 }
