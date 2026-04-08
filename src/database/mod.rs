@@ -191,3 +191,128 @@ fn collect_file_ids(value: &serde_json::Value, re: &Regex, ids: &mut Vec<String>
         _ => {}
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use regex::Regex;
+
+    fn make_file_regex() -> Regex {
+        Regex::new(r"/api/files/([^/]+)(?:/thumbnail)?").unwrap()
+    }
+
+    #[test]
+    fn test_extract_file_ids_from_string_with_single_file() {
+        let re = make_file_regex();
+        let value = serde_json::Value::String("/api/files/file123".to_string());
+        let ids = extract_file_ids_from_value(&value, &re);
+        assert_eq!(ids, vec!["file123"]);
+    }
+
+    #[test]
+    fn test_extract_file_ids_from_string_with_thumbnail() {
+        let re = make_file_regex();
+        let value = serde_json::Value::String("/api/files/file123/thumbnail".to_string());
+        let ids = extract_file_ids_from_value(&value, &re);
+        assert_eq!(ids, vec!["file123"]);
+    }
+
+    #[test]
+    fn test_extract_file_ids_from_string_with_multiple_files() {
+        let re = make_file_regex();
+        let value = serde_json::Value::String("/api/files/file1/path /api/files/file2/path".to_string());
+        let ids = extract_file_ids_from_value(&value, &re);
+        assert_eq!(ids, vec!["file1", "file2"]);
+    }
+
+    #[test]
+    fn test_extract_file_ids_from_array() {
+        let re = make_file_regex();
+        let value = serde_json::json!([
+            "/api/files/file1",
+            "/api/files/file2"
+        ]);
+        let ids = extract_file_ids_from_value(&value, &re);
+        assert_eq!(ids, vec!["file1", "file2"]);
+    }
+
+    #[test]
+    fn test_extract_file_ids_from_object() {
+        let re = make_file_regex();
+        let value = serde_json::json!({
+            "image": "/api/files/file1",
+            "thumbnail": "/api/files/file2/thumbnail"
+        });
+        let ids = extract_file_ids_from_value(&value, &re);
+        assert_eq!(ids, vec!["file1", "file2"]);
+    }
+
+    #[test]
+    fn test_extract_file_ids_deduplicates() {
+        let re = make_file_regex();
+        let value = serde_json::Value::String(
+            "/api/files/file1/path /api/files/file1/other".to_string()
+        );
+        let ids = extract_file_ids_from_value(&value, &re);
+        assert_eq!(ids, vec!["file1"]);
+    }
+
+    #[test]
+    fn test_extract_file_ids_nested_structure() {
+        let re = make_file_regex();
+        let value = serde_json::json!({
+            "hero": {
+                "image": "/api/files/hero-img",
+                "gallery": [
+                    "/api/files/img1",
+                    "/api/files/img2"
+                ]
+            }
+        });
+        let ids = extract_file_ids_from_value(&value, &re);
+        assert_eq!(ids, vec!["hero-img", "img1", "img2"]);
+    }
+
+    #[test]
+    fn test_extract_file_ids_no_matches() {
+        let re = make_file_regex();
+        let value = serde_json::Value::String("no file URLs here".to_string());
+        let ids = extract_file_ids_from_value(&value, &re);
+        assert!(ids.is_empty());
+    }
+
+    #[test]
+    fn test_extract_file_ids_non_string_values() {
+        let re = make_file_regex();
+        let value = serde_json::json!({
+            "count": 42,
+            "active": true,
+            "data": null
+        });
+        let ids = extract_file_ids_from_value(&value, &re);
+        assert!(ids.is_empty());
+    }
+
+    #[test]
+    fn test_collect_file_ids_empty_array() {
+        let re = make_file_regex();
+        let value = serde_json::Value::Array(vec![]);
+        let mut ids = Vec::new();
+        collect_file_ids(&value, &re, &mut ids);
+        assert!(ids.is_empty());
+    }
+
+    #[test]
+    fn test_collect_file_ids_mixed_array() {
+        let re = make_file_regex();
+        let value = serde_json::json!([
+            "/api/files/file1",
+            123,
+            "/api/files/file2",
+            null
+        ]);
+        let mut ids = Vec::new();
+        collect_file_ids(&value, &re, &mut ids);
+        assert_eq!(ids, vec!["file1", "file2"]);
+    }
+}
