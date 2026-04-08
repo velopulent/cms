@@ -27,3 +27,34 @@ impl From<sqlx::Error> for RepositoryError {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_error_display_messages() {
+        assert_eq!(RepositoryError::NotFound.to_string(), "Record not found");
+        assert_eq!(
+            RepositoryError::UniqueViolation("email_idx".into()).to_string(),
+            "Unique constraint violated: email_idx"
+        );
+        assert_eq!(
+            RepositoryError::Database("connection refused".into()).to_string(),
+            "Database error: connection refused"
+        );
+        assert_eq!(
+            RepositoryError::UniqueViolation(String::new()).to_string(),
+            "Unique constraint violated: "
+        );
+    }
+
+    #[test]
+    fn test_error_debug_format() {
+        assert!(format!("{:?}", RepositoryError::NotFound).contains("NotFound"));
+        assert!(
+            format!("{:?}", RepositoryError::UniqueViolation("x".into()))
+                .contains("UniqueViolation")
+        );
+    }
+}
