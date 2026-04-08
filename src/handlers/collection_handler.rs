@@ -301,3 +301,142 @@ fn compute_field_rename_map(
 
     rename_map
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_compute_field_rename_map_no_changes() {
+        let old_def = serde_json::json!({
+            "fields": [
+                {"name": "title", "type": "text", "required": true}
+            ]
+        });
+        let new_def = serde_json::json!({
+            "fields": [
+                {"name": "title", "type": "text", "required": true}
+            ]
+        });
+        let result = compute_field_rename_map(&old_def, &new_def);
+        assert!(result.is_empty());
+    }
+
+    #[test]
+    fn test_compute_field_rename_map_simple_rename() {
+        let old_def = serde_json::json!({
+            "fields": [
+                {"name": "old_name", "type": "text", "required": true}
+            ]
+        });
+        let new_def = serde_json::json!({
+            "fields": [
+                {"name": "new_name", "type": "text", "required": true}
+            ]
+        });
+        let result = compute_field_rename_map(&old_def, &new_def);
+        assert_eq!(result.get("old_name"), Some(&"new_name".to_string()));
+    }
+
+    #[test]
+    fn test_compute_field_rename_map_type_mismatch_no_rename() {
+        let old_def = serde_json::json!({
+            "fields": [
+                {"name": "field", "type": "text", "required": true}
+            ]
+        });
+        let new_def = serde_json::json!({
+            "fields": [
+                {"name": "renamed", "type": "number", "required": true}
+            ]
+        });
+        let result = compute_field_rename_map(&old_def, &new_def);
+        assert!(result.is_empty());
+    }
+
+    #[test]
+    fn test_compute_field_rename_map_required_mismatch_no_rename() {
+        let old_def = serde_json::json!({
+            "fields": [
+                {"name": "field", "type": "text", "required": true}
+            ]
+        });
+        let new_def = serde_json::json!({
+            "fields": [
+                {"name": "renamed", "type": "text", "required": false}
+            ]
+        });
+        let result = compute_field_rename_map(&old_def, &new_def);
+        assert!(result.is_empty());
+    }
+
+    #[test]
+    fn test_compute_field_rename_map_options_mismatch_no_rename() {
+        let old_def = serde_json::json!({
+            "fields": [
+                {"name": "field", "type": "select", "required": true, "options": ["a", "b"]}
+            ]
+        });
+        let new_def = serde_json::json!({
+            "fields": [
+                {"name": "renamed", "type": "select", "required": true, "options": ["a", "b", "c"]}
+            ]
+        });
+        let result = compute_field_rename_map(&old_def, &new_def);
+        assert!(result.is_empty());
+    }
+
+    #[test]
+    fn test_compute_field_rename_map_multiple_fields() {
+        let old_def = serde_json::json!({
+            "fields": [
+                {"name": "title", "type": "text", "required": true},
+                {"name": "body", "type": "richtext", "required": false}
+            ]
+        });
+        let new_def = serde_json::json!({
+            "fields": [
+                {"name": "heading", "type": "text", "required": true},
+                {"name": "content", "type": "richtext", "required": false}
+            ]
+        });
+        let result = compute_field_rename_map(&old_def, &new_def);
+        assert_eq!(result.get("title"), Some(&"heading".to_string()));
+        assert_eq!(result.get("body"), Some(&"content".to_string()));
+    }
+
+    #[test]
+    fn test_compute_field_rename_map_unordered_matching() {
+        let old_def = serde_json::json!({
+            "fields": [
+                {"name": "first", "type": "text", "required": true},
+                {"name": "second", "type": "text", "required": true}
+            ]
+        });
+        let new_def = serde_json::json!({
+            "fields": [
+                {"name": "first_renamed", "type": "text", "required": true},
+                {"name": "second_renamed", "type": "text", "required": true}
+            ]
+        });
+        let result = compute_field_rename_map(&old_def, &new_def);
+        assert_eq!(result.get("first"), Some(&"first_renamed".to_string()));
+        assert_eq!(result.get("second"), Some(&"second_renamed".to_string()));
+    }
+
+    #[test]
+    fn test_compute_field_rename_map_empty_fields() {
+        let old_def = serde_json::json!({"fields": []});
+        let new_def = serde_json::json!({"fields": []});
+        let result = compute_field_rename_map(&old_def, &new_def);
+        assert!(result.is_empty());
+    }
+
+    #[test]
+    fn test_compute_field_rename_map_missing_fields_key() {
+        let old_def = serde_json::json!({});
+        let new_def = serde_json::json!({"fields": [{"name": "test", "type": "text"}]});
+        let result = compute_field_rename_map(&old_def, &new_def);
+        assert!(result.is_empty());
+    }
+}
