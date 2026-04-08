@@ -53,7 +53,7 @@ pub trait CollectionRepository: Send + Sync {
 pub trait ContentRepository: Send + Sync {
     async fn get_by_id(&self, id: &str, site_id: &str, published_only: bool) -> Result<Option<Content>, RepositoryError>;
     async fn get_by_id_any_site(&self, id: &str) -> Result<Option<Content>, RepositoryError>;
-    async fn list(&self, params: ListContentParams<'_>) -> Result<Vec<Content>, RepositoryError>;
+    async fn list(&self, params: ListContentParams<'_>) -> Result<ContentListResult, RepositoryError>;
     async fn get_by_collection_id(&self, collection_id: &str, status: Option<&str>, published_only: bool) -> Result<Vec<Content>, RepositoryError>;
     async fn create(&self, id: &str, site_id: &str, collection_id: &str, data: &str, slug: &str) -> Result<Content, RepositoryError>;
     async fn update(&self, id: &str, data: &str, slug: &str, status: &str) -> Result<Content, RepositoryError>;
@@ -71,6 +71,15 @@ pub struct ListContentParams<'a> {
     pub status: Option<&'a str>,
     pub search: Option<&'a str>,
     pub published_only: bool,
+    pub page: i64,
+    pub per_page: i64,
+}
+
+pub struct ContentListResult {
+    pub items: Vec<Content>,
+    pub total: i64,
+    pub page: i64,
+    pub per_page: i64,
 }
 
 #[derive(Clone)]
@@ -100,6 +109,7 @@ pub trait FileRepository: Send + Sync {
     async fn restore(&self, id: &str, site_id: &str) -> Result<u64, RepositoryError>;
     async fn batch_soft_delete(&self, site_id: &str, ids: &[String]) -> Result<u64, RepositoryError>;
     async fn batch_restore(&self, site_id: &str, ids: &[String]) -> Result<u64, RepositoryError>;
+    async fn get_by_ids(&self, site_id: &str, ids: &[String]) -> Result<Vec<File>, RepositoryError>;
     async fn get_deleted_by_ids(&self, site_id: &str, ids: &[String]) -> Result<Vec<File>, RepositoryError>;
     async fn batch_permanent_delete(&self, site_id: &str, ids: &[String]) -> Result<u64, RepositoryError>;
     async fn get_references(&self, file_id: &str) -> Result<Vec<FileReference>, RepositoryError>;
@@ -110,8 +120,8 @@ pub trait FileRepository: Send + Sync {
 #[async_trait]
 pub trait ApiKeyRepository: Send + Sync {
     async fn list(&self, site_id: &str) -> Result<Vec<ApiKey>, RepositoryError>;
-    async fn create(&self, id: &str, site_id: &str, name: &str, key_hash: &str, key_prefix: &str, permissions: &str) -> Result<(), RepositoryError>;
+    async fn create(&self, id: &str, site_id: &str, name: &str, key_hash: &str, key_prefix: &str, key_hmac: &str, permissions: &str) -> Result<(), RepositoryError>;
     async fn delete(&self, id: &str, site_id: &str) -> Result<u64, RepositoryError>;
-    async fn find_by_prefix(&self, prefix: &str) -> Result<Vec<(String, String, String, Option<String>, String)>, RepositoryError>;
+    async fn find_by_prefix(&self, prefix: &str) -> Result<Vec<(String, String, String, Option<String>, Option<String>, String)>, RepositoryError>;
     async fn update_last_used(&self, id: &str) -> Result<(), RepositoryError>;
 }
