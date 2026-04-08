@@ -1,6 +1,7 @@
 use cms::database::pool::DbPool;
 use cms::repository::Repository;
 use cms::repository::error::RepositoryError;
+use cms::repository::traits::ListContentParams;
 use sqlx::sqlite::SqlitePoolOptions;
 
 async fn setup_test_db() -> (DbPool, Repository) {
@@ -69,7 +70,6 @@ async fn test_user_roles() {
     repo.user.create("u1", "alice", "alice@test.com", "hash").await.unwrap();
     repo.site.create("s1", "Test Site", "filesystem", "u1").await.unwrap();
 
-    // site.create already adds the creator as owner
     let role = repo.user.get_role("u1", "s1").await.unwrap();
     assert_eq!(role, Some("owner".to_string()));
 
@@ -105,14 +105,12 @@ async fn test_site_memberships() {
     repo.user.create("u1", "owner", "owner@test.com", "h").await.unwrap();
     repo.user.create("u2", "editor", "editor@test.com", "h").await.unwrap();
 
-    // site.create adds u1 as owner automatically
     repo.site.create("s1", "Site", "filesystem", "u1").await.unwrap();
     repo.site.add_member("m2", "s1", "u2", "editor").await.unwrap();
 
     let members = repo.site.list_members("s1").await.unwrap();
     assert_eq!(members.len(), 2);
 
-    // duplicate member should fail
     let dup = repo.site.add_member("m3", "s1", "u2", "viewer").await;
     assert!(matches!(dup, Err(RepositoryError::UniqueViolation(_))));
 
@@ -129,7 +127,6 @@ async fn test_site_list_for_user() {
     let (_pool, repo) = setup_test_db().await;
 
     repo.user.create("u1", "alice", "alice@test.com", "h").await.unwrap();
-    // site.create adds u1 as owner automatically
     repo.site.create("s1", "Site A", "filesystem", "u1").await.unwrap();
 
     let sites = repo.site.list_for_user("u1").await.unwrap();
@@ -263,6 +260,48 @@ async fn test_content_not_found_errors() {
 }
 
 #[tokio::test]
+async fn test_content_list_with_pagination() {
+    let (_pool, repo) = setup_test_db().await;
+
+    repo.user.create("u1", "alice", "alice@test.com", "h").await.unwrap();
+    repo.site.create("s1", "Site", "filesystem", "u1").await.unwrap();
+    repo.collection.create("c1", "s1", "Posts", "posts", "{}", false).await.unwrap();
+
+    for i in 0..5 {
+        repo.content.create(&format!("ct{}", i), "s1", "c1", &format!(r#"{{"title":"Post {}"}}"#, i), &format!("post-{}", i)).await.unwrap();
+    }
+
+    let params = ListContentParams {
+        site_id: "s1",
+        collection_slug: None,
+        collection_id: None,
+        status: None,
+        search: None,
+        published_only: false,
+        page: 1,
+        per_page: 3,
+    };
+    let result = repo.content.list(params).await.unwrap();
+    assert_eq!(result.items.len(), 3);
+    assert_eq!(result.total, 5);
+    assert_eq!(result.page, 1);
+    assert_eq!(result.per_page, 3);
+
+    let params_page2 = ListContentParams {
+        site_id: "s1",
+        collection_slug: None,
+        collection_id: None,
+        status: None,
+        search: None,
+        published_only: false,
+        page: 2,
+        per_page: 3,
+    };
+    let result2 = repo.content.list(params_page2).await.unwrap();
+    assert_eq!(result2.items.len(), 2);
+}
+
+#[tokio::test]
 async fn test_file_crud() {
     let (_pool, repo) = setup_test_db().await;
 
@@ -310,7 +349,6 @@ async fn test_file_batch_operations() {
     let restored = repo.file.batch_restore("s1", &["f1".into(), "f2".into()]).await.unwrap();
     assert_eq!(restored, 2);
 
-    // soft-delete again before permanent delete
     repo.file.batch_soft_delete("s1", &["f1".into(), "f2".into()]).await.unwrap();
     let perm_deleted = repo.file.batch_permanent_delete("s1", &["f1".into(), "f2".into()]).await.unwrap();
     assert_eq!(perm_deleted, 2);
@@ -337,7 +375,7 @@ async fn test_api_key_crud() {
     repo.user.create("u1", "alice", "alice@test.com", "h").await.unwrap();
     repo.site.create("s1", "Site", "filesystem", "u1").await.unwrap();
 
-    repo.api_key.create("k1", "s1", "My Key", "hashed_key", "cms_abc12345", "read").await.unwrap();
+    repo.api_key.create("k1", "s1", "My Key", "hashed_key", "cms_abc12345", "hmac_hash_value", "read").await.unwrap();
 
     let keys = repo.api_key.list("s1").await.unwrap();
     assert_eq!(keys.len(), 1);
@@ -355,12 +393,29 @@ async fn test_api_key_find_by_prefix() {
     repo.user.create("u1", "alice", "alice@test.com", "h").await.unwrap();
     repo.site.create("s1", "Site", "filesystem", "u1").await.unwrap();
 
-    repo.api_key.create("k1", "s1", "Key1", "hashed1", "cms_abc12345", "read").await.unwrap();
+    repo.api_key.create("k1", "s1", "Key1", "hashed1", "cms_abc12345", "hmac1", "read").await.unwrap();
 
     let found = repo.api_key.find_by_prefix("cms_abc12345").await.unwrap();
     assert_eq!(found.len(), 1);
     assert_eq!(found[0].0, "k1");
+    assert_eq!(found[0].2, "hashed1");
+    assert_eq!(found[0].3, Some("hmac1".to_string()));
 
     let empty = repo.api_key.find_by_prefix("cms_nonexist").await.unwrap();
     assert!(empty.is_empty());
+}
+
+#[tokio::test]
+async fn test_content_sync_file_references() {
+    let (_pool, repo) = setup_test_db().await;
+
+    repo.user.create("u1", "alice", "alice@test.com", "h").await.unwrap();
+    repo.site.create("s1", "Site", "filesystem", "u1").await.unwrap();
+    repo.collection.create("c1", "s1", "Posts", "posts", "{}", false).await.unwrap();
+    repo.file.create("f1", "s1", "img.jpg", "photo.jpg", "image/jpeg", 2048, "filesystem", "key1", None, None, None, Some("u1")).await.unwrap();
+    repo.content.create("ct1", "s1", "c1", r#"{"image":"/api/files/f1"}"#, "hello").await.unwrap();
+
+    let data = serde_json::json!({"image": "/api/files/f1"});
+    let result = repo.content.sync_file_references("ct1", "s1", &data).await;
+    assert!(result.is_ok(), "sync_file_references failed: {:?}", result.err());
 }
