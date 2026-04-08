@@ -7,7 +7,8 @@ use axum::{
 use serde_json::json;
 use uuid::Uuid;
 
-use crate::middleware::auth::AuthenticatedUser;
+use crate::middleware::auth::{AuthenticatedUser, check_site_access_repo};
+use crate::repository::error::RepositoryError;
 use crate::models::site::{
     CreateSite, InviteMember, UpdateMemberRole, UpdateSite,
 };
@@ -212,7 +213,7 @@ pub async fn invite_member(
 
     match repository.site.add_member(&member_id, &site_id, &user_id, &payload.role).await {
         Ok(member) => (StatusCode::CREATED, Json(member)).into_response(),
-        Err(crate::repository::error::RepositoryError::UniqueViolation(_)) => (
+        Err(RepositoryError::UniqueViolation(_)) => (
             StatusCode::CONFLICT,
             Json(json!({"error": "User is already a member of this site"})),
         )
@@ -288,41 +289,5 @@ pub async fn remove_member(
             Json(json!({"error": err.to_string()})),
         )
             .into_response(),
-    }
-}
-
-pub async fn check_site_access_repo(
-    repository: &Repository,
-    user_id: &str,
-    site_id: &str,
-    min_role: &str,
-) -> Result<(), (StatusCode, serde_json::Value)> {
-    let role_order = |r: &str| match r {
-        "owner" => 4,
-        "admin" => 3,
-        "editor" => 2,
-        "viewer" => 1,
-        _ => 0,
-    };
-
-    let min_level = role_order(min_role);
-
-    let role = repository.user.get_role(user_id, site_id).await.map_err(|e| {
-        (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            serde_json::json!({"error": e.to_string()}),
-        )
-    })?;
-
-    match role {
-        Some(r) if role_order(&r) >= min_level => Ok(()),
-        Some(_) => Err((
-            StatusCode::FORBIDDEN,
-            serde_json::json!({"error": "Insufficient permissions"}),
-        )),
-        None => Err((
-            StatusCode::NOT_FOUND,
-            serde_json::json!({"error": "Site not found"}),
-        )),
     }
 }
