@@ -105,7 +105,7 @@ pub async fn get_singleton(
 
             if let Some(ref data) = response.data {
                 let resolved =
-                    resolve_content_files_from_value(data, &repository, &storage).await;
+                    resolve_content_files_from_value(data, &repository, &storage, &item.site_id).await;
                 response.data = Some(resolved);
             }
 
