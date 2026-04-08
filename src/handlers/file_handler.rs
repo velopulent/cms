@@ -357,18 +357,42 @@ pub async fn upload_file(
     let mut thumbnail_key: Option<String> = None;
 
     if mime_type.starts_with("image/") {
-        if let Ok(reader) = ImageReader::new(Cursor::new(&file_data)).with_guessed_format() {
-            if let Ok(img) = reader.decode() {
-                width = Some(img.width() as i32);
-                height = Some(img.height() as i32);
+        let data_clone = file_data.clone();
+        let file_id_owned = file_id.clone();
+        let site_id_owned = site_id.clone();
 
-                if let Some((thumb_bytes, thumb_mime)) = generate_thumbnail(&img) {
-                    let thumb_key =
-                        format!("s_{}/f_{}/thumb_{}.avif", site_id, file_id, &file_id[..8]);
-                    thumbnail_data = Some((thumb_bytes, thumb_mime));
-                    thumbnail_key = Some(thumb_key);
+        let result = tokio::task::spawn_blocking(move || {
+            let mut w: Option<i32> = None;
+            let mut h: Option<i32> = None;
+            let mut tdata: Option<(Vec<u8>, String)> = None;
+            let mut tkey: Option<String> = None;
+
+            if let Ok(reader) = ImageReader::new(Cursor::new(&data_clone)).with_guessed_format() {
+                if let Ok(img) = reader.decode() {
+                    w = Some(img.width() as i32);
+                    h = Some(img.height() as i32);
+
+                    if let Some((thumb_bytes, thumb_mime)) = generate_thumbnail(&img) {
+                        tkey = Some(format!(
+                            "s_{}/f_{}/thumb_{}.avif",
+                            site_id_owned,
+                            file_id_owned,
+                            &file_id_owned[..8]
+                        ));
+                        tdata = Some((thumb_bytes, thumb_mime));
+                    }
                 }
             }
+
+            (w, h, tdata, tkey)
+        })
+        .await;
+
+        if let Ok((w, h, tdata, tkey)) = result {
+            width = w;
+            height = h;
+            thumbnail_data = tdata;
+            thumbnail_key = tkey;
         }
     }
 
@@ -804,16 +828,24 @@ async fn serve_file_by_key(
                 HeaderValue::from_str(content_type)
                     .unwrap_or(HeaderValue::from_static("application/octet-stream")),
             );
-            if !use_thumbnail {
+            headers.insert(
+                header::CONTENT_LENGTH,
+                HeaderValue::from(bytes.len() as u64),
+            );
+            if use_thumbnail {
                 headers.insert(
-                    header::CONTENT_DISPOSITION,
-                    HeaderValue::from_str(&format!("inline; filename=\"{}\"", file.original_name))
-                        .unwrap_or(HeaderValue::from_static("inline")),
+                    header::CACHE_CONTROL,
+                    HeaderValue::from_static("public, max-age=31536000, immutable"),
                 );
             } else {
                 headers.insert(
                     header::CACHE_CONTROL,
-                    HeaderValue::from_static("public, max-age=31536000, immutable"),
+                    HeaderValue::from_static("public, max-age=3600"),
+                );
+                headers.insert(
+                    header::CONTENT_DISPOSITION,
+                    HeaderValue::from_str(&format!("inline; filename=\"{}\"", file.original_name))
+                        .unwrap_or(HeaderValue::from_static("inline")),
                 );
             }
             (StatusCode::OK, headers, Body::from(bytes)).into_response()
