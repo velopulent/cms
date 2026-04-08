@@ -19,8 +19,7 @@ impl SqliteApiKeyRepository {
 impl ApiKeyRepository for SqliteApiKeyRepository {
     async fn list(&self, site_id: &str) -> Result<Vec<ApiKey>, RepositoryError> {
         let result = sqlx::query_as::<_, ApiKey>(
-            "SELECT id, site_id, name, key_prefix, permissions, last_used_at, created_at, expires_at
-             FROM api_keys WHERE site_id = ? ORDER BY created_at DESC",
+            "SELECT id, site_id, name, key_prefix, permissions, last_used_at, created_at, expires_at FROM api_keys WHERE site_id = ? ORDER BY created_at DESC",
         )
         .bind(site_id)
         .fetch_all(&self.pool)
@@ -36,16 +35,18 @@ impl ApiKeyRepository for SqliteApiKeyRepository {
         name: &str,
         key_hash: &str,
         key_prefix: &str,
+        key_hmac: &str,
         permissions: &str,
     ) -> Result<(), RepositoryError> {
         sqlx::query(
-            "INSERT INTO api_keys (id, site_id, name, key_hash, key_prefix, permissions) VALUES (?, ?, ?, ?, ?, ?)",
+            "INSERT INTO api_keys (id, site_id, name, key_hash, key_prefix, key_hmac, permissions) VALUES (?, ?, ?, ?, ?, ?, ?)",
         )
         .bind(id)
         .bind(site_id)
         .bind(name)
         .bind(key_hash)
         .bind(key_prefix)
+        .bind(key_hmac)
         .bind(permissions)
         .execute(&self.pool)
         .await?;
@@ -66,9 +67,9 @@ impl ApiKeyRepository for SqliteApiKeyRepository {
     async fn find_by_prefix(
         &self,
         prefix: &str,
-    ) -> Result<Vec<(String, String, String, Option<String>, String)>, RepositoryError> {
-        let result = sqlx::query_as::<_, (String, String, String, Option<String>, String)>(
-            "SELECT id, site_id, key_hash, expires_at, permissions FROM api_keys WHERE key_prefix = ?",
+    ) -> Result<Vec<(String, String, String, Option<String>, Option<String>, String)>, RepositoryError> {
+        let result = sqlx::query_as::<_, (String, String, String, Option<String>, Option<String>, String)>(
+            "SELECT id, site_id, key_hash, key_hmac, expires_at, permissions FROM api_keys WHERE key_prefix = ?",
         )
         .bind(prefix)
         .fetch_all(&self.pool)
