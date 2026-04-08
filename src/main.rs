@@ -1,19 +1,27 @@
 use cms::config::Config;
-use cms::database::init_db;
+use cms::database::init_db_with_config;
 use cms::handlers::file_handler::StorageManager;
 use cms::repository::Repository;
 use cms::router::create_router;
 use cms::storage;
 
-use bcrypt::{DEFAULT_COST, hash};
+use tracing::{info, warn};
 use uuid::Uuid;
-use std::net::SocketAddr;
 
 #[tokio::main]
 async fn main() {
+    tracing_subscriber::fmt()
+        .with_env_filter(
+            tracing_subscriber::EnvFilter::try_from_default_env()
+                .unwrap_or_else(|_| "cms=info,tower_http=info".into()),
+        )
+        .init();
+
     let config = Config::from_env();
 
-    let pool = init_db(&config.database_url).await.expect("Failed to initialize database");
+    let pool = init_db_with_config(&config)
+        .await
+        .expect("Failed to initialize database");
 
     let repository = Repository::new(&pool);
 
@@ -28,9 +36,9 @@ async fn main() {
         match storage::FileSystemStorage::new(fs_path) {
             Ok(fs) => {
                 storage_manager.filesystem = Some(fs);
-                println!("Filesystem storage initialized at {}", fs_path);
+                info!("Filesystem storage initialized at {}", fs_path);
             }
-            Err(e) => eprintln!("Failed to init filesystem storage: {}", e),
+            Err(e) => warn!("Failed to init filesystem storage: {}", e),
         }
     }
 
@@ -45,36 +53,69 @@ async fn main() {
         ) {
             Ok(s3) => {
                 storage_manager.s3 = Some(s3);
-                println!("S3 storage initialized");
+                info!("S3 storage initialized");
             }
-            Err(e) => eprintln!("Failed to init S3 storage: {}", e),
+            Err(e) => warn!("Failed to init S3 storage: {}", e),
         }
     }
 
     if !storage_manager.has_any() {
-        eprintln!(
-            "WARNING: No storage providers configured. Set STORAGE_FS_PATH or S3_* env vars."
-        );
+        warn!("No storage providers configured. Set STORAGE_FS_PATH or S3_* env vars.");
     }
 
     let app = create_router(repository, config.clone(), storage_manager);
 
-    let addr: SocketAddr = config.bind_address.parse().expect("Invalid BIND_ADDRESS");
-    println!("Server running on {}", addr);
+    let addr: std::net::SocketAddr = config
+        .bind_address
+        .parse()
+        .expect("Invalid BIND_ADDRESS");
+    info!("Server running on {}", addr);
 
-    axum::serve(tokio::net::TcpListener::bind(addr).await.unwrap(), app)
+    let listener = tokio::net::TcpListener::bind(addr)
         .await
-        .unwrap();
+        .expect("Failed to bind address");
+
+    axum::serve(listener, app)
+        .with_graceful_shutdown(shutdown_signal())
+        .await
+        .expect("Server error");
 }
 
 async fn seed_admin(repository: &Repository) {
     if !repository.user.exists("admin").await.unwrap_or(false) {
         let id = Uuid::now_v7().to_string();
-        let password_hash = hash("admin", DEFAULT_COST).expect("Failed to hash password");
-        repository.user.create(&id, "admin", "admin@cms.local", &password_hash)
+        let password_hash =
+            bcrypt::hash("admin", bcrypt::DEFAULT_COST).expect("Failed to hash password");
+        repository
+            .user
+            .create(&id, "admin", "admin@cms.local", &password_hash)
             .await
             .expect("Failed to seed admin user");
 
-        println!("Seeded default admin user (admin/admin)");
+        warn!("Seeded default admin user (admin/admin) — CHANGE THE PASSWORD IMMEDIATELY!");
+    }
+}
+
+async fn shutdown_signal() {
+    let ctrl_c = async {
+        tokio::signal::ctrl_c()
+            .await
+            .expect("failed to install Ctrl+C handler");
+    };
+
+    #[cfg(unix)]
+    let terminate = async {
+        tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())
+            .expect("failed to install signal handler")
+            .recv()
+            .await;
+    };
+
+    #[cfg(not(unix))]
+    let terminate = std::future::pending::<()>();
+
+    tokio::select! {
+        _ = ctrl_c => info!("Received Ctrl+C, shutting down..."),
+        _ = terminate => info!("Received SIGTERM, shutting down..."),
     }
 }
