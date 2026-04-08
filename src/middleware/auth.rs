@@ -275,3 +275,62 @@ pub async fn check_site_access_repo(
         )),
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_create_and_verify_token() {
+        let user_id = "test-user-123";
+        let secret = "test-jwt-secret";
+
+        let token = create_token(user_id.to_string(), secret).expect("Token creation should succeed");
+        assert!(!token.is_empty());
+
+        let claims = verify_token(&token, secret).expect("Token verification should succeed");
+        assert_eq!(claims.sub, user_id);
+    }
+
+    #[test]
+    fn test_verify_token_with_wrong_secret() {
+        let user_id = "test-user-123";
+        let secret = "test-jwt-secret";
+        let wrong_secret = "wrong-secret";
+
+        let token = create_token(user_id.to_string(), secret).expect("Token creation should succeed");
+        let result = verify_token(&token, wrong_secret);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_verify_token_with_malformed_token() {
+        let secret = "test-jwt-secret";
+        let result = verify_token("not.a.valid.token", secret);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_verify_token_with_empty_token() {
+        let secret = "test-jwt-secret";
+        let result = verify_token("", secret);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_extract_user_id_from_jwt_context() {
+        let auth = AuthContext::Jwt {
+            user_id: "user123".to_string(),
+        };
+        assert_eq!(extract_user_id(&auth), Some("user123"));
+    }
+
+    #[test]
+    fn test_extract_user_id_from_api_key_context() {
+        let auth = AuthContext::ApiKey {
+            site_id: "site123".to_string(),
+            permissions: "read".to_string(),
+        };
+        assert_eq!(extract_user_id(&auth), None);
+    }
+}
