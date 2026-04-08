@@ -74,6 +74,7 @@ CREATE TABLE IF NOT EXISTS api_keys (
     name VARCHAR(255) NOT NULL,
     key_hash TEXT NOT NULL,
     key_prefix VARCHAR(50) NOT NULL,
+    key_hmac TEXT,
     permissions VARCHAR(20) NOT NULL DEFAULT 'read',
     last_used_at DATETIME,
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -83,6 +84,7 @@ CREATE TABLE IF NOT EXISTS api_keys (
 
 CREATE UNIQUE INDEX idx_api_keys_hash ON api_keys(key_hash);
 CREATE INDEX idx_api_keys_site ON api_keys(site_id);
+CREATE INDEX idx_api_keys_prefix ON api_keys(key_prefix);
 
 CREATE TABLE IF NOT EXISTS files (
     id VARCHAR(36) PRIMARY KEY NOT NULL,
