@@ -68,11 +68,15 @@ impl QueryRoot {
         status: Option<String>,
         r#type: Option<String>,
         search: Option<String>,
+        page: Option<i64>,
+        per_page: Option<i64>,
     ) -> Result<Vec<Content>> {
         let gql_ctx = ctx.data::<GqlContext>()?;
         let site_id = gql_ctx.require_site()?;
 
         let status_filter = status.as_deref();
+        let page_val = page.unwrap_or(1).max(1);
+        let per_page_val = per_page.unwrap_or(50).clamp(1, 200);
 
         let params = ListContentParams {
             site_id,
@@ -81,13 +85,15 @@ impl QueryRoot {
             status: status_filter,
             search: search.as_deref(),
             published_only: status_filter.is_none(),
+            page: page_val,
+            per_page: per_page_val,
         };
 
-        let items = gql_ctx.repository.content.list(params)
+        let result = gql_ctx.repository.content.list(params)
             .await
             .map_err(|e| async_graphql::Error::new(format!("Database error: {}", e)))?;
 
-        Ok(items
+        Ok(result.items
             .into_iter()
             .map(super::types::content::db_content_to_gql)
             .collect())
