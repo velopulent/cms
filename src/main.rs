@@ -1,41 +1,13 @@
-mod config;
-mod database;
-mod graphql;
-mod middleware {
-    pub mod auth;
-}
-mod models {
-    pub mod api_key;
-    pub mod collection;
-    pub mod content;
-    pub mod file;
-    pub mod site;
-    pub mod user;
-}
-mod handlers {
-    pub mod api_key_handler;
-    pub mod auth_handler;
-    pub mod collection_handler;
-    pub mod content_handler;
-    pub mod file_handler;
-    pub mod singleton_handler;
-    pub mod site_handler;
-    pub mod ui_handler;
-}
-mod repository;
-mod router;
-mod storage;
-
-use std::net::SocketAddr;
+use cms::config::Config;
+use cms::database::init_db;
+use cms::handlers::file_handler::StorageManager;
+use cms::repository::Repository;
+use cms::router::create_router;
+use cms::storage;
 
 use bcrypt::{DEFAULT_COST, hash};
 use uuid::Uuid;
-
-use config::Config;
-use database::init_db;
-use handlers::file_handler::StorageManager;
-use repository::Repository;
-use router::create_router;
+use std::net::SocketAddr;
 
 #[tokio::main]
 async fn main() {
