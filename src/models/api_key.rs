@@ -12,6 +12,8 @@ pub struct ApiKey {
     pub last_used_at: Option<String>,
     pub created_at: String,
     pub expires_at: Option<String>,
+    #[sqlx(skip)]
+    pub key_hmac: Option<String>,
 }
 
 #[derive(Deserialize, ToSchema)]
