@@ -223,6 +223,26 @@ impl FileRepository for PostgresFileRepository {
         Ok(result.rows_affected())
     }
 
+    async fn get_by_ids(&self, site_id: &str, ids: &[String]) -> Result<Vec<File>, RepositoryError> {
+        if ids.is_empty() {
+            return Ok(vec![]);
+        }
+
+        let placeholders: Vec<String> = ids.iter().enumerate().map(|(i, _)| format!("${}", i + 2)).collect();
+        let query = format!(
+            "SELECT id, site_id, filename, original_name, mime_type, size, storage_provider, storage_key, thumbnail_key, width, height, deleted_at::text as deleted_at, created_by, created_at::text as created_at FROM files WHERE site_id = $1 AND id IN ({})",
+            placeholders.join(",")
+        );
+
+        let mut q = sqlx::query_as::<_, File>(&query).bind(site_id);
+        for id in ids {
+            q = q.bind(id);
+        }
+
+        let result = q.fetch_all(&self.pool).await?;
+        Ok(result)
+    }
+
     async fn get_deleted_by_ids(&self, site_id: &str, ids: &[String]) -> Result<Vec<File>, RepositoryError> {
         if ids.is_empty() {
             return Ok(vec![]);

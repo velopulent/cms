@@ -6,7 +6,7 @@ use std::sync::LazyLock;
 
 use crate::models::content::Content;
 use crate::repository::error::RepositoryError;
-use crate::repository::traits::{ContentRepository, ListContentParams};
+use crate::repository::traits::{ContentListResult, ContentRepository, ListContentParams};
 
 pub struct PostgresContentRepository {
     pool: PgPool,
@@ -56,7 +56,12 @@ impl ContentRepository for PostgresContentRepository {
         Ok(result)
     }
 
-    async fn list(&self, params: ListContentParams<'_>) -> Result<Vec<Content>, RepositoryError> {
+    async fn list(&self, params: ListContentParams<'_>) -> Result<ContentListResult, RepositoryError> {
+        let mut count_query = String::from(
+            "SELECT COUNT(*) FROM content c
+             JOIN collections col ON c.collection_id = col.id
+             WHERE c.site_id = $1",
+        );
         let mut query = String::from(
             "SELECT c.id, c.site_id, c.collection_id, c.data::text as data, c.slug, c.status, c.created_at::text as created_at, c.updated_at::text as updated_at, c.published_at::text as published_at
              FROM content c
@@ -68,39 +73,62 @@ impl ContentRepository for PostgresContentRepository {
 
         if params.published_only {
             query.push_str(" AND c.status = 'published'");
+            count_query.push_str(" AND c.status = 'published'");
         }
 
         if let Some(collection_slug) = params.collection_slug {
             query.push_str(&format!(" AND col.slug = ${}", param_index));
+            count_query.push_str(&format!(" AND col.slug = ${}", param_index));
             bindings.push(collection_slug.to_string());
             param_index += 1;
         }
 
         if let Some(cid) = params.collection_id {
             query.push_str(&format!(" AND c.collection_id = ${}", param_index));
+            count_query.push_str(&format!(" AND c.collection_id = ${}", param_index));
             bindings.push(cid.to_string());
             param_index += 1;
         }
 
         if let Some(status) = params.status {
             query.push_str(&format!(" AND c.status = ${}", param_index));
+            count_query.push_str(&format!(" AND c.status = ${}", param_index));
             bindings.push(status.to_string());
+            param_index += 1;
         }
 
         if let Some(search) = params.search {
             query.push_str(&format!(" AND c.data LIKE ${}", param_index));
+            count_query.push_str(&format!(" AND c.data LIKE ${}", param_index));
             bindings.push(format!("%{}%", search));
+            param_index += 1;
         }
 
-        query.push_str(" ORDER BY c.updated_at DESC");
+        let total: i64 = {
+            let mut q = sqlx::query_scalar::<_, i64>(&count_query);
+            for b in &bindings {
+                q = q.bind(b);
+            }
+            q.fetch_one(&self.pool).await.unwrap_or(0)
+        };
+
+        let offset = (params.page - 1) * params.per_page;
+        query.push_str(&format!(" ORDER BY c.updated_at DESC LIMIT ${} OFFSET ${}", param_index, param_index + 1));
 
         let mut q = sqlx::query_as::<_, Content>(&query);
         for b in &bindings {
             q = q.bind(b);
         }
+        q = q.bind(params.per_page).bind(offset);
 
-        let result = q.fetch_all(&self.pool).await?;
-        Ok(result)
+        let items = q.fetch_all(&self.pool).await?;
+
+        Ok(ContentListResult {
+            items,
+            total,
+            page: params.page,
+            per_page: params.per_page,
+        })
     }
 
     async fn get_by_collection_id(
@@ -234,22 +262,26 @@ impl ContentRepository for PostgresContentRepository {
     ) -> Result<(), RepositoryError> {
         let file_ids = extract_file_ids_from_value(data);
 
+        let mut tx = self.pool.begin().await?;
+
         sqlx::query("DELETE FROM content_file_references WHERE content_id = $1")
             .bind(content_id)
-            .execute(&self.pool)
+            .execute(&mut *tx)
             .await?;
 
         for file_id in &file_ids {
             sqlx::query(
-                "INSERT INTO content_file_references (content_id, file_id, site_id) VALUES ($1, $2, $3) ON CONFLICT DO NOTHING",
+                "INSERT INTO content_file_references (content_id, file_id, site_id) SELECT $1, id, $2 FROM files WHERE id = $3 AND site_id = $4 ON CONFLICT DO NOTHING",
             )
             .bind(content_id)
+            .bind(site_id)
             .bind(file_id)
             .bind(site_id)
-            .execute(&self.pool)
+            .execute(&mut *tx)
             .await?;
         }
 
+        tx.commit().await?;
         Ok(())
     }
 }
