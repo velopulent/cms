@@ -6,7 +6,7 @@ use std::sync::LazyLock;
 
 use crate::models::content::Content;
 use crate::repository::error::RepositoryError;
-use crate::repository::traits::{ContentRepository, ListContentParams};
+use crate::repository::traits::{ContentListResult, ContentRepository, ListContentParams};
 
 pub struct MysqlContentRepository {
     pool: MySqlPool,
@@ -56,7 +56,12 @@ impl ContentRepository for MysqlContentRepository {
         Ok(result)
     }
 
-    async fn list(&self, params: ListContentParams<'_>) -> Result<Vec<Content>, RepositoryError> {
+    async fn list(&self, params: ListContentParams<'_>) -> Result<ContentListResult, RepositoryError> {
+        let mut count_query = String::from(
+            "SELECT COUNT(*) FROM content c
+             JOIN collections col ON c.collection_id = col.id
+             WHERE c.site_id = ?",
+        );
         let mut query = String::from(
             "SELECT c.id, c.site_id, c.collection_id, c.data, c.slug, c.status, c.created_at, c.updated_at, c.published_at
              FROM content c
@@ -67,37 +72,59 @@ impl ContentRepository for MysqlContentRepository {
 
         if params.published_only {
             query.push_str(" AND c.status = 'published'");
+            count_query.push_str(" AND c.status = 'published'");
         }
 
         if let Some(collection_slug) = params.collection_slug {
             query.push_str(" AND col.slug = ?");
+            count_query.push_str(" AND col.slug = ?");
             bindings.push(collection_slug.to_string());
         }
 
         if let Some(cid) = params.collection_id {
             query.push_str(" AND c.collection_id = ?");
+            count_query.push_str(" AND c.collection_id = ?");
             bindings.push(cid.to_string());
         }
 
         if let Some(status) = params.status {
             query.push_str(" AND c.status = ?");
+            count_query.push_str(" AND c.status = ?");
             bindings.push(status.to_string());
         }
 
         if let Some(search) = params.search {
             query.push_str(" AND c.data LIKE ?");
+            count_query.push_str(" AND c.data LIKE ?");
             bindings.push(format!("%{}%", search));
         }
 
-        query.push_str(" ORDER BY c.updated_at DESC");
+        let total: i64 = {
+            let count_bindings = bindings.clone();
+            let mut q = sqlx::query_scalar::<_, i64>(&count_query);
+            for b in &count_bindings {
+                q = q.bind(b);
+            }
+            q.fetch_one(&self.pool).await.unwrap_or(0)
+        };
+
+        let offset = (params.page - 1) * params.per_page;
+        query.push_str(" ORDER BY c.updated_at DESC LIMIT ? OFFSET ?");
 
         let mut q = sqlx::query_as::<_, Content>(&query);
         for b in &bindings {
             q = q.bind(b);
         }
+        q = q.bind(params.per_page).bind(offset);
 
-        let result = q.fetch_all(&self.pool).await?;
-        Ok(result)
+        let items = q.fetch_all(&self.pool).await?;
+
+        Ok(ContentListResult {
+            items,
+            total,
+            page: params.page,
+            per_page: params.per_page,
+        })
     }
 
     async fn get_by_collection_id(
@@ -230,22 +257,26 @@ impl ContentRepository for MysqlContentRepository {
     ) -> Result<(), RepositoryError> {
         let file_ids = extract_file_ids_from_value(data);
 
+        let mut tx = self.pool.begin().await?;
+
         sqlx::query("DELETE FROM content_file_references WHERE content_id = ?")
             .bind(content_id)
-            .execute(&self.pool)
+            .execute(&mut *tx)
             .await?;
 
         for file_id in &file_ids {
             sqlx::query(
-                "INSERT IGNORE INTO content_file_references (content_id, file_id, site_id) VALUES (?, ?, ?)",
+                "INSERT IGNORE INTO content_file_references (content_id, file_id, site_id) SELECT ?, id, ? FROM files WHERE id = ? AND site_id = ?",
             )
             .bind(content_id)
+            .bind(site_id)
             .bind(file_id)
             .bind(site_id)
-            .execute(&self.pool)
+            .execute(&mut *tx)
             .await?;
         }
 
+        tx.commit().await?;
         Ok(())
     }
 }

@@ -221,6 +221,26 @@ impl FileRepository for MysqlFileRepository {
         Ok(result.rows_affected())
     }
 
+    async fn get_by_ids(&self, site_id: &str, ids: &[String]) -> Result<Vec<File>, RepositoryError> {
+        if ids.is_empty() {
+            return Ok(vec![]);
+        }
+
+        let placeholders = ids.iter().map(|_| "?").collect::<Vec<_>>().join(",");
+        let query = format!(
+            "SELECT id, site_id, filename, original_name, mime_type, size, storage_provider, storage_key, thumbnail_key, width, height, deleted_at, created_by, created_at FROM files WHERE site_id = ? AND id IN ({})",
+            placeholders
+        );
+
+        let mut q = sqlx::query_as::<_, File>(&query).bind(site_id);
+        for id in ids {
+            q = q.bind(id);
+        }
+
+        let result = q.fetch_all(&self.pool).await?;
+        Ok(result)
+    }
+
     async fn get_deleted_by_ids(&self, site_id: &str, ids: &[String]) -> Result<Vec<File>, RepositoryError> {
         if ids.is_empty() {
             return Ok(vec![]);
