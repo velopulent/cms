@@ -821,3 +821,49 @@ async fn serve_file_by_key(
         Err(_) => (StatusCode::NOT_FOUND, "File not found in storage").into_response(),
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tempfile::TempDir;
+
+    #[test]
+    fn test_mime_to_ext_all_types() {
+        let cases = [
+            ("image/jpeg", "jpg"),
+            ("image/jpg", "jpg"),
+            ("image/png", "png"),
+            ("image/gif", "gif"),
+            ("image/webp", "webp"),
+            ("image/avif", "avif"),
+            ("image/svg+xml", "svg"),
+            ("video/mp4", "mp4"),
+            ("video/webm", "webm"),
+            ("application/pdf", "pdf"),
+            ("application/octet-stream", "bin"),
+            ("text/plain", "bin"),
+            ("", "bin"),
+        ];
+        for (mime, expected) in cases {
+            assert_eq!(mime_to_ext(mime), expected, "mime_to_ext({mime:?})");
+        }
+    }
+
+    #[test]
+    fn test_storage_manager_flags_no_storage() {
+        let sm = StorageManager { filesystem: None, s3: None };
+        assert!(!sm.has_s3());
+        assert!(!sm.has_any());
+    }
+
+    #[test]
+    fn test_storage_manager_flags_with_filesystem() {
+        let dir = TempDir::new().unwrap();
+        let sm = StorageManager {
+            filesystem: Some(crate::storage::FileSystemStorage::new(dir.path().to_str().unwrap()).unwrap()),
+            s3: None,
+        };
+        assert!(!sm.has_s3());
+        assert!(sm.has_any());
+    }
+}
