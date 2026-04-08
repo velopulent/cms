@@ -52,3 +52,95 @@ impl FileSystemStorage {
         Ok(())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tempfile::TempDir;
+
+    #[tokio::test]
+    async fn test_filesystem_storage_put_and_get() {
+        let temp_dir = TempDir::new().unwrap();
+        let storage = FileSystemStorage::new(temp_dir.path().to_str().unwrap()).unwrap();
+
+        let data = Bytes::from("Hello, World!");
+        storage.put("test.txt", data.clone(), "text/plain").await.unwrap();
+
+        let retrieved = storage.get("test.txt").await.unwrap();
+        assert_eq!(retrieved, data);
+    }
+
+    #[tokio::test]
+    async fn test_filesystem_storage_put_and_delete() {
+        let temp_dir = TempDir::new().unwrap();
+        let storage = FileSystemStorage::new(temp_dir.path().to_str().unwrap()).unwrap();
+
+        let data = Bytes::from("Hello, World!");
+        storage.put("test.txt", data, "text/plain").await.unwrap();
+
+        storage.delete("test.txt").await.unwrap();
+
+        let result = storage.get("test.txt").await;
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_filesystem_storage_get_nonexistent() {
+        let temp_dir = TempDir::new().unwrap();
+        let storage = FileSystemStorage::new(temp_dir.path().to_str().unwrap()).unwrap();
+
+        let result = storage.get("nonexistent.txt").await;
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_filesystem_storage_nested_path() {
+        let temp_dir = TempDir::new().unwrap();
+        let storage = FileSystemStorage::new(temp_dir.path().to_str().unwrap()).unwrap();
+
+        let data = Bytes::from("Nested content");
+        storage.put("dir1/dir2/test.txt", data.clone(), "text/plain").await.unwrap();
+
+        let retrieved = storage.get("dir1/dir2/test.txt").await.unwrap();
+        assert_eq!(retrieved, data);
+    }
+
+    #[tokio::test]
+    async fn test_filesystem_storage_overwrite() {
+        let temp_dir = TempDir::new().unwrap();
+        let storage = FileSystemStorage::new(temp_dir.path().to_str().unwrap()).unwrap();
+
+        let data1 = Bytes::from("First content");
+        let data2 = Bytes::from("Second content");
+
+        storage.put("test.txt", data1, "text/plain").await.unwrap();
+        storage.put("test.txt", data2.clone(), "text/plain").await.unwrap();
+
+        let retrieved = storage.get("test.txt").await.unwrap();
+        assert_eq!(retrieved, data2);
+    }
+
+    #[tokio::test]
+    async fn test_filesystem_storage_empty_content() {
+        let temp_dir = TempDir::new().unwrap();
+        let storage = FileSystemStorage::new(temp_dir.path().to_str().unwrap()).unwrap();
+
+        let data = Bytes::from("");
+        storage.put("empty.txt", data, "text/plain").await.unwrap();
+
+        let retrieved = storage.get("empty.txt").await.unwrap();
+        assert!(retrieved.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_filesystem_storage_binary_content() {
+        let temp_dir = TempDir::new().unwrap();
+        let storage = FileSystemStorage::new(temp_dir.path().to_str().unwrap()).unwrap();
+
+        let data = Bytes::from(vec![0u8, 1, 2, 3, 255]);
+        storage.put("binary.bin", data.clone(), "application/octet-stream").await.unwrap();
+
+        let retrieved = storage.get("binary.bin").await.unwrap();
+        assert_eq!(retrieved, data);
+    }
+}
