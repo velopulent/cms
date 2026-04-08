@@ -1,8 +1,10 @@
 pub mod config;
 pub mod database;
+pub mod error;
 pub mod graphql;
 pub mod middleware {
     pub mod auth;
+    pub mod rate_limit;
 }
 pub mod models {
     pub mod api_key;
