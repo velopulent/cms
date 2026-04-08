@@ -5,7 +5,9 @@ use sqlx::{
     Error,
 };
 use std::str::FromStr;
+use std::time::Duration;
 
+use crate::config::Config;
 use crate::database::backend::DatabaseBackend;
 
 #[derive(Clone)]
@@ -16,28 +18,42 @@ pub enum DbPool {
 }
 
 impl DbPool {
-    pub async fn from_url(url: &str) -> Result<Self, Error> {
-        let backend = DatabaseBackend::from_url(url)
+    pub async fn from_url_with_config(config: &Config) -> Result<Self, Error> {
+        let backend = DatabaseBackend::from_url(&config.database_url)
             .ok_or_else(|| Error::Configuration("Unknown database URL scheme".into()))?;
 
         match backend {
             DatabaseBackend::Postgres => {
                 let pool = PgPoolOptions::new()
-                    .connect(url)
+                    .max_connections(config.db_max_connections)
+                    .min_connections(config.db_min_connections)
+                    .acquire_timeout(Duration::from_secs(config.db_acquire_timeout_secs))
+                    .idle_timeout(Duration::from_secs(config.db_idle_timeout_secs))
+                    .connect(&config.database_url)
                     .await?;
                 Ok(DbPool::Postgres(pool))
             }
             DatabaseBackend::MySQL => {
                 let pool = MySqlPoolOptions::new()
-                    .connect(url)
+                    .max_connections(config.db_max_connections)
+                    .min_connections(config.db_min_connections)
+                    .acquire_timeout(Duration::from_secs(config.db_acquire_timeout_secs))
+                    .idle_timeout(Duration::from_secs(config.db_idle_timeout_secs))
+                    .connect(&config.database_url)
                     .await?;
                 Ok(DbPool::MySql(pool))
             }
             DatabaseBackend::SQLite => {
-                let options = sqlx::sqlite::SqliteConnectOptions::from_str(url)
+                let options = sqlx::sqlite::SqliteConnectOptions::from_str(&config.database_url)
                     .map_err(|e| Error::Configuration(e.to_string().into()))?
-                    .create_if_missing(true);
+                    .create_if_missing(true)
+                    .journal_mode(sqlx::sqlite::SqliteJournalMode::Wal)
+                    .busy_timeout(Duration::from_secs(30));
                 let pool = SqlitePoolOptions::new()
+                    .max_connections(config.db_max_connections)
+                    .min_connections(config.db_min_connections)
+                    .acquire_timeout(Duration::from_secs(config.db_acquire_timeout_secs))
+                    .idle_timeout(Duration::from_secs(config.db_idle_timeout_secs))
                     .connect_with(options)
                     .await?;
                 Ok(DbPool::Sqlite(pool))
@@ -70,5 +86,3 @@ impl DbPool {
         }
     }
 }
-
-
