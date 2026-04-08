@@ -32,6 +32,10 @@ regex = "1"
 async-graphql = { version = "7", features = ["chrono", "uuid"] }
 async-graphql-axum = "7"
 
+[dev-dependencies]
+tempfile = "3"
+tokio-test = "0.4"
+
 [profile.release]
 opt-level = "s"
 lto = "thin"
