@@ -58,3 +58,110 @@ impl Config {
             && self.s3_bucket.is_some()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_has_s3_returns_true_when_all_s3_fields_are_set() {
+        let config = Config {
+            database_url: "sqlite:cms.db".to_string(),
+            jwt_secret: "secret".to_string(),
+            bind_address: "0.0.0.0:3000".to_string(),
+            storage_fs_path: None,
+            s3_access_key_id: Some("key".to_string()),
+            s3_secret_access_key: Some("secret".to_string()),
+            s3_bucket: Some("bucket".to_string()),
+            s3_region: Some("us-east-1".to_string()),
+            s3_endpoint: None,
+            s3_public_url: None,
+            max_upload_size_bytes: 50 * 1024 * 1024,
+            cookie_secure: false,
+        };
+
+        assert!(config.has_s3());
+    }
+
+    #[test]
+    fn test_has_s3_returns_false_when_access_key_id_is_missing() {
+        let config = Config {
+            database_url: "sqlite:cms.db".to_string(),
+            jwt_secret: "secret".to_string(),
+            bind_address: "0.0.0.0:3000".to_string(),
+            storage_fs_path: None,
+            s3_access_key_id: None,
+            s3_secret_access_key: Some("secret".to_string()),
+            s3_bucket: Some("bucket".to_string()),
+            s3_region: Some("us-east-1".to_string()),
+            s3_endpoint: None,
+            s3_public_url: None,
+            max_upload_size_bytes: 50 * 1024 * 1024,
+            cookie_secure: false,
+        };
+
+        assert!(!config.has_s3());
+    }
+
+    #[test]
+    fn test_has_s3_returns_false_when_secret_is_missing() {
+        let config = Config {
+            database_url: "sqlite:cms.db".to_string(),
+            jwt_secret: "secret".to_string(),
+            bind_address: "0.0.0.0:3000".to_string(),
+            storage_fs_path: None,
+            s3_access_key_id: Some("key".to_string()),
+            s3_secret_access_key: None,
+            s3_bucket: Some("bucket".to_string()),
+            s3_region: Some("us-east-1".to_string()),
+            s3_endpoint: None,
+            s3_public_url: None,
+            max_upload_size_bytes: 50 * 1024 * 1024,
+            cookie_secure: false,
+        };
+
+        assert!(!config.has_s3());
+    }
+
+    #[test]
+    fn test_has_s3_returns_false_when_bucket_is_missing() {
+        let config = Config {
+            database_url: "sqlite:cms.db".to_string(),
+            jwt_secret: "secret".to_string(),
+            bind_address: "0.0.0.0:3000".to_string(),
+            storage_fs_path: None,
+            s3_access_key_id: Some("key".to_string()),
+            s3_secret_access_key: Some("secret".to_string()),
+            s3_bucket: None,
+            s3_region: Some("us-east-1".to_string()),
+            s3_endpoint: None,
+            s3_public_url: None,
+            max_upload_size_bytes: 50 * 1024 * 1024,
+            cookie_secure: false,
+        };
+
+        assert!(!config.has_s3());
+    }
+
+    #[test]
+    fn test_config_default_values() {
+        let config = Config {
+            database_url: "sqlite:cms.db".to_string(),
+            jwt_secret: "default-secret".to_string(),
+            bind_address: "0.0.0.0:3000".to_string(),
+            storage_fs_path: Some("/tmp/storage".to_string()),
+            s3_access_key_id: None,
+            s3_secret_access_key: None,
+            s3_bucket: None,
+            s3_region: None,
+            s3_endpoint: None,
+            s3_public_url: None,
+            max_upload_size_bytes: 50 * 1024 * 1024,
+            cookie_secure: true,
+        };
+
+        assert!(!config.has_s3());
+        assert_eq!(config.max_upload_size_bytes, 50 * 1024 * 1024);
+        assert!(config.cookie_secure);
+    }
+}
