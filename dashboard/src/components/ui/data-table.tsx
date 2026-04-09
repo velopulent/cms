@@ -47,6 +47,11 @@ interface DataTableProps<TData, TValue> {
   loadingRowCount?: number;
   emptyMessage?: string;
   emptyDescription?: string;
+  total?: number;
+  page?: number;
+  pageSize?: number;
+  onPageChange?: (page: number) => void;
+  onPageSizeChange?: (pageSize: number) => void;
 }
 
 export function DataTable<TData, TValue>({
@@ -56,6 +61,11 @@ export function DataTable<TData, TValue>({
   loadingRowCount = 5,
   emptyMessage = "No results.",
   emptyDescription,
+  total,
+  page,
+  pageSize,
+  onPageChange,
+  onPageSizeChange,
 }: DataTableProps<TData, TValue>) {
   const [sorting, setSorting] = React.useState<SortingState>([]);
   const [columnVisibility, setColumnVisibility] =
@@ -170,7 +180,14 @@ export function DataTable<TData, TValue>({
           </TableBody>
         </Table>
       </div>
-      <DataTablePagination table={table} />
+      <DataTablePagination
+        table={table}
+        total={total}
+        page={page}
+        pageSize={pageSize}
+        onPageChange={onPageChange}
+        onPageSizeChange={onPageSizeChange}
+      />
     </div>
   );
 }
@@ -179,33 +196,56 @@ export function DataTable<TData, TValue>({
 
 interface DataTablePaginationProps<TData> {
   table: TanStackTable<TData>;
+  total?: number;
+  page?: number;
+  pageSize?: number;
+  onPageChange?: (page: number) => void;
+  onPageSizeChange?: (pageSize: number) => void;
 }
 
 function DataTablePagination<TData>({
   table,
+  total,
+  page,
+  pageSize,
+  onPageChange,
+  onPageSizeChange,
 }: DataTablePaginationProps<TData>) {
+  const isServerSide = total !== undefined && onPageChange !== undefined;
+  const pageCount = isServerSide ? Math.ceil(total / (pageSize || 20)) : table.getPageCount();
+  const currentPage = isServerSide ? (page || 1) : table.getState().pagination.pageIndex + 1;
+  const currentPageSize = isServerSide ? (pageSize || 20) : table.getState().pagination.pageSize;
+
+  const canPreviousPage = currentPage > 1;
+  const canNextPage = currentPage < pageCount;
+
+  const handlePageSizeChange = (value: string | null) => {
+    if (!value) return;
+    const newSize = Number(value);
+    if (isServerSide && onPageSizeChange) {
+      onPageSizeChange(newSize);
+    } else {
+      table.setPageSize(newSize);
+    }
+  };
+
   return (
     <div className="flex items-center justify-between px-2 py-4">
       <div className="flex-1 text-sm text-muted-foreground">
-        {table.getFilteredRowModel().rows.length} row(s) total.
+        {isServerSide ? `${total} item(s) total.` : `${table.getFilteredRowModel().rows.length} row(s) total.`}
       </div>
       <div className="flex items-center gap-6">
         <div className="flex items-center gap-2">
           <p className="text-sm font-medium">Rows per page</p>
-          <Select
-            value={`${table.getState().pagination.pageSize}`}
-            onValueChange={(value) => {
-              table.setPageSize(Number(value));
-            }}
-          >
+          <Select value={`${currentPageSize}`} onValueChange={handlePageSizeChange}>
             <SelectTrigger className="h-8 w-[70px]">
               <SelectValue />
             </SelectTrigger>
             <SelectContent side="top">
               <SelectGroup>
-                {[10, 20, 30, 40, 50].map((pageSize) => (
-                  <SelectItem key={pageSize} value={`${pageSize}`}>
-                    {pageSize}
+                {[10, 20, 30, 40, 50].map((size) => (
+                  <SelectItem key={size} value={`${size}`}>
+                    {size}
                   </SelectItem>
                 ))}
               </SelectGroup>
@@ -213,16 +253,15 @@ function DataTablePagination<TData>({
           </Select>
         </div>
         <div className="flex items-center justify-center text-sm font-medium">
-          Page {table.getState().pagination.pageIndex + 1} of{" "}
-          {table.getPageCount()}
+          Page {currentPage} of {pageCount}
         </div>
         <div className="flex items-center gap-2">
           <Button
             variant="outline"
             size="icon"
             className="hidden size-8 lg:flex"
-            onClick={() => table.setPageIndex(0)}
-            disabled={!table.getCanPreviousPage()}
+            onClick={() => isServerSide ? onPageChange?.(1) : table.setPageIndex(0)}
+            disabled={!canPreviousPage}
           >
             <span className="sr-only">Go to first page</span>
             <ChevronsLeft />
@@ -231,8 +270,8 @@ function DataTablePagination<TData>({
             variant="outline"
             size="icon"
             className="size-8"
-            onClick={() => table.previousPage()}
-            disabled={!table.getCanPreviousPage()}
+            onClick={() => isServerSide ? onPageChange?.(currentPage - 1) : table.previousPage()}
+            disabled={!canPreviousPage}
           >
             <span className="sr-only">Go to previous page</span>
             <ChevronLeft />
@@ -241,8 +280,8 @@ function DataTablePagination<TData>({
             variant="outline"
             size="icon"
             className="size-8"
-            onClick={() => table.nextPage()}
-            disabled={!table.getCanNextPage()}
+            onClick={() => isServerSide ? onPageChange?.(currentPage + 1) : table.nextPage()}
+            disabled={!canNextPage}
           >
             <span className="sr-only">Go to next page</span>
             <ChevronRight />
@@ -251,8 +290,8 @@ function DataTablePagination<TData>({
             variant="outline"
             size="icon"
             className="hidden size-8 lg:flex"
-            onClick={() => table.setPageIndex(table.getPageCount() - 1)}
-            disabled={!table.getCanNextPage()}
+            onClick={() => isServerSide ? onPageChange?.(pageCount) : table.setPageIndex(pageCount - 1)}
+            disabled={!canNextPage}
           >
             <span className="sr-only">Go to last page</span>
             <ChevronsRight />

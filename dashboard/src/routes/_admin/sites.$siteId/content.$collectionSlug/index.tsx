@@ -34,21 +34,38 @@ function ContentListPage() {
   const queryClient = useQueryClient();
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("");
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(20);
 
   const { data: collection, isLoading: collectionLoading } = useQuery({
     queryKey: ["collection", siteId, collectionSlug],
     queryFn: () => getCollection(siteId, collectionSlug),
   });
 
-  const { data: items, isLoading: itemsLoading } = useQuery({
-    queryKey: ["content", siteId, collectionSlug, statusFilter, search],
+  const { data: contentResponse, isLoading: itemsLoading } = useQuery({
+    queryKey: ["content", siteId, collectionSlug, statusFilter, search, page, pageSize],
     queryFn: () =>
       getContent(siteId, {
         type: collectionSlug,
         status: statusFilter || undefined,
         search: search || undefined,
+        page,
+        pageSize,
       }),
   });
+
+  const items = contentResponse?.items ?? [];
+  const total = contentResponse?.total ?? 0;
+
+  const handleSearchChange = (value: string | null) => {
+    setSearch(value || "");
+    setPage(1);
+  };
+
+  const handleStatusChange = (value: string | null) => {
+    setStatusFilter(value || "");
+    setPage(1);
+  };
 
   const deleteMutation = useMutation({
     mutationFn: (id: string) => deleteContent(siteId, id),
@@ -135,7 +152,7 @@ function ContentListPage() {
           <Input
             placeholder="Search..."
             value={search}
-            onChange={(e) => setSearch(e.target.value)}
+            onChange={(e) => handleSearchChange(e.target.value)}
             className="pl-9"
           />
         </div>
@@ -146,7 +163,7 @@ function ContentListPage() {
             { label: "Published", value: "published" },
           ]}
           value={statusFilter}
-          onValueChange={(val) => setStatusFilter((val as string) ?? "")}
+          onValueChange={handleStatusChange}
         >
           <SelectTrigger className="w-[150px]">
             <SelectValue />
@@ -163,7 +180,15 @@ function ContentListPage() {
 
       <DataTable
         columns={columns}
-        data={items ?? []}
+        data={items}
+        total={total}
+        page={page}
+        pageSize={pageSize}
+        onPageChange={setPage}
+        onPageSizeChange={(size) => {
+          setPageSize(size);
+          setPage(1);
+        }}
         isLoading={isLoading}
         emptyMessage="No content yet"
         emptyDescription={`Create your first ${collectionName.toLowerCase()} to get started.`}

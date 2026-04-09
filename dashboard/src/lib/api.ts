@@ -143,6 +143,13 @@ export interface Content {
   published_at: string | null;
 }
 
+export interface ContentListResponse {
+  items: Content[];
+  total: number;
+  page: number;
+  per_page: number;
+}
+
 export interface ApiKey {
   id: string;
   site_id: string;
@@ -358,14 +365,18 @@ export async function getContent(
     type?: string;
     status?: string;
     search?: string;
+    page?: number;
+    pageSize?: number;
   },
 ) {
   const query = new URLSearchParams();
   if (params.type) query.set("type", params.type);
   if (params.status) query.set("status", params.status);
   if (params.search) query.set("search", params.search);
+  if (params.page) query.set("page", String(params.page));
+  if (params.pageSize) query.set("per_page", String(params.pageSize));
   const qs = query.toString();
-  return api<Content[]>(`/sites/${siteId}/content${qs ? `?${qs}` : ""}`);
+  return api<ContentListResponse>(`/sites/${siteId}/content${qs ? `?${qs}` : ""}`);
 }
 
 export async function getContentById(siteId: string, id: string) {

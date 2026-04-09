@@ -24,7 +24,7 @@ function DashboardPage() {
     queryFn: () => getCollections(siteId),
   });
 
-  const { data: allContent, isLoading: contentLoading } = useQuery({
+  const { data: contentResponse, isLoading: contentLoading } = useQuery({
     queryKey: ["content", siteId, "all"],
     queryFn: () => getContent(siteId, {}),
   });
@@ -35,7 +35,7 @@ function DashboardPage() {
   );
   const singletons = collectionsArray.filter((c) => c.is_singleton);
 
-  const allContentArray = Array.isArray(allContent) ? allContent : [];
+  const allContentArray = contentResponse?.items ?? [];
   const publishedCount = allContentArray.filter(
     (c: Content) => c.status === "published",
   ).length;
