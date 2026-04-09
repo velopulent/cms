@@ -2,6 +2,7 @@ mod api_keys;
 mod auth;
 mod collections;
 mod content;
+mod dashboard;
 mod docs;
 mod files;
 mod graphql;
@@ -10,8 +11,7 @@ mod singleton;
 mod sites;
 
 use axum::{
-    Extension, Router,
-    routing::get,
+    Extension, Router
 };
 use tower_http::cors::{CorsLayer, Any};
 use tower_http::limit::RequestBodyLimitLayer;
@@ -19,7 +19,6 @@ use tower_http::trace::TraceLayer;
 
 use crate::config::Config;
 use crate::handlers::file_handler::StorageManager;
-use crate::handlers::ui_handler::ui_handler;
 use crate::middleware::rate_limit::RateLimiter;
 use crate::repository::Repository;
 use crate::tracing::trace_request;
@@ -43,12 +42,8 @@ pub fn create_router(repository: Repository, config: Config, storage: StorageMan
         .merge(graphql::graphql_routes())
         .merge(docs::docs_routes())
         .layer(axum::middleware::from_fn_with_state((), trace_request))
-        // SPA fallback — must be last
-        .route(
-            "/",
-            get(|| async { ui_handler(axum::extract::Path("".into())).await }),
-        )
-        .route("/{*file}", get(ui_handler))
+        // Dashboard
+        .merge(dashboard::dashboard_routes())
         .layer(TraceLayer::new_for_http())
         .layer(cors)
         .layer(RequestBodyLimitLayer::new(10 * 1024 * 1024)) // 10MB default body limit
