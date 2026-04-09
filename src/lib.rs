@@ -2,6 +2,7 @@ pub mod config;
 pub mod database;
 pub mod error;
 pub mod graphql;
+pub mod tracing;
 pub mod middleware {
     pub mod auth;
     pub mod rate_limit;
