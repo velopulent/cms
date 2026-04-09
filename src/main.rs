@@ -1,12 +1,14 @@
 use cms::config::Config;
 use cms::database::init_db_with_config;
+use cms::grpc::server::spawn_grpc_server;
 use cms::handlers::file_handler::StorageManager;
 use cms::repository::Repository;
 use cms::router::create_router;
 use cms::storage;
 
+use std::net::SocketAddr;
+use tokio::select;
 use tracing::{info, warn};
-use uuid::Uuid;
 
 #[tokio::main]
 async fn main() {
@@ -60,27 +62,54 @@ async fn main() {
         warn!("No storage providers configured. Set STORAGE_FS_PATH or S3_* env vars.");
     }
 
-    let app = create_router(repository, config.clone(), storage_manager);
+    let app = create_router(repository.clone(), config.clone(), storage_manager);
 
-    let addr: std::net::SocketAddr = config
+    let addr: SocketAddr = config
         .bind_address
         .parse()
         .expect("Invalid BIND_ADDRESS");
-    info!("Server running on {}", addr);
+    info!("REST API server running on {}", addr);
 
-    let listener = tokio::net::TcpListener::bind(addr)
-        .await
-        .expect("Failed to bind address");
+    let grpc_addr: SocketAddr = config
+        .grpc_bind_address
+        .parse()
+        .expect("Invalid GRPC_BIND_ADDRESS");
+    info!("gRPC server running on {}", grpc_addr);
 
-    axum::serve(listener, app)
-        .with_graceful_shutdown(shutdown_signal())
-        .await
-        .expect("Server error");
+    let rest_handle = tokio::spawn(async move {
+        let listener = tokio::net::TcpListener::bind(addr)
+            .await
+            .expect("Failed to bind address");
+
+        axum::serve(listener, app)
+            .with_graceful_shutdown(shutdown_signal())
+            .await
+            .expect("Server error");
+    });
+
+    let grpc_handle = tokio::spawn(spawn_grpc_server(
+        repository.clone(),
+        config.clone(),
+        grpc_addr,
+    ));
+
+    select! {
+        result = rest_handle => {
+            if let Err(e) = result {
+                tracing::error!("REST server error: {}", e);
+            }
+        }
+        result = grpc_handle => {
+            if let Err(e) = result {
+                tracing::error!("gRPC server error: {}", e);
+            }
+        }
+    }
 }
 
 async fn seed_admin(repository: &Repository) {
     if !repository.user.exists("admin").await.unwrap_or(false) {
-        let id = Uuid::now_v7().to_string();
+        let id = uuid::Uuid::now_v7().to_string();
         let password_hash =
             bcrypt::hash("admin", bcrypt::DEFAULT_COST).expect("Failed to hash password");
         repository
