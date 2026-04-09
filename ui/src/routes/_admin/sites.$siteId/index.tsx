@@ -29,14 +29,19 @@ function DashboardPage() {
     queryFn: () => getContent(siteId, {}),
   });
 
-  const regularCollections =
-    collections?.filter((c) => !c.is_singleton) ?? [];
-  const singletons = collections?.filter((c) => c.is_singleton) ?? [];
+  const collectionsArray = Array.isArray(collections) ? collections : [];
+  const regularCollections = collectionsArray.filter(
+    (c) => !c.is_singleton,
+  );
+  const singletons = collectionsArray.filter((c) => c.is_singleton);
 
-  const publishedCount =
-    allContent?.filter((c: Content) => c.status === "published").length ?? 0;
-  const draftCount =
-    allContent?.filter((c: Content) => c.status === "draft").length ?? 0;
+  const allContentArray = Array.isArray(allContent) ? allContent : [];
+  const publishedCount = allContentArray.filter(
+    (c: Content) => c.status === "published",
+  ).length;
+  const draftCount = allContentArray.filter(
+    (c: Content) => c.status === "draft",
+  ).length;
 
   return (
     <div className="flex flex-col gap-6 p-6">
@@ -152,11 +157,11 @@ function DashboardPage() {
         </div>
       )}
 
-      {allContent && allContent.length > 0 && (
+      {allContentArray.length > 0 && (
         <div className="flex flex-col gap-4">
           <h2 className="text-lg font-semibold">Recently Updated</h2>
           <div className="flex flex-col gap-2">
-            {allContent.slice(0, 5).map((item: Content) => {
+            {allContentArray.slice(0, 5).map((item: Content) => {
               const collectionName = collections?.find(
                 (c: Collection) => c.id === item.collection_id,
               )?.name;
