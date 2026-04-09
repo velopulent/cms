@@ -11,6 +11,7 @@ use image::{DynamicImage, ImageEncoder, ImageReader};
 use serde::Deserialize;
 use serde_json::json;
 use std::io::Cursor;
+use tracing::instrument;
 use uuid::Uuid;
 
 use crate::config::Config;
@@ -198,6 +199,7 @@ async fn remove_from_storage(
     security(("bearer" = []), ("api_key" = [])),
     tag = "files"
 )]
+#[instrument(skip(repository, storage, auth, params))]
 pub async fn list_files(
     auth: AuthContext,
     Path(site_id): Path<String>,
@@ -262,6 +264,7 @@ pub async fn list_files(
     security(("bearer" = []), ("api_key" = [])),
     tag = "files"
 )]
+#[instrument(skip(repository, storage, config, auth, multipart))]
 pub async fn upload_file(
     auth: AuthContext,
     Path(site_id): Path<String>,
@@ -475,6 +478,7 @@ pub async fn upload_file(
     security(("bearer" = []), ("api_key" = [])),
     tag = "files"
 )]
+#[instrument(skip(repository, storage, auth))]
 pub async fn get_file(
     auth: AuthContext,
     Path((site_id, id)): Path<(String, String)>,
@@ -517,6 +521,7 @@ pub async fn get_file(
     security(("bearer" = []), ("api_key" = [])),
     tag = "files"
 )]
+#[instrument(skip(repository, auth))]
 pub async fn delete_file_handler(
     auth: AuthContext,
     Path((site_id, id)): Path<(String, String)>,
@@ -554,6 +559,7 @@ pub async fn delete_file_handler(
     security(("bearer" = []), ("api_key" = [])),
     tag = "files"
 )]
+#[instrument(skip(repository, auth))]
 pub async fn get_file_references(
     auth: AuthContext,
     Path((site_id, id)): Path<(String, String)>,
@@ -587,6 +593,7 @@ pub async fn get_file_references(
     security(("bearer" = []), ("api_key" = [])),
     tag = "files"
 )]
+#[instrument(skip(repository, auth))]
 pub async fn restore_file(
     auth: AuthContext,
     Path((site_id, id)): Path<(String, String)>,
@@ -625,6 +632,7 @@ pub async fn restore_file(
     security(("bearer" = []), ("api_key" = [])),
     tag = "files"
 )]
+#[instrument(skip(repository, auth, body))]
 pub async fn batch_delete_files(
     auth: AuthContext,
     Path(site_id): Path<String>,
@@ -671,6 +679,7 @@ pub async fn batch_delete_files(
     security(("bearer" = []), ("api_key" = [])),
     tag = "files"
 )]
+#[instrument(skip(repository, auth, body))]
 pub async fn batch_restore_files(
     auth: AuthContext,
     Path(site_id): Path<String>,
@@ -717,6 +726,7 @@ pub async fn batch_restore_files(
     security(("bearer" = []), ("api_key" = [])),
     tag = "files"
 )]
+#[instrument(skip(repository, storage, auth, body))]
 pub async fn batch_permanent_delete_files(
     auth: AuthContext,
     Path(site_id): Path<String>,
@@ -768,6 +778,7 @@ pub async fn batch_permanent_delete_files(
     }
 }
 
+#[instrument(skip(repository, storage))]
 pub async fn serve_file(
     Path(id): Path<String>,
     Extension(repository): Extension<Repository>,
@@ -776,6 +787,7 @@ pub async fn serve_file(
     serve_file_by_key(&id, &repository, &storage, false).await
 }
 
+#[instrument(skip(repository, storage))]
 pub async fn serve_file_thumbnail(
     Path(id): Path<String>,
     Extension(repository): Extension<Repository>,

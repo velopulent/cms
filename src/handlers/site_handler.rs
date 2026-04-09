@@ -5,6 +5,7 @@ use axum::{
     response::{IntoResponse, Response},
 };
 use serde_json::json;
+use tracing::instrument;
 use uuid::Uuid;
 
 use crate::middleware::auth::{AuthenticatedUser, check_site_access_repo};
@@ -14,6 +15,7 @@ use crate::models::site::{
 };
 use crate::repository::Repository;
 
+#[instrument(skip(repository, auth))]
 pub async fn list_sites(
     auth: AuthenticatedUser,
     Extension(repository): Extension<Repository>,
@@ -28,6 +30,7 @@ pub async fn list_sites(
     }
 }
 
+#[instrument(skip(repository, auth, payload))]
 pub async fn create_site(
     auth: AuthenticatedUser,
     Extension(repository): Extension<Repository>,
@@ -66,6 +69,7 @@ pub async fn create_site(
     }
 }
 
+#[instrument(skip(repository, auth))]
 pub async fn get_site(
     auth: AuthenticatedUser,
     Path(site_id): Path<String>,
@@ -90,6 +94,7 @@ pub async fn get_site(
     }
 }
 
+#[instrument(skip(repository, auth, payload))]
 pub async fn update_site(
     auth: AuthenticatedUser,
     Path(site_id): Path<String>,
@@ -134,6 +139,7 @@ pub async fn update_site(
     }
 }
 
+#[instrument(skip(repository, auth))]
 pub async fn delete_site(
     auth: AuthenticatedUser,
     Path(site_id): Path<String>,
@@ -153,6 +159,7 @@ pub async fn delete_site(
     }
 }
 
+#[instrument(skip(repository, auth))]
 pub async fn list_members(
     auth: AuthenticatedUser,
     Path(site_id): Path<String>,
@@ -172,6 +179,7 @@ pub async fn list_members(
     }
 }
 
+#[instrument(skip(repository, auth, payload))]
 pub async fn invite_member(
     auth: AuthenticatedUser,
     Path(site_id): Path<String>,
@@ -226,6 +234,7 @@ pub async fn invite_member(
     }
 }
 
+#[instrument(skip(repository, auth, payload))]
 pub async fn update_member_role(
     auth: AuthenticatedUser,
     Path((site_id, member_user_id)): Path<(String, String)>,
@@ -260,6 +269,7 @@ pub async fn update_member_role(
     }
 }
 
+#[instrument(skip(repository, auth))]
 pub async fn remove_member(
     auth: AuthenticatedUser,
     Path((site_id, member_user_id)): Path<(String, String)>,

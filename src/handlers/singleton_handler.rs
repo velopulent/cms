@@ -5,6 +5,7 @@ use axum::{
     response::{IntoResponse, Response},
 };
 use serde_json::json;
+use tracing::instrument;
 
 use crate::handlers::file_handler::StorageManager;
 use crate::handlers::content_handler::resolve_content_files_from_value;
@@ -43,6 +44,7 @@ fn singleton_to_response(c: &crate::models::collection::Collection) -> Singleton
     security(("bearer" = []), ("api_key" = [])),
     tag = "singletons"
 )]
+#[instrument(skip(repository, auth))]
 pub async fn list_singletons(
     auth: AuthContext,
     Path(site_id): Path<String>,
@@ -81,6 +83,7 @@ pub async fn list_singletons(
     security(("bearer" = []), ("api_key" = [])),
     tag = "singletons"
 )]
+#[instrument(skip(repository, storage, auth))]
 pub async fn get_singleton(
     auth: AuthContext,
     Path((site_id, slug)): Path<(String, String)>,
@@ -141,6 +144,7 @@ pub async fn get_singleton(
     security(("bearer" = []), ("api_key" = [])),
     tag = "singletons"
 )]
+#[instrument(skip(repository, auth, payload))]
 pub async fn update_singleton(
     auth: AuthContext,
     Path((site_id, slug)): Path<(String, String)>,

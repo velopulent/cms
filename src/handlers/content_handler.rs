@@ -6,6 +6,7 @@ use axum::{
 };
 use serde::Deserialize;
 use serde_json::json;
+use tracing::instrument;
 use uuid::Uuid;
 
 use crate::handlers::file_handler::StorageManager;
@@ -38,6 +39,7 @@ pub struct ListParams {
     security(("bearer" = []), ("api_key" = [])),
     tag = "content"
 )]
+#[instrument(skip(repository, auth, params))]
 pub async fn list_content(
     auth: AuthContext,
     Path(site_id): Path<String>,
@@ -105,6 +107,7 @@ pub async fn list_content(
     security(("bearer" = []), ("api_key" = [])),
     tag = "content"
 )]
+#[instrument(skip(repository, storage, auth))]
 pub async fn get_content(
     auth: AuthContext,
     Path((site_id, id)): Path<(String, String)>,
@@ -149,6 +152,7 @@ pub async fn get_content(
     security(("bearer" = []), ("api_key" = [])),
     tag = "content"
 )]
+#[instrument(skip(repository, auth, payload))]
 pub async fn create_content(
     auth: AuthContext,
     Path(site_id): Path<String>,
@@ -196,6 +200,7 @@ pub async fn create_content(
     security(("bearer" = []), ("api_key" = [])),
     tag = "content"
 )]
+#[instrument(skip(repository, auth, payload))]
 pub async fn update_content(
     auth: AuthContext,
     Path((site_id, id)): Path<(String, String)>,
@@ -265,6 +270,7 @@ pub async fn update_content(
     security(("bearer" = []), ("api_key" = [])),
     tag = "content"
 )]
+#[instrument(skip(repository, auth))]
 pub async fn delete_content(
     auth: AuthContext,
     Path((site_id, id)): Path<(String, String)>,
@@ -300,6 +306,7 @@ pub async fn delete_content(
     security(("bearer" = []), ("api_key" = [])),
     tag = "content"
 )]
+#[instrument(skip(repository, auth))]
 pub async fn publish_content(
     auth: AuthContext,
     Path((site_id, id)): Path<(String, String)>,
@@ -340,6 +347,7 @@ pub async fn publish_content(
     security(("bearer" = []), ("api_key" = [])),
     tag = "content"
 )]
+#[instrument(skip(repository, auth))]
 pub async fn unpublish_content(
     auth: AuthContext,
     Path((site_id, id)): Path<(String, String)>,

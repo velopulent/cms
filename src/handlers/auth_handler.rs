@@ -9,6 +9,7 @@ use bcrypt::{DEFAULT_COST, hash, verify};
 use regex::Regex;
 use serde_json::json;
 use time::Duration;
+use tracing::instrument;
 use uuid::Uuid;
 
 use crate::config::Config;
@@ -20,54 +21,7 @@ use crate::repository::Repository;
 static EMAIL_RE: std::sync::LazyLock<Regex> =
     std::sync::LazyLock::new(|| Regex::new(r"^[^@\s]+@[^@\s]+\.[^@\s]+$").unwrap());
 
-fn build_auth_cookies_response(
-    user: UserPublic,
-    jwt: &str,
-    config: &Config,
-) -> Response {
-    let token_cookie = Cookie::build(("token", jwt.to_string()))
-        .http_only(true)
-        .secure(config.cookie_secure)
-        .same_site(axum_extra::extract::cookie::SameSite::Strict)
-        .path("/")
-        .max_age(Duration::hours(24))
-        .build();
-
-    let csrf_token = Uuid::now_v7().to_string();
-    let csrf_cookie = Cookie::build(("csrf", csrf_token.clone()))
-        .http_only(false)
-        .secure(config.cookie_secure)
-        .same_site(axum_extra::extract::cookie::SameSite::Strict)
-        .path("/")
-        .max_age(Duration::hours(24))
-        .build();
-
-    let mut response = (
-        StatusCode::OK,
-        Json(AuthResponse { user }),
-    )
-        .into_response();
-
-    if let Ok(val) = HeaderValue::from_str(&token_cookie.to_string()) {
-        response.headers_mut().insert(SET_COOKIE, val);
-    }
-    if let Ok(val) = HeaderValue::from_str(&csrf_cookie.to_string()) {
-        response.headers_mut().append(SET_COOKIE, val);
-    }
-
-    response
-}
-
-#[utoipa::path(
-    post,
-    path = "/api/auth/register",
-    request_body = CreateUser,
-    responses(
-        (status = 201, description = "User registered successfully", body = AuthResponse),
-        (status = 409, description = "Username or email already exists"),
-    ),
-    tag = "auth"
-)]
+#[instrument(skip(repository, config, payload), fields(username = %payload.username))]
 pub async fn register(
     Extension(repository): Extension<Repository>,
     Extension(config): Extension<Config>,
@@ -166,16 +120,7 @@ pub async fn register(
     }
 }
 
-#[utoipa::path(
-    post,
-    path = "/api/auth/login",
-    request_body = LoginRequest,
-    responses(
-        (status = 200, description = "Login successful", body = AuthResponse),
-        (status = 401, description = "Invalid credentials"),
-    ),
-    tag = "auth"
-)]
+#[instrument(skip(repository, config, payload), fields(username = %payload.username))]
 pub async fn login(
     Extension(repository): Extension<Repository>,
     Extension(config): Extension<Config>,
@@ -232,6 +177,45 @@ pub async fn login(
     )
 }
 
+fn build_auth_cookies_response(
+    user: UserPublic,
+    jwt: &str,
+    config: &Config,
+) -> Response {
+    let token_cookie = Cookie::build(("token", jwt.to_string()))
+        .http_only(true)
+        .secure(config.cookie_secure)
+        .same_site(axum_extra::extract::cookie::SameSite::Strict)
+        .path("/")
+        .max_age(Duration::hours(24))
+        .build();
+
+    let csrf_token = Uuid::now_v7().to_string();
+    let csrf_cookie = Cookie::build(("csrf", csrf_token.clone()))
+        .http_only(false)
+        .secure(config.cookie_secure)
+        .same_site(axum_extra::extract::cookie::SameSite::Strict)
+        .path("/")
+        .max_age(Duration::hours(24))
+        .build();
+
+    let mut response = (
+        StatusCode::OK,
+        Json(AuthResponse { user }),
+    )
+        .into_response();
+
+    if let Ok(val) = HeaderValue::from_str(&token_cookie.to_string()) {
+        response.headers_mut().insert(SET_COOKIE, val);
+    }
+    if let Ok(val) = HeaderValue::from_str(&csrf_cookie.to_string()) {
+        response.headers_mut().append(SET_COOKIE, val);
+    }
+
+    response
+}
+
+#[instrument]
 pub async fn logout() -> Response {
     let clear_token = Cookie::build(("token", ""))
         .http_only(true)
@@ -261,6 +245,7 @@ pub async fn logout() -> Response {
     response
 }
 
+#[instrument(skip(repository))]
 pub async fn me(auth: AuthenticatedUser, Extension(repository): Extension<Repository>) -> Response {
     match repository.user.find_by_id(&auth.user_id).await {
         Ok(Some(u)) => (

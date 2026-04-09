@@ -5,6 +5,7 @@ use axum::{
     response::{IntoResponse, Response},
 };
 use serde_json::json;
+use tracing::instrument;
 use uuid::Uuid;
 
 use crate::middleware::auth::{AuthContext, check_read_access_repo, check_write_access_repo};
@@ -22,6 +23,7 @@ use crate::repository::Repository;
     security(("bearer" = []), ("api_key" = [])),
     tag = "collections"
 )]
+#[instrument(skip(repository, auth))]
 pub async fn list_collections(
     auth: AuthContext,
     Path(site_id): Path<String>,
@@ -56,6 +58,7 @@ pub async fn list_collections(
     security(("bearer" = []), ("api_key" = [])),
     tag = "collections"
 )]
+#[instrument(skip(repository, auth))]
 pub async fn get_collection(
     auth: AuthContext,
     Path((site_id, collection_slug)): Path<(String, String)>,
@@ -94,6 +97,7 @@ pub async fn get_collection(
     security(("bearer" = []), ("api_key" = [])),
     tag = "collections"
 )]
+#[instrument(skip(repository, auth, payload))]
 pub async fn create_collection(
     auth: AuthContext,
     Path(site_id): Path<String>,
@@ -148,6 +152,7 @@ pub async fn create_collection(
     security(("bearer" = []), ("api_key" = [])),
     tag = "collections"
 )]
+#[instrument(skip(repository, auth, payload))]
 pub async fn update_collection(
     auth: AuthContext,
     Path((site_id, collection_slug)): Path<(String, String)>,
@@ -229,6 +234,7 @@ pub async fn update_collection(
     security(("bearer" = []), ("api_key" = [])),
     tag = "collections"
 )]
+#[instrument(skip(repository, auth))]
 pub async fn delete_collection(
     auth: AuthContext,
     Path((site_id, collection_slug)): Path<(String, String)>,

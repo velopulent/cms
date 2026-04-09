@@ -6,12 +6,14 @@ use axum::{
 };
 use bcrypt::{DEFAULT_COST, hash};
 use serde_json::json;
+use tracing::instrument;
 use uuid::Uuid;
 
 use crate::middleware::auth::{AuthenticatedUser, check_site_access_repo, compute_key_hmac};
 use crate::models::api_key::{ApiKeyResponse, CreateApiKey};
 use crate::repository::Repository;
 
+#[instrument(skip(repository, auth))]
 pub async fn list_api_keys(
     auth: AuthenticatedUser,
     Path(site_id): Path<String>,
@@ -31,6 +33,7 @@ pub async fn list_api_keys(
     }
 }
 
+#[instrument(skip(repository, config, auth, payload))]
 pub async fn create_api_key(
     auth: AuthenticatedUser,
     Path(site_id): Path<String>,
@@ -110,6 +113,7 @@ pub async fn create_api_key(
     }
 }
 
+#[instrument(skip(repository, auth))]
 pub async fn delete_api_key(
     auth: AuthenticatedUser,
     Path((site_id, key_id)): Path<(String, String)>,
