@@ -1,16 +1,16 @@
 use std::process::Command;
 
 fn main() {
-    println!("cargo:rerun-if-changed=ui/");
+    println!("cargo:rerun-if-changed=dashboard/");
 
     let status = Command::new("bun")
         .arg("run")
         .arg("build")
-        .current_dir("ui")
+        .current_dir("dashboard")
         .status()
-        .expect("Failed to build frontend");
+        .expect("Failed to build dashboard");
 
     if !status.success() {
-        panic!("Frontend build failed");
+        panic!("Dashboard build failed");
     }
 }
