@@ -28,3 +28,4 @@ pub mod handlers {
 pub mod repository;
 pub mod router;
 pub mod storage;
+pub mod grpc;

@@ -17,6 +17,7 @@ pub async fn init_db(database_url: &str) -> Result<DbPool, sqlx::Error> {
             database_url: database_url.to_string(),
             jwt_secret: String::new(),
             bind_address: String::new(),
+            grpc_bind_address: String::new(),
             storage_fs_path: None,
             s3_access_key_id: None,
             s3_secret_access_key: None,
