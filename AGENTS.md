@@ -5,8 +5,8 @@ This file provides the workspace-level agent guidance for anyone contributing or
 ## 🧩 Project overview
 
 - Backend: Rust + Axum HTTP server, `SQLx` + SQLite, `rust-embed` (for static assets).
-- Frontend: React in `ui/` with Tanstack Router, Tanstack Query, shadcn/ui.
-- Build path: root `cargo build` triggers `build.rs` which runs `bun run build` in `ui/`, then embeds `ui/dist` into binary.
+- Frontend: React in `dashboard/` with Tanstack Router, Tanstack Query, shadcn/ui.
+- Build path: root `cargo build` triggers `build.rs` which runs `bun run build` in `dashboard/`, then embeds `dashboard/dist` into binary.
 - Runtime: one executable serves `/api/*` endpoints and static site SPA fallback.
 
 ## 🚀 Key directories
@@ -17,7 +17,7 @@ This file provides the workspace-level agent guidance for anyone contributing or
   - `middleware/`: auth middleware.
   - `models/`: domain models.
   - `router/`: route composition.
-- `ui/`: frontend app (React + TypeScript).
+- `dashboard/`: frontend app (React + TypeScript).
 - `target/`: build artifacts (ignored in VCS).
 
 ## 🛠️ Standard commands
@@ -28,8 +28,8 @@ This file provides the workspace-level agent guidance for anyone contributing or
 
 ### Frontend dev
 
-- `cd ui && bun run dev`
-- Ensure `ui` dev server proxies to backend at local API host.
+- `cd dashboard && bun run dev`
+- Ensure `dashboard` dev server proxies to backend at local API host.
 
 ### Production build
 
@@ -43,7 +43,7 @@ This file provides the workspace-level agent guidance for anyone contributing or
 
 ## 🧰 Agent workflow
 
-1. Discover conventions: check this file, `README.md`, and code patterns in `src/` and `ui/src/`.
+1. Discover conventions: check this file, `README.md`, and code patterns in `src/` and `dashboard/src/`.
 2. Follow project style:
    - Rust: idiomatic `Result`/error handling, `axum` extractors.
    - REST handlers return JSON and status codes across `handlers/`.
@@ -64,4 +64,4 @@ This file provides the workspace-level agent guidance for anyone contributing or
 ## 🔗 Documentation and knowledge links
 
 - `README.md`: canonical architecture + commands.
-- `src/` and `ui/src/`: authoritative patterns.
+- `src/` and `dashboard/src/`: authoritative patterns.

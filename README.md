@@ -47,9 +47,9 @@ Single binary deployment. No external dependencies. JWT auth and API keys for pr
 
 ## How It Works
 
-1. The React app lives inside the `ui/` folder.
+1. The React app lives inside the `dashboard/` folder.
 2. During release builds, `build.rs` runs `bun run build`.
-3. The compiled `ui/dist` files are embedded into the Rust binary using `rust-embed`.
+3. The compiled `dashboard/dist` files are embedded into the Rust binary using `rust-embed`.
 4. The `ui_handler` serves static assets and provides SPA fallback.
 5. `/api/*` routes are handled by Axum.
 
@@ -82,7 +82,7 @@ cargo run
 ### Frontend
 
 ```bash
-cd ui
+cd dashboard
 bun run dev
 ```
 
