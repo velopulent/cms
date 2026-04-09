@@ -22,6 +22,7 @@ use crate::handlers::file_handler::StorageManager;
 use crate::handlers::ui_handler::ui_handler;
 use crate::middleware::rate_limit::RateLimiter;
 use crate::repository::Repository;
+use crate::tracing::trace_request;
 
 pub fn create_router(repository: Repository, config: Config, storage: StorageManager) -> Router {
     let rate_limiter = RateLimiter::new(config.rate_limit_max_requests, config.rate_limit_window_secs);
@@ -41,6 +42,7 @@ pub fn create_router(repository: Repository, config: Config, storage: StorageMan
         .merge(files::file_routes(config.max_upload_size_bytes))
         .merge(graphql::graphql_routes())
         .merge(docs::docs_routes())
+        .layer(axum::middleware::from_fn_with_state((), trace_request))
         // SPA fallback — must be last
         .route(
             "/",
