@@ -3,12 +3,12 @@ use axum::{
     Router,
 };
 
-use crate::handlers::ui_handler::ui_handler;
+use crate::handlers::dashboard_handler::dashboard_handler;
 
 pub fn dashboard_routes() -> Router {
     Router::new().route(
             "/dashboard",
-            get(|| async { ui_handler(axum::extract::Path("".into())).await }),
+            get(|| async { dashboard_handler(axum::extract::Path("".into())).await }),
         )
-        .route("/dashboard/{*file}", get(ui_handler))
+        .route("/dashboard/{*file}", get(dashboard_handler))
 }

@@ -23,7 +23,7 @@ pub mod handlers {
     pub mod file_handler;
     pub mod singleton_handler;
     pub mod site_handler;
-    pub mod ui_handler;
+    pub mod dashboard_handler;
 }
 pub mod repository;
 pub mod router;

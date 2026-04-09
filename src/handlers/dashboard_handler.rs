@@ -7,10 +7,10 @@ use mime_guess::from_path;
 use rust_embed::RustEmbed;
 
 #[derive(RustEmbed)]
-#[folder = "ui/dist"]
+#[folder = "dashboard/dist"]
 pub struct Assets;
 
-pub async fn ui_handler(Path(path): Path<String>) -> Response {
+pub async fn dashboard_handler(Path(path): Path<String>) -> Response {
     let requested_path = if path.is_empty() {
         "index.html"
     } else {
