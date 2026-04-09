@@ -20,6 +20,7 @@ const router = createRouter({
   context: {
     ...TanStackQueryProviderContext,
   },
+  basepath: "/dashboard",
   defaultPreload: "intent",
   scrollRestoration: true,
   defaultStructuralSharing: true,
