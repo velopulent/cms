@@ -1,4 +1,4 @@
-# UI
+# Dashboard
 
 React frontend for CMS. Built with:
 
