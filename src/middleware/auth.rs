@@ -5,6 +5,7 @@ use axum::{
 use hmac::{Hmac, Mac};
 use jsonwebtoken::{Algorithm, DecodingKey, EncodingKey, Validation, decode, encode};
 use sha2::Sha256;
+use tracing::Span;
 
 use crate::config::Config;
 use crate::models::user::Claims;
@@ -38,11 +39,13 @@ fn extract_csrf_token(parts: &Parts) -> Option<String> {
     Some(header.to_string())
 }
 
+#[derive(Debug)]
 pub enum AuthContext {
     Jwt { user_id: String },
     ApiKey { site_id: String, permissions: String },
 }
 
+#[derive(Debug)]
 pub struct AuthenticatedUser {
     pub user_id: String,
 }
@@ -113,6 +116,8 @@ where
         let claims = verify_token(&token, &config.jwt_secret)
             .map_err(|_| unauthorized_error("Invalid or expired token"))?;
 
+        Span::current().record("user_id", tracing::field::display(&claims.sub));
+
         Ok(AuthenticatedUser {
             user_id: claims.sub,
         })
@@ -151,6 +156,8 @@ where
                 let claims = verify_token(token, &config.jwt_secret)
                     .map_err(|_| unauthorized_error("Invalid or expired token"))?;
 
+                Span::current().record("user_id", tracing::field::display(&claims.sub));
+
                 return Ok(AuthContext::Jwt {
                     user_id: claims.sub,
                 });
@@ -164,12 +171,14 @@ where
                 .get::<Config>()
                 .ok_or(unauthorized_error("Internal server error"))?;
 
-            let claims = verify_token(&token, &config.jwt_secret)
-                .map_err(|_| unauthorized_error("Invalid or expired token"))?;
+        let claims = verify_token(&token, &config.jwt_secret)
+            .map_err(|_| unauthorized_error("Invalid or expired token"))?;
 
-            return Ok(AuthContext::Jwt {
-                user_id: claims.sub,
-            });
+        Span::current().record("user_id", tracing::field::display(&claims.sub));
+
+        return Ok(AuthContext::Jwt {
+            user_id: claims.sub,
+        });
         }
 
         Err(unauthorized_error("Missing authentication"))
@@ -211,6 +220,8 @@ pub(crate) async fn verify_api_key(
         }
 
         let _ = repository.api_key.update_last_used(&key_id).await;
+
+        Span::current().record("site_id", tracing::field::display(&site_id));
 
         return Ok(AuthContext::ApiKey { site_id, permissions });
     }
