@@ -15,9 +15,9 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
-import type { Content } from "@/lib/api";
+import type { Entry } from "@/lib/api";
 
-function extractTitle(item: Content): string {
+function extractTitle(item: Entry): string {
   try {
     const parsedData =
       typeof item.data === "string" ? JSON.parse(item.data) : item.data;
@@ -49,7 +49,7 @@ export function createColumns({
   isPublishPending,
   isUnpublishPending,
   isDeletePending,
-}: CreateColumnsParams): ColumnDef<Content>[] {
+}: CreateColumnsParams): ColumnDef<Entry>[] {
   return [
     {
       accessorKey: "data",
@@ -117,7 +117,7 @@ export function createColumns({
         return (
           <div className="flex justify-end gap-1">
             <Link
-              to="/sites/$siteId/content/$collectionSlug/$id/edit"
+              to="/sites/$siteId/entries/$collectionSlug/$id/edit"
               params={{ siteId, collectionSlug, id: item.id }}
               className={buttonVariants({
                 variant: "ghost",
@@ -153,7 +153,7 @@ export function createColumns({
               </AlertDialogTrigger>
               <AlertDialogContent>
                 <AlertDialogHeader>
-                  <AlertDialogTitle>Delete content?</AlertDialogTitle>
+                  <AlertDialogTitle>Delete entry?</AlertDialogTitle>
                   <AlertDialogDescription>
                     This will permanently delete &quot;{title}&quot;. This
                     action cannot be undone.

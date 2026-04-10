@@ -6,7 +6,7 @@ pub mod server;
 pub mod services {
     pub mod api_key;
     pub mod collection;
-    pub mod content;
+    pub mod entry;
     pub mod file;
     pub mod singleton;
 }

@@ -3,7 +3,7 @@ use async_graphql::{InputObject, SimpleObject};
 use super::json::Json;
 
 #[derive(SimpleObject)]
-pub struct Content {
+pub struct Entry {
     pub id: String,
     pub site_id: String,
     pub collection_id: String,
@@ -16,30 +16,30 @@ pub struct Content {
 }
 
 #[derive(InputObject)]
-pub struct CreateContentInput {
+pub struct CreateEntryInput {
     pub collection_id: String,
     pub data: Json,
     pub slug: String,
 }
 
 #[derive(InputObject)]
-pub struct UpdateContentInput {
+pub struct UpdateEntryInput {
     pub data: Option<Json>,
     pub slug: Option<String>,
     pub status: Option<String>,
 }
 
-pub fn db_content_to_gql(c: crate::models::content::Content) -> Content {
-    let data = serde_json::from_str(&c.data).unwrap_or(serde_json::Value::Null);
-    Content {
-        id: c.id,
-        site_id: c.site_id,
-        collection_id: c.collection_id,
+pub fn db_entry_to_gql(e: crate::models::entry::Entry) -> Entry {
+    let data = serde_json::from_str(&e.data).unwrap_or(serde_json::Value::Null);
+    Entry {
+        id: e.id,
+        site_id: e.site_id,
+        collection_id: e.collection_id,
         data: Json(data),
-        slug: c.slug,
-        status: c.status,
-        created_at: c.created_at,
-        updated_at: c.updated_at,
-        published_at: c.published_at,
+        slug: e.slug,
+        status: e.status,
+        created_at: e.created_at,
+        updated_at: e.updated_at,
+        published_at: e.published_at,
     }
 }

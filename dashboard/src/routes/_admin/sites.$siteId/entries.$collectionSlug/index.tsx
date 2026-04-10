@@ -15,21 +15,21 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import {
-  deleteContent,
+  deleteEntry,
   getCollection,
-  getContent,
-  publishContent,
-  unpublishContent,
+  getEntries,
+  publishEntry,
+  unpublishEntry,
 } from "@/lib/api";
-import { createColumns } from "@/components/content/columns";
+import { createColumns } from "@/components/entries/columns";
 
 export const Route = createFileRoute(
-  "/_admin/sites/$siteId/content/$collectionSlug/",
+  "/_admin/sites/$siteId/entries/$collectionSlug/",
 )({
-  component: ContentListPage,
+  component: EntriesListPage,
 });
 
-function ContentListPage() {
+function EntriesListPage() {
   const { siteId, collectionSlug } = Route.useParams();
   const queryClient = useQueryClient();
   const [search, setSearch] = useState("");
@@ -42,10 +42,10 @@ function ContentListPage() {
     queryFn: () => getCollection(siteId, collectionSlug),
   });
 
-  const { data: contentResponse, isLoading: itemsLoading } = useQuery({
-    queryKey: ["content", siteId, collectionSlug, statusFilter, search, page, pageSize],
+  const { data: entriesResponse, isLoading: itemsLoading } = useQuery({
+    queryKey: ["entries", siteId, collectionSlug, statusFilter, search, page, pageSize],
     queryFn: () =>
-      getContent(siteId, {
+      getEntries(siteId, {
         type: collectionSlug,
         status: statusFilter || undefined,
         search: search || undefined,
@@ -54,8 +54,8 @@ function ContentListPage() {
       }),
   });
 
-  const items = contentResponse?.items ?? [];
-  const total = contentResponse?.total ?? 0;
+  const items = entriesResponse?.items ?? [];
+  const total = entriesResponse?.total ?? 0;
 
   const handleSearchChange = (value: string | null) => {
     setSearch(value || "");
@@ -68,21 +68,21 @@ function ContentListPage() {
   };
 
   const deleteMutation = useMutation({
-    mutationFn: (id: string) => deleteContent(siteId, id),
+    mutationFn: (id: string) => deleteEntry(siteId, id),
     onSuccess: () => {
       queryClient.invalidateQueries({
-        queryKey: ["content", siteId, collectionSlug],
+        queryKey: ["entries", siteId, collectionSlug],
       });
-      toast.success("Content deleted");
+      toast.success("Entry deleted");
     },
     onError: (err: Error) => toast.error(err.message),
   });
 
   const publishMutation = useMutation({
-    mutationFn: (id: string) => publishContent(siteId, id),
+    mutationFn: (id: string) => publishEntry(siteId, id),
     onSuccess: () => {
       queryClient.invalidateQueries({
-        queryKey: ["content", siteId, collectionSlug],
+        queryKey: ["entries", siteId, collectionSlug],
       });
       toast.success("Published");
     },
@@ -90,10 +90,10 @@ function ContentListPage() {
   });
 
   const unpublishMutation = useMutation({
-    mutationFn: (id: string) => unpublishContent(siteId, id),
+    mutationFn: (id: string) => unpublishEntry(siteId, id),
     onSuccess: () => {
       queryClient.invalidateQueries({
-        queryKey: ["content", siteId, collectionSlug],
+        queryKey: ["entries", siteId, collectionSlug],
       });
       toast.success("Unpublished");
     },
@@ -133,11 +133,11 @@ function ContentListPage() {
         <div>
           <h1 className="text-2xl font-semibold">{collectionName}</h1>
           <p className="text-sm text-muted-foreground">
-            Manage your {collectionName.toLowerCase()} content
+            Manage your {collectionName.toLowerCase()} entries
           </p>
         </div>
         <Link
-          to="/sites/$siteId/content/$collectionSlug/new"
+          to="/sites/$siteId/entries/$collectionSlug/new"
           params={{ siteId, collectionSlug }}
           className={buttonVariants()}
         >
@@ -190,7 +190,7 @@ function ContentListPage() {
           setPage(1);
         }}
         isLoading={isLoading}
-        emptyMessage="No content yet"
+        emptyMessage="No entries yet"
         emptyDescription={`Create your first ${collectionName.toLowerCase()} to get started.`}
       />
     </div>

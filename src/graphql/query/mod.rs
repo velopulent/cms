@@ -2,11 +2,11 @@ use async_graphql::{Context, Object, Result};
 
 use super::context::GqlContext;
 use super::types::collection::Collection;
-use super::types::content::Content;
+use super::types::entry::Entry;
 use super::types::file::File;
 use super::types::site::Site;
 
-use crate::repository::traits::{ListContentParams, ListFilesParams};
+use crate::repository::traits::{ListEntriesParams, ListFilesParams};
 
 pub struct QueryRoot;
 
@@ -61,7 +61,7 @@ impl QueryRoot {
         }
     }
 
-    async fn content(
+    async fn entries(
         &self,
         ctx: &Context<'_>,
         collection_id: Option<String>,
@@ -70,7 +70,7 @@ impl QueryRoot {
         search: Option<String>,
         page: Option<i64>,
         per_page: Option<i64>,
-    ) -> Result<Vec<Content>> {
+    ) -> Result<Vec<Entry>> {
         let gql_ctx = ctx.data::<GqlContext>()?;
         let site_id = gql_ctx.require_site()?;
 
@@ -78,7 +78,7 @@ impl QueryRoot {
         let page_val = page.unwrap_or(1).max(1);
         let per_page_val = per_page.unwrap_or(50).clamp(1, 200);
 
-        let params = ListContentParams {
+        let params = ListEntriesParams {
             site_id,
             collection_slug: r#type.as_deref(),
             collection_id: collection_id.as_deref(),
@@ -89,27 +89,27 @@ impl QueryRoot {
             per_page: per_page_val,
         };
 
-        let result = gql_ctx.repository.content.list(params)
+        let result = gql_ctx.repository.entry.list(params)
             .await
             .map_err(|e| async_graphql::Error::new(format!("Database error: {}", e)))?;
 
         Ok(result.items
             .into_iter()
-            .map(super::types::content::db_content_to_gql)
+            .map(super::types::entry::db_entry_to_gql)
             .collect())
     }
 
-    async fn content_item(&self, ctx: &Context<'_>, id: String) -> Result<Content> {
+    async fn entry(&self, ctx: &Context<'_>, id: String) -> Result<Entry> {
         let gql_ctx = ctx.data::<GqlContext>()?;
         let site_id = gql_ctx.require_site()?;
 
-        let content = gql_ctx.repository.content.get_by_id(&id, site_id, false)
+        let entry = gql_ctx.repository.entry.get_by_id(&id, site_id, false)
             .await
             .map_err(|e| async_graphql::Error::new(format!("Database error: {}", e)))?;
 
-        match content {
-            Some(c) => Ok(super::types::content::db_content_to_gql(c)),
-            None => Err(async_graphql::Error::new("Content not found")),
+        match entry {
+            Some(e) => Ok(super::types::entry::db_entry_to_gql(e)),
+            None => Err(async_graphql::Error::new("Entry not found")),
         }
     }
 
@@ -175,7 +175,7 @@ impl QueryRoot {
         Ok(refs
             .into_iter()
             .map(|r| super::types::file::FileReference {
-                content_id: r.content_id,
+                entry_id: r.entry_id,
                 collection_name: r.collection_name,
                 field_name: r.field_name,
             })

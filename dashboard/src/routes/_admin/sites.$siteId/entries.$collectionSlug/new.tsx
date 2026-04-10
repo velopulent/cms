@@ -1,12 +1,11 @@
 import { useForm } from "@tanstack/react-form";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { ArrowLeft } from "lucide-react";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { z } from "zod";
 import { DynamicForm } from "@/components/dynamic-form";
-import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
@@ -17,12 +16,24 @@ import {
 } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
-import {
-  getCollection,
-  getContentById,
-  type SchemaDefinition,
-  updateContent,
-} from "@/lib/api";
+import { createEntry, getCollection, type SchemaDefinition } from "@/lib/api";
+
+function buildDefaultValues(schema: SchemaDefinition) {
+  const defaults: Record<string, unknown> = {};
+  for (const f of schema.fields) {
+    switch (f.type) {
+      case "number":
+        defaults[f.name] = 0;
+        break;
+      case "boolean":
+        defaults[f.name] = false;
+        break;
+      default:
+        defaults[f.name] = "";
+    }
+  }
+  return defaults;
+}
 
 function buildDataSchema(schema: SchemaDefinition) {
   const shape: Record<string, z.ZodTypeAny> = {};
@@ -46,26 +57,19 @@ function buildDataSchema(schema: SchemaDefinition) {
 }
 
 export const Route = createFileRoute(
-  "/_admin/sites/$siteId/content/$collectionSlug/$id/edit",
+  "/_admin/sites/$siteId/entries/$collectionSlug/new",
 )({
-  component: EditContentPage,
+  component: CreateEntryPage,
 });
 
-function EditContentPage() {
-  const { siteId, collectionSlug, id } = Route.useParams();
+function CreateEntryPage() {
+  const { siteId, collectionSlug } = Route.useParams();
   const navigate = useNavigate();
-  const queryClient = useQueryClient();
-  const [initialized, setInitialized] = useState(false);
+  const [schemaReady, setSchemaReady] = useState(false);
 
-  const { data: collection, isLoading: collectionLoading } = useQuery({
+  const { data: collection, isLoading } = useQuery({
     queryKey: ["collection", siteId, collectionSlug],
     queryFn: () => getCollection(siteId, collectionSlug),
-  });
-
-  const { data: content, isLoading: contentLoading } = useQuery({
-    queryKey: ["content", siteId, id],
-    queryFn: () => getContentById(siteId, id),
-    enabled: !!id,
   });
 
   let collectionDef: SchemaDefinition | null = null;
@@ -77,7 +81,7 @@ function EditContentPage() {
     }
   }
 
-  const contentSchema = z.object({
+  const entrySchema = z.object({
     data: collectionDef ? buildDataSchema(collectionDef) : z.object({}),
     slug: z.string().min(1, "Slug is required"),
   });
@@ -88,31 +92,32 @@ function EditContentPage() {
       slug: "",
     },
     validators: {
-      onSubmit: contentSchema,
+      onSubmit: entrySchema,
     },
     onSubmit: async ({ value }) => {
-      updateMutation.mutate({
+      if (!collection) return;
+      createMutation.mutate({
+        collection_id: collection.id,
         data: value.data,
         slug: value.slug,
       });
     },
   });
 
-  const updateMutation = useMutation({
+  const createMutation = useMutation({
     mutationFn: ({
+      collection_id,
       data,
       slug,
     }: {
+      collection_id: string;
       data: Record<string, unknown>;
       slug: string;
-    }) => updateContent(siteId, id, { data, slug }),
+    }) => createEntry(siteId, { collection_id, data, slug }),
     onSuccess: () => {
-      queryClient.invalidateQueries({
-        queryKey: ["content", siteId, id],
-      });
-      toast.success("Content updated");
+      toast.success("Entry created");
       navigate({
-        to: "/sites/$siteId/content/$collectionSlug",
+        to: "/sites/$siteId/entries/$collectionSlug",
         params: { siteId, collectionSlug },
       });
     },
@@ -120,20 +125,14 @@ function EditContentPage() {
   });
 
   useEffect(() => {
-    if (content && !initialized) {
-      const parsedData =
-        typeof content.data === "string"
-          ? JSON.parse(content.data)
-          : content.data;
-      form.setFieldValue("data", parsedData as Record<string, unknown>);
-      form.setFieldValue("slug", content.slug);
-      setInitialized(true);
+    if (collectionDef && !schemaReady) {
+      const defaults = buildDefaultValues(collectionDef);
+      form.setFieldValue("data", defaults);
+      setSchemaReady(true);
     }
-  }, [content, initialized, form]);
+  }, [collectionDef, schemaReady, form]);
 
-  const isLoading = collectionLoading || contentLoading;
-
-  if (isLoading || !initialized) {
+  if (isLoading) {
     return (
       <div className="flex flex-col gap-6 p-6">
         <Skeleton className="h-8 w-48" />
@@ -142,10 +141,10 @@ function EditContentPage() {
     );
   }
 
-  if (!collection || !content) {
+  if (!collection) {
     return (
       <div className="p-6">
-        <p>Content not found.</p>
+        <p>Collection not found.</p>
       </div>
     );
   }
@@ -154,23 +153,16 @@ function EditContentPage() {
     <div className="flex flex-col gap-6 p-6">
       <div className="flex items-center gap-3">
         <Link
-          to="/sites/$siteId/content/$collectionSlug"
+          to="/sites/$siteId/entries/$collectionSlug"
           params={{ siteId, collectionSlug }}
           className={buttonVariants({ variant: "ghost", size: "icon" })}
         >
           <ArrowLeft />
         </Link>
         <div>
-          <div className="flex items-center gap-2">
-            <h1 className="text-2xl font-semibold">Edit {collection.name}</h1>
-            <Badge
-              variant={content.status === "published" ? "default" : "secondary"}
-            >
-              {content.status}
-            </Badge>
-          </div>
+          <h1 className="text-2xl font-semibold">New {collection.name}</h1>
           <p className="text-sm text-muted-foreground">
-            Edit {collection.name.toLowerCase()} #{content.id.slice(0, 8)}
+            Create a new {collection.name.toLowerCase()}
           </p>
         </div>
       </div>
@@ -184,10 +176,10 @@ function EditContentPage() {
       >
         <Card>
           <CardHeader>
-            <CardTitle>Content</CardTitle>
+            <CardTitle>Entry</CardTitle>
           </CardHeader>
           <CardContent>
-            {collectionDef ? (
+            {collectionDef && schemaReady ? (
               <DynamicForm
                 fields={collectionDef.fields}
                 form={form}
@@ -196,7 +188,7 @@ function EditContentPage() {
               />
             ) : (
               <p className="text-sm text-muted-foreground">
-                Invalid collection definition.
+                Loading collection schema...
               </p>
             )}
           </CardContent>
@@ -218,9 +210,12 @@ function EditContentPage() {
                       <FieldLabel htmlFor={field.name}>Slug</FieldLabel>
                       <Input
                         id={field.name}
+                        placeholder="my-entry-slug"
                         value={field.state.value}
                         onBlur={field.handleBlur}
-                        onChange={(e) => field.handleChange(e.target.value)}
+                        onChange={(e) => {
+                          field.handleChange(e.target.value);
+                        }}
                         aria-invalid={isInvalid}
                       />
                       {isInvalid && (
@@ -235,11 +230,11 @@ function EditContentPage() {
         </Card>
 
         <div className="flex gap-2">
-          <Button type="submit" disabled={updateMutation.isPending}>
-            {updateMutation.isPending ? "Saving..." : "Save"}
+          <Button type="submit" disabled={createMutation.isPending}>
+            {createMutation.isPending ? "Creating..." : "Create"}
           </Button>
           <Link
-            to="/sites/$siteId/content/$collectionSlug"
+            to="/sites/$siteId/entries/$collectionSlug"
             params={{ siteId, collectionSlug }}
             className={buttonVariants({ variant: "outline" })}
           >

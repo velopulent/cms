@@ -11,9 +11,9 @@ use uuid::Uuid;
 
 use crate::handlers::file_handler::StorageManager;
 use crate::middleware::auth::{AuthContext, check_read_access_repo, check_write_access_repo};
-use crate::models::content::{Content, CreateContent, UpdateContent};
-use crate::repository::sqlite::content::extract_file_ids_from_value;
-use crate::repository::traits::ListContentParams;
+use crate::models::entry::{Entry, CreateEntry, UpdateEntry};
+use crate::repository::sqlite::entry::extract_file_ids_from_value;
+use crate::repository::traits::ListEntriesParams;
 use crate::repository::Repository;
 
 #[derive(Deserialize, utoipa::IntoParams)]
@@ -27,20 +27,20 @@ pub struct ListParams {
 
 #[utoipa::path(
     get,
-    path = "/api/v1/sites/{site_id}/content",
+    path = "/api/v1/sites/{site_id}/entries",
     params(
         ("site_id" = String, Path, description = "Site ID"),
         ListParams,
     ),
     responses(
-        (status = 200, description = "List of content items", body = Vec<Content>),
+        (status = 200, description = "List of entries", body = Vec<Entry>),
         (status = 401, description = "Unauthorized"),
     ),
     security(("bearer" = []), ("api_key" = [])),
-    tag = "content"
+    tag = "entries"
 )]
 #[instrument(skip(repository, auth, params))]
-pub async fn list_content(
+pub async fn list_entries(
     auth: AuthContext,
     Path(site_id): Path<String>,
     Query(params): Query<ListParams>,
@@ -55,7 +55,7 @@ pub async fn list_content(
     let page = params.page.unwrap_or(1).max(1);
     let per_page = params.per_page.unwrap_or(50).clamp(1, 200);
 
-    let list_params = ListContentParams {
+    let list_params = ListEntriesParams {
         site_id: &site_id,
         collection_slug: params.r#type.as_deref(),
         collection_id: None,
@@ -70,9 +70,9 @@ pub async fn list_content(
         per_page,
     };
 
-    match repository.content.list(list_params).await {
+    match repository.entry.list(list_params).await {
         Ok(result) => {
-            let items = resolve_content_list_files(&result.items, &repository, &site_id);
+            let items = resolve_entries_list_files(&result.items, &repository, &site_id);
             (
                 StatusCode::OK,
                 Json(json!({
@@ -94,21 +94,21 @@ pub async fn list_content(
 
 #[utoipa::path(
     get,
-    path = "/api/v1/sites/{site_id}/content/{id}",
+    path = "/api/v1/sites/{site_id}/entries/{id}",
     params(
         ("site_id" = String, Path, description = "Site ID"),
-        ("id" = String, Path, description = "Content ID"),
+        ("id" = String, Path, description = "Entry ID"),
     ),
     responses(
-        (status = 200, description = "Content item", body = Content),
+        (status = 200, description = "Entry", body = Entry),
         (status = 401, description = "Unauthorized"),
-        (status = 404, description = "Content not found"),
+        (status = 404, description = "Entry not found"),
     ),
     security(("bearer" = []), ("api_key" = [])),
-    tag = "content"
+    tag = "entries"
 )]
 #[instrument(skip(repository, storage, auth))]
-pub async fn get_content(
+pub async fn get_entry(
     auth: AuthContext,
     Path((site_id, id)): Path<(String, String)>,
     Extension(repository): Extension<Repository>,
@@ -120,14 +120,14 @@ pub async fn get_content(
 
     let published_only = matches!(auth, AuthContext::ApiKey { .. });
 
-    match repository.content.get_by_id(&id, &site_id, published_only).await {
+    match repository.entry.get_by_id(&id, &site_id, published_only).await {
         Ok(Some(item)) => {
-            let resolved = resolve_content_files(&item, &repository, &storage).await;
+            let resolved = resolve_entry_files(&item, &repository, &storage).await;
             (StatusCode::OK, Json(resolved)).into_response()
         }
         Ok(None) => (
             StatusCode::NOT_FOUND,
-            Json(json!({"error": "Content not found"})),
+            Json(json!({"error": "Entry not found"})),
         )
             .into_response(),
         Err(err) => (
@@ -140,24 +140,24 @@ pub async fn get_content(
 
 #[utoipa::path(
     post,
-    path = "/api/v1/sites/{site_id}/content",
+    path = "/api/v1/sites/{site_id}/entries",
     params(("site_id" = String, Path, description = "Site ID")),
-    request_body = CreateContent,
+    request_body = CreateEntry,
     responses(
-        (status = 201, description = "Content created", body = Content),
+        (status = 201, description = "Entry created", body = Entry),
         (status = 401, description = "Unauthorized"),
         (status = 403, description = "Insufficient permissions"),
         (status = 409, description = "Slug already exists"),
     ),
     security(("bearer" = []), ("api_key" = [])),
-    tag = "content"
+    tag = "entries"
 )]
 #[instrument(skip(repository, auth, payload))]
-pub async fn create_content(
+pub async fn create_entry(
     auth: AuthContext,
     Path(site_id): Path<String>,
     Extension(repository): Extension<Repository>,
-    Json(payload): Json<CreateContent>,
+    Json(payload): Json<CreateEntry>,
 ) -> Response {
     if let Err((status, err)) = check_write_access_repo(&auth, &repository, &site_id).await {
         return (status, Json(err)).into_response();
@@ -166,14 +166,14 @@ pub async fn create_content(
     let data_str = payload.data.to_string();
     let id = Uuid::now_v7().to_string();
 
-    match repository.content.create(&id, &site_id, &payload.collection_id, &data_str, &payload.slug).await {
+    match repository.entry.create(&id, &site_id, &payload.collection_id, &data_str, &payload.slug).await {
         Ok(item) => {
-            let _ = repository.content.sync_file_references(&id, &site_id, &payload.data).await;
+            let _ = repository.entry.sync_file_references(&id, &site_id, &payload.data).await;
             (StatusCode::CREATED, Json(item)).into_response()
         }
         Err(crate::repository::error::RepositoryError::UniqueViolation(_)) => (
             StatusCode::CONFLICT,
-            Json(json!({"error": "Content with this slug already exists for this collection"})),
+            Json(json!({"error": "Entry with this slug already exists for this collection"})),
         )
             .into_response(),
         Err(err) => (
@@ -186,37 +186,37 @@ pub async fn create_content(
 
 #[utoipa::path(
     put,
-    path = "/api/v1/sites/{site_id}/content/{id}",
+    path = "/api/v1/sites/{site_id}/entries/{id}",
     params(
         ("site_id" = String, Path, description = "Site ID"),
-        ("id" = String, Path, description = "Content ID"),
+        ("id" = String, Path, description = "Entry ID"),
     ),
-    request_body = UpdateContent,
+    request_body = UpdateEntry,
     responses(
-        (status = 200, description = "Content updated", body = Content),
+        (status = 200, description = "Entry updated", body = Entry),
         (status = 401, description = "Unauthorized"),
         (status = 403, description = "Insufficient permissions"),
     ),
     security(("bearer" = []), ("api_key" = [])),
-    tag = "content"
+    tag = "entries"
 )]
 #[instrument(skip(repository, auth, payload))]
-pub async fn update_content(
+pub async fn update_entry(
     auth: AuthContext,
     Path((site_id, id)): Path<(String, String)>,
     Extension(repository): Extension<Repository>,
-    Json(payload): Json<UpdateContent>,
+    Json(payload): Json<UpdateEntry>,
 ) -> Response {
     if let Err((status, err)) = check_write_access_repo(&auth, &repository, &site_id).await {
         return (status, Json(err)).into_response();
     }
 
-    let existing = match repository.content.get_by_id(&id, &site_id, false).await {
+    let existing = match repository.entry.get_by_id(&id, &site_id, false).await {
         Ok(Some(c)) => c,
         Ok(None) => {
             return (
                 StatusCode::NOT_FOUND,
-                Json(json!({"error": "Content not found"})),
+                Json(json!({"error": "Entry not found"})),
             )
                 .into_response();
         }
@@ -237,14 +237,14 @@ pub async fn update_content(
     let slug = payload.slug.unwrap_or(existing.slug);
     let status = payload.status.unwrap_or(existing.status);
 
-    match repository.content.update(&id, &data_str, &slug, &status).await {
+    match repository.entry.update(&id, &data_str, &slug, &status).await {
         Ok(item) => {
-            let _ = repository.content.sync_file_references(&id, &site_id, &resolved_data).await;
+            let _ = repository.entry.sync_file_references(&id, &site_id, &resolved_data).await;
             (StatusCode::OK, Json(item)).into_response()
         }
         Err(crate::repository::error::RepositoryError::UniqueViolation(_)) => (
             StatusCode::CONFLICT,
-            Json(json!({"error": "Content with this slug already exists for this collection"})),
+            Json(json!({"error": "Entry with this slug already exists for this collection"})),
         )
             .into_response(),
         Err(err) => (
@@ -257,21 +257,21 @@ pub async fn update_content(
 
 #[utoipa::path(
     delete,
-    path = "/api/v1/sites/{site_id}/content/{id}",
+    path = "/api/v1/sites/{site_id}/entries/{id}",
     params(
         ("site_id" = String, Path, description = "Site ID"),
-        ("id" = String, Path, description = "Content ID"),
+        ("id" = String, Path, description = "Entry ID"),
     ),
     responses(
-        (status = 204, description = "Content deleted"),
+        (status = 204, description = "Entry deleted"),
         (status = 401, description = "Unauthorized"),
         (status = 403, description = "Insufficient permissions"),
     ),
     security(("bearer" = []), ("api_key" = [])),
-    tag = "content"
+    tag = "entries"
 )]
 #[instrument(skip(repository, auth))]
-pub async fn delete_content(
+pub async fn delete_entry(
     auth: AuthContext,
     Path((site_id, id)): Path<(String, String)>,
     Extension(repository): Extension<Repository>,
@@ -280,7 +280,7 @@ pub async fn delete_content(
         return (status, Json(err)).into_response();
     }
 
-    match repository.content.delete(&id, &site_id).await {
+    match repository.entry.delete(&id, &site_id).await {
         Ok(_) => StatusCode::NO_CONTENT.into_response(),
         Err(err) => (
             StatusCode::INTERNAL_SERVER_ERROR,
@@ -292,22 +292,22 @@ pub async fn delete_content(
 
 #[utoipa::path(
     post,
-    path = "/api/v1/sites/{site_id}/content/{id}/publish",
+    path = "/api/v1/sites/{site_id}/entries/{id}/publish",
     params(
         ("site_id" = String, Path, description = "Site ID"),
-        ("id" = String, Path, description = "Content ID"),
+        ("id" = String, Path, description = "Entry ID"),
     ),
     responses(
-        (status = 200, description = "Content published", body = Content),
+        (status = 200, description = "Entry published", body = Entry),
         (status = 401, description = "Unauthorized"),
         (status = 403, description = "Insufficient permissions"),
-        (status = 404, description = "Content not found"),
+        (status = 404, description = "Entry not found"),
     ),
     security(("bearer" = []), ("api_key" = [])),
-    tag = "content"
+    tag = "entries"
 )]
 #[instrument(skip(repository, auth))]
-pub async fn publish_content(
+pub async fn publish_entry(
     auth: AuthContext,
     Path((site_id, id)): Path<(String, String)>,
     Extension(repository): Extension<Repository>,
@@ -316,11 +316,11 @@ pub async fn publish_content(
         return (status, Json(err)).into_response();
     }
 
-    match repository.content.publish(&id, &site_id).await {
+    match repository.entry.publish(&id, &site_id).await {
         Ok(item) => (StatusCode::OK, Json(item)).into_response(),
         Err(crate::repository::error::RepositoryError::NotFound) => (
             StatusCode::NOT_FOUND,
-            Json(json!({"error": "Content not found"})),
+            Json(json!({"error": "Entry not found"})),
         )
             .into_response(),
         Err(err) => (
@@ -333,22 +333,22 @@ pub async fn publish_content(
 
 #[utoipa::path(
     post,
-    path = "/api/v1/sites/{site_id}/content/{id}/unpublish",
+    path = "/api/v1/sites/{site_id}/entries/{id}/unpublish",
     params(
         ("site_id" = String, Path, description = "Site ID"),
-        ("id" = String, Path, description = "Content ID"),
+        ("id" = String, Path, description = "Entry ID"),
     ),
     responses(
-        (status = 200, description = "Content unpublished", body = Content),
+        (status = 200, description = "Entry unpublished", body = Entry),
         (status = 401, description = "Unauthorized"),
         (status = 403, description = "Insufficient permissions"),
-        (status = 404, description = "Content not found"),
+        (status = 404, description = "Entry not found"),
     ),
     security(("bearer" = []), ("api_key" = [])),
-    tag = "content"
+    tag = "entries"
 )]
 #[instrument(skip(repository, auth))]
-pub async fn unpublish_content(
+pub async fn unpublish_entry(
     auth: AuthContext,
     Path((site_id, id)): Path<(String, String)>,
     Extension(repository): Extension<Repository>,
@@ -357,11 +357,11 @@ pub async fn unpublish_content(
         return (status, Json(err)).into_response();
     }
 
-    match repository.content.unpublish(&id, &site_id).await {
+    match repository.entry.unpublish(&id, &site_id).await {
         Ok(item) => (StatusCode::OK, Json(item)).into_response(),
         Err(crate::repository::error::RepositoryError::NotFound) => (
             StatusCode::NOT_FOUND,
-            Json(json!({"error": "Content not found"})),
+            Json(json!({"error": "Entry not found"})),
         )
             .into_response(),
         Err(err) => (
@@ -372,7 +372,7 @@ pub async fn unpublish_content(
     }
 }
 
-pub async fn resolve_content_files_from_value(
+pub async fn resolve_entries_files_from_value(
     data: &serde_json::Value,
     repository: &Repository,
     storage: &StorageManager,
@@ -419,27 +419,27 @@ pub async fn resolve_content_files_from_value(
     result
 }
 
-async fn resolve_content_files(
-    content: &Content,
+async fn resolve_entry_files(
+    entry: &Entry,
     repository: &Repository,
     storage: &StorageManager,
 ) -> serde_json::Value {
-    let data: serde_json::Value = serde_json::from_str(&content.data).unwrap_or_default();
-    let resolved_data = resolve_content_files_from_value(&data, repository, storage, &content.site_id).await;
+    let data: serde_json::Value = serde_json::from_str(&entry.data).unwrap_or_default();
+    let resolved_data = resolve_entries_files_from_value(&data, repository, storage, &entry.site_id).await;
     json!({
-        "id": content.id,
-        "site_id": content.site_id,
-        "collection_id": content.collection_id,
+        "id": entry.id,
+        "site_id": entry.site_id,
+        "collection_id": entry.collection_id,
         "data": resolved_data.get("data").cloned().unwrap_or(data),
-        "slug": content.slug,
-        "status": content.status,
-        "created_at": content.created_at,
-        "updated_at": content.updated_at,
-        "published_at": content.published_at,
+        "slug": entry.slug,
+        "status": entry.status,
+        "created_at": entry.created_at,
+        "updated_at": entry.updated_at,
+        "published_at": entry.published_at,
         "_files": resolved_data.get("_files").cloned().unwrap_or(serde_json::Value::Object(serde_json::Map::new())),
     })
 }
 
-fn resolve_content_list_files(items: &[Content], _repository: &Repository, _site_id: &str) -> Vec<Content> {
+fn resolve_entries_list_files(items: &[Entry], _repository: &Repository, _site_id: &str) -> Vec<Entry> {
     items.to_vec()
 }

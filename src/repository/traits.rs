@@ -4,7 +4,7 @@ use serde_json::Value;
 use crate::models::{
     api_key::ApiKey,
     collection::Collection,
-    content::Content,
+    entry::Entry,
     file::{File, FileReference},
     site::{Site, SiteMember, SiteWithRole},
     user::User,
@@ -44,27 +44,27 @@ pub trait CollectionRepository: Send + Sync {
     async fn update(&self, id: &str, name: &str, slug: &str, definition: &str) -> Result<Collection, RepositoryError>;
     async fn update_singleton_data(&self, id: &str, data: &str) -> Result<Collection, RepositoryError>;
     async fn delete(&self, site_id: &str, slug: &str) -> Result<u64, RepositoryError>;
-    async fn get_content_for_migration(&self, collection_id: &str) -> Result<Vec<Content>, RepositoryError>;
-    async fn migrate_content_field_renames(&self, content_items: &[Content], rename_map: &std::collections::HashMap<String, String>) -> Result<(), RepositoryError>;
+    async fn get_content_for_migration(&self, collection_id: &str) -> Result<Vec<Entry>, RepositoryError>;
+    async fn migrate_content_field_renames(&self, content_items: &[Entry], rename_map: &std::collections::HashMap<String, String>) -> Result<(), RepositoryError>;
     async fn migrate_singleton_field_renames(&self, collection: &Collection, rename_map: &std::collections::HashMap<String, String>) -> Result<(), RepositoryError>;
 }
 
 #[async_trait]
-pub trait ContentRepository: Send + Sync {
-    async fn get_by_id(&self, id: &str, site_id: &str, published_only: bool) -> Result<Option<Content>, RepositoryError>;
-    async fn get_by_id_any_site(&self, id: &str) -> Result<Option<Content>, RepositoryError>;
-    async fn list(&self, params: ListContentParams<'_>) -> Result<ContentListResult, RepositoryError>;
-    async fn get_by_collection_id(&self, collection_id: &str, status: Option<&str>, published_only: bool) -> Result<Vec<Content>, RepositoryError>;
-    async fn create(&self, id: &str, site_id: &str, collection_id: &str, data: &str, slug: &str) -> Result<Content, RepositoryError>;
-    async fn update(&self, id: &str, data: &str, slug: &str, status: &str) -> Result<Content, RepositoryError>;
+pub trait EntryRepository: Send + Sync {
+    async fn get_by_id(&self, id: &str, site_id: &str, published_only: bool) -> Result<Option<Entry>, RepositoryError>;
+    async fn get_by_id_any_site(&self, id: &str) -> Result<Option<Entry>, RepositoryError>;
+    async fn list(&self, params: ListEntriesParams<'_>) -> Result<EntriesListResult, RepositoryError>;
+    async fn get_by_collection_id(&self, collection_id: &str, status: Option<&str>, published_only: bool) -> Result<Vec<Entry>, RepositoryError>;
+    async fn create(&self, id: &str, site_id: &str, collection_id: &str, data: &str, slug: &str) -> Result<Entry, RepositoryError>;
+    async fn update(&self, id: &str, data: &str, slug: &str, status: &str) -> Result<Entry, RepositoryError>;
     async fn delete(&self, id: &str, site_id: &str) -> Result<u64, RepositoryError>;
-    async fn publish(&self, id: &str, site_id: &str) -> Result<Content, RepositoryError>;
-    async fn unpublish(&self, id: &str, site_id: &str) -> Result<Content, RepositoryError>;
-    async fn sync_file_references(&self, content_id: &str, site_id: &str, data: &Value) -> Result<(), RepositoryError>;
+    async fn publish(&self, id: &str, site_id: &str) -> Result<Entry, RepositoryError>;
+    async fn unpublish(&self, id: &str, site_id: &str) -> Result<Entry, RepositoryError>;
+    async fn sync_file_references(&self, entry_id: &str, site_id: &str, data: &Value) -> Result<(), RepositoryError>;
 }
 
 #[derive(Clone)]
-pub struct ListContentParams<'a> {
+pub struct ListEntriesParams<'a> {
     pub site_id: &'a str,
     pub collection_slug: Option<&'a str>,
     pub collection_id: Option<&'a str>,
@@ -75,8 +75,8 @@ pub struct ListContentParams<'a> {
     pub per_page: i64,
 }
 
-pub struct ContentListResult {
-    pub items: Vec<Content>,
+pub struct EntriesListResult {
+    pub items: Vec<Entry>,
     pub total: i64,
     pub page: i64,
     pub per_page: i64,

@@ -74,7 +74,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
     .filter((c) => !c.is_singleton)
     .map((c) => ({
       name: c.name,
-      url: `/sites/${siteId}/content/${c.slug}`,
+      url: `/sites/${siteId}/entries/${c.slug}`,
       icon: <FileText className="size-4" />,
     }));
 

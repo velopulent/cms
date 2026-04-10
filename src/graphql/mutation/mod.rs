@@ -1,11 +1,11 @@
 pub mod collection;
-pub mod content;
+pub mod entry;
 pub mod file;
 
 use async_graphql::{Context, Object, Result};
 
 use crate::graphql::types::collection::*;
-use crate::graphql::types::content::*;
+use crate::graphql::types::entry::{CreateEntryInput, Entry, UpdateEntryInput};
 
 pub struct MutationRoot;
 
@@ -34,35 +34,35 @@ impl MutationRoot {
         collection::CollectionMutation.delete_collection(ctx, slug).await
     }
 
-    // --- Content ---
+    // --- Entries ---
 
-    async fn create_content(
+    async fn create_entry(
         &self,
         ctx: &Context<'_>,
-        input: CreateContentInput,
-    ) -> Result<Content> {
-        content::ContentMutation.create_content(ctx, input).await
+        input: CreateEntryInput,
+    ) -> Result<Entry> {
+        entry::EntryMutation.create_entry(ctx, input).await
     }
 
-    async fn update_content(
+    async fn update_entry(
         &self,
         ctx: &Context<'_>,
         id: String,
-        input: UpdateContentInput,
-    ) -> Result<Content> {
-        content::ContentMutation.update_content(ctx, id, input).await
+        input: UpdateEntryInput,
+    ) -> Result<Entry> {
+        entry::EntryMutation.update_entry(ctx, id, input).await
     }
 
-    async fn delete_content(&self, ctx: &Context<'_>, id: String) -> Result<bool> {
-        content::ContentMutation.delete_content(ctx, id).await
+    async fn delete_entry(&self, ctx: &Context<'_>, id: String) -> Result<bool> {
+        entry::EntryMutation.delete_entry(ctx, id).await
     }
 
-    async fn publish_content(&self, ctx: &Context<'_>, id: String) -> Result<Content> {
-        content::ContentMutation.publish_content(ctx, id).await
+    async fn publish_entry(&self, ctx: &Context<'_>, id: String) -> Result<Entry> {
+        entry::EntryMutation.publish_entry(ctx, id).await
     }
 
-    async fn unpublish_content(&self, ctx: &Context<'_>, id: String) -> Result<Content> {
-        content::ContentMutation.unpublish_content(ctx, id).await
+    async fn unpublish_entry(&self, ctx: &Context<'_>, id: String) -> Result<Entry> {
+        entry::EntryMutation.unpublish_entry(ctx, id).await
     }
 
     // --- Files ---

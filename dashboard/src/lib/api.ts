@@ -131,7 +131,7 @@ export interface ContentField {
   options?: string[];
 }
 
-export interface Content {
+export interface Entry {
   id: string;
   site_id: string;
   collection_id: string;
@@ -143,8 +143,8 @@ export interface Content {
   published_at: string | null;
 }
 
-export interface ContentListResponse {
-  items: Content[];
+export interface EntryListResponse {
+  items: Entry[];
   total: number;
   page: number;
   per_page: number;
@@ -198,7 +198,7 @@ export interface FileListResponse {
 }
 
 export interface FileReference {
-  content_id: string;
+  entry_id: string;
   collection_name: string;
   field_name: string;
 }
@@ -357,9 +357,9 @@ export async function deleteCollection(siteId: string, slug: string) {
   });
 }
 
-// --- Content API (site-scoped) ---
+// --- Entry API (site-scoped) ---
 
-export async function getContent(
+export async function getEntries(
   siteId: string,
   params: {
     type?: string;
@@ -376,14 +376,14 @@ export async function getContent(
   if (params.page) query.set("page", String(params.page));
   if (params.pageSize) query.set("per_page", String(params.pageSize));
   const qs = query.toString();
-  return api<ContentListResponse>(`/sites/${siteId}/content${qs ? `?${qs}` : ""}`);
+  return api<EntryListResponse>(`/sites/${siteId}/entries${qs ? `?${qs}` : ""}`);
 }
 
-export async function getContentById(siteId: string, id: string) {
-  return api<Content>(`/sites/${siteId}/content/${id}`);
+export async function getEntryById(siteId: string, id: string) {
+  return api<Entry>(`/sites/${siteId}/entries/${id}`);
 }
 
-export async function createContent(
+export async function createEntry(
   siteId: string,
   data: {
     collection_id: string;
@@ -391,13 +391,13 @@ export async function createContent(
     slug: string;
   },
 ) {
-  return api<Content>(`/sites/${siteId}/content`, {
+  return api<Entry>(`/sites/${siteId}/entries`, {
     method: "POST",
     body: JSON.stringify(data),
   });
 }
 
-export async function updateContent(
+export async function updateEntry(
   siteId: string,
   id: string,
   data: {
@@ -406,24 +406,24 @@ export async function updateContent(
     status?: string;
   },
 ) {
-  return api<Content>(`/sites/${siteId}/content/${id}`, {
+  return api<Entry>(`/sites/${siteId}/entries/${id}`, {
     method: "PUT",
     body: JSON.stringify(data),
   });
 }
 
-export async function deleteContent(siteId: string, id: string) {
-  return api<void>(`/sites/${siteId}/content/${id}`, { method: "DELETE" });
+export async function deleteEntry(siteId: string, id: string) {
+  return api<void>(`/sites/${siteId}/entries/${id}`, { method: "DELETE" });
 }
 
-export async function publishContent(siteId: string, id: string) {
-  return api<Content>(`/sites/${siteId}/content/${id}/publish`, {
+export async function publishEntry(siteId: string, id: string) {
+  return api<Entry>(`/sites/${siteId}/entries/${id}/publish`, {
     method: "POST",
   });
 }
 
-export async function unpublishContent(siteId: string, id: string) {
-  return api<Content>(`/sites/${siteId}/content/${id}/unpublish`, {
+export async function unpublishEntry(siteId: string, id: string) {
+  return api<Entry>(`/sites/${siteId}/entries/${id}/unpublish`, {
     method: "POST",
   });
 }

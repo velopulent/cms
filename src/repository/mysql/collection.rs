@@ -2,7 +2,7 @@ use async_trait::async_trait;
 use sqlx::MySqlPool;
 
 use crate::models::collection::Collection;
-use crate::models::content::Content;
+use crate::models::entry::Entry;
 use crate::repository::error::RepositoryError;
 use crate::repository::traits::CollectionRepository;
 
@@ -135,9 +135,9 @@ impl CollectionRepository for MysqlCollectionRepository {
         Ok(result.rows_affected())
     }
 
-    async fn get_content_for_migration(&self, collection_id: &str) -> Result<Vec<Content>, RepositoryError> {
-        let result = sqlx::query_as::<_, Content>(
-            "SELECT id, site_id, collection_id, data, slug, status, created_at, updated_at, published_at FROM content WHERE collection_id = ?",
+    async fn get_content_for_migration(&self, collection_id: &str) -> Result<Vec<Entry>, RepositoryError> {
+        let result = sqlx::query_as::<_, Entry>(
+            "SELECT id, site_id, collection_id, data, slug, status, created_at, updated_at, published_at FROM entries WHERE collection_id = ?",
         )
         .bind(collection_id)
         .fetch_all(&self.pool)
@@ -148,11 +148,11 @@ impl CollectionRepository for MysqlCollectionRepository {
 
     async fn migrate_content_field_renames(
         &self,
-        content_items: &[Content],
+        entry_items: &[Entry],
         rename_map: &std::collections::HashMap<String, String>,
     ) -> Result<(), RepositoryError> {
-        for content in content_items {
-            if let Ok(mut data) = serde_json::from_str::<serde_json::Value>(&content.data) {
+        for entry in entry_items {
+            if let Ok(mut data) = serde_json::from_str::<serde_json::Value>(&entry.data) {
                 if let Some(obj) = data.as_object_mut() {
                     let mut renamed = serde_json::Map::new();
                     for (key, value) in obj.iter() {
@@ -163,13 +163,13 @@ impl CollectionRepository for MysqlCollectionRepository {
                         renamed.insert(new_key, value.clone());
                     }
                     let new_data_str = serde_json::to_string(&serde_json::Value::Object(renamed))
-                        .unwrap_or_else(|_| content.data.clone());
+                        .unwrap_or_else(|_| entry.data.clone());
 
                     sqlx::query(
-                        "UPDATE content SET data = ?, updated_at = NOW() WHERE id = ?",
+                        "UPDATE entries SET data = ?, updated_at = NOW() WHERE id = ?",
                     )
                     .bind(&new_data_str)
-                    .bind(&content.id)
+                    .bind(&entry.id)
                     .execute(&self.pool)
                     .await?;
                 }

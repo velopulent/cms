@@ -8,7 +8,7 @@ use serde_json::json;
 use tracing::instrument;
 
 use crate::handlers::file_handler::StorageManager;
-use crate::handlers::content_handler::resolve_content_files_from_value;
+use crate::handlers::entry_handler::resolve_entries_files_from_value;
 use crate::middleware::auth::{AuthContext, check_read_access_repo, check_write_access_repo};
 use crate::models::collection::{SingletonResponse, UpdateSingletonData};
 use crate::repository::Repository;
@@ -108,7 +108,7 @@ pub async fn get_singleton(
 
             if let Some(ref data) = response.data {
                 let resolved =
-                    resolve_content_files_from_value(data, &repository, &storage, &item.site_id).await;
+                    resolve_entries_files_from_value(data, &repository, &storage, &item.site_id).await;
                 response.data = Some(resolved);
             }
 

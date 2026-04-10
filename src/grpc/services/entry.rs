@@ -2,42 +2,42 @@ use std::sync::Arc;
 
 use tonic::{Request, Response, Status};
 
-use crate::grpc::cms::v1::content_service_server::ContentService;
+use crate::grpc::cms::v1::entry_service_server::EntryService;
 use crate::grpc::cms::v1::{
-    DeleteResponse, Content as ProtoContent,
-    ListContentRequest, ListContentResponse, GetContentRequest,
-    CreateContentRequest, UpdateContentRequest, DeleteContentRequest,
-    PublishContentRequest, UnpublishContentRequest,
+    DeleteResponse, Entry as ProtoEntry,
+    ListEntriesRequest, ListEntriesResponse, GetEntryRequest,
+    CreateEntryRequest, UpdateEntryRequest, DeleteEntryRequest,
+    PublishEntryRequest, UnpublishEntryRequest,
 };
 use crate::grpc::interceptor::get_auth_context;
-use crate::models::content::Content;
-use crate::repository::traits::ListContentParams;
+use crate::models::entry::Entry;
+use crate::repository::traits::ListEntriesParams;
 use crate::repository::Repository;
 use uuid::Uuid;
 
 #[derive(Clone)]
-pub struct ContentServiceImpl {
+pub struct EntryServiceImpl {
     repository: Arc<Repository>,
 }
 
-impl ContentServiceImpl {
+impl EntryServiceImpl {
     pub fn new(repository: Arc<Repository>) -> Self {
         Self { repository }
     }
 }
 
 #[tonic::async_trait]
-impl ContentService for ContentServiceImpl {
-    async fn list_content(
+impl EntryService for EntryServiceImpl {
+    async fn list_entries(
         &self,
-        request: Request<ListContentRequest>,
-    ) -> Result<Response<ListContentResponse>, Status> {
+        request: Request<ListEntriesRequest>,
+    ) -> Result<Response<ListEntriesResponse>, Status> {
         let auth = get_auth_context(&request)?;
         let site_id = auth.site_id;
 
         let req = request.into_inner();
 
-        let params = ListContentParams {
+        let params = ListEntriesParams {
             site_id: &site_id,
             collection_slug: None,
             collection_id: req.collection_id.as_deref(),
@@ -50,13 +50,13 @@ impl ContentService for ContentServiceImpl {
 
         let result = self
             .repository
-            .content
+            .entry
             .list(params)
             .await
             .map_err(|e| Status::internal(format!("Database error: {}", e)))?;
 
-        let response = ListContentResponse {
-            items: result.items.into_iter().map(ProtoContent::from).collect(),
+        let response = ListEntriesResponse {
+            items: result.items.into_iter().map(ProtoEntry::from).collect(),
             total: result.total,
             page: result.page,
             per_page: result.per_page,
@@ -65,64 +65,64 @@ impl ContentService for ContentServiceImpl {
         Ok(Response::new(response))
     }
 
-    async fn get_content(
+    async fn get_entry(
         &self,
-        request: Request<GetContentRequest>,
-    ) -> Result<Response<ProtoContent>, Status> {
+        request: Request<GetEntryRequest>,
+    ) -> Result<Response<ProtoEntry>, Status> {
         let auth = get_auth_context(&request)?;
         let site_id = auth.site_id;
         let id = request.into_inner().id;
 
-        let content = self
+        let entry = self
             .repository
-            .content
+            .entry
             .get_by_id(&id, &site_id, false)
             .await
             .map_err(|e| Status::internal(format!("Database error: {}", e)))?
-            .ok_or_else(|| Status::not_found("Content not found"))?;
+            .ok_or_else(|| Status::not_found("Entry not found"))?;
 
-        Ok(Response::new(ProtoContent::from(content)))
+        Ok(Response::new(ProtoEntry::from(entry)))
     }
 
-    async fn create_content(
+    async fn create_entry(
         &self,
-        request: Request<CreateContentRequest>,
-    ) -> Result<Response<ProtoContent>, Status> {
+        request: Request<CreateEntryRequest>,
+    ) -> Result<Response<ProtoEntry>, Status> {
         let auth = get_auth_context(&request)?;
         let site_id = auth.site_id;
 
         let req = request.into_inner();
         let id = Uuid::now_v7().to_string();
 
-        let content = self
+        let entry = self
             .repository
-            .content
+            .entry
             .create(&id, &site_id, &req.collection_id, &req.data, &req.slug)
             .await
             .map_err(|e| Status::internal(format!("Database error: {}", e)))?;
 
-        Ok(Response::new(ProtoContent::from(content)))
+        Ok(Response::new(ProtoEntry::from(entry)))
     }
 
-    async fn update_content(
+    async fn update_entry(
         &self,
-        request: Request<UpdateContentRequest>,
-    ) -> Result<Response<ProtoContent>, Status> {
+        request: Request<UpdateEntryRequest>,
+    ) -> Result<Response<ProtoEntry>, Status> {
         let _auth = get_auth_context(&request)?;
 
         let req = request.into_inner();
 
         let existing = self
             .repository
-            .content
+            .entry
             .get_by_id_any_site(&req.id)
             .await
             .map_err(|e| Status::internal(format!("Database error: {}", e)))?
-            .ok_or_else(|| Status::not_found("Content not found"))?;
+            .ok_or_else(|| Status::not_found("Entry not found"))?;
 
-        let content = self
+        let entry = self
             .repository
-            .content
+            .entry
             .update(
                 &req.id,
                 req.data.as_ref().unwrap_or(&existing.data),
@@ -132,12 +132,12 @@ impl ContentService for ContentServiceImpl {
             .await
             .map_err(|e| Status::internal(format!("Database error: {}", e)))?;
 
-        Ok(Response::new(ProtoContent::from(content)))
+        Ok(Response::new(ProtoEntry::from(entry)))
     }
 
-    async fn delete_content(
+    async fn delete_entry(
         &self,
-        request: Request<DeleteContentRequest>,
+        request: Request<DeleteEntryRequest>,
     ) -> Result<Response<DeleteResponse>, Status> {
         let auth = get_auth_context(&request)?;
         let site_id = auth.site_id;
@@ -145,7 +145,7 @@ impl ContentService for ContentServiceImpl {
 
         let deleted = self
             .repository
-            .content
+            .entry
             .delete(&id, &site_id)
             .await
             .map_err(|e| Status::internal(format!("Database error: {}", e)))?;
@@ -153,62 +153,62 @@ impl ContentService for ContentServiceImpl {
         Ok(Response::new(DeleteResponse {
             success: deleted > 0,
             message: if deleted > 0 {
-                "Content deleted".to_string()
+                "Entry deleted".to_string()
             } else {
-                "Content not found".to_string()
+                "Entry not found".to_string()
             },
         }))
     }
 
-    async fn publish_content(
+    async fn publish_entry(
         &self,
-        request: Request<PublishContentRequest>,
-    ) -> Result<Response<ProtoContent>, Status> {
+        request: Request<PublishEntryRequest>,
+    ) -> Result<Response<ProtoEntry>, Status> {
         let auth = get_auth_context(&request)?;
         let site_id = auth.site_id;
         let id = request.into_inner().id;
 
-        let content = self
+        let entry = self
             .repository
-            .content
+            .entry
             .publish(&id, &site_id)
             .await
             .map_err(|e| Status::internal(format!("Database error: {}", e)))?;
 
-        Ok(Response::new(ProtoContent::from(content)))
+        Ok(Response::new(ProtoEntry::from(entry)))
     }
 
-    async fn unpublish_content(
+    async fn unpublish_entry(
         &self,
-        request: Request<UnpublishContentRequest>,
-    ) -> Result<Response<ProtoContent>, Status> {
+        request: Request<UnpublishEntryRequest>,
+    ) -> Result<Response<ProtoEntry>, Status> {
         let auth = get_auth_context(&request)?;
         let site_id = auth.site_id;
         let id = request.into_inner().id;
 
-        let content = self
+        let entry = self
             .repository
-            .content
+            .entry
             .unpublish(&id, &site_id)
             .await
             .map_err(|e| Status::internal(format!("Database error: {}", e)))?;
 
-        Ok(Response::new(ProtoContent::from(content)))
+        Ok(Response::new(ProtoEntry::from(entry)))
     }
 }
 
-impl From<Content> for ProtoContent {
-    fn from(c: Content) -> Self {
-        ProtoContent {
-            id: c.id,
-            site_id: c.site_id,
-            collection_id: c.collection_id,
-            data: c.data,
-            slug: c.slug,
-            status: c.status,
-            created_at: c.created_at,
-            updated_at: c.updated_at,
-            published_at: c.published_at,
+impl From<Entry> for ProtoEntry {
+    fn from(e: Entry) -> Self {
+        ProtoEntry {
+            id: e.id,
+            site_id: e.site_id,
+            collection_id: e.collection_id,
+            data: e.data,
+            slug: e.slug,
+            status: e.status,
+            created_at: e.created_at,
+            updated_at: e.updated_at,
+            published_at: e.published_at,
         }
     }
 }

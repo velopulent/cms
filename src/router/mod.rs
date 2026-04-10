@@ -1,9 +1,9 @@
 mod api_keys;
 mod auth;
 mod collections;
-mod content;
 mod dashboard;
 mod docs;
+mod entry;
 mod files;
 mod graphql;
 mod openapi;
@@ -36,7 +36,7 @@ pub fn create_router(repository: Repository, config: Config, storage: StorageMan
         .merge(sites::site_routes())
         .merge(api_keys::api_key_routes())
         .merge(collections::collection_routes())
-        .merge(content::content_routes())
+        .merge(entry::entry_routes())
         .merge(singleton::singleton_routes())
         .merge(files::file_routes(config.max_upload_size_bytes))
         .merge(graphql::graphql_routes())

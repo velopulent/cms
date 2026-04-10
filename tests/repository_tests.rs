@@ -1,7 +1,7 @@
 use cms::database::pool::DbPool;
 use cms::repository::Repository;
 use cms::repository::error::RepositoryError;
-use cms::repository::traits::ListContentParams;
+use cms::repository::traits::ListEntriesParams;
 use sqlx::sqlite::SqlitePoolOptions;
 
 async fn setup_test_db() -> (DbPool, Repository) {
@@ -192,75 +192,75 @@ async fn test_singleton_create_and_update_data() {
 }
 
 #[tokio::test]
-async fn test_content_crud() {
+async fn test_entry_crud() {
     let (_pool, repo) = setup_test_db().await;
 
     repo.user.create("u1", "alice", "alice@test.com", "h").await.unwrap();
     repo.site.create("s1", "Site", "filesystem", "u1").await.unwrap();
     repo.collection.create("c1", "s1", "Posts", "posts", "{}", false).await.unwrap();
 
-    let content = repo.content.create("ct1", "s1", "c1", r#"{"title":"Hello"}"#, "hello").await.unwrap();
-    assert_eq!(content.slug, "hello");
-    assert_eq!(content.status, "draft");
+    let entry = repo.entry.create("ct1", "s1", "c1", r#"{"title":"Hello"}"#, "hello").await.unwrap();
+    assert_eq!(entry.slug, "hello");
+    assert_eq!(entry.status, "draft");
 
-    let got = repo.content.get_by_id("ct1", "s1", false).await.unwrap().unwrap();
+    let got = repo.entry.get_by_id("ct1", "s1", false).await.unwrap().unwrap();
     assert_eq!(got.slug, "hello");
 
-    let updated = repo.content.update("ct1", r#"{"title":"Updated"}"#, "hello-updated", "draft").await.unwrap();
+    let updated = repo.entry.update("ct1", r#"{"title":"Updated"}"#, "hello-updated", "draft").await.unwrap();
     assert_eq!(updated.slug, "hello-updated");
 
-    assert_eq!(repo.content.delete("ct1", "s1").await.unwrap(), 1);
-    assert!(repo.content.get_by_id("ct1", "s1", false).await.unwrap().is_none());
+    assert_eq!(repo.entry.delete("ct1", "s1").await.unwrap(), 1);
+    assert!(repo.entry.get_by_id("ct1", "s1", false).await.unwrap().is_none());
 }
 
 #[tokio::test]
-async fn test_content_publish_unpublish() {
+async fn test_entry_publish_unpublish() {
     let (_pool, repo) = setup_test_db().await;
 
     repo.user.create("u1", "alice", "alice@test.com", "h").await.unwrap();
     repo.site.create("s1", "Site", "filesystem", "u1").await.unwrap();
     repo.collection.create("c1", "s1", "Posts", "posts", "{}", false).await.unwrap();
-    repo.content.create("ct1", "s1", "c1", "{}", "hello").await.unwrap();
+    repo.entry.create("ct1", "s1", "c1", "{}", "hello").await.unwrap();
 
-    let published = repo.content.publish("ct1", "s1").await.unwrap();
+    let published = repo.entry.publish("ct1", "s1").await.unwrap();
     assert_eq!(published.status, "published");
     assert!(published.published_at.is_some());
 
-    let unpublished = repo.content.unpublish("ct1", "s1").await.unwrap();
+    let unpublished = repo.entry.unpublish("ct1", "s1").await.unwrap();
     assert_eq!(unpublished.status, "draft");
 }
 
 #[tokio::test]
-async fn test_content_unique_slug_per_collection() {
+async fn test_entry_unique_slug_per_collection() {
     let (_pool, repo) = setup_test_db().await;
 
     repo.user.create("u1", "alice", "alice@test.com", "h").await.unwrap();
     repo.site.create("s1", "Site", "filesystem", "u1").await.unwrap();
     repo.collection.create("c1", "s1", "Posts", "posts", "{}", false).await.unwrap();
 
-    repo.content.create("ct1", "s1", "c1", "{}", "hello").await.unwrap();
-    let dup = repo.content.create("ct2", "s1", "c1", "{}", "hello").await;
+    repo.entry.create("ct1", "s1", "c1", "{}", "hello").await.unwrap();
+    let dup = repo.entry.create("ct2", "s1", "c1", "{}", "hello").await;
     assert!(matches!(dup, Err(RepositoryError::UniqueViolation(_))));
 }
 
 #[tokio::test]
-async fn test_content_not_found_errors() {
+async fn test_entry_not_found_errors() {
     let (_pool, repo) = setup_test_db().await;
 
-    assert!(repo.content.get_by_id("nonexistent", "s1", false).await.unwrap().is_none());
+    assert!(repo.entry.get_by_id("nonexistent", "s1", false).await.unwrap().is_none());
 
-    let publish_err = repo.content.publish("nonexistent", "s1").await;
+    let publish_err = repo.entry.publish("nonexistent", "s1").await;
     assert!(matches!(publish_err, Err(RepositoryError::NotFound)));
 
-    let unpublish_err = repo.content.unpublish("nonexistent", "s1").await;
+    let unpublish_err = repo.entry.unpublish("nonexistent", "s1").await;
     assert!(matches!(unpublish_err, Err(RepositoryError::NotFound)));
 
-    let update_err = repo.content.update("nonexistent", "{}", "slug", "draft").await;
+    let update_err = repo.entry.update("nonexistent", "{}", "slug", "draft").await;
     assert!(matches!(update_err, Err(RepositoryError::NotFound)));
 }
 
 #[tokio::test]
-async fn test_content_list_with_pagination() {
+async fn test_entry_list_with_pagination() {
     let (_pool, repo) = setup_test_db().await;
 
     repo.user.create("u1", "alice", "alice@test.com", "h").await.unwrap();
@@ -268,10 +268,10 @@ async fn test_content_list_with_pagination() {
     repo.collection.create("c1", "s1", "Posts", "posts", "{}", false).await.unwrap();
 
     for i in 0..5 {
-        repo.content.create(&format!("ct{}", i), "s1", "c1", &format!(r#"{{"title":"Post {}"}}"#, i), &format!("post-{}", i)).await.unwrap();
+        repo.entry.create(&format!("ct{}", i), "s1", "c1", &format!(r#"{{"title":"Post {}"}}"#, i), &format!("post-{}", i)).await.unwrap();
     }
 
-    let params = ListContentParams {
+    let params = ListEntriesParams {
         site_id: "s1",
         collection_slug: None,
         collection_id: None,
@@ -281,13 +281,13 @@ async fn test_content_list_with_pagination() {
         page: 1,
         per_page: 3,
     };
-    let result = repo.content.list(params).await.unwrap();
+    let result = repo.entry.list(params).await.unwrap();
     assert_eq!(result.items.len(), 3);
     assert_eq!(result.total, 5);
     assert_eq!(result.page, 1);
     assert_eq!(result.per_page, 3);
 
-    let params_page2 = ListContentParams {
+    let params_page2 = ListEntriesParams {
         site_id: "s1",
         collection_slug: None,
         collection_id: None,
@@ -297,7 +297,7 @@ async fn test_content_list_with_pagination() {
         page: 2,
         per_page: 3,
     };
-    let result2 = repo.content.list(params_page2).await.unwrap();
+    let result2 = repo.entry.list(params_page2).await.unwrap();
     assert_eq!(result2.items.len(), 2);
 }
 
@@ -406,16 +406,16 @@ async fn test_api_key_find_by_prefix() {
 }
 
 #[tokio::test]
-async fn test_content_sync_file_references() {
+async fn test_entry_sync_file_references() {
     let (_pool, repo) = setup_test_db().await;
 
     repo.user.create("u1", "alice", "alice@test.com", "h").await.unwrap();
     repo.site.create("s1", "Site", "filesystem", "u1").await.unwrap();
     repo.collection.create("c1", "s1", "Posts", "posts", "{}", false).await.unwrap();
     repo.file.create("f1", "s1", "img.jpg", "photo.jpg", "image/jpeg", 2048, "filesystem", "key1", None, None, None, Some("u1")).await.unwrap();
-    repo.content.create("ct1", "s1", "c1", r#"{"image":"/api/files/f1"}"#, "hello").await.unwrap();
+    repo.entry.create("ct1", "s1", "c1", r#"{"image":"/api/files/f1"}"#, "hello").await.unwrap();
 
     let data = serde_json::json!({"image": "/api/files/f1"});
-    let result = repo.content.sync_file_references("ct1", "s1", &data).await;
+    let result = repo.entry.sync_file_references("ct1", "s1", &data).await;
     assert!(result.is_ok(), "sync_file_references failed: {:?}", result.err());
 }

@@ -7,9 +7,9 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   type Collection,
-  type Content,
+  type Entry,
   getCollections,
-  getContent,
+  getEntries,
 } from "@/lib/api";
 
 export const Route = createFileRoute("/_admin/sites/$siteId/")({
@@ -24,9 +24,9 @@ function DashboardPage() {
     queryFn: () => getCollections(siteId),
   });
 
-  const { data: contentResponse, isLoading: contentLoading } = useQuery({
-    queryKey: ["content", siteId, "all"],
-    queryFn: () => getContent(siteId, {}),
+  const { data: entriesResponse, isLoading: entriesLoading } = useQuery({
+    queryKey: ["entries", siteId, "all"],
+    queryFn: () => getEntries(siteId, {}),
   });
 
   const collectionsArray = Array.isArray(collections) ? collections : [];
@@ -35,12 +35,12 @@ function DashboardPage() {
   );
   const singletons = collectionsArray.filter((c) => c.is_singleton);
 
-  const allContentArray = contentResponse?.items ?? [];
-  const publishedCount = allContentArray.filter(
-    (c: Content) => c.status === "published",
+  const allEntriesArray = entriesResponse?.items ?? [];
+  const publishedCount = allEntriesArray.filter(
+    (e: Entry) => e.status === "published",
   ).length;
-  const draftCount = allContentArray.filter(
-    (c: Content) => c.status === "draft",
+  const draftCount = allEntriesArray.filter(
+    (e: Entry) => e.status === "draft",
   ).length;
 
   return (
@@ -90,7 +90,7 @@ function DashboardPage() {
             </CardTitle>
           </CardHeader>
           <CardContent>
-            {contentLoading ? (
+            {entriesLoading ? (
               <Skeleton className="h-8 w-12" />
             ) : (
               <p className="text-3xl font-semibold">{publishedCount}</p>
@@ -104,7 +104,7 @@ function DashboardPage() {
             </CardTitle>
           </CardHeader>
           <CardContent>
-            {contentLoading ? (
+            {entriesLoading ? (
               <Skeleton className="h-8 w-12" />
             ) : (
               <p className="text-3xl font-semibold">{draftCount}</p>
@@ -145,7 +145,7 @@ function DashboardPage() {
             {regularCollections.map((c: Collection) => (
               <Link
                 key={c.id}
-                to="/sites/$siteId/content/$collectionSlug/new"
+                to="/sites/$siteId/entries/$collectionSlug/new"
                 params={{ siteId, collectionSlug: c.slug }}
                 className={buttonVariants({ variant: "outline" })}
               >
@@ -157,11 +157,11 @@ function DashboardPage() {
         </div>
       )}
 
-      {allContentArray.length > 0 && (
+      {allEntriesArray.length > 0 && (
         <div className="flex flex-col gap-4">
           <h2 className="text-lg font-semibold">Recently Updated</h2>
           <div className="flex flex-col gap-2">
-            {allContentArray.slice(0, 5).map((item: Content) => {
+            {allEntriesArray.slice(0, 5).map((item: Entry) => {
               const collectionName = collections?.find(
                 (c: Collection) => c.id === item.collection_id,
               )?.name;

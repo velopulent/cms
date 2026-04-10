@@ -3,7 +3,7 @@ use sqlx::FromRow;
 use utoipa::ToSchema;
 
 #[derive(Serialize, FromRow, ToSchema, Clone)]
-pub struct Content {
+pub struct Entry {
     pub id: String,
     pub site_id: String,
     pub collection_id: String,
@@ -16,14 +16,14 @@ pub struct Content {
 }
 
 #[derive(Deserialize, ToSchema)]
-pub struct CreateContent {
+pub struct CreateEntry {
     pub collection_id: String,
     pub data: serde_json::Value,
     pub slug: String,
 }
 
 #[derive(Deserialize, ToSchema)]
-pub struct UpdateContent {
+pub struct UpdateEntry {
     pub data: Option<serde_json::Value>,
     pub slug: Option<String>,
     pub status: Option<String>,

@@ -37,7 +37,7 @@ CREATE TABLE IF NOT EXISTS collections (
     updated_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
-CREATE TABLE IF NOT EXISTS content (
+CREATE TABLE IF NOT EXISTS entries (
     id TEXT PRIMARY KEY NOT NULL,
     site_id TEXT NOT NULL REFERENCES sites(id) ON DELETE CASCADE,
     collection_id TEXT NOT NULL REFERENCES collections(id) ON DELETE CASCADE,
@@ -54,11 +54,11 @@ CREATE INDEX IF NOT EXISTS idx_site_members_site ON site_members(site_id);
 CREATE INDEX IF NOT EXISTS idx_collections_site ON collections(site_id);
 CREATE UNIQUE INDEX IF NOT EXISTS idx_collections_site_name ON collections(site_id, name);
 CREATE UNIQUE INDEX IF NOT EXISTS idx_collections_site_slug ON collections(site_id, slug);
-CREATE INDEX IF NOT EXISTS idx_content_site ON content(site_id);
-CREATE INDEX IF NOT EXISTS idx_content_slug ON content(slug);
-CREATE INDEX IF NOT EXISTS idx_content_collection ON content(collection_id);
-CREATE INDEX IF NOT EXISTS idx_content_status ON content(status);
-CREATE UNIQUE INDEX IF NOT EXISTS idx_content_collection_slug ON content(collection_id, slug);
+CREATE INDEX IF NOT EXISTS idx_entries_site ON entries(site_id);
+CREATE INDEX IF NOT EXISTS idx_entries_slug ON entries(slug);
+CREATE INDEX IF NOT EXISTS idx_entries_collection ON entries(collection_id);
+CREATE INDEX IF NOT EXISTS idx_entries_status ON entries(status);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_entries_collection_slug ON entries(collection_id, slug);
 
 CREATE TABLE IF NOT EXISTS api_keys (
     id TEXT PRIMARY KEY NOT NULL,
@@ -97,11 +97,11 @@ CREATE TABLE IF NOT EXISTS files (
 CREATE INDEX IF NOT EXISTS idx_files_site ON files(site_id);
 CREATE INDEX IF NOT EXISTS idx_files_created_by ON files(created_by);
 
-CREATE TABLE IF NOT EXISTS content_file_references (
-    content_id TEXT NOT NULL REFERENCES content(id) ON DELETE CASCADE,
+CREATE TABLE IF NOT EXISTS entry_file_references (
+    entry_id TEXT NOT NULL REFERENCES entries(id) ON DELETE CASCADE,
     file_id TEXT NOT NULL REFERENCES files(id) ON DELETE CASCADE,
     site_id TEXT NOT NULL REFERENCES sites(id) ON DELETE CASCADE,
-    PRIMARY KEY (content_id, file_id)
+    PRIMARY KEY (entry_id, file_id)
 );
-CREATE INDEX IF NOT EXISTS idx_cfr_file ON content_file_references(file_id);
-CREATE INDEX IF NOT EXISTS idx_cfr_content ON content_file_references(content_id);
+CREATE INDEX IF NOT EXISTS idx_efr_file ON entry_file_references(file_id);
+CREATE INDEX IF NOT EXISTS idx_efr_entry ON entry_file_references(entry_id);

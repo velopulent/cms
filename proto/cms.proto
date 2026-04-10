@@ -14,14 +14,14 @@ service CollectionService {
   rpc DeleteCollection(DeleteCollectionRequest) returns (DeleteResponse);
 }
 
-service ContentService {
-  rpc ListContent(ListContentRequest) returns (ListContentResponse);
-  rpc GetContent(GetContentRequest) returns (Content);
-  rpc CreateContent(CreateContentRequest) returns (Content);
-  rpc UpdateContent(UpdateContentRequest) returns (Content);
-  rpc DeleteContent(DeleteContentRequest) returns (DeleteResponse);
-  rpc PublishContent(PublishContentRequest) returns (Content);
-  rpc UnpublishContent(UnpublishContentRequest) returns (Content);
+service EntryService {
+  rpc ListEntries(ListEntriesRequest) returns (ListEntriesResponse);
+  rpc GetEntry(GetEntryRequest) returns (Entry);
+  rpc CreateEntry(CreateEntryRequest) returns (Entry);
+  rpc UpdateEntry(UpdateEntryRequest) returns (Entry);
+  rpc DeleteEntry(DeleteEntryRequest) returns (DeleteResponse);
+  rpc PublishEntry(PublishEntryRequest) returns (Entry);
+  rpc UnpublishEntry(UnpublishEntryRequest) returns (Entry);
 }
 
 service SingletonService {
@@ -56,7 +56,7 @@ message Collection {
   string updated_at = 9;
 }
 
-message Content {
+message Entry {
   string id = 1;
   string site_id = 2;
   string collection_id = 3;
@@ -152,9 +152,9 @@ message DeleteCollectionRequest {
   string slug = 2;
 }
 
-// Content requests/responses
+// Entry requests/responses
 
-message ListContentRequest {
+message ListEntriesRequest {
   optional string collection_id = 1;
   optional string status = 2;
   optional string search = 3;
@@ -162,39 +162,39 @@ message ListContentRequest {
   int64 per_page = 5;
 }
 
-message ListContentResponse {
-  repeated Content items = 1;
+message ListEntriesResponse {
+  repeated Entry items = 1;
   int64 total = 2;
   int64 page = 3;
   int64 per_page = 4;
 }
 
-message GetContentRequest {
+message GetEntryRequest {
   string id = 1;
 }
 
-message CreateContentRequest {
+message CreateEntryRequest {
   string collection_id = 1;
   string data = 2;
   string slug = 3;
 }
 
-message UpdateContentRequest {
+message UpdateEntryRequest {
   string id = 1;
   optional string data = 2;
   optional string slug = 3;
   optional string status = 4;
 }
 
-message DeleteContentRequest {
+message DeleteEntryRequest {
   string id = 1;
 }
 
-message PublishContentRequest {
+message PublishEntryRequest {
   string id = 1;
 }
 
-message UnpublishContentRequest {
+message UnpublishEntryRequest {
   string id = 1;
 }
 

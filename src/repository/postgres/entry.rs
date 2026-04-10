@@ -4,38 +4,38 @@ use serde_json::Value;
 use sqlx::PgPool;
 use std::sync::LazyLock;
 
-use crate::models::content::Content;
+use crate::models::entry::Entry;
 use crate::repository::error::RepositoryError;
-use crate::repository::traits::{ContentListResult, ContentRepository, ListContentParams};
+use crate::repository::traits::{EntriesListResult, EntryRepository, ListEntriesParams};
 
-pub struct PostgresContentRepository {
+pub struct PostgresEntryRepository {
     pool: PgPool,
 }
 
-impl PostgresContentRepository {
+impl PostgresEntryRepository {
     pub fn new(pool: PgPool) -> Self {
         Self { pool }
     }
 }
 
 #[async_trait]
-impl ContentRepository for PostgresContentRepository {
+impl EntryRepository for PostgresEntryRepository {
     async fn get_by_id(
         &self,
         id: &str,
         site_id: &str,
         published_only: bool,
-    ) -> Result<Option<Content>, RepositoryError> {
+    ) -> Result<Option<Entry>, RepositoryError> {
         let mut query = String::from(
             "SELECT id, site_id, collection_id, data::text as data, slug, status, created_at::text as created_at, updated_at::text as updated_at, published_at::text as published_at
-             FROM content WHERE id = $1 AND site_id = $2",
+             FROM entries WHERE id = $1 AND site_id = $2",
         );
 
         if published_only {
             query.push_str(" AND status = 'published'");
         }
 
-        let result = sqlx::query_as::<_, Content>(&query)
+        let result = sqlx::query_as::<_, Entry>(&query)
             .bind(id)
             .bind(site_id)
             .fetch_optional(&self.pool)
@@ -44,10 +44,10 @@ impl ContentRepository for PostgresContentRepository {
         Ok(result)
     }
 
-    async fn get_by_id_any_site(&self, id: &str) -> Result<Option<Content>, RepositoryError> {
-        let result = sqlx::query_as::<_, Content>(
+    async fn get_by_id_any_site(&self, id: &str) -> Result<Option<Entry>, RepositoryError> {
+        let result = sqlx::query_as::<_, Entry>(
             "SELECT id, site_id, collection_id, data::text as data, slug, status, created_at::text as created_at, updated_at::text as updated_at, published_at::text as published_at
-             FROM content WHERE id = $1",
+             FROM entries WHERE id = $1",
         )
         .bind(id)
         .fetch_optional(&self.pool)
@@ -56,24 +56,24 @@ impl ContentRepository for PostgresContentRepository {
         Ok(result)
     }
 
-    async fn list(&self, params: ListContentParams<'_>) -> Result<ContentListResult, RepositoryError> {
+    async fn list(&self, params: ListEntriesParams<'_>) -> Result<EntriesListResult, RepositoryError> {
         let mut count_query = String::from(
-            "SELECT COUNT(*) FROM content c
-             JOIN collections col ON c.collection_id = col.id
-             WHERE c.site_id = $1",
+            "SELECT COUNT(*) FROM entries e
+             JOIN collections col ON e.collection_id = col.id
+             WHERE e.site_id = $1",
         );
         let mut query = String::from(
-            "SELECT c.id, c.site_id, c.collection_id, c.data::text as data, c.slug, c.status, c.created_at::text as created_at, c.updated_at::text as updated_at, c.published_at::text as published_at
-             FROM content c
-             JOIN collections col ON c.collection_id = col.id
-             WHERE c.site_id = $1",
+            "SELECT e.id, e.site_id, e.collection_id, e.data::text as data, e.slug, e.status, e.created_at::text as created_at, e.updated_at::text as updated_at, e.published_at::text as published_at
+             FROM entries e
+             JOIN collections col ON e.collection_id = col.id
+             WHERE e.site_id = $1",
         );
         let mut param_index = 2;
         let mut bindings: Vec<String> = vec![params.site_id.to_string()];
 
         if params.published_only {
-            query.push_str(" AND c.status = 'published'");
-            count_query.push_str(" AND c.status = 'published'");
+            query.push_str(" AND e.status = 'published'");
+            count_query.push_str(" AND e.status = 'published'");
         }
 
         if let Some(collection_slug) = params.collection_slug {
@@ -84,22 +84,22 @@ impl ContentRepository for PostgresContentRepository {
         }
 
         if let Some(cid) = params.collection_id {
-            query.push_str(&format!(" AND c.collection_id = ${}", param_index));
-            count_query.push_str(&format!(" AND c.collection_id = ${}", param_index));
+            query.push_str(&format!(" AND e.collection_id = ${}", param_index));
+            count_query.push_str(&format!(" AND e.collection_id = ${}", param_index));
             bindings.push(cid.to_string());
             param_index += 1;
         }
 
         if let Some(status) = params.status {
-            query.push_str(&format!(" AND c.status = ${}", param_index));
-            count_query.push_str(&format!(" AND c.status = ${}", param_index));
+            query.push_str(&format!(" AND e.status = ${}", param_index));
+            count_query.push_str(&format!(" AND e.status = ${}", param_index));
             bindings.push(status.to_string());
             param_index += 1;
         }
 
         if let Some(search) = params.search {
-            query.push_str(&format!(" AND c.data LIKE ${}", param_index));
-            count_query.push_str(&format!(" AND c.data LIKE ${}", param_index));
+            query.push_str(&format!(" AND e.data LIKE ${}", param_index));
+            count_query.push_str(&format!(" AND e.data LIKE ${}", param_index));
             bindings.push(format!("%{}%", search));
             param_index += 1;
         }
@@ -113,9 +113,9 @@ impl ContentRepository for PostgresContentRepository {
         };
 
         let offset = (params.page - 1) * params.per_page;
-        query.push_str(&format!(" ORDER BY c.updated_at DESC LIMIT ${} OFFSET ${}", param_index, param_index + 1));
+        query.push_str(&format!(" ORDER BY e.updated_at DESC LIMIT ${} OFFSET ${}", param_index, param_index + 1));
 
-        let mut q = sqlx::query_as::<_, Content>(&query);
+        let mut q = sqlx::query_as::<_, Entry>(&query);
         for b in &bindings {
             q = q.bind(b);
         }
@@ -123,7 +123,7 @@ impl ContentRepository for PostgresContentRepository {
 
         let items = q.fetch_all(&self.pool).await?;
 
-        Ok(ContentListResult {
+        Ok(EntriesListResult {
             items,
             total,
             page: params.page,
@@ -136,10 +136,10 @@ impl ContentRepository for PostgresContentRepository {
         collection_id: &str,
         status: Option<&str>,
         published_only: bool,
-    ) -> Result<Vec<Content>, RepositoryError> {
+    ) -> Result<Vec<Entry>, RepositoryError> {
         let mut query = String::from(
             "SELECT id, site_id, collection_id, data::text as data, slug, status, created_at::text as created_at, updated_at::text as updated_at, published_at::text as published_at
-             FROM content WHERE collection_id = $1",
+             FROM entries WHERE collection_id = $1",
         );
         let mut bindings: Vec<String> = vec![collection_id.to_string()];
         let param_index = 2;
@@ -153,7 +153,7 @@ impl ContentRepository for PostgresContentRepository {
 
         query.push_str(" ORDER BY updated_at DESC");
 
-        let mut q = sqlx::query_as::<_, Content>(&query);
+        let mut q = sqlx::query_as::<_, Entry>(&query);
         for b in &bindings {
             q = q.bind(b);
         }
@@ -169,9 +169,9 @@ impl ContentRepository for PostgresContentRepository {
         collection_id: &str,
         data: &str,
         slug: &str,
-    ) -> Result<Content, RepositoryError> {
+    ) -> Result<Entry, RepositoryError> {
         sqlx::query(
-            "INSERT INTO content (id, site_id, collection_id, data, slug) VALUES ($1, $2, $3, $4::jsonb, $5)",
+            "INSERT INTO entries (id, site_id, collection_id, data, slug) VALUES ($1, $2, $3, $4::jsonb, $5)",
         )
         .bind(id)
         .bind(site_id)
@@ -192,9 +192,9 @@ impl ContentRepository for PostgresContentRepository {
         data: &str,
         slug: &str,
         status: &str,
-    ) -> Result<Content, RepositoryError> {
+    ) -> Result<Entry, RepositoryError> {
         sqlx::query(
-            "UPDATE content SET data = $1::jsonb, slug = $2, status = $3, updated_at = NOW() WHERE id = $4",
+            "UPDATE entries SET data = $1::jsonb, slug = $2, status = $3, updated_at = NOW() WHERE id = $4",
         )
         .bind(data)
         .bind(slug)
@@ -209,7 +209,7 @@ impl ContentRepository for PostgresContentRepository {
     }
 
     async fn delete(&self, id: &str, site_id: &str) -> Result<u64, RepositoryError> {
-        let result = sqlx::query("DELETE FROM content WHERE id = $1 AND site_id = $2")
+        let result = sqlx::query("DELETE FROM entries WHERE id = $1 AND site_id = $2")
             .bind(id)
             .bind(site_id)
             .execute(&self.pool)
@@ -218,9 +218,9 @@ impl ContentRepository for PostgresContentRepository {
         Ok(result.rows_affected())
     }
 
-    async fn publish(&self, id: &str, site_id: &str) -> Result<Content, RepositoryError> {
+    async fn publish(&self, id: &str, site_id: &str) -> Result<Entry, RepositoryError> {
         let result = sqlx::query(
-            "UPDATE content SET status = 'published', published_at = NOW(), updated_at = NOW() WHERE id = $1 AND site_id = $2",
+            "UPDATE entries SET status = 'published', published_at = NOW(), updated_at = NOW() WHERE id = $1 AND site_id = $2",
         )
         .bind(id)
         .bind(site_id)
@@ -236,9 +236,9 @@ impl ContentRepository for PostgresContentRepository {
             .ok_or(RepositoryError::NotFound)
     }
 
-    async fn unpublish(&self, id: &str, site_id: &str) -> Result<Content, RepositoryError> {
+    async fn unpublish(&self, id: &str, site_id: &str) -> Result<Entry, RepositoryError> {
         let result = sqlx::query(
-            "UPDATE content SET status = 'draft', updated_at = NOW() WHERE id = $1 AND site_id = $2",
+            "UPDATE entries SET status = 'draft', updated_at = NOW() WHERE id = $1 AND site_id = $2",
         )
         .bind(id)
         .bind(site_id)
@@ -256,7 +256,7 @@ impl ContentRepository for PostgresContentRepository {
 
     async fn sync_file_references(
         &self,
-        content_id: &str,
+        entry_id: &str,
         site_id: &str,
         data: &Value,
     ) -> Result<(), RepositoryError> {
@@ -264,16 +264,16 @@ impl ContentRepository for PostgresContentRepository {
 
         let mut tx = self.pool.begin().await?;
 
-        sqlx::query("DELETE FROM content_file_references WHERE content_id = $1")
-            .bind(content_id)
+        sqlx::query("DELETE FROM entry_file_references WHERE entry_id = $1")
+            .bind(entry_id)
             .execute(&mut *tx)
             .await?;
 
         for file_id in &file_ids {
             sqlx::query(
-                "INSERT INTO content_file_references (content_id, file_id, site_id) SELECT $1, id, $2 FROM files WHERE id = $3 AND site_id = $4 ON CONFLICT DO NOTHING",
+                "INSERT INTO entry_file_references (entry_id, file_id, site_id) SELECT $1, id, $2 FROM files WHERE id = $3 AND site_id = $4 ON CONFLICT DO NOTHING",
             )
-            .bind(content_id)
+            .bind(entry_id)
             .bind(site_id)
             .bind(file_id)
             .bind(site_id)

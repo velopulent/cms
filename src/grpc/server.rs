@@ -10,7 +10,7 @@ use crate::config::Config;
 use crate::grpc::middleware::AuthLayer;
 use crate::grpc::services::api_key::ApiKeyServiceImpl;
 use crate::grpc::services::collection::CollectionServiceImpl;
-use crate::grpc::services::content::ContentServiceImpl;
+use crate::grpc::services::entry::EntryServiceImpl;
 use crate::grpc::services::file::FileServiceImpl;
 use crate::grpc::services::singleton::SingletonServiceImpl;
 use crate::repository::Repository;
@@ -50,7 +50,7 @@ pub async fn start_grpc_server(
 
     // Initialize service implementations
     let collection_svc = CollectionServiceImpl::new(repository.clone());
-    let content_svc = ContentServiceImpl::new(repository.clone());
+    let entry_svc = EntryServiceImpl::new(repository.clone());
     let singleton_svc = SingletonServiceImpl::new(repository.clone());
     let file_svc = FileServiceImpl::new(repository.clone());
     let api_key_svc = ApiKeyServiceImpl::new(repository.clone(), config.hmac_secret.clone());
@@ -62,8 +62,8 @@ pub async fn start_grpc_server(
         crate::grpc::cms::v1::collection_service_server::CollectionServiceServer::new(
             collection_svc,
         );
-    let content_svc =
-        crate::grpc::cms::v1::content_service_server::ContentServiceServer::new(content_svc);
+    let entry_svc =
+        crate::grpc::cms::v1::entry_service_server::EntryServiceServer::new(entry_svc);
     let singleton_svc =
         crate::grpc::cms::v1::singleton_service_server::SingletonServiceServer::new(singleton_svc);
     let file_svc = crate::grpc::cms::v1::file_service_server::FileServiceServer::new(file_svc);
@@ -77,7 +77,7 @@ pub async fn start_grpc_server(
     Server::builder()
         .layer(auth_layer)
         .add_service(collection_svc)
-        .add_service(content_svc)
+        .add_service(entry_svc)
         .add_service(singleton_svc)
         .add_service(file_svc)
         .add_service(api_key_svc)

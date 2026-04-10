@@ -42,7 +42,7 @@ CREATE TABLE IF NOT EXISTS collections (
     FOREIGN KEY (site_id) REFERENCES sites(id) ON DELETE CASCADE
 );
 
-CREATE TABLE IF NOT EXISTS content (
+CREATE TABLE IF NOT EXISTS entries (
     id VARCHAR(36) PRIMARY KEY NOT NULL,
     site_id VARCHAR(36) NOT NULL,
     collection_id VARCHAR(36) NOT NULL,
@@ -62,11 +62,11 @@ CREATE INDEX idx_site_members_site ON site_members(site_id);
 CREATE INDEX idx_collections_site ON collections(site_id);
 CREATE UNIQUE INDEX idx_collections_site_name ON collections(site_id, name);
 CREATE UNIQUE INDEX idx_collections_site_slug ON collections(site_id, slug);
-CREATE INDEX idx_content_site ON content(site_id);
-CREATE INDEX idx_content_slug ON content(slug);
-CREATE INDEX idx_content_collection ON content(collection_id);
-CREATE INDEX idx_content_status ON content(status);
-CREATE UNIQUE INDEX idx_content_collection_slug ON content(collection_id, slug);
+CREATE INDEX idx_entries_site ON entries(site_id);
+CREATE INDEX idx_entries_slug ON entries(slug);
+CREATE INDEX idx_entries_collection ON entries(collection_id);
+CREATE INDEX idx_entries_status ON entries(status);
+CREATE UNIQUE INDEX idx_entries_collection_slug ON entries(collection_id, slug);
 
 CREATE TABLE IF NOT EXISTS api_keys (
     id VARCHAR(36) PRIMARY KEY NOT NULL,
@@ -109,14 +109,14 @@ CREATE TABLE IF NOT EXISTS files (
 CREATE INDEX idx_files_site ON files(site_id);
 CREATE INDEX idx_files_created_by ON files(created_by);
 
-CREATE TABLE IF NOT EXISTS content_file_references (
-    content_id VARCHAR(36) NOT NULL,
+CREATE TABLE IF NOT EXISTS entry_file_references (
+    entry_id VARCHAR(36) NOT NULL,
     file_id VARCHAR(36) NOT NULL,
     site_id VARCHAR(36) NOT NULL,
-    PRIMARY KEY (content_id, file_id),
-    FOREIGN KEY (content_id) REFERENCES content(id) ON DELETE CASCADE,
+    PRIMARY KEY (entry_id, file_id),
+    FOREIGN KEY (entry_id) REFERENCES entries(id) ON DELETE CASCADE,
     FOREIGN KEY (file_id) REFERENCES files(id) ON DELETE CASCADE,
     FOREIGN KEY (site_id) REFERENCES sites(id) ON DELETE CASCADE
 );
-CREATE INDEX idx_cfr_file ON content_file_references(file_id);
-CREATE INDEX idx_cfr_content ON content_file_references(content_id);
+CREATE INDEX idx_efr_file ON entry_file_references(file_id);
+CREATE INDEX idx_efr_entry ON entry_file_references(entry_id);

@@ -1,7 +1,7 @@
 use utoipa::OpenApi;
 
 use crate::models::collection::{Collection, CreateCollection, UpdateCollection};
-use crate::models::content::{Content, CreateContent, UpdateContent};
+use crate::models::entry::{CreateEntry, Entry, UpdateEntry};
 use crate::models::file::{BatchFileIds, File, FileReference, FileWithUrl};
 
 #[derive(OpenApi)]
@@ -9,7 +9,7 @@ use crate::models::file::{BatchFileIds, File, FileReference, FileWithUrl};
     info(
         title = "CMS API",
         version = "1.0.0",
-        description = "Headless CMS public API for managing content within a site. \
+        description = "Headless CMS public API for managing entries within a site. \
             All endpoints accept either JWT or API key authentication.",
         contact(name = "CMS", url = "https://cms.velopulent.com"),
         license(name = "MIT")
@@ -21,14 +21,14 @@ use crate::models::file::{BatchFileIds, File, FileReference, FileWithUrl};
         crate::handlers::collection_handler::create_collection,
         crate::handlers::collection_handler::update_collection,
         crate::handlers::collection_handler::delete_collection,
-        // Content
-        crate::handlers::content_handler::list_content,
-        crate::handlers::content_handler::get_content,
-        crate::handlers::content_handler::create_content,
-        crate::handlers::content_handler::update_content,
-        crate::handlers::content_handler::delete_content,
-        crate::handlers::content_handler::publish_content,
-        crate::handlers::content_handler::unpublish_content,
+        // Entries
+        crate::handlers::entry_handler::list_entries,
+        crate::handlers::entry_handler::get_entry,
+        crate::handlers::entry_handler::create_entry,
+        crate::handlers::entry_handler::update_entry,
+        crate::handlers::entry_handler::delete_entry,
+        crate::handlers::entry_handler::publish_entry,
+        crate::handlers::entry_handler::unpublish_entry,
         // Singletons
         crate::handlers::singleton_handler::list_singletons,
         crate::handlers::singleton_handler::get_singleton,
@@ -47,15 +47,15 @@ use crate::models::file::{BatchFileIds, File, FileReference, FileWithUrl};
     components(schemas(
         // Collection
         Collection, CreateCollection, UpdateCollection,
-        // Content
-        Content, CreateContent, UpdateContent,
+        // Entry
+        Entry, CreateEntry, UpdateEntry,
         // File
         File, FileWithUrl, FileReference, BatchFileIds,
     )),
     modifiers(&SecurityAddon),
     tags(
         (name = "collections", description = "Collection management"),
-        (name = "content", description = "Content management"),
+        (name = "entries", description = "Entry management"),
         (name = "singletons", description = "Singleton management"),
         (name = "files", description = "File management"),
     )

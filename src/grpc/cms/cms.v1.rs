@@ -21,7 +21,7 @@ pub struct Collection {
     pub updated_at: ::prost::alloc::string::String,
 }
 #[derive(Clone, PartialEq, ::prost::Message)]
-pub struct Content {
+pub struct Entry {
     #[prost(string, tag = "1")]
     pub id: ::prost::alloc::string::String,
     #[prost(string, tag = "2")]
@@ -171,7 +171,7 @@ pub struct DeleteCollectionRequest {
     pub slug: ::prost::alloc::string::String,
 }
 #[derive(Clone, PartialEq, ::prost::Message)]
-pub struct ListContentRequest {
+pub struct ListEntriesRequest {
     #[prost(string, optional, tag = "1")]
     pub collection_id: ::core::option::Option<::prost::alloc::string::String>,
     #[prost(string, optional, tag = "2")]
@@ -184,9 +184,9 @@ pub struct ListContentRequest {
     pub per_page: i64,
 }
 #[derive(Clone, PartialEq, ::prost::Message)]
-pub struct ListContentResponse {
+pub struct ListEntriesResponse {
     #[prost(message, repeated, tag = "1")]
-    pub items: ::prost::alloc::vec::Vec<Content>,
+    pub items: ::prost::alloc::vec::Vec<Entry>,
     #[prost(int64, tag = "2")]
     pub total: i64,
     #[prost(int64, tag = "3")]
@@ -195,12 +195,12 @@ pub struct ListContentResponse {
     pub per_page: i64,
 }
 #[derive(Clone, PartialEq, ::prost::Message)]
-pub struct GetContentRequest {
+pub struct GetEntryRequest {
     #[prost(string, tag = "1")]
     pub id: ::prost::alloc::string::String,
 }
 #[derive(Clone, PartialEq, ::prost::Message)]
-pub struct CreateContentRequest {
+pub struct CreateEntryRequest {
     #[prost(string, tag = "1")]
     pub collection_id: ::prost::alloc::string::String,
     #[prost(string, tag = "2")]
@@ -209,7 +209,7 @@ pub struct CreateContentRequest {
     pub slug: ::prost::alloc::string::String,
 }
 #[derive(Clone, PartialEq, ::prost::Message)]
-pub struct UpdateContentRequest {
+pub struct UpdateEntryRequest {
     #[prost(string, tag = "1")]
     pub id: ::prost::alloc::string::String,
     #[prost(string, optional, tag = "2")]
@@ -220,17 +220,17 @@ pub struct UpdateContentRequest {
     pub status: ::core::option::Option<::prost::alloc::string::String>,
 }
 #[derive(Clone, PartialEq, ::prost::Message)]
-pub struct DeleteContentRequest {
+pub struct DeleteEntryRequest {
     #[prost(string, tag = "1")]
     pub id: ::prost::alloc::string::String,
 }
 #[derive(Clone, PartialEq, ::prost::Message)]
-pub struct PublishContentRequest {
+pub struct PublishEntryRequest {
     #[prost(string, tag = "1")]
     pub id: ::prost::alloc::string::String,
 }
 #[derive(Clone, PartialEq, ::prost::Message)]
-pub struct UnpublishContentRequest {
+pub struct UnpublishEntryRequest {
     #[prost(string, tag = "1")]
     pub id: ::prost::alloc::string::String,
 }
@@ -703,7 +703,7 @@ pub mod collection_service_server {
     }
 }
 /// Generated server implementations.
-pub mod content_service_server {
+pub mod entry_service_server {
     #![allow(
         unused_variables,
         dead_code,
@@ -712,50 +712,50 @@ pub mod content_service_server {
         clippy::let_unit_value,
     )]
     use tonic::codegen::*;
-    /// Generated trait containing gRPC methods that should be implemented for use with ContentServiceServer.
+    /// Generated trait containing gRPC methods that should be implemented for use with EntryServiceServer.
     #[async_trait]
-    pub trait ContentService: std::marker::Send + std::marker::Sync + 'static {
-        async fn list_content(
+    pub trait EntryService: std::marker::Send + std::marker::Sync + 'static {
+        async fn list_entries(
             &self,
-            request: tonic::Request<super::ListContentRequest>,
+            request: tonic::Request<super::ListEntriesRequest>,
         ) -> std::result::Result<
-            tonic::Response<super::ListContentResponse>,
+            tonic::Response<super::ListEntriesResponse>,
             tonic::Status,
         >;
-        async fn get_content(
+        async fn get_entry(
             &self,
-            request: tonic::Request<super::GetContentRequest>,
-        ) -> std::result::Result<tonic::Response<super::Content>, tonic::Status>;
-        async fn create_content(
+            request: tonic::Request<super::GetEntryRequest>,
+        ) -> std::result::Result<tonic::Response<super::Entry>, tonic::Status>;
+        async fn create_entry(
             &self,
-            request: tonic::Request<super::CreateContentRequest>,
-        ) -> std::result::Result<tonic::Response<super::Content>, tonic::Status>;
-        async fn update_content(
+            request: tonic::Request<super::CreateEntryRequest>,
+        ) -> std::result::Result<tonic::Response<super::Entry>, tonic::Status>;
+        async fn update_entry(
             &self,
-            request: tonic::Request<super::UpdateContentRequest>,
-        ) -> std::result::Result<tonic::Response<super::Content>, tonic::Status>;
-        async fn delete_content(
+            request: tonic::Request<super::UpdateEntryRequest>,
+        ) -> std::result::Result<tonic::Response<super::Entry>, tonic::Status>;
+        async fn delete_entry(
             &self,
-            request: tonic::Request<super::DeleteContentRequest>,
+            request: tonic::Request<super::DeleteEntryRequest>,
         ) -> std::result::Result<tonic::Response<super::DeleteResponse>, tonic::Status>;
-        async fn publish_content(
+        async fn publish_entry(
             &self,
-            request: tonic::Request<super::PublishContentRequest>,
-        ) -> std::result::Result<tonic::Response<super::Content>, tonic::Status>;
-        async fn unpublish_content(
+            request: tonic::Request<super::PublishEntryRequest>,
+        ) -> std::result::Result<tonic::Response<super::Entry>, tonic::Status>;
+        async fn unpublish_entry(
             &self,
-            request: tonic::Request<super::UnpublishContentRequest>,
-        ) -> std::result::Result<tonic::Response<super::Content>, tonic::Status>;
+            request: tonic::Request<super::UnpublishEntryRequest>,
+        ) -> std::result::Result<tonic::Response<super::Entry>, tonic::Status>;
     }
     #[derive(Debug)]
-    pub struct ContentServiceServer<T> {
+    pub struct EntryServiceServer<T> {
         inner: Arc<T>,
         accept_compression_encodings: EnabledCompressionEncodings,
         send_compression_encodings: EnabledCompressionEncodings,
         max_decoding_message_size: Option<usize>,
         max_encoding_message_size: Option<usize>,
     }
-    impl<T> ContentServiceServer<T> {
+    impl<T> EntryServiceServer<T> {
         pub fn new(inner: T) -> Self {
             Self::from_arc(Arc::new(inner))
         }
@@ -806,9 +806,9 @@ pub mod content_service_server {
             self
         }
     }
-    impl<T, B> tonic::codegen::Service<http::Request<B>> for ContentServiceServer<T>
+    impl<T, B> tonic::codegen::Service<http::Request<B>> for EntryServiceServer<T>
     where
-        T: ContentService,
+        T: EntryService,
         B: Body + std::marker::Send + 'static,
         B::Error: Into<StdError> + std::marker::Send + 'static,
     {
@@ -823,25 +823,25 @@ pub mod content_service_server {
         }
         fn call(&mut self, req: http::Request<B>) -> Self::Future {
             match req.uri().path() {
-                "/cms.v1.ContentService/ListContent" => {
+                "/cms.v1.EntryService/ListEntries" => {
                     #[allow(non_camel_case_types)]
-                    struct ListContentSvc<T: ContentService>(pub Arc<T>);
+                    struct ListEntriesSvc<T: EntryService>(pub Arc<T>);
                     impl<
-                        T: ContentService,
-                    > tonic::server::UnaryService<super::ListContentRequest>
-                    for ListContentSvc<T> {
-                        type Response = super::ListContentResponse;
+                        T: EntryService,
+                    > tonic::server::UnaryService<super::ListEntriesRequest>
+                    for ListEntriesSvc<T> {
+                        type Response = super::ListEntriesResponse;
                         type Future = BoxFuture<
                             tonic::Response<Self::Response>,
                             tonic::Status,
                         >;
                         fn call(
                             &mut self,
-                            request: tonic::Request<super::ListContentRequest>,
+                            request: tonic::Request<super::ListEntriesRequest>,
                         ) -> Self::Future {
                             let inner = Arc::clone(&self.0);
                             let fut = async move {
-                                <T as ContentService>::list_content(&inner, request).await
+                                <T as EntryService>::list_entries(&inner, request).await
                             };
                             Box::pin(fut)
                         }
@@ -852,7 +852,7 @@ pub mod content_service_server {
                     let max_encoding_message_size = self.max_encoding_message_size;
                     let inner = self.inner.clone();
                     let fut = async move {
-                        let method = ListContentSvc(inner);
+                        let method = ListEntriesSvc(inner);
                         let codec = tonic::codec::ProstCodec::default();
                         let mut grpc = tonic::server::Grpc::new(codec)
                             .apply_compression_config(
@@ -868,25 +868,25 @@ pub mod content_service_server {
                     };
                     Box::pin(fut)
                 }
-                "/cms.v1.ContentService/GetContent" => {
+                "/cms.v1.EntryService/GetEntry" => {
                     #[allow(non_camel_case_types)]
-                    struct GetContentSvc<T: ContentService>(pub Arc<T>);
+                    struct GetEntrySvc<T: EntryService>(pub Arc<T>);
                     impl<
-                        T: ContentService,
-                    > tonic::server::UnaryService<super::GetContentRequest>
-                    for GetContentSvc<T> {
-                        type Response = super::Content;
+                        T: EntryService,
+                    > tonic::server::UnaryService<super::GetEntryRequest>
+                    for GetEntrySvc<T> {
+                        type Response = super::Entry;
                         type Future = BoxFuture<
                             tonic::Response<Self::Response>,
                             tonic::Status,
                         >;
                         fn call(
                             &mut self,
-                            request: tonic::Request<super::GetContentRequest>,
+                            request: tonic::Request<super::GetEntryRequest>,
                         ) -> Self::Future {
                             let inner = Arc::clone(&self.0);
                             let fut = async move {
-                                <T as ContentService>::get_content(&inner, request).await
+                                <T as EntryService>::get_entry(&inner, request).await
                             };
                             Box::pin(fut)
                         }
@@ -897,7 +897,7 @@ pub mod content_service_server {
                     let max_encoding_message_size = self.max_encoding_message_size;
                     let inner = self.inner.clone();
                     let fut = async move {
-                        let method = GetContentSvc(inner);
+                        let method = GetEntrySvc(inner);
                         let codec = tonic::codec::ProstCodec::default();
                         let mut grpc = tonic::server::Grpc::new(codec)
                             .apply_compression_config(
@@ -913,25 +913,25 @@ pub mod content_service_server {
                     };
                     Box::pin(fut)
                 }
-                "/cms.v1.ContentService/CreateContent" => {
+                "/cms.v1.EntryService/CreateEntry" => {
                     #[allow(non_camel_case_types)]
-                    struct CreateContentSvc<T: ContentService>(pub Arc<T>);
+                    struct CreateEntrySvc<T: EntryService>(pub Arc<T>);
                     impl<
-                        T: ContentService,
-                    > tonic::server::UnaryService<super::CreateContentRequest>
-                    for CreateContentSvc<T> {
-                        type Response = super::Content;
+                        T: EntryService,
+                    > tonic::server::UnaryService<super::CreateEntryRequest>
+                    for CreateEntrySvc<T> {
+                        type Response = super::Entry;
                         type Future = BoxFuture<
                             tonic::Response<Self::Response>,
                             tonic::Status,
                         >;
                         fn call(
                             &mut self,
-                            request: tonic::Request<super::CreateContentRequest>,
+                            request: tonic::Request<super::CreateEntryRequest>,
                         ) -> Self::Future {
                             let inner = Arc::clone(&self.0);
                             let fut = async move {
-                                <T as ContentService>::create_content(&inner, request).await
+                                <T as EntryService>::create_entry(&inner, request).await
                             };
                             Box::pin(fut)
                         }
@@ -942,7 +942,7 @@ pub mod content_service_server {
                     let max_encoding_message_size = self.max_encoding_message_size;
                     let inner = self.inner.clone();
                     let fut = async move {
-                        let method = CreateContentSvc(inner);
+                        let method = CreateEntrySvc(inner);
                         let codec = tonic::codec::ProstCodec::default();
                         let mut grpc = tonic::server::Grpc::new(codec)
                             .apply_compression_config(
@@ -958,25 +958,25 @@ pub mod content_service_server {
                     };
                     Box::pin(fut)
                 }
-                "/cms.v1.ContentService/UpdateContent" => {
+                "/cms.v1.EntryService/UpdateEntry" => {
                     #[allow(non_camel_case_types)]
-                    struct UpdateContentSvc<T: ContentService>(pub Arc<T>);
+                    struct UpdateEntrySvc<T: EntryService>(pub Arc<T>);
                     impl<
-                        T: ContentService,
-                    > tonic::server::UnaryService<super::UpdateContentRequest>
-                    for UpdateContentSvc<T> {
-                        type Response = super::Content;
+                        T: EntryService,
+                    > tonic::server::UnaryService<super::UpdateEntryRequest>
+                    for UpdateEntrySvc<T> {
+                        type Response = super::Entry;
                         type Future = BoxFuture<
                             tonic::Response<Self::Response>,
                             tonic::Status,
                         >;
                         fn call(
                             &mut self,
-                            request: tonic::Request<super::UpdateContentRequest>,
+                            request: tonic::Request<super::UpdateEntryRequest>,
                         ) -> Self::Future {
                             let inner = Arc::clone(&self.0);
                             let fut = async move {
-                                <T as ContentService>::update_content(&inner, request).await
+                                <T as EntryService>::update_entry(&inner, request).await
                             };
                             Box::pin(fut)
                         }
@@ -987,7 +987,7 @@ pub mod content_service_server {
                     let max_encoding_message_size = self.max_encoding_message_size;
                     let inner = self.inner.clone();
                     let fut = async move {
-                        let method = UpdateContentSvc(inner);
+                        let method = UpdateEntrySvc(inner);
                         let codec = tonic::codec::ProstCodec::default();
                         let mut grpc = tonic::server::Grpc::new(codec)
                             .apply_compression_config(
@@ -1003,13 +1003,13 @@ pub mod content_service_server {
                     };
                     Box::pin(fut)
                 }
-                "/cms.v1.ContentService/DeleteContent" => {
+                "/cms.v1.EntryService/DeleteEntry" => {
                     #[allow(non_camel_case_types)]
-                    struct DeleteContentSvc<T: ContentService>(pub Arc<T>);
+                    struct DeleteEntrySvc<T: EntryService>(pub Arc<T>);
                     impl<
-                        T: ContentService,
-                    > tonic::server::UnaryService<super::DeleteContentRequest>
-                    for DeleteContentSvc<T> {
+                        T: EntryService,
+                    > tonic::server::UnaryService<super::DeleteEntryRequest>
+                    for DeleteEntrySvc<T> {
                         type Response = super::DeleteResponse;
                         type Future = BoxFuture<
                             tonic::Response<Self::Response>,
@@ -1017,11 +1017,11 @@ pub mod content_service_server {
                         >;
                         fn call(
                             &mut self,
-                            request: tonic::Request<super::DeleteContentRequest>,
+                            request: tonic::Request<super::DeleteEntryRequest>,
                         ) -> Self::Future {
                             let inner = Arc::clone(&self.0);
                             let fut = async move {
-                                <T as ContentService>::delete_content(&inner, request).await
+                                <T as EntryService>::delete_entry(&inner, request).await
                             };
                             Box::pin(fut)
                         }
@@ -1032,7 +1032,7 @@ pub mod content_service_server {
                     let max_encoding_message_size = self.max_encoding_message_size;
                     let inner = self.inner.clone();
                     let fut = async move {
-                        let method = DeleteContentSvc(inner);
+                        let method = DeleteEntrySvc(inner);
                         let codec = tonic::codec::ProstCodec::default();
                         let mut grpc = tonic::server::Grpc::new(codec)
                             .apply_compression_config(
@@ -1048,26 +1048,25 @@ pub mod content_service_server {
                     };
                     Box::pin(fut)
                 }
-                "/cms.v1.ContentService/PublishContent" => {
+                "/cms.v1.EntryService/PublishEntry" => {
                     #[allow(non_camel_case_types)]
-                    struct PublishContentSvc<T: ContentService>(pub Arc<T>);
+                    struct PublishEntrySvc<T: EntryService>(pub Arc<T>);
                     impl<
-                        T: ContentService,
-                    > tonic::server::UnaryService<super::PublishContentRequest>
-                    for PublishContentSvc<T> {
-                        type Response = super::Content;
+                        T: EntryService,
+                    > tonic::server::UnaryService<super::PublishEntryRequest>
+                    for PublishEntrySvc<T> {
+                        type Response = super::Entry;
                         type Future = BoxFuture<
                             tonic::Response<Self::Response>,
                             tonic::Status,
                         >;
                         fn call(
                             &mut self,
-                            request: tonic::Request<super::PublishContentRequest>,
+                            request: tonic::Request<super::PublishEntryRequest>,
                         ) -> Self::Future {
                             let inner = Arc::clone(&self.0);
                             let fut = async move {
-                                <T as ContentService>::publish_content(&inner, request)
-                                    .await
+                                <T as EntryService>::publish_entry(&inner, request).await
                             };
                             Box::pin(fut)
                         }
@@ -1078,7 +1077,7 @@ pub mod content_service_server {
                     let max_encoding_message_size = self.max_encoding_message_size;
                     let inner = self.inner.clone();
                     let fut = async move {
-                        let method = PublishContentSvc(inner);
+                        let method = PublishEntrySvc(inner);
                         let codec = tonic::codec::ProstCodec::default();
                         let mut grpc = tonic::server::Grpc::new(codec)
                             .apply_compression_config(
@@ -1094,26 +1093,25 @@ pub mod content_service_server {
                     };
                     Box::pin(fut)
                 }
-                "/cms.v1.ContentService/UnpublishContent" => {
+                "/cms.v1.EntryService/UnpublishEntry" => {
                     #[allow(non_camel_case_types)]
-                    struct UnpublishContentSvc<T: ContentService>(pub Arc<T>);
+                    struct UnpublishEntrySvc<T: EntryService>(pub Arc<T>);
                     impl<
-                        T: ContentService,
-                    > tonic::server::UnaryService<super::UnpublishContentRequest>
-                    for UnpublishContentSvc<T> {
-                        type Response = super::Content;
+                        T: EntryService,
+                    > tonic::server::UnaryService<super::UnpublishEntryRequest>
+                    for UnpublishEntrySvc<T> {
+                        type Response = super::Entry;
                         type Future = BoxFuture<
                             tonic::Response<Self::Response>,
                             tonic::Status,
                         >;
                         fn call(
                             &mut self,
-                            request: tonic::Request<super::UnpublishContentRequest>,
+                            request: tonic::Request<super::UnpublishEntryRequest>,
                         ) -> Self::Future {
                             let inner = Arc::clone(&self.0);
                             let fut = async move {
-                                <T as ContentService>::unpublish_content(&inner, request)
-                                    .await
+                                <T as EntryService>::unpublish_entry(&inner, request).await
                             };
                             Box::pin(fut)
                         }
@@ -1124,7 +1122,7 @@ pub mod content_service_server {
                     let max_encoding_message_size = self.max_encoding_message_size;
                     let inner = self.inner.clone();
                     let fut = async move {
-                        let method = UnpublishContentSvc(inner);
+                        let method = UnpublishEntrySvc(inner);
                         let codec = tonic::codec::ProstCodec::default();
                         let mut grpc = tonic::server::Grpc::new(codec)
                             .apply_compression_config(
@@ -1160,7 +1158,7 @@ pub mod content_service_server {
             }
         }
     }
-    impl<T> Clone for ContentServiceServer<T> {
+    impl<T> Clone for EntryServiceServer<T> {
         fn clone(&self) -> Self {
             let inner = self.inner.clone();
             Self {
@@ -1173,8 +1171,8 @@ pub mod content_service_server {
         }
     }
     /// Generated gRPC service name
-    pub const SERVICE_NAME: &str = "cms.v1.ContentService";
-    impl<T> tonic::server::NamedService for ContentServiceServer<T> {
+    pub const SERVICE_NAME: &str = "cms.v1.EntryService";
+    impl<T> tonic::server::NamedService for EntryServiceServer<T> {
         const NAME: &'static str = SERVICE_NAME;
     }
 }

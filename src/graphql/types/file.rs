@@ -20,7 +20,7 @@ pub struct File {
 
 #[derive(SimpleObject)]
 pub struct FileReference {
-    pub content_id: String,
+    pub entry_id: String,
     pub collection_name: String,
     pub field_name: String,
 }

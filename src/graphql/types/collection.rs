@@ -1,6 +1,6 @@
 use async_graphql::{ComplexObject, InputObject, SimpleObject};
 
-use super::content::Content;
+use super::entry::Entry;
 use super::json::Json;
 
 #[derive(SimpleObject)]
@@ -19,15 +19,15 @@ pub struct Collection {
 
 #[ComplexObject]
 impl Collection {
-    async fn content(
+    async fn entry(
         &self,
         ctx: &async_graphql::Context<'_>,
         status: Option<String>,
-    ) -> async_graphql::Result<Vec<Content>> {
+    ) -> async_graphql::Result<Vec<Entry>> {
         let gql_ctx = ctx.data::<crate::graphql::context::GqlContext>()?;
         let published_only = gql_ctx.site_id.is_some();
 
-        let items = gql_ctx.repository.content.get_by_collection_id(
+        let items = gql_ctx.repository.entry.get_by_collection_id(
             &self.id,
             status.as_deref(),
             published_only,
@@ -35,7 +35,7 @@ impl Collection {
         .await
         .map_err(|e| async_graphql::Error::new(format!("Database error: {}", e)))?;
 
-        Ok(items.into_iter().map(super::content::db_content_to_gql).collect())
+        Ok(items.into_iter().map(super::entry::db_entry_to_gql).collect())
     }
 }
 

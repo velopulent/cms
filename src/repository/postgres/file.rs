@@ -285,10 +285,10 @@ impl FileRepository for PostgresFileRepository {
 
     async fn get_references(&self, file_id: &str) -> Result<Vec<FileReference>, RepositoryError> {
         let rows: Vec<(String, String)> = sqlx::query_as(
-            "SELECT DISTINCT c.id, col.name FROM content_file_references cfr
-             JOIN content c ON cfr.content_id = c.id
-             JOIN collections col ON c.collection_id = col.id
-             WHERE cfr.file_id = $1",
+            "SELECT DISTINCT e.id, col.name FROM entry_file_references efr
+             JOIN entries e ON efr.entry_id = e.id
+             JOIN collections col ON e.collection_id = col.id
+             WHERE efr.file_id = $1",
         )
         .bind(file_id)
         .fetch_all(&self.pool)
@@ -296,8 +296,8 @@ impl FileRepository for PostgresFileRepository {
 
         Ok(rows
             .into_iter()
-            .map(|(content_id, collection_name)| FileReference {
-                content_id,
+            .map(|(entry_id, collection_name)| FileReference {
+                entry_id,
                 collection_name,
                 field_name: String::new(),
             })
@@ -306,10 +306,10 @@ impl FileRepository for PostgresFileRepository {
 
     async fn get_references_for_site(&self, file_id: &str, site_id: &str) -> Result<Vec<FileReference>, RepositoryError> {
         let rows: Vec<(String, String)> = sqlx::query_as(
-            "SELECT DISTINCT c.id, col.name FROM content_file_references cfr
-             JOIN content c ON cfr.content_id = c.id
-             JOIN collections col ON c.collection_id = col.id
-             WHERE cfr.file_id = $1 AND c.site_id = $2",
+            "SELECT DISTINCT e.id, col.name FROM entry_file_references efr
+             JOIN entries e ON efr.entry_id = e.id
+             JOIN collections col ON e.collection_id = col.id
+             WHERE efr.file_id = $1 AND e.site_id = $2",
         )
         .bind(file_id)
         .bind(site_id)
@@ -318,8 +318,8 @@ impl FileRepository for PostgresFileRepository {
 
         Ok(rows
             .into_iter()
-            .map(|(content_id, collection_name)| FileReference {
-                content_id,
+            .map(|(entry_id, collection_name)| FileReference {
+                entry_id,
                 collection_name,
                 field_name: String::new(),
             })
