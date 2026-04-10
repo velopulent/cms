@@ -1,14 +1,14 @@
 use cms::config::Config;
-use cms::middleware::auth::{create_token, verify_token, check_read_access_repo, check_write_access_repo, AuthContext, extract_user_id, compute_key_hmac};
-use cms::repository::Repository;
 use cms::database::pool::DbPool;
+use cms::middleware::auth::{
+    AuthContext, check_read_access_repo, check_write_access_repo, compute_key_hmac, create_token, extract_user_id,
+    verify_token,
+};
+use cms::repository::Repository;
 use sqlx::sqlite::SqlitePoolOptions;
 
 async fn setup_test_db() -> (DbPool, Repository) {
-    let pool = SqlitePoolOptions::new()
-        .connect("sqlite::memory:")
-        .await
-        .unwrap();
+    let pool = SqlitePoolOptions::new().connect("sqlite::memory:").await.unwrap();
     let db_pool = DbPool::Sqlite(pool);
     let schema = include_str!("../src/database/schema/sqlite.sql");
     for statement in schema.split(';').filter(|s| !s.trim().is_empty()) {
@@ -51,10 +51,15 @@ fn test_verify_token_expired_fails() {
 
 #[test]
 fn test_extract_user_id_from_auth_context() {
-    let jwt_ctx = AuthContext::Jwt { user_id: "u1".to_string() };
+    let jwt_ctx = AuthContext::Jwt {
+        user_id: "u1".to_string(),
+    };
     assert_eq!(extract_user_id(&jwt_ctx), Some("u1"));
 
-    let api_ctx = AuthContext::ApiKey { site_id: "s1".to_string(), permissions: "read".to_string() };
+    let api_ctx = AuthContext::ApiKey {
+        site_id: "s1".to_string(),
+        permissions: "read".to_string(),
+    };
     assert_eq!(extract_user_id(&api_ctx), None);
 }
 
@@ -81,7 +86,9 @@ async fn test_check_read_access_with_jwt_viewer_role() {
     repo.user.create("u1", "alice", "alice@t.com", "h").await.unwrap();
     repo.site.create("s1", "Site", "filesystem", "u1").await.unwrap();
 
-    let auth = AuthContext::Jwt { user_id: "u1".to_string() };
+    let auth = AuthContext::Jwt {
+        user_id: "u1".to_string(),
+    };
     let result = check_read_access_repo(&auth, &repo, "s1").await;
     assert!(result.is_ok());
 }
@@ -93,7 +100,9 @@ async fn test_check_read_access_with_jwt_no_membership() {
     repo.user.create("u2", "bob", "bob@t.com", "h").await.unwrap();
     repo.site.create("s1", "Site", "filesystem", "u1").await.unwrap();
 
-    let auth = AuthContext::Jwt { user_id: "u2".to_string() };
+    let auth = AuthContext::Jwt {
+        user_id: "u2".to_string(),
+    };
     let result = check_read_access_repo(&auth, &repo, "s1").await;
     assert!(result.is_err());
     let (status, _) = result.unwrap_err();
@@ -106,7 +115,10 @@ async fn test_check_write_access_with_api_key_correct_site() {
     repo.user.create("u1", "alice", "alice@t.com", "h").await.unwrap();
     repo.site.create("s1", "Site", "filesystem", "u1").await.unwrap();
 
-    let auth = AuthContext::ApiKey { site_id: "s1".to_string(), permissions: "write".to_string() };
+    let auth = AuthContext::ApiKey {
+        site_id: "s1".to_string(),
+        permissions: "write".to_string(),
+    };
     let result = check_write_access_repo(&auth, &repo, "s1").await;
     assert!(result.is_ok());
 }
@@ -117,7 +129,10 @@ async fn test_check_write_access_with_api_key_read_only() {
     repo.user.create("u1", "alice", "alice@t.com", "h").await.unwrap();
     repo.site.create("s1", "Site", "filesystem", "u1").await.unwrap();
 
-    let auth = AuthContext::ApiKey { site_id: "s1".to_string(), permissions: "read".to_string() };
+    let auth = AuthContext::ApiKey {
+        site_id: "s1".to_string(),
+        permissions: "read".to_string(),
+    };
     let result = check_write_access_repo(&auth, &repo, "s1").await;
     assert!(result.is_err());
     let (status, body) = result.unwrap_err();
@@ -132,7 +147,10 @@ async fn test_check_write_access_with_api_key_wrong_site() {
     repo.site.create("s1", "Site1", "filesystem", "u1").await.unwrap();
     repo.site.create("s2", "Site2", "filesystem", "u1").await.unwrap();
 
-    let auth = AuthContext::ApiKey { site_id: "s1".to_string(), permissions: "write".to_string() };
+    let auth = AuthContext::ApiKey {
+        site_id: "s1".to_string(),
+        permissions: "write".to_string(),
+    };
     let result = check_write_access_repo(&auth, &repo, "s2").await;
     assert!(result.is_err());
     let (status, body) = result.unwrap_err();
@@ -146,7 +164,10 @@ async fn test_check_read_access_with_api_key_correct_site() {
     repo.user.create("u1", "alice", "alice@t.com", "h").await.unwrap();
     repo.site.create("s1", "Site", "filesystem", "u1").await.unwrap();
 
-    let auth = AuthContext::ApiKey { site_id: "s1".to_string(), permissions: "read".to_string() };
+    let auth = AuthContext::ApiKey {
+        site_id: "s1".to_string(),
+        permissions: "read".to_string(),
+    };
     let result = check_read_access_repo(&auth, &repo, "s1").await;
     assert!(result.is_ok());
 }
@@ -158,7 +179,10 @@ async fn test_check_read_access_with_api_key_wrong_site() {
     repo.site.create("s1", "Site1", "filesystem", "u1").await.unwrap();
     repo.site.create("s2", "Site2", "filesystem", "u1").await.unwrap();
 
-    let auth = AuthContext::ApiKey { site_id: "s1".to_string(), permissions: "read".to_string() };
+    let auth = AuthContext::ApiKey {
+        site_id: "s1".to_string(),
+        permissions: "read".to_string(),
+    };
     let result = check_read_access_repo(&auth, &repo, "s2").await;
     assert!(result.is_err());
     let (status, _) = result.unwrap_err();

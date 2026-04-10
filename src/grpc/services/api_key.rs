@@ -1,14 +1,13 @@
 use std::sync::Arc;
 
-use bcrypt::{hash, DEFAULT_COST};
+use bcrypt::{DEFAULT_COST, hash};
 use tonic::{Request, Response, Status};
 use uuid::Uuid;
 
 use crate::grpc::cms::v1::api_key_service_server::ApiKeyService;
 use crate::grpc::cms::v1::{
-    DeleteResponse, ApiKey as ProtoApiKey, CreateApiKeyResponse as ProtoCreateApiKeyResponse,
-    ListApiKeysRequest, ListApiKeysResponse,
-    CreateApiKeyRequest, DeleteApiKeyRequest,
+    ApiKey as ProtoApiKey, CreateApiKeyRequest, CreateApiKeyResponse as ProtoCreateApiKeyResponse, DeleteApiKeyRequest,
+    DeleteResponse, ListApiKeysRequest, ListApiKeysResponse,
 };
 use crate::grpc::interceptor::get_auth_context;
 use crate::middleware::auth::compute_key_hmac;
@@ -72,7 +71,7 @@ impl ApiKeyService for ApiKeyServiceImpl {
             _ => {
                 return Err(Status::invalid_argument(
                     "Invalid permissions. Must be 'read' or 'write'",
-                ))
+                ));
             }
         };
 
@@ -83,8 +82,7 @@ impl ApiKeyService for ApiKeyServiceImpl {
 
         let prefix: String = raw_key.chars().take(16).collect();
 
-        let key_hash = hash(&raw_key, DEFAULT_COST)
-            .map_err(|e| Status::internal(format!("Hash error: {}", e)))?;
+        let key_hash = hash(&raw_key, DEFAULT_COST).map_err(|e| Status::internal(format!("Hash error: {}", e)))?;
 
         let key_hmac = compute_key_hmac(&raw_key, &self.hmac_secret);
 
@@ -115,10 +113,7 @@ impl ApiKeyService for ApiKeyServiceImpl {
         }))
     }
 
-    async fn delete_api_key(
-        &self,
-        request: Request<DeleteApiKeyRequest>,
-    ) -> Result<Response<DeleteResponse>, Status> {
+    async fn delete_api_key(&self, request: Request<DeleteApiKeyRequest>) -> Result<Response<DeleteResponse>, Status> {
         let auth = get_auth_context(&request)?;
         let site_id = auth.site_id;
         let id = request.into_inner().id;

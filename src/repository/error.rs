@@ -52,9 +52,6 @@ mod tests {
     #[test]
     fn test_error_debug_format() {
         assert!(format!("{:?}", RepositoryError::NotFound).contains("NotFound"));
-        assert!(
-            format!("{:?}", RepositoryError::UniqueViolation("x".into()))
-                .contains("UniqueViolation")
-        );
+        assert!(format!("{:?}", RepositoryError::UniqueViolation("x".into())).contains("UniqueViolation"));
     }
 }

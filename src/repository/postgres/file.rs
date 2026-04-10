@@ -53,17 +53,22 @@ impl FileRepository for PostgresFileRepository {
             "SELECT id, site_id, filename, original_name, mime_type, size, storage_provider, storage_key, thumbnail_key, width, height, deleted_at::text as deleted_at, created_by, created_at::text as created_at FROM files WHERE site_id = $1 AND {}",
             deleted_clause,
         );
-        let mut count_query = format!(
-            "SELECT COUNT(*) FROM files WHERE site_id = $1 AND {}",
-            deleted_clause,
-        );
+        let mut count_query = format!("SELECT COUNT(*) FROM files WHERE site_id = $1 AND {}", deleted_clause,);
 
         let mut bindings: Vec<String> = vec![params.site_id.to_string()];
         let mut param_index = 2;
 
         if let Some(search) = params.search {
-            query.push_str(&format!(" AND (original_name LIKE ${} OR filename LIKE ${})", param_index, param_index + 1));
-            count_query.push_str(&format!(" AND (original_name LIKE ${} OR filename LIKE ${})", param_index, param_index + 1));
+            query.push_str(&format!(
+                " AND (original_name LIKE ${} OR filename LIKE ${})",
+                param_index,
+                param_index + 1
+            ));
+            count_query.push_str(&format!(
+                " AND (original_name LIKE ${} OR filename LIKE ${})",
+                param_index,
+                param_index + 1
+            ));
             let pattern = format!("%{}%", search);
             bindings.push(pattern.clone());
             bindings.push(pattern);
@@ -93,17 +98,17 @@ impl FileRepository for PostgresFileRepository {
 
         let offset = (params.page - 1) * params.per_page;
         let per_page = params.per_page;
-        query.push_str(&format!(" ORDER BY created_at DESC LIMIT ${} OFFSET ${}", param_index, param_index + 1));
+        query.push_str(&format!(
+            " ORDER BY created_at DESC LIMIT ${} OFFSET ${}",
+            param_index,
+            param_index + 1
+        ));
 
         let mut count_q = sqlx::query_scalar::<_, i64>(&count_query);
         for b in &count_bindings {
             count_q = count_q.bind(b);
         }
-        let total: i64 = count_q
-            .fetch_optional(&self.pool)
-            .await
-            .unwrap_or(Some(0))
-            .unwrap_or(0);
+        let total: i64 = count_q.fetch_optional(&self.pool).await.unwrap_or(Some(0)).unwrap_or(0);
 
         let mut q = sqlx::query_as::<_, File>(&query);
         for b in &bindings {
@@ -154,31 +159,27 @@ impl FileRepository for PostgresFileRepository {
         .execute(&self.pool)
         .await?;
 
-        self.get_by_id_any(id)
-            .await?
-            .ok_or(RepositoryError::NotFound)
+        self.get_by_id_any(id).await?.ok_or(RepositoryError::NotFound)
     }
 
     async fn soft_delete(&self, id: &str, site_id: &str) -> Result<u64, RepositoryError> {
-        let result = sqlx::query(
-            "UPDATE files SET deleted_at = NOW() WHERE id = $1 AND site_id = $2 AND deleted_at IS NULL",
-        )
-        .bind(id)
-        .bind(site_id)
-        .execute(&self.pool)
-        .await?;
+        let result =
+            sqlx::query("UPDATE files SET deleted_at = NOW() WHERE id = $1 AND site_id = $2 AND deleted_at IS NULL")
+                .bind(id)
+                .bind(site_id)
+                .execute(&self.pool)
+                .await?;
 
         Ok(result.rows_affected())
     }
 
     async fn restore(&self, id: &str, site_id: &str) -> Result<u64, RepositoryError> {
-        let result = sqlx::query(
-            "UPDATE files SET deleted_at = NULL WHERE id = $1 AND site_id = $2 AND deleted_at IS NOT NULL",
-        )
-        .bind(id)
-        .bind(site_id)
-        .execute(&self.pool)
-        .await?;
+        let result =
+            sqlx::query("UPDATE files SET deleted_at = NULL WHERE id = $1 AND site_id = $2 AND deleted_at IS NOT NULL")
+                .bind(id)
+                .bind(site_id)
+                .execute(&self.pool)
+                .await?;
 
         Ok(result.rows_affected())
     }
@@ -304,7 +305,11 @@ impl FileRepository for PostgresFileRepository {
             .collect())
     }
 
-    async fn get_references_for_site(&self, file_id: &str, site_id: &str) -> Result<Vec<FileReference>, RepositoryError> {
+    async fn get_references_for_site(
+        &self,
+        file_id: &str,
+        site_id: &str,
+    ) -> Result<Vec<FileReference>, RepositoryError> {
         let rows: Vec<(String, String)> = sqlx::query_as(
             "SELECT DISTINCT e.id, col.name FROM entry_file_references efr
              JOIN entries e ON efr.entry_id = e.id
@@ -327,11 +332,10 @@ impl FileRepository for PostgresFileRepository {
     }
 
     async fn get_storage_provider(&self, site_id: &str) -> Result<String, RepositoryError> {
-        let provider: Option<String> =
-            sqlx::query_scalar("SELECT default_storage_provider FROM sites WHERE id = $1")
-                .bind(site_id)
-                .fetch_optional(&self.pool)
-                .await?;
+        let provider: Option<String> = sqlx::query_scalar("SELECT default_storage_provider FROM sites WHERE id = $1")
+            .bind(site_id)
+            .fetch_optional(&self.pool)
+            .await?;
 
         Ok(provider.unwrap_or_else(|| "filesystem".into()))
     }

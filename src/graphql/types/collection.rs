@@ -27,13 +27,12 @@ impl Collection {
         let gql_ctx = ctx.data::<crate::graphql::context::GqlContext>()?;
         let published_only = gql_ctx.site_id.is_some();
 
-        let items = gql_ctx.repository.entry.get_by_collection_id(
-            &self.id,
-            status.as_deref(),
-            published_only,
-        )
-        .await
-        .map_err(|e| async_graphql::Error::new(format!("Database error: {}", e)))?;
+        let items = gql_ctx
+            .repository
+            .entry
+            .get_by_collection_id(&self.id, status.as_deref(), published_only)
+            .await
+            .map_err(|e| async_graphql::Error::new(format!("Database error: {}", e)))?;
 
         Ok(items.into_iter().map(super::entry::db_entry_to_gql).collect())
     }
@@ -54,9 +53,12 @@ pub struct UpdateCollectionInput {
 }
 
 pub fn db_collection_to_gql(c: crate::models::collection::Collection) -> Collection {
-    let definition =
-        serde_json::from_str(&c.definition).unwrap_or(serde_json::Value::Object(Default::default()));
-    let singleton_data = c.singleton_data.as_ref().and_then(|d| serde_json::from_str(d).ok()).map(Json);
+    let definition = serde_json::from_str(&c.definition).unwrap_or(serde_json::Value::Object(Default::default()));
+    let singleton_data = c
+        .singleton_data
+        .as_ref()
+        .and_then(|d| serde_json::from_str(d).ok())
+        .map(Json);
     Collection {
         id: c.id,
         site_id: c.site_id,

@@ -15,8 +15,8 @@ use uuid::Uuid;
 use crate::config::Config;
 use crate::middleware::auth::{AuthenticatedUser, create_token};
 use crate::models::user::{AuthResponse, CreateUser, LoginRequest, UserPublic};
-use crate::repository::error::RepositoryError;
 use crate::repository::Repository;
+use crate::repository::error::RepositoryError;
 
 static EMAIL_RE: std::sync::LazyLock<Regex> =
     std::sync::LazyLock::new(|| Regex::new(r"^[^@\s]+@[^@\s]+\.[^@\s]+$").unwrap());
@@ -32,11 +32,7 @@ pub async fn register(
     let email = payload.email.trim();
 
     if username.is_empty() {
-        return (
-            StatusCode::BAD_REQUEST,
-            Json(json!({"error": "Username is required"})),
-        )
-            .into_response();
+        return (StatusCode::BAD_REQUEST, Json(json!({"error": "Username is required"}))).into_response();
     }
 
     if username.len() < 3 {
@@ -48,11 +44,7 @@ pub async fn register(
     }
 
     if password.is_empty() {
-        return (
-            StatusCode::BAD_REQUEST,
-            Json(json!({"error": "Password is required"})),
-        )
-            .into_response();
+        return (StatusCode::BAD_REQUEST, Json(json!({"error": "Password is required"}))).into_response();
     }
 
     if password.len() < 8 {
@@ -64,11 +56,7 @@ pub async fn register(
     }
 
     if !EMAIL_RE.is_match(email) {
-        return (
-            StatusCode::BAD_REQUEST,
-            Json(json!({"error": "Invalid email address"})),
-        )
-            .into_response();
+        return (StatusCode::BAD_REQUEST, Json(json!({"error": "Invalid email address"}))).into_response();
     }
 
     let password_hash = match hash(password, DEFAULT_COST) {
@@ -177,11 +165,7 @@ pub async fn login(
     )
 }
 
-fn build_auth_cookies_response(
-    user: UserPublic,
-    jwt: &str,
-    config: &Config,
-) -> Response {
+fn build_auth_cookies_response(user: UserPublic, jwt: &str, config: &Config) -> Response {
     let token_cookie = Cookie::build(("token", jwt.to_string()))
         .http_only(true)
         .secure(config.cookie_secure)
@@ -199,11 +183,7 @@ fn build_auth_cookies_response(
         .max_age(Duration::hours(24))
         .build();
 
-    let mut response = (
-        StatusCode::OK,
-        Json(AuthResponse { user }),
-    )
-        .into_response();
+    let mut response = (StatusCode::OK, Json(AuthResponse { user })).into_response();
 
     if let Ok(val) = HeaderValue::from_str(&token_cookie.to_string()) {
         response.headers_mut().insert(SET_COOKIE, val);
@@ -229,11 +209,7 @@ pub async fn logout() -> Response {
         .max_age(Duration::ZERO)
         .build();
 
-    let mut response = (
-        StatusCode::OK,
-        Json(json!({"message": "Logged out"})),
-    )
-        .into_response();
+    let mut response = (StatusCode::OK, Json(json!({"message": "Logged out"}))).into_response();
 
     if let Ok(val) = HeaderValue::from_str(&clear_token.to_string()) {
         response.headers_mut().insert(SET_COOKIE, val);
@@ -257,11 +233,7 @@ pub async fn me(auth: AuthenticatedUser, Extension(repository): Extension<Reposi
             }),
         )
             .into_response(),
-        Ok(None) => (
-            StatusCode::NOT_FOUND,
-            Json(json!({"error": "User not found"})),
-        )
-            .into_response(),
+        Ok(None) => (StatusCode::NOT_FOUND, Json(json!({"error": "User not found"}))).into_response(),
         Err(err) => (
             StatusCode::INTERNAL_SERVER_ERROR,
             Json(json!({"error": err.to_string()})),

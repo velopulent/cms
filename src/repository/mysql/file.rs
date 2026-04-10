@@ -53,10 +53,7 @@ impl FileRepository for MysqlFileRepository {
             "SELECT id, site_id, filename, original_name, mime_type, size, storage_provider, storage_key, thumbnail_key, width, height, deleted_at, created_by, created_at FROM files WHERE site_id = ? AND {}",
             deleted_clause,
         );
-        let mut count_query = format!(
-            "SELECT COUNT(*) FROM files WHERE site_id = ? AND {}",
-            deleted_clause,
-        );
+        let mut count_query = format!("SELECT COUNT(*) FROM files WHERE site_id = ? AND {}", deleted_clause,);
 
         let mut bindings: Vec<String> = vec![params.site_id.to_string()];
 
@@ -98,11 +95,7 @@ impl FileRepository for MysqlFileRepository {
         for b in &count_bindings {
             count_q = count_q.bind(b);
         }
-        let total: i64 = count_q
-            .fetch_optional(&self.pool)
-            .await
-            .unwrap_or(Some(0))
-            .unwrap_or(0);
+        let total: i64 = count_q.fetch_optional(&self.pool).await.unwrap_or(Some(0)).unwrap_or(0);
 
         let mut q = sqlx::query_as::<_, File>(&query);
         for b in &bindings {
@@ -152,31 +145,27 @@ impl FileRepository for MysqlFileRepository {
         .execute(&self.pool)
         .await?;
 
-        self.get_by_id_any(id)
-            .await?
-            .ok_or(RepositoryError::NotFound)
+        self.get_by_id_any(id).await?.ok_or(RepositoryError::NotFound)
     }
 
     async fn soft_delete(&self, id: &str, site_id: &str) -> Result<u64, RepositoryError> {
-        let result = sqlx::query(
-            "UPDATE files SET deleted_at = NOW() WHERE id = ? AND site_id = ? AND deleted_at IS NULL",
-        )
-        .bind(id)
-        .bind(site_id)
-        .execute(&self.pool)
-        .await?;
+        let result =
+            sqlx::query("UPDATE files SET deleted_at = NOW() WHERE id = ? AND site_id = ? AND deleted_at IS NULL")
+                .bind(id)
+                .bind(site_id)
+                .execute(&self.pool)
+                .await?;
 
         Ok(result.rows_affected())
     }
 
     async fn restore(&self, id: &str, site_id: &str) -> Result<u64, RepositoryError> {
-        let result = sqlx::query(
-            "UPDATE files SET deleted_at = NULL WHERE id = ? AND site_id = ? AND deleted_at IS NOT NULL",
-        )
-        .bind(id)
-        .bind(site_id)
-        .execute(&self.pool)
-        .await?;
+        let result =
+            sqlx::query("UPDATE files SET deleted_at = NULL WHERE id = ? AND site_id = ? AND deleted_at IS NOT NULL")
+                .bind(id)
+                .bind(site_id)
+                .execute(&self.pool)
+                .await?;
 
         Ok(result.rows_affected())
     }
@@ -302,7 +291,11 @@ impl FileRepository for MysqlFileRepository {
             .collect())
     }
 
-    async fn get_references_for_site(&self, file_id: &str, site_id: &str) -> Result<Vec<FileReference>, RepositoryError> {
+    async fn get_references_for_site(
+        &self,
+        file_id: &str,
+        site_id: &str,
+    ) -> Result<Vec<FileReference>, RepositoryError> {
         let rows: Vec<(String, String)> = sqlx::query_as(
             "SELECT DISTINCT e.id, col.name FROM entry_file_references efr
              JOIN entries e ON efr.entry_id = e.id
@@ -325,11 +318,10 @@ impl FileRepository for MysqlFileRepository {
     }
 
     async fn get_storage_provider(&self, site_id: &str) -> Result<String, RepositoryError> {
-        let provider: Option<String> =
-            sqlx::query_scalar("SELECT default_storage_provider FROM sites WHERE id = ?")
-                .bind(site_id)
-                .fetch_optional(&self.pool)
-                .await?;
+        let provider: Option<String> = sqlx::query_scalar("SELECT default_storage_provider FROM sites WHERE id = ?")
+            .bind(site_id)
+            .fetch_optional(&self.pool)
+            .await?;
 
         Ok(provider.unwrap_or_else(|| "filesystem".into()))
     }

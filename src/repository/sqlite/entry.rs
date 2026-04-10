@@ -8,8 +8,7 @@ use crate::models::entry::Entry;
 use crate::repository::error::RepositoryError;
 use crate::repository::traits::{EntriesListResult, EntryRepository, ListEntriesParams};
 
-static FILE_URL_RE: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"/api/files/([^/]+)(?:/thumbnail)?").unwrap());
+static FILE_URL_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"/api/files/([^/]+)(?:/thumbnail)?").unwrap());
 
 pub struct SqliteEntryRepository {
     pool: SqlitePool,
@@ -23,12 +22,7 @@ impl SqliteEntryRepository {
 
 #[async_trait]
 impl EntryRepository for SqliteEntryRepository {
-    async fn get_by_id(
-        &self,
-        id: &str,
-        site_id: &str,
-        published_only: bool,
-    ) -> Result<Option<Entry>, RepositoryError> {
+    async fn get_by_id(&self, id: &str, site_id: &str, published_only: bool) -> Result<Option<Entry>, RepositoryError> {
         let mut query = String::from(
             "SELECT id, site_id, collection_id, data, slug, status, created_at, updated_at, published_at
              FROM entries WHERE id = ? AND site_id = ?",
@@ -112,9 +106,7 @@ impl EntryRepository for SqliteEntryRepository {
             for b in &count_bindings {
                 q = q.bind(b);
             }
-            q.fetch_one(&self.pool)
-             .await
-             .unwrap_or(0)
+            q.fetch_one(&self.pool).await.unwrap_or(0)
         };
 
         let offset = (params.page - 1) * params.per_page;
@@ -175,42 +167,28 @@ impl EntryRepository for SqliteEntryRepository {
         data: &str,
         slug: &str,
     ) -> Result<Entry, RepositoryError> {
-        sqlx::query(
-            "INSERT INTO entries (id, site_id, collection_id, data, slug) VALUES (?, ?, ?, ?, ?)",
-        )
-        .bind(id)
-        .bind(site_id)
-        .bind(collection_id)
-        .bind(data)
-        .bind(slug)
-        .execute(&self.pool)
-        .await?;
+        sqlx::query("INSERT INTO entries (id, site_id, collection_id, data, slug) VALUES (?, ?, ?, ?, ?)")
+            .bind(id)
+            .bind(site_id)
+            .bind(collection_id)
+            .bind(data)
+            .bind(slug)
+            .execute(&self.pool)
+            .await?;
 
-        self.get_by_id_any_site(id)
-            .await?
-            .ok_or(RepositoryError::NotFound)
+        self.get_by_id_any_site(id).await?.ok_or(RepositoryError::NotFound)
     }
 
-    async fn update(
-        &self,
-        id: &str,
-        data: &str,
-        slug: &str,
-        status: &str,
-    ) -> Result<Entry, RepositoryError> {
-        sqlx::query(
-            "UPDATE entries SET data = ?, slug = ?, status = ?, updated_at = datetime('now') WHERE id = ?",
-        )
-        .bind(data)
-        .bind(slug)
-        .bind(status)
-        .bind(id)
-        .execute(&self.pool)
-        .await?;
+    async fn update(&self, id: &str, data: &str, slug: &str, status: &str) -> Result<Entry, RepositoryError> {
+        sqlx::query("UPDATE entries SET data = ?, slug = ?, status = ?, updated_at = datetime('now') WHERE id = ?")
+            .bind(data)
+            .bind(slug)
+            .bind(status)
+            .bind(id)
+            .execute(&self.pool)
+            .await?;
 
-        self.get_by_id_any_site(id)
-            .await?
-            .ok_or(RepositoryError::NotFound)
+        self.get_by_id_any_site(id).await?.ok_or(RepositoryError::NotFound)
     }
 
     async fn delete(&self, id: &str, site_id: &str) -> Result<u64, RepositoryError> {
@@ -236,9 +214,7 @@ impl EntryRepository for SqliteEntryRepository {
             return Err(RepositoryError::NotFound);
         }
 
-        self.get_by_id_any_site(id)
-            .await?
-            .ok_or(RepositoryError::NotFound)
+        self.get_by_id_any_site(id).await?.ok_or(RepositoryError::NotFound)
     }
 
     async fn unpublish(&self, id: &str, site_id: &str) -> Result<Entry, RepositoryError> {
@@ -254,17 +230,10 @@ impl EntryRepository for SqliteEntryRepository {
             return Err(RepositoryError::NotFound);
         }
 
-        self.get_by_id_any_site(id)
-            .await?
-            .ok_or(RepositoryError::NotFound)
+        self.get_by_id_any_site(id).await?.ok_or(RepositoryError::NotFound)
     }
 
-    async fn sync_file_references(
-        &self,
-        entry_id: &str,
-        site_id: &str,
-        data: &Value,
-    ) -> Result<(), RepositoryError> {
+    async fn sync_file_references(&self, entry_id: &str, site_id: &str, data: &Value) -> Result<(), RepositoryError> {
         let file_ids = extract_file_ids_from_value(data);
 
         let mut tx = self.pool.begin().await?;

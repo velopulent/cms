@@ -14,8 +14,8 @@ impl ScalarType for Json {
     fn parse(value: Value) -> InputValueResult<Self> {
         match value {
             Value::String(s) => {
-                let v: serde_json::Value = serde_json::from_str(&s)
-                    .map_err(|e| InputValueError::custom(format!("Invalid JSON: {}", e)))?;
+                let v: serde_json::Value =
+                    serde_json::from_str(&s).map_err(|e| InputValueError::custom(format!("Invalid JSON: {}", e)))?;
                 Ok(Json(v))
             }
             Value::Null => Ok(Json(serde_json::Value::Null)),
@@ -35,8 +35,7 @@ impl ScalarType for Json {
             Value::Boolean(b) => Ok(Json(serde_json::Value::Bool(b))),
             Value::Enum(s) => Ok(Json(serde_json::Value::String(s.to_string()))),
             _ => {
-                let json_val = serde_json::to_value(&value)
-                    .map_err(|e| InputValueError::custom(e.to_string()))?;
+                let json_val = serde_json::to_value(&value).map_err(|e| InputValueError::custom(e.to_string()))?;
                 Ok(Json(json_val))
             }
         }

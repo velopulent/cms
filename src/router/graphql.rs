@@ -1,5 +1,9 @@
-use axum::{Extension, Router, response::{Html, IntoResponse}, routing::get};
 use axum::http::HeaderMap;
+use axum::{
+    Extension, Router,
+    response::{Html, IntoResponse},
+    routing::get,
+};
 use std::sync::Arc;
 
 use crate::config::Config;
@@ -16,9 +20,7 @@ async fn graphql_handler(
     headers: HeaderMap,
     req: async_graphql_axum::GraphQLRequest,
 ) -> async_graphql_axum::GraphQLResponse {
-    let auth_header = headers
-        .get("Authorization")
-        .and_then(|v| v.to_str().ok());
+    let auth_header = headers.get("Authorization").and_then(|v| v.to_str().ok());
 
     let gql_ctx = GqlContext::from_request(repository, storage, auth_header, &config.hmac_secret).await;
 

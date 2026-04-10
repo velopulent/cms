@@ -11,10 +11,10 @@ use uuid::Uuid;
 
 use crate::handlers::file_handler::StorageManager;
 use crate::middleware::auth::{AuthContext, check_read_access_repo, check_write_access_repo};
-use crate::models::entry::{Entry, CreateEntry, UpdateEntry};
+use crate::models::entry::{CreateEntry, Entry, UpdateEntry};
+use crate::repository::Repository;
 use crate::repository::sqlite::entry::extract_file_ids_from_value;
 use crate::repository::traits::ListEntriesParams;
-use crate::repository::Repository;
 
 #[derive(Deserialize, utoipa::IntoParams)]
 pub struct ListParams {
@@ -125,11 +125,7 @@ pub async fn get_entry(
             let resolved = resolve_entry_files(&item, &repository, &storage).await;
             (StatusCode::OK, Json(resolved)).into_response()
         }
-        Ok(None) => (
-            StatusCode::NOT_FOUND,
-            Json(json!({"error": "Entry not found"})),
-        )
-            .into_response(),
+        Ok(None) => (StatusCode::NOT_FOUND, Json(json!({"error": "Entry not found"}))).into_response(),
         Err(err) => (
             StatusCode::INTERNAL_SERVER_ERROR,
             Json(json!({"error": err.to_string()})),
@@ -166,9 +162,16 @@ pub async fn create_entry(
     let data_str = payload.data.to_string();
     let id = Uuid::now_v7().to_string();
 
-    match repository.entry.create(&id, &site_id, &payload.collection_id, &data_str, &payload.slug).await {
+    match repository
+        .entry
+        .create(&id, &site_id, &payload.collection_id, &data_str, &payload.slug)
+        .await
+    {
         Ok(item) => {
-            let _ = repository.entry.sync_file_references(&id, &site_id, &payload.data).await;
+            let _ = repository
+                .entry
+                .sync_file_references(&id, &site_id, &payload.data)
+                .await;
             (StatusCode::CREATED, Json(item)).into_response()
         }
         Err(crate::repository::error::RepositoryError::UniqueViolation(_)) => (
@@ -214,11 +217,7 @@ pub async fn update_entry(
     let existing = match repository.entry.get_by_id(&id, &site_id, false).await {
         Ok(Some(c)) => c,
         Ok(None) => {
-            return (
-                StatusCode::NOT_FOUND,
-                Json(json!({"error": "Entry not found"})),
-            )
-                .into_response();
+            return (StatusCode::NOT_FOUND, Json(json!({"error": "Entry not found"}))).into_response();
         }
         Err(err) => {
             return (
@@ -239,7 +238,10 @@ pub async fn update_entry(
 
     match repository.entry.update(&id, &data_str, &slug, &status).await {
         Ok(item) => {
-            let _ = repository.entry.sync_file_references(&id, &site_id, &resolved_data).await;
+            let _ = repository
+                .entry
+                .sync_file_references(&id, &site_id, &resolved_data)
+                .await;
             (StatusCode::OK, Json(item)).into_response()
         }
         Err(crate::repository::error::RepositoryError::UniqueViolation(_)) => (
@@ -318,11 +320,9 @@ pub async fn publish_entry(
 
     match repository.entry.publish(&id, &site_id).await {
         Ok(item) => (StatusCode::OK, Json(item)).into_response(),
-        Err(crate::repository::error::RepositoryError::NotFound) => (
-            StatusCode::NOT_FOUND,
-            Json(json!({"error": "Entry not found"})),
-        )
-            .into_response(),
+        Err(crate::repository::error::RepositoryError::NotFound) => {
+            (StatusCode::NOT_FOUND, Json(json!({"error": "Entry not found"}))).into_response()
+        }
         Err(err) => (
             StatusCode::INTERNAL_SERVER_ERROR,
             Json(json!({"error": err.to_string()})),
@@ -359,11 +359,9 @@ pub async fn unpublish_entry(
 
     match repository.entry.unpublish(&id, &site_id).await {
         Ok(item) => (StatusCode::OK, Json(item)).into_response(),
-        Err(crate::repository::error::RepositoryError::NotFound) => (
-            StatusCode::NOT_FOUND,
-            Json(json!({"error": "Entry not found"})),
-        )
-            .into_response(),
+        Err(crate::repository::error::RepositoryError::NotFound) => {
+            (StatusCode::NOT_FOUND, Json(json!({"error": "Entry not found"}))).into_response()
+        }
         Err(err) => (
             StatusCode::INTERNAL_SERVER_ERROR,
             Json(json!({"error": err.to_string()})),
@@ -419,11 +417,7 @@ pub async fn resolve_entries_files_from_value(
     result
 }
 
-async fn resolve_entry_files(
-    entry: &Entry,
-    repository: &Repository,
-    storage: &StorageManager,
-) -> serde_json::Value {
+async fn resolve_entry_files(entry: &Entry, repository: &Repository, storage: &StorageManager) -> serde_json::Value {
     let data: serde_json::Value = serde_json::from_str(&entry.data).unwrap_or_default();
     let resolved_data = resolve_entries_files_from_value(&data, repository, storage, &entry.site_id).await;
     json!({

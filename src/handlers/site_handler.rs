@@ -9,17 +9,12 @@ use tracing::instrument;
 use uuid::Uuid;
 
 use crate::middleware::auth::{AuthenticatedUser, check_site_access_repo};
-use crate::repository::error::RepositoryError;
-use crate::models::site::{
-    CreateSite, InviteMember, UpdateMemberRole, UpdateSite,
-};
+use crate::models::site::{CreateSite, InviteMember, UpdateMemberRole, UpdateSite};
 use crate::repository::Repository;
+use crate::repository::error::RepositoryError;
 
 #[instrument(skip(repository, auth))]
-pub async fn list_sites(
-    auth: AuthenticatedUser,
-    Extension(repository): Extension<Repository>,
-) -> Response {
+pub async fn list_sites(auth: AuthenticatedUser, Extension(repository): Extension<Repository>) -> Response {
     match repository.site.list_for_user(&auth.user_id).await {
         Ok(sites) => (StatusCode::OK, Json(sites)).into_response(),
         Err(err) => (
@@ -37,17 +32,10 @@ pub async fn create_site(
     Json(payload): Json<CreateSite>,
 ) -> Response {
     if payload.name.trim().is_empty() {
-        return (
-            StatusCode::BAD_REQUEST,
-            Json(json!({"error": "Name is required"})),
-        )
-            .into_response();
+        return (StatusCode::BAD_REQUEST, Json(json!({"error": "Name is required"}))).into_response();
     }
 
-    let storage_provider = payload
-        .default_storage_provider
-        .as_deref()
-        .unwrap_or("filesystem");
+    let storage_provider = payload.default_storage_provider.as_deref().unwrap_or("filesystem");
     if storage_provider != "filesystem" && storage_provider != "s3" {
         return (
             StatusCode::BAD_REQUEST,
@@ -58,7 +46,10 @@ pub async fn create_site(
 
     let site_id = Uuid::now_v7().to_string();
 
-    match repository.site.create(&site_id, &payload.name, storage_provider, &auth.user_id).await
+    match repository
+        .site
+        .create(&site_id, &payload.name, storage_provider, &auth.user_id)
+        .await
     {
         Ok(site) => (StatusCode::CREATED, Json(site)).into_response(),
         Err(err) => (
@@ -81,11 +72,7 @@ pub async fn get_site(
 
     match repository.site.get_by_id(&site_id).await {
         Ok(Some(site)) => (StatusCode::OK, Json(site)).into_response(),
-        Ok(None) => (
-            StatusCode::NOT_FOUND,
-            Json(json!({"error": "Site not found"})),
-        )
-            .into_response(),
+        Ok(None) => (StatusCode::NOT_FOUND, Json(json!({"error": "Site not found"}))).into_response(),
         Err(err) => (
             StatusCode::INTERNAL_SERVER_ERROR,
             Json(json!({"error": err.to_string()})),
@@ -108,11 +95,7 @@ pub async fn update_site(
     let existing = match repository.site.get_by_id(&site_id).await {
         Ok(Some(site)) => site,
         Ok(None) => {
-            return (
-                StatusCode::NOT_FOUND,
-                Json(json!({"error": "Site not found"})),
-            )
-                .into_response();
+            return (StatusCode::NOT_FOUND, Json(json!({"error": "Site not found"}))).into_response();
         }
         Err(err) => {
             return (
@@ -202,11 +185,7 @@ pub async fn invite_member(
     let user_id = match repository.user.find_id_by_username(&payload.username).await {
         Ok(Some(id)) => id,
         Ok(None) => {
-            return (
-                StatusCode::NOT_FOUND,
-                Json(json!({"error": "User not found"})),
-            )
-                .into_response();
+            return (StatusCode::NOT_FOUND, Json(json!({"error": "User not found"}))).into_response();
         }
         Err(err) => {
             return (
@@ -219,7 +198,11 @@ pub async fn invite_member(
 
     let member_id = Uuid::now_v7().to_string();
 
-    match repository.site.add_member(&member_id, &site_id, &user_id, &payload.role).await {
+    match repository
+        .site
+        .add_member(&member_id, &site_id, &user_id, &payload.role)
+        .await
+    {
         Ok(member) => (StatusCode::CREATED, Json(member)).into_response(),
         Err(RepositoryError::UniqueViolation(_)) => (
             StatusCode::CONFLICT,
@@ -247,20 +230,16 @@ pub async fn update_member_role(
 
     let valid_roles = ["owner", "admin", "editor", "viewer"];
     if !valid_roles.contains(&payload.role.as_str()) {
-        return (
-            StatusCode::BAD_REQUEST,
-            Json(json!({"error": "Invalid role"})),
-        )
-            .into_response();
+        return (StatusCode::BAD_REQUEST, Json(json!({"error": "Invalid role"}))).into_response();
     }
 
-    match repository.site.update_member_role(&site_id, &member_user_id, &payload.role).await {
+    match repository
+        .site
+        .update_member_role(&site_id, &member_user_id, &payload.role)
+        .await
+    {
         Ok(Some(member)) => (StatusCode::OK, Json(member)).into_response(),
-        Ok(None) => (
-            StatusCode::NOT_FOUND,
-            Json(json!({"error": "Member not found"})),
-        )
-            .into_response(),
+        Ok(None) => (StatusCode::NOT_FOUND, Json(json!({"error": "Member not found"}))).into_response(),
         Err(err) => (
             StatusCode::INTERNAL_SERVER_ERROR,
             Json(json!({"error": err.to_string()})),
@@ -288,11 +267,7 @@ pub async fn remove_member(
     }
 
     match repository.site.remove_member(&site_id, &member_user_id).await {
-        Ok(0) => (
-            StatusCode::NOT_FOUND,
-            Json(json!({"error": "Member not found"})),
-        )
-            .into_response(),
+        Ok(0) => (StatusCode::NOT_FOUND, Json(json!({"error": "Member not found"}))).into_response(),
         Ok(_) => StatusCode::NO_CONTENT.into_response(),
         Err(err) => (
             StatusCode::INTERNAL_SERVER_ERROR,

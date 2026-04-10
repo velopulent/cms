@@ -1,6 +1,6 @@
 use axum::{
     extract::FromRequestParts,
-    http::{request::Parts, StatusCode},
+    http::{StatusCode, request::Parts},
 };
 use hmac::{Hmac, Mac};
 use jsonwebtoken::{Algorithm, DecodingKey, EncodingKey, Validation, decode, encode};
@@ -51,16 +51,12 @@ pub struct AuthenticatedUser {
 }
 
 pub fn compute_key_hmac(key: &str, hmac_secret: &str) -> String {
-    let mut mac = HmacSha256::new_from_slice(hmac_secret.as_bytes())
-        .expect("HMAC can take key of any size");
+    let mut mac = HmacSha256::new_from_slice(hmac_secret.as_bytes()).expect("HMAC can take key of any size");
     mac.update(key.as_bytes());
     hex::encode(mac.finalize().into_bytes())
 }
 
-pub fn create_token(
-    user_id: String,
-    jwt_secret: &str,
-) -> Result<String, jsonwebtoken::errors::Error> {
+pub fn create_token(user_id: String, jwt_secret: &str) -> Result<String, jsonwebtoken::errors::Error> {
     let expiration = chrono::Utc::now()
         .checked_add_signed(chrono::Duration::hours(24))
         .expect("valid timestamp")
@@ -82,20 +78,13 @@ pub fn verify_token(token: &str, jwt_secret: &str) -> Result<Claims, jsonwebtoke
     let mut validation = Validation::new(Algorithm::HS256);
     validation.validate_exp = true;
 
-    let data = decode::<Claims>(
-        token,
-        &DecodingKey::from_secret(jwt_secret.as_bytes()),
-        &validation,
-    )?;
+    let data = decode::<Claims>(token, &DecodingKey::from_secret(jwt_secret.as_bytes()), &validation)?;
 
     Ok(data.claims)
 }
 
 fn unauthorized_error(msg: &str) -> (StatusCode, String) {
-    (
-        StatusCode::UNAUTHORIZED,
-        serde_json::json!({"error": msg}).to_string(),
-    )
+    (StatusCode::UNAUTHORIZED, serde_json::json!({"error": msg}).to_string())
 }
 
 impl<S> FromRequestParts<S> for AuthenticatedUser
@@ -105,22 +94,19 @@ where
     type Rejection = (StatusCode, String);
 
     async fn from_request_parts(parts: &mut Parts, _state: &S) -> Result<Self, Self::Rejection> {
-        let token = extract_jwt_token(parts)
-            .ok_or(unauthorized_error("Missing authentication"))?;
+        let token = extract_jwt_token(parts).ok_or(unauthorized_error("Missing authentication"))?;
 
         let config = parts
             .extensions
             .get::<Config>()
             .ok_or(unauthorized_error("Internal server error"))?;
 
-        let claims = verify_token(&token, &config.jwt_secret)
-            .map_err(|_| unauthorized_error("Invalid or expired token"))?;
+        let claims =
+            verify_token(&token, &config.jwt_secret).map_err(|_| unauthorized_error("Invalid or expired token"))?;
 
         Span::current().record("user_id", tracing::field::display(&claims.sub));
 
-        Ok(AuthenticatedUser {
-            user_id: claims.sub,
-        })
+        Ok(AuthenticatedUser { user_id: claims.sub })
     }
 }
 
@@ -158,9 +144,7 @@ where
 
                 Span::current().record("user_id", tracing::field::display(&claims.sub));
 
-                return Ok(AuthContext::Jwt {
-                    user_id: claims.sub,
-                });
+                return Ok(AuthContext::Jwt { user_id: claims.sub });
             }
         }
 
@@ -171,14 +155,12 @@ where
                 .get::<Config>()
                 .ok_or(unauthorized_error("Internal server error"))?;
 
-        let claims = verify_token(&token, &config.jwt_secret)
-            .map_err(|_| unauthorized_error("Invalid or expired token"))?;
+            let claims =
+                verify_token(&token, &config.jwt_secret).map_err(|_| unauthorized_error("Invalid or expired token"))?;
 
-        Span::current().record("user_id", tracing::field::display(&claims.sub));
+            Span::current().record("user_id", tracing::field::display(&claims.sub));
 
-        return Ok(AuthContext::Jwt {
-            user_id: claims.sub,
-        });
+            return Ok(AuthContext::Jwt { user_id: claims.sub });
         }
 
         Err(unauthorized_error("Missing authentication"))
@@ -192,7 +174,9 @@ pub(crate) async fn verify_api_key(
 ) -> Result<AuthContext, (StatusCode, String)> {
     let prefix: String = token.chars().take(16).collect();
 
-    let keys = repository.api_key.find_by_prefix(&prefix)
+    let keys = repository
+        .api_key
+        .find_by_prefix(&prefix)
         .await
         .map_err(|_| unauthorized_error("Internal server error"))?;
 
@@ -234,11 +218,10 @@ pub fn verify_csrf(parts: &Parts, config: &Config) -> Result<(), (StatusCode, St
         return Ok(());
     }
 
-    let csrf_cookie = extract_cookie_value(parts, "csrf")
-        .ok_or((StatusCode::FORBIDDEN, "Missing CSRF cookie".to_string()))?;
+    let csrf_cookie =
+        extract_cookie_value(parts, "csrf").ok_or((StatusCode::FORBIDDEN, "Missing CSRF cookie".to_string()))?;
 
-    let csrf_header = extract_csrf_token(parts)
-        .ok_or((StatusCode::FORBIDDEN, "Missing CSRF token".to_string()))?;
+    let csrf_header = extract_csrf_token(parts).ok_or((StatusCode::FORBIDDEN, "Missing CSRF token".to_string()))?;
 
     if csrf_cookie != csrf_header {
         return Err((StatusCode::FORBIDDEN, "CSRF token mismatch".to_string()));
@@ -253,10 +236,10 @@ pub async fn check_read_access_repo(
     site_id: &str,
 ) -> Result<(), (StatusCode, serde_json::Value)> {
     match auth {
-        AuthContext::Jwt { user_id } => {
-            check_site_access_repo(repository, user_id, site_id, "viewer").await
-        }
-        AuthContext::ApiKey { site_id: key_site_id, .. } => {
+        AuthContext::Jwt { user_id } => check_site_access_repo(repository, user_id, site_id, "viewer").await,
+        AuthContext::ApiKey {
+            site_id: key_site_id, ..
+        } => {
             if key_site_id == site_id {
                 Ok(())
             } else {
@@ -275,10 +258,11 @@ pub async fn check_write_access_repo(
     site_id: &str,
 ) -> Result<(), (StatusCode, serde_json::Value)> {
     match auth {
-        AuthContext::Jwt { user_id } => {
-            check_site_access_repo(repository, user_id, site_id, "editor").await
-        }
-        AuthContext::ApiKey { site_id: key_site_id, permissions } => {
+        AuthContext::Jwt { user_id } => check_site_access_repo(repository, user_id, site_id, "editor").await,
+        AuthContext::ApiKey {
+            site_id: key_site_id,
+            permissions,
+        } => {
             if key_site_id != site_id {
                 return Err((
                     StatusCode::FORBIDDEN,
@@ -332,10 +316,7 @@ pub async fn check_site_access_repo(
             StatusCode::FORBIDDEN,
             serde_json::json!({"error": "Insufficient permissions"}),
         )),
-        None => Err((
-            StatusCode::NOT_FOUND,
-            serde_json::json!({"error": "Site not found"}),
-        )),
+        None => Err((StatusCode::NOT_FOUND, serde_json::json!({"error": "Site not found"}))),
     }
 }
 

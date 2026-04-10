@@ -5,10 +5,7 @@ use cms::repository::traits::ListEntriesParams;
 use sqlx::sqlite::SqlitePoolOptions;
 
 async fn setup_test_db() -> (DbPool, Repository) {
-    let pool = SqlitePoolOptions::new()
-        .connect("sqlite::memory:")
-        .await
-        .unwrap();
+    let pool = SqlitePoolOptions::new().connect("sqlite::memory:").await.unwrap();
     let db_pool = DbPool::Sqlite(pool);
     let schema = include_str!("../src/database/schema/sqlite.sql");
     for statement in schema.split(';').filter(|s| !s.trim().is_empty()) {
@@ -28,10 +25,11 @@ async fn setup_test_db() -> (DbPool, Repository) {
 async fn test_user_crud() {
     let (_pool, repo) = setup_test_db().await;
 
-    repo.user.create("u1", "alice", "alice@test.com", "hash1")
-        .await.unwrap();
-    repo.user.create("u2", "bob", "bob@test.com", "hash2")
-        .await.unwrap();
+    repo.user
+        .create("u1", "alice", "alice@test.com", "hash1")
+        .await
+        .unwrap();
+    repo.user.create("u2", "bob", "bob@test.com", "hash2").await.unwrap();
 
     let found = repo.user.find_by_username("alice").await.unwrap().unwrap();
     assert_eq!(found.username, "alice");
@@ -144,7 +142,11 @@ async fn test_collection_crud() {
     repo.user.create("u1", "alice", "alice@test.com", "h").await.unwrap();
     repo.site.create("s1", "Site", "filesystem", "u1").await.unwrap();
 
-    let col = repo.collection.create("c1", "s1", "Posts", "posts", r#"{"fields":[]}"#, false).await.unwrap();
+    let col = repo
+        .collection
+        .create("c1", "s1", "Posts", "posts", r#"{"fields":[]}"#, false)
+        .await
+        .unwrap();
     assert_eq!(col.name, "Posts");
     assert!(!col.is_singleton);
 
@@ -154,7 +156,11 @@ async fn test_collection_crud() {
     let list = repo.collection.list("s1").await.unwrap();
     assert_eq!(list.len(), 1);
 
-    let updated = repo.collection.update("c1", "Articles", "articles", r#"{"fields":[{"name":"title"}]}"#).await.unwrap();
+    let updated = repo
+        .collection
+        .update("c1", "Articles", "articles", r#"{"fields":[{"name":"title"}]}"#)
+        .await
+        .unwrap();
     assert_eq!(updated.name, "Articles");
     assert_eq!(updated.slug, "articles");
 
@@ -169,7 +175,10 @@ async fn test_collection_unique_slug() {
     repo.user.create("u1", "alice", "alice@test.com", "h").await.unwrap();
     repo.site.create("s1", "Site", "filesystem", "u1").await.unwrap();
 
-    repo.collection.create("c1", "s1", "Posts", "posts", "{}", false).await.unwrap();
+    repo.collection
+        .create("c1", "s1", "Posts", "posts", "{}", false)
+        .await
+        .unwrap();
     let dup = repo.collection.create("c2", "s1", "Other", "posts", "{}", false).await;
     assert!(matches!(dup, Err(RepositoryError::UniqueViolation(_))));
 }
@@ -181,12 +190,18 @@ async fn test_singleton_create_and_update_data() {
     repo.user.create("u1", "alice", "alice@test.com", "h").await.unwrap();
     repo.site.create("s1", "Site", "filesystem", "u1").await.unwrap();
 
-    repo.collection.create("c1", "s1", "Settings", "settings", r#"{"fields":[]}"#, true).await.unwrap();
+    repo.collection
+        .create("c1", "s1", "Settings", "settings", r#"{"fields":[]}"#, true)
+        .await
+        .unwrap();
 
     let singletons = repo.collection.list_singletons_only("s1").await.unwrap();
     assert_eq!(singletons.len(), 1);
 
-    repo.collection.update_singleton_data("c1", r#"{"title":"Hello"}"#).await.unwrap();
+    repo.collection
+        .update_singleton_data("c1", r#"{"title":"Hello"}"#)
+        .await
+        .unwrap();
     let updated = repo.collection.get_by_id("c1").await.unwrap().unwrap();
     assert!(updated.singleton_data.is_some());
 }
@@ -197,16 +212,27 @@ async fn test_entry_crud() {
 
     repo.user.create("u1", "alice", "alice@test.com", "h").await.unwrap();
     repo.site.create("s1", "Site", "filesystem", "u1").await.unwrap();
-    repo.collection.create("c1", "s1", "Posts", "posts", "{}", false).await.unwrap();
+    repo.collection
+        .create("c1", "s1", "Posts", "posts", "{}", false)
+        .await
+        .unwrap();
 
-    let entry = repo.entry.create("ct1", "s1", "c1", r#"{"title":"Hello"}"#, "hello").await.unwrap();
+    let entry = repo
+        .entry
+        .create("ct1", "s1", "c1", r#"{"title":"Hello"}"#, "hello")
+        .await
+        .unwrap();
     assert_eq!(entry.slug, "hello");
     assert_eq!(entry.status, "draft");
 
     let got = repo.entry.get_by_id("ct1", "s1", false).await.unwrap().unwrap();
     assert_eq!(got.slug, "hello");
 
-    let updated = repo.entry.update("ct1", r#"{"title":"Updated"}"#, "hello-updated", "draft").await.unwrap();
+    let updated = repo
+        .entry
+        .update("ct1", r#"{"title":"Updated"}"#, "hello-updated", "draft")
+        .await
+        .unwrap();
     assert_eq!(updated.slug, "hello-updated");
 
     assert_eq!(repo.entry.delete("ct1", "s1").await.unwrap(), 1);
@@ -219,7 +245,10 @@ async fn test_entry_publish_unpublish() {
 
     repo.user.create("u1", "alice", "alice@test.com", "h").await.unwrap();
     repo.site.create("s1", "Site", "filesystem", "u1").await.unwrap();
-    repo.collection.create("c1", "s1", "Posts", "posts", "{}", false).await.unwrap();
+    repo.collection
+        .create("c1", "s1", "Posts", "posts", "{}", false)
+        .await
+        .unwrap();
     repo.entry.create("ct1", "s1", "c1", "{}", "hello").await.unwrap();
 
     let published = repo.entry.publish("ct1", "s1").await.unwrap();
@@ -236,7 +265,10 @@ async fn test_entry_unique_slug_per_collection() {
 
     repo.user.create("u1", "alice", "alice@test.com", "h").await.unwrap();
     repo.site.create("s1", "Site", "filesystem", "u1").await.unwrap();
-    repo.collection.create("c1", "s1", "Posts", "posts", "{}", false).await.unwrap();
+    repo.collection
+        .create("c1", "s1", "Posts", "posts", "{}", false)
+        .await
+        .unwrap();
 
     repo.entry.create("ct1", "s1", "c1", "{}", "hello").await.unwrap();
     let dup = repo.entry.create("ct2", "s1", "c1", "{}", "hello").await;
@@ -247,7 +279,13 @@ async fn test_entry_unique_slug_per_collection() {
 async fn test_entry_not_found_errors() {
     let (_pool, repo) = setup_test_db().await;
 
-    assert!(repo.entry.get_by_id("nonexistent", "s1", false).await.unwrap().is_none());
+    assert!(
+        repo.entry
+            .get_by_id("nonexistent", "s1", false)
+            .await
+            .unwrap()
+            .is_none()
+    );
 
     let publish_err = repo.entry.publish("nonexistent", "s1").await;
     assert!(matches!(publish_err, Err(RepositoryError::NotFound)));
@@ -265,10 +303,22 @@ async fn test_entry_list_with_pagination() {
 
     repo.user.create("u1", "alice", "alice@test.com", "h").await.unwrap();
     repo.site.create("s1", "Site", "filesystem", "u1").await.unwrap();
-    repo.collection.create("c1", "s1", "Posts", "posts", "{}", false).await.unwrap();
+    repo.collection
+        .create("c1", "s1", "Posts", "posts", "{}", false)
+        .await
+        .unwrap();
 
     for i in 0..5 {
-        repo.entry.create(&format!("ct{}", i), "s1", "c1", &format!(r#"{{"title":"Post {}"}}"#, i), &format!("post-{}", i)).await.unwrap();
+        repo.entry
+            .create(
+                &format!("ct{}", i),
+                "s1",
+                "c1",
+                &format!(r#"{{"title":"Post {}"}}"#, i),
+                &format!("post-{}", i),
+            )
+            .await
+            .unwrap();
     }
 
     let params = ListEntriesParams {
@@ -308,7 +358,24 @@ async fn test_file_crud() {
     repo.user.create("u1", "alice", "alice@test.com", "h").await.unwrap();
     repo.site.create("s1", "Site", "filesystem", "u1").await.unwrap();
 
-    let file = repo.file.create("f1", "s1", "img.jpg", "photo.jpg", "image/jpeg", 2048, "filesystem", "key1", Some("thumb1"), Some(800), Some(600), Some("u1")).await.unwrap();
+    let file = repo
+        .file
+        .create(
+            "f1",
+            "s1",
+            "img.jpg",
+            "photo.jpg",
+            "image/jpeg",
+            2048,
+            "filesystem",
+            "key1",
+            Some("thumb1"),
+            Some(800),
+            Some(600),
+            Some("u1"),
+        )
+        .await
+        .unwrap();
     assert_eq!(file.filename, "img.jpg");
     assert_eq!(file.size, 2048);
     assert_eq!(file.width, Some(800));
@@ -325,7 +392,23 @@ async fn test_file_soft_delete_restore() {
 
     repo.user.create("u1", "alice", "alice@test.com", "h").await.unwrap();
     repo.site.create("s1", "Site", "filesystem", "u1").await.unwrap();
-    repo.file.create("f1", "s1", "img.jpg", "photo.jpg", "image/jpeg", 1024, "filesystem", "key1", None, None, None, None).await.unwrap();
+    repo.file
+        .create(
+            "f1",
+            "s1",
+            "img.jpg",
+            "photo.jpg",
+            "image/jpeg",
+            1024,
+            "filesystem",
+            "key1",
+            None,
+            None,
+            None,
+            None,
+        )
+        .await
+        .unwrap();
 
     assert_eq!(repo.file.soft_delete("f1", "s1").await.unwrap(), 1);
     let deleted_file = repo.file.get_by_id("f1", "s1").await.unwrap();
@@ -340,17 +423,64 @@ async fn test_file_batch_operations() {
 
     repo.user.create("u1", "alice", "alice@test.com", "h").await.unwrap();
     repo.site.create("s1", "Site", "filesystem", "u1").await.unwrap();
-    repo.file.create("f1", "s1", "a.jpg", "a.jpg", "image/jpeg", 100, "filesystem", "k1", None, None, None, None).await.unwrap();
-    repo.file.create("f2", "s1", "b.jpg", "b.jpg", "image/jpeg", 200, "filesystem", "k2", None, None, None, None).await.unwrap();
+    repo.file
+        .create(
+            "f1",
+            "s1",
+            "a.jpg",
+            "a.jpg",
+            "image/jpeg",
+            100,
+            "filesystem",
+            "k1",
+            None,
+            None,
+            None,
+            None,
+        )
+        .await
+        .unwrap();
+    repo.file
+        .create(
+            "f2",
+            "s1",
+            "b.jpg",
+            "b.jpg",
+            "image/jpeg",
+            200,
+            "filesystem",
+            "k2",
+            None,
+            None,
+            None,
+            None,
+        )
+        .await
+        .unwrap();
 
-    let deleted = repo.file.batch_soft_delete("s1", &["f1".into(), "f2".into()]).await.unwrap();
+    let deleted = repo
+        .file
+        .batch_soft_delete("s1", &["f1".into(), "f2".into()])
+        .await
+        .unwrap();
     assert_eq!(deleted, 2);
 
-    let restored = repo.file.batch_restore("s1", &["f1".into(), "f2".into()]).await.unwrap();
+    let restored = repo
+        .file
+        .batch_restore("s1", &["f1".into(), "f2".into()])
+        .await
+        .unwrap();
     assert_eq!(restored, 2);
 
-    repo.file.batch_soft_delete("s1", &["f1".into(), "f2".into()]).await.unwrap();
-    let perm_deleted = repo.file.batch_permanent_delete("s1", &["f1".into(), "f2".into()]).await.unwrap();
+    repo.file
+        .batch_soft_delete("s1", &["f1".into(), "f2".into()])
+        .await
+        .unwrap();
+    let perm_deleted = repo
+        .file
+        .batch_permanent_delete("s1", &["f1".into(), "f2".into()])
+        .await
+        .unwrap();
     assert_eq!(perm_deleted, 2);
 }
 
@@ -375,7 +505,18 @@ async fn test_api_key_crud() {
     repo.user.create("u1", "alice", "alice@test.com", "h").await.unwrap();
     repo.site.create("s1", "Site", "filesystem", "u1").await.unwrap();
 
-    repo.api_key.create("k1", "s1", "My Key", "hashed_key", "cms_abc12345", "hmac_hash_value", "read").await.unwrap();
+    repo.api_key
+        .create(
+            "k1",
+            "s1",
+            "My Key",
+            "hashed_key",
+            "cms_abc12345",
+            "hmac_hash_value",
+            "read",
+        )
+        .await
+        .unwrap();
 
     let keys = repo.api_key.list("s1").await.unwrap();
     assert_eq!(keys.len(), 1);
@@ -393,7 +534,10 @@ async fn test_api_key_find_by_prefix() {
     repo.user.create("u1", "alice", "alice@test.com", "h").await.unwrap();
     repo.site.create("s1", "Site", "filesystem", "u1").await.unwrap();
 
-    repo.api_key.create("k1", "s1", "Key1", "hashed1", "cms_abc12345", "hmac1", "read").await.unwrap();
+    repo.api_key
+        .create("k1", "s1", "Key1", "hashed1", "cms_abc12345", "hmac1", "read")
+        .await
+        .unwrap();
 
     let found = repo.api_key.find_by_prefix("cms_abc12345").await.unwrap();
     assert_eq!(found.len(), 1);
@@ -411,9 +555,31 @@ async fn test_entry_sync_file_references() {
 
     repo.user.create("u1", "alice", "alice@test.com", "h").await.unwrap();
     repo.site.create("s1", "Site", "filesystem", "u1").await.unwrap();
-    repo.collection.create("c1", "s1", "Posts", "posts", "{}", false).await.unwrap();
-    repo.file.create("f1", "s1", "img.jpg", "photo.jpg", "image/jpeg", 2048, "filesystem", "key1", None, None, None, Some("u1")).await.unwrap();
-    repo.entry.create("ct1", "s1", "c1", r#"{"image":"/api/files/f1"}"#, "hello").await.unwrap();
+    repo.collection
+        .create("c1", "s1", "Posts", "posts", "{}", false)
+        .await
+        .unwrap();
+    repo.file
+        .create(
+            "f1",
+            "s1",
+            "img.jpg",
+            "photo.jpg",
+            "image/jpeg",
+            2048,
+            "filesystem",
+            "key1",
+            None,
+            None,
+            None,
+            Some("u1"),
+        )
+        .await
+        .unwrap();
+    repo.entry
+        .create("ct1", "s1", "c1", r#"{"image":"/api/files/f1"}"#, "hello")
+        .await
+        .unwrap();
 
     let data = serde_json::json!({"image": "/api/files/f1"});
     let result = repo.entry.sync_file_references("ct1", "s1", &data).await;

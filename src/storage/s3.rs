@@ -37,12 +37,7 @@ impl S3Storage {
         })
     }
 
-    pub async fn put(
-        &self,
-        key: &str,
-        data: Bytes,
-        _content_type: &str,
-    ) -> Result<(), Box<dyn std::error::Error>> {
+    pub async fn put(&self, key: &str, data: Bytes, _content_type: &str) -> Result<(), Box<dyn std::error::Error>> {
         let path = ObjectPath::from(key);
         let payload = object_store::PutPayload::from_bytes(data);
         self.store.put(&path, payload).await?;
@@ -68,5 +63,4 @@ impl S3Storage {
             None => format!("/api/files?key={}", key),
         }
     }
-
 }

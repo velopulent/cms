@@ -17,8 +17,8 @@ use uuid::Uuid;
 use crate::config::Config;
 use crate::middleware::auth::{AuthContext, check_read_access_repo, check_write_access_repo, extract_user_id};
 use crate::models::file::{BatchFileIds, File, FileWithUrl};
-use crate::repository::traits::ListFilesParams;
 use crate::repository::Repository;
+use crate::repository::traits::ListFilesParams;
 use crate::storage::{FileSystemStorage, S3Storage};
 
 #[derive(Clone)]
@@ -277,7 +277,9 @@ pub async fn upload_file(
         return (status, Json(err)).into_response();
     }
 
-    let mut storage_provider = repository.file.get_storage_provider(&site_id)
+    let mut storage_provider = repository
+        .file
+        .get_storage_provider(&site_id)
         .await
         .unwrap_or_else(|_| "filesystem".into());
 
@@ -328,11 +330,7 @@ pub async fn upload_file(
     let file_data = match file_data {
         Some(d) => d,
         None => {
-            return (
-                StatusCode::BAD_REQUEST,
-                Json(json!({"error": "No file provided"})),
-            )
-                .into_response();
+            return (StatusCode::BAD_REQUEST, Json(json!({"error": "No file provided"}))).into_response();
         }
     };
 
@@ -399,15 +397,7 @@ pub async fn upload_file(
         }
     }
 
-    if let Err(e) = store_file(
-        &storage,
-        &storage_provider,
-        &storage_key,
-        file_data,
-        &mime_type,
-    )
-    .await
-    {
+    if let Err(e) = store_file(&storage, &storage_provider, &storage_key, file_data, &mime_type).await {
         return (
             StatusCode::INTERNAL_SERVER_ERROR,
             Json(json!({"error": format!("Failed to store file: {}", e)})),
@@ -430,21 +420,23 @@ pub async fn upload_file(
 
     let created_by = extract_user_id(&auth);
 
-    match repository.file.create(
-        &file_id,
-        &site_id,
-        &filename,
-        &original_name,
-        &mime_type,
-        file_size,
-        &storage_provider,
-        &storage_key,
-        thumb_key_str,
-        width,
-        height,
-        created_by,
-    )
-    .await
+    match repository
+        .file
+        .create(
+            &file_id,
+            &site_id,
+            &filename,
+            &original_name,
+            &mime_type,
+            file_size,
+            &storage_provider,
+            &storage_key,
+            thumb_key_str,
+            width,
+            height,
+            created_by,
+        )
+        .await
     {
         Ok(file) => {
             let with_url = file_to_with_url(&file, &storage);
@@ -494,11 +486,7 @@ pub async fn get_file(
             let with_url = file_to_with_url(&file, &storage);
             (StatusCode::OK, Json(with_url)).into_response()
         }
-        Ok(None) => (
-            StatusCode::NOT_FOUND,
-            Json(json!({"error": "File not found"})),
-        )
-            .into_response(),
+        Ok(None) => (StatusCode::NOT_FOUND, Json(json!({"error": "File not found"}))).into_response(),
         Err(err) => (
             StatusCode::INTERNAL_SERVER_ERROR,
             Json(json!({"error": err.to_string()})),
@@ -532,11 +520,7 @@ pub async fn delete_file_handler(
     }
 
     match repository.file.soft_delete(&id, &site_id).await {
-        Ok(0) => (
-            StatusCode::NOT_FOUND,
-            Json(json!({"error": "File not found"})),
-        )
-            .into_response(),
+        Ok(0) => (StatusCode::NOT_FOUND, Json(json!({"error": "File not found"}))).into_response(),
         Ok(_) => (StatusCode::OK, Json(json!({"message": "File deleted"}))).into_response(),
         Err(err) => (
             StatusCode::INTERNAL_SERVER_ERROR,
@@ -644,19 +628,11 @@ pub async fn batch_delete_files(
     }
 
     if body.ids.is_empty() {
-        return (
-            StatusCode::BAD_REQUEST,
-            Json(json!({"error": "No file IDs provided"})),
-        )
-            .into_response();
+        return (StatusCode::BAD_REQUEST, Json(json!({"error": "No file IDs provided"}))).into_response();
     }
 
     match repository.file.batch_soft_delete(&site_id, &body.ids).await {
-        Ok(count) => (
-            StatusCode::OK,
-            Json(json!({"deleted": count})),
-        )
-            .into_response(),
+        Ok(count) => (StatusCode::OK, Json(json!({"deleted": count}))).into_response(),
         Err(err) => (
             StatusCode::INTERNAL_SERVER_ERROR,
             Json(json!({"error": err.to_string()})),
@@ -691,19 +667,11 @@ pub async fn batch_restore_files(
     }
 
     if body.ids.is_empty() {
-        return (
-            StatusCode::BAD_REQUEST,
-            Json(json!({"error": "No file IDs provided"})),
-        )
-            .into_response();
+        return (StatusCode::BAD_REQUEST, Json(json!({"error": "No file IDs provided"}))).into_response();
     }
 
     match repository.file.batch_restore(&site_id, &body.ids).await {
-        Ok(count) => (
-            StatusCode::OK,
-            Json(json!({"restored": count})),
-        )
-            .into_response(),
+        Ok(count) => (StatusCode::OK, Json(json!({"restored": count}))).into_response(),
         Err(err) => (
             StatusCode::INTERNAL_SERVER_ERROR,
             Json(json!({"error": err.to_string()})),
@@ -739,11 +707,7 @@ pub async fn batch_permanent_delete_files(
     }
 
     if body.ids.is_empty() {
-        return (
-            StatusCode::BAD_REQUEST,
-            Json(json!({"error": "No file IDs provided"})),
-        )
-            .into_response();
+        return (StatusCode::BAD_REQUEST, Json(json!({"error": "No file IDs provided"}))).into_response();
     }
 
     let files = match repository.file.get_deleted_by_ids(&site_id, &body.ids).await {
@@ -765,11 +729,7 @@ pub async fn batch_permanent_delete_files(
     }
 
     match repository.file.batch_permanent_delete(&site_id, &body.ids).await {
-        Ok(count) => (
-            StatusCode::OK,
-            Json(json!({"deleted": count})),
-        )
-            .into_response(),
+        Ok(count) => (StatusCode::OK, Json(json!({"deleted": count}))).into_response(),
         Err(err) => (
             StatusCode::INTERNAL_SERVER_ERROR,
             Json(json!({"error": err.to_string()})),
@@ -837,23 +797,16 @@ async fn serve_file_by_key(
             let mut headers = HeaderMap::new();
             headers.insert(
                 header::CONTENT_TYPE,
-                HeaderValue::from_str(content_type)
-                    .unwrap_or(HeaderValue::from_static("application/octet-stream")),
+                HeaderValue::from_str(content_type).unwrap_or(HeaderValue::from_static("application/octet-stream")),
             );
-            headers.insert(
-                header::CONTENT_LENGTH,
-                HeaderValue::from(bytes.len() as u64),
-            );
+            headers.insert(header::CONTENT_LENGTH, HeaderValue::from(bytes.len() as u64));
             if use_thumbnail {
                 headers.insert(
                     header::CACHE_CONTROL,
                     HeaderValue::from_static("public, max-age=31536000, immutable"),
                 );
             } else {
-                headers.insert(
-                    header::CACHE_CONTROL,
-                    HeaderValue::from_static("public, max-age=3600"),
-                );
+                headers.insert(header::CACHE_CONTROL, HeaderValue::from_static("public, max-age=3600"));
                 headers.insert(
                     header::CONTENT_DISPOSITION,
                     HeaderValue::from_str(&format!("inline; filename=\"{}\"", file.original_name))
@@ -895,7 +848,10 @@ mod tests {
 
     #[test]
     fn test_storage_manager_flags_no_storage() {
-        let sm = StorageManager { filesystem: None, s3: None };
+        let sm = StorageManager {
+            filesystem: None,
+            s3: None,
+        };
         assert!(!sm.has_s3());
         assert!(!sm.has_any());
     }

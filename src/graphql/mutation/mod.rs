@@ -13,11 +13,7 @@ pub struct MutationRoot;
 impl MutationRoot {
     // --- Collections ---
 
-    async fn create_collection(
-        &self,
-        ctx: &Context<'_>,
-        input: CreateCollectionInput,
-    ) -> Result<Collection> {
+    async fn create_collection(&self, ctx: &Context<'_>, input: CreateCollectionInput) -> Result<Collection> {
         collection::CollectionMutation.create_collection(ctx, input).await
     }
 
@@ -36,20 +32,11 @@ impl MutationRoot {
 
     // --- Entries ---
 
-    async fn create_entry(
-        &self,
-        ctx: &Context<'_>,
-        input: CreateEntryInput,
-    ) -> Result<Entry> {
+    async fn create_entry(&self, ctx: &Context<'_>, input: CreateEntryInput) -> Result<Entry> {
         entry::EntryMutation.create_entry(ctx, input).await
     }
 
-    async fn update_entry(
-        &self,
-        ctx: &Context<'_>,
-        id: String,
-        input: UpdateEntryInput,
-    ) -> Result<Entry> {
+    async fn update_entry(&self, ctx: &Context<'_>, id: String, input: UpdateEntryInput) -> Result<Entry> {
         entry::EntryMutation.update_entry(ctx, id, input).await
     }
 

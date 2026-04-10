@@ -20,12 +20,7 @@ impl MysqlEntryRepository {
 
 #[async_trait]
 impl EntryRepository for MysqlEntryRepository {
-    async fn get_by_id(
-        &self,
-        id: &str,
-        site_id: &str,
-        published_only: bool,
-    ) -> Result<Option<Entry>, RepositoryError> {
+    async fn get_by_id(&self, id: &str, site_id: &str, published_only: bool) -> Result<Option<Entry>, RepositoryError> {
         let mut query = String::from(
             "SELECT id, site_id, collection_id, data, slug, status, created_at, updated_at, published_at
              FROM entries WHERE id = ? AND site_id = ?",
@@ -165,42 +160,28 @@ impl EntryRepository for MysqlEntryRepository {
         data: &str,
         slug: &str,
     ) -> Result<Entry, RepositoryError> {
-        sqlx::query(
-            "INSERT INTO entries (id, site_id, collection_id, data, slug) VALUES (?, ?, ?, ?, ?)",
-        )
-        .bind(id)
-        .bind(site_id)
-        .bind(collection_id)
-        .bind(data)
-        .bind(slug)
-        .execute(&self.pool)
-        .await?;
+        sqlx::query("INSERT INTO entries (id, site_id, collection_id, data, slug) VALUES (?, ?, ?, ?, ?)")
+            .bind(id)
+            .bind(site_id)
+            .bind(collection_id)
+            .bind(data)
+            .bind(slug)
+            .execute(&self.pool)
+            .await?;
 
-        self.get_by_id_any_site(id)
-            .await?
-            .ok_or(RepositoryError::NotFound)
+        self.get_by_id_any_site(id).await?.ok_or(RepositoryError::NotFound)
     }
 
-    async fn update(
-        &self,
-        id: &str,
-        data: &str,
-        slug: &str,
-        status: &str,
-    ) -> Result<Entry, RepositoryError> {
-        sqlx::query(
-            "UPDATE entries SET data = ?, slug = ?, status = ?, updated_at = NOW() WHERE id = ?",
-        )
-        .bind(data)
-        .bind(slug)
-        .bind(status)
-        .bind(id)
-        .execute(&self.pool)
-        .await?;
+    async fn update(&self, id: &str, data: &str, slug: &str, status: &str) -> Result<Entry, RepositoryError> {
+        sqlx::query("UPDATE entries SET data = ?, slug = ?, status = ?, updated_at = NOW() WHERE id = ?")
+            .bind(data)
+            .bind(slug)
+            .bind(status)
+            .bind(id)
+            .execute(&self.pool)
+            .await?;
 
-        self.get_by_id_any_site(id)
-            .await?
-            .ok_or(RepositoryError::NotFound)
+        self.get_by_id_any_site(id).await?.ok_or(RepositoryError::NotFound)
     }
 
     async fn delete(&self, id: &str, site_id: &str) -> Result<u64, RepositoryError> {
@@ -226,35 +207,25 @@ impl EntryRepository for MysqlEntryRepository {
             return Err(RepositoryError::NotFound);
         }
 
-        self.get_by_id_any_site(id)
-            .await?
-            .ok_or(RepositoryError::NotFound)
+        self.get_by_id_any_site(id).await?.ok_or(RepositoryError::NotFound)
     }
 
     async fn unpublish(&self, id: &str, site_id: &str) -> Result<Entry, RepositoryError> {
-        let result = sqlx::query(
-            "UPDATE entries SET status = 'draft', updated_at = NOW() WHERE id = ? AND site_id = ?",
-        )
-        .bind(id)
-        .bind(site_id)
-        .execute(&self.pool)
-        .await?;
+        let result =
+            sqlx::query("UPDATE entries SET status = 'draft', updated_at = NOW() WHERE id = ? AND site_id = ?")
+                .bind(id)
+                .bind(site_id)
+                .execute(&self.pool)
+                .await?;
 
         if result.rows_affected() == 0 {
             return Err(RepositoryError::NotFound);
         }
 
-        self.get_by_id_any_site(id)
-            .await?
-            .ok_or(RepositoryError::NotFound)
+        self.get_by_id_any_site(id).await?.ok_or(RepositoryError::NotFound)
     }
 
-    async fn sync_file_references(
-        &self,
-        entry_id: &str,
-        site_id: &str,
-        data: &Value,
-    ) -> Result<(), RepositoryError> {
+    async fn sync_file_references(&self, entry_id: &str, site_id: &str, data: &Value) -> Result<(), RepositoryError> {
         let file_ids = extract_file_ids_from_value(data);
 
         let mut tx = self.pool.begin().await?;
@@ -282,8 +253,7 @@ impl EntryRepository for MysqlEntryRepository {
 }
 
 pub fn extract_file_ids_from_value(value: &Value) -> Vec<String> {
-    static FILE_URL_RE: LazyLock<Regex> =
-        LazyLock::new(|| Regex::new(r"/api/files/([^/]+)(?:/thumbnail)?").unwrap());
+    static FILE_URL_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"/api/files/([^/]+)(?:/thumbnail)?").unwrap());
 
     let mut ids = Vec::new();
     collect_file_ids(value, &FILE_URL_RE, &mut ids);

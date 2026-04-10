@@ -10,10 +10,8 @@ mod openapi;
 mod singleton;
 mod sites;
 
-use axum::{
-    Extension, Router
-};
-use tower_http::cors::{CorsLayer, Any};
+use axum::{Extension, Router};
+use tower_http::cors::{Any, CorsLayer};
 use tower_http::limit::RequestBodyLimitLayer;
 use tower_http::trace::TraceLayer;
 
@@ -26,10 +24,7 @@ use crate::tracing::trace_request;
 pub fn create_router(repository: Repository, config: Config, storage: StorageManager) -> Router {
     let rate_limiter = RateLimiter::new(config.rate_limit_max_requests, config.rate_limit_window_secs);
 
-    let cors = CorsLayer::new()
-        .allow_origin(Any)
-        .allow_methods(Any)
-        .allow_headers(Any);
+    let cors = CorsLayer::new().allow_origin(Any).allow_methods(Any).allow_headers(Any);
 
     Router::new()
         .merge(auth::auth_routes())

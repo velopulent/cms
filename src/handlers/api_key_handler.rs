@@ -46,11 +46,7 @@ pub async fn create_api_key(
     }
 
     if payload.name.trim().is_empty() {
-        return (
-            StatusCode::BAD_REQUEST,
-            Json(json!({"error": "Name is required"})),
-        )
-            .into_response();
+        return (StatusCode::BAD_REQUEST, Json(json!({"error": "Name is required"}))).into_response();
     }
 
     let permissions = match payload.permissions.as_deref() {
@@ -87,7 +83,11 @@ pub async fn create_api_key(
 
     let id = Uuid::now_v7().to_string();
 
-    match repository.api_key.create(&id, &site_id, &payload.name, &key_hash, &prefix, &key_hmac, permissions).await {
+    match repository
+        .api_key
+        .create(&id, &site_id, &payload.name, &key_hash, &prefix, &key_hmac, permissions)
+        .await
+    {
         Ok(_) => {
             let now = chrono::Utc::now().format("%Y-%m-%d %H:%M:%S").to_string();
 
@@ -124,11 +124,7 @@ pub async fn delete_api_key(
     }
 
     match repository.api_key.delete(&key_id, &site_id).await {
-        Ok(0) => (
-            StatusCode::NOT_FOUND,
-            Json(json!({"error": "API key not found"})),
-        )
-            .into_response(),
+        Ok(0) => (StatusCode::NOT_FOUND, Json(json!({"error": "API key not found"}))).into_response(),
         Ok(_) => StatusCode::NO_CONTENT.into_response(),
         Err(err) => (
             StatusCode::INTERNAL_SERVER_ERROR,

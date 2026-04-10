@@ -4,9 +4,8 @@ use tonic::{Request, Response, Status};
 
 use crate::grpc::cms::v1::collection_service_server::CollectionService;
 use crate::grpc::cms::v1::{
-    DeleteResponse, Collection as ProtoCollection,
-    ListCollectionsRequest, ListCollectionsResponse, GetCollectionRequest,
-    CreateCollectionRequest, UpdateCollectionRequest, DeleteCollectionRequest,
+    Collection as ProtoCollection, CreateCollectionRequest, DeleteCollectionRequest, DeleteResponse,
+    GetCollectionRequest, ListCollectionsRequest, ListCollectionsResponse, UpdateCollectionRequest,
 };
 use crate::grpc::interceptor::get_auth_context;
 use crate::models::collection::Collection;

@@ -1,26 +1,18 @@
-use axum::{
-    extract::Request,
-    http::HeaderName,
-    middleware::Next,
-    response::Response,
-};
-use tracing::{info_span, Instrument};
+use axum::{extract::Request, http::HeaderName, middleware::Next, response::Response};
+use tracing::{Instrument, info_span};
 use tracing_appender::rolling::{RollingFileAppender, Rotation};
-use tracing_subscriber::{fmt, layer::SubscriberExt, EnvFilter, prelude::*};
+use tracing_subscriber::{EnvFilter, fmt, layer::SubscriberExt, prelude::*};
 use uuid::Uuid;
 
 pub static REQUEST_ID_HEADER: HeaderName = HeaderName::from_static("x-request-id");
 
 pub fn init_tracing() -> Option<tracing_appender::non_blocking::WorkerGuard> {
-    let env_filter = EnvFilter::try_from_default_env()
-        .unwrap_or_else(|_| {
-            "cms=debug,tower_http=debug,axum=debug".into()
-        });
+    let env_filter =
+        EnvFilter::try_from_default_env().unwrap_or_else(|_| "cms=debug,tower_http=debug,axum=debug".into());
 
     let log_output = std::env::var("LOG_OUTPUT").unwrap_or_else(|_| "stdout".into());
     let log_format = std::env::var("LOG_FORMAT").unwrap_or_else(|_| "pretty".into());
-    let log_annotations = std::env::var("LOG_ANNOTATIONS")
-        .unwrap_or_else(|_| "false".into()) == "true";
+    let log_annotations = std::env::var("LOG_ANNOTATIONS").unwrap_or_else(|_| "false".into()) == "true";
 
     let env_filter_str = env_filter.to_string();
 
@@ -37,10 +29,7 @@ pub fn init_tracing() -> Option<tracing_appender::non_blocking::WorkerGuard> {
                 .with_line_number(log_annotations)
                 .json();
 
-            tracing_subscriber::registry()
-                .with(env_filter)
-                .with(file_layer)
-                .init();
+            tracing_subscriber::registry().with(env_filter).with(file_layer).init();
 
             tracing::info!(
                 log_output = %log_output,
@@ -113,6 +102,8 @@ pub async fn trace_request(req: Request, next: Next) -> Response {
     );
 
     let mut response = next.run(req).instrument(span).await;
-    let _ = response.headers_mut().insert(REQUEST_ID_HEADER.clone(), request_id.parse().unwrap());
+    let _ = response
+        .headers_mut()
+        .insert(REQUEST_ID_HEADER.clone(), request_id.parse().unwrap());
     response
 }

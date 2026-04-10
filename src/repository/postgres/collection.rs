@@ -84,18 +84,10 @@ impl CollectionRepository for PostgresCollectionRepository {
         .execute(&self.pool)
         .await?;
 
-        self.get_by_id(id)
-            .await?
-            .ok_or(RepositoryError::NotFound)
+        self.get_by_id(id).await?.ok_or(RepositoryError::NotFound)
     }
 
-    async fn update(
-        &self,
-        id: &str,
-        name: &str,
-        slug: &str,
-        definition: &str,
-    ) -> Result<Collection, RepositoryError> {
+    async fn update(&self, id: &str, name: &str, slug: &str, definition: &str) -> Result<Collection, RepositoryError> {
         sqlx::query(
             "UPDATE collections SET name = $1, slug = $2, definition = $3::jsonb, updated_at = NOW() WHERE id = $4",
         )
@@ -106,23 +98,17 @@ impl CollectionRepository for PostgresCollectionRepository {
         .execute(&self.pool)
         .await?;
 
-        self.get_by_id(id)
-            .await?
-            .ok_or(RepositoryError::NotFound)
+        self.get_by_id(id).await?.ok_or(RepositoryError::NotFound)
     }
 
     async fn update_singleton_data(&self, id: &str, data: &str) -> Result<Collection, RepositoryError> {
-        sqlx::query(
-            "UPDATE collections SET singleton_data = $1::jsonb, updated_at = NOW() WHERE id = $2",
-        )
-        .bind(data)
-        .bind(id)
-        .execute(&self.pool)
-        .await?;
+        sqlx::query("UPDATE collections SET singleton_data = $1::jsonb, updated_at = NOW() WHERE id = $2")
+            .bind(data)
+            .bind(id)
+            .execute(&self.pool)
+            .await?;
 
-        self.get_by_id(id)
-            .await?
-            .ok_or(RepositoryError::NotFound)
+        self.get_by_id(id).await?.ok_or(RepositoryError::NotFound)
     }
 
     async fn delete(&self, site_id: &str, slug: &str) -> Result<u64, RepositoryError> {
@@ -156,22 +142,17 @@ impl CollectionRepository for PostgresCollectionRepository {
                 if let Some(obj) = data.as_object_mut() {
                     let mut renamed = serde_json::Map::new();
                     for (key, value) in obj.iter() {
-                        let new_key = rename_map
-                            .get(key)
-                            .cloned()
-                            .unwrap_or_else(|| key.clone());
+                        let new_key = rename_map.get(key).cloned().unwrap_or_else(|| key.clone());
                         renamed.insert(new_key, value.clone());
                     }
                     let new_data_str = serde_json::to_string(&serde_json::Value::Object(renamed))
                         .unwrap_or_else(|_| entry.data.clone());
 
-                    sqlx::query(
-                        "UPDATE entries SET data = $1::jsonb, updated_at = NOW() WHERE id = $2",
-                    )
-                    .bind(&new_data_str)
-                    .bind(&entry.id)
-                    .execute(&self.pool)
-                    .await?;
+                    sqlx::query("UPDATE entries SET data = $1::jsonb, updated_at = NOW() WHERE id = $2")
+                        .bind(&new_data_str)
+                        .bind(&entry.id)
+                        .execute(&self.pool)
+                        .await?;
                 }
             }
         }
@@ -188,22 +169,17 @@ impl CollectionRepository for PostgresCollectionRepository {
                 if let Some(obj) = data.as_object_mut() {
                     let mut renamed = serde_json::Map::new();
                     for (key, value) in obj.iter() {
-                        let new_key = rename_map
-                            .get(key)
-                            .cloned()
-                            .unwrap_or_else(|| key.clone());
+                        let new_key = rename_map.get(key).cloned().unwrap_or_else(|| key.clone());
                         renamed.insert(new_key, value.clone());
                     }
-                    let new_data_str = serde_json::to_string(&serde_json::Value::Object(renamed))
-                        .unwrap_or_else(|_| data_str.clone());
+                    let new_data_str =
+                        serde_json::to_string(&serde_json::Value::Object(renamed)).unwrap_or_else(|_| data_str.clone());
 
-                    sqlx::query(
-                        "UPDATE collections SET singleton_data = $1::jsonb, updated_at = NOW() WHERE id = $2",
-                    )
-                    .bind(&new_data_str)
-                    .bind(&collection.id)
-                    .execute(&self.pool)
-                    .await?;
+                    sqlx::query("UPDATE collections SET singleton_data = $1::jsonb, updated_at = NOW() WHERE id = $2")
+                        .bind(&new_data_str)
+                        .bind(&collection.id)
+                        .execute(&self.pool)
+                        .await?;
                 }
             }
         }

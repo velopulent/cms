@@ -51,12 +51,8 @@ impl GqlContext {
     pub fn require_write(&self) -> async_graphql::Result<()> {
         match self.permissions.as_deref() {
             Some("write") => Ok(()),
-            Some("read") => Err(async_graphql::Error::new(
-                "API key does not have write permissions",
-            )),
-            None => Err(async_graphql::Error::new(
-                "API key authentication required",
-            )),
+            Some("read") => Err(async_graphql::Error::new("API key does not have write permissions")),
+            None => Err(async_graphql::Error::new("API key authentication required")),
             Some(other) => Err(async_graphql::Error::new(format!(
                 "Unknown API key permission level: {}",
                 other
@@ -70,9 +66,7 @@ impl GqlContext {
         if key_site == site_id {
             Ok(())
         } else {
-            Err(async_graphql::Error::new(
-                "API key does not have access to this site",
-            ))
+            Err(async_graphql::Error::new("API key does not have access to this site"))
         }
     }
 }

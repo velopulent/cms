@@ -6,10 +6,10 @@ use std::task::{Context, Poll};
 use http::{HeaderMap, Request, Response, StatusCode};
 use tonic::body::BoxBody;
 use tower::{Layer, Service};
-use tracing::{error, Span};
+use tracing::{Span, error};
 
 use crate::config::Config;
-use crate::grpc::interceptor::{compute_key_hmac, GrpcAuthContext};
+use crate::grpc::interceptor::{GrpcAuthContext, compute_key_hmac};
 use crate::repository::Repository;
 
 /// Tower Layer for gRPC authentication middleware.
@@ -66,8 +66,7 @@ where
 {
     type Response = S::Response;
     type Error = Box<dyn std::error::Error + Send + Sync>;
-    type Future =
-        Pin<Box<dyn Future<Output = Result<Self::Response, Self::Error>> + Send + 'static>>;
+    type Future = Pin<Box<dyn Future<Output = Result<Self::Response, Self::Error>> + Send + 'static>>;
 
     fn poll_ready(&mut self, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
         self.inner.poll_ready(cx).map_err(Into::into)
@@ -103,19 +102,11 @@ where
 
                     // Build gRPC-style error response
                     let status = match auth_error {
-                        AuthError::MissingToken => {
-                            tonic::Status::unauthenticated("Missing API key")
-                        }
-                        AuthError::InvalidFormat => {
-                            tonic::Status::unauthenticated("Invalid API key format")
-                        }
-                        AuthError::Expired => {
-                            tonic::Status::unauthenticated("API key has expired")
-                        }
+                        AuthError::MissingToken => tonic::Status::unauthenticated("Missing API key"),
+                        AuthError::InvalidFormat => tonic::Status::unauthenticated("Invalid API key format"),
+                        AuthError::Expired => tonic::Status::unauthenticated("API key has expired"),
                         AuthError::InvalidKey => tonic::Status::unauthenticated("Invalid API key"),
-                        AuthError::Database => {
-                            tonic::Status::internal("Authentication service unavailable")
-                        }
+                        AuthError::Database => tonic::Status::internal("Authentication service unavailable"),
                     };
 
                     // Convert tonic::Status to HTTP response
@@ -198,14 +189,10 @@ async fn authenticate_request(
     let token_hmac = compute_key_hmac(token, &config.hmac_secret);
 
     // Query database for API keys matching the prefix
-    let keys = repository
-        .api_key
-        .find_by_prefix(&prefix)
-        .await
-        .map_err(|e| {
-            error!(error = ?e, "Database error during API key lookup");
-            AuthError::Database
-        })?;
+    let keys = repository.api_key.find_by_prefix(&prefix).await.map_err(|e| {
+        error!(error = ?e, "Database error during API key lookup");
+        AuthError::Database
+    })?;
 
     // Validate each key
     for (key_id, site_id, stored_hash, stored_hmac, expires_at, permissions) in keys {
@@ -222,9 +209,7 @@ async fn authenticate_request(
 
         // Check expiration
         if let Some(exp) = expires_at {
-            if let Ok(expiry) =
-                chrono::NaiveDateTime::parse_from_str(&exp, "%Y-%m-%d %H:%M:%S")
-            {
+            if let Ok(expiry) = chrono::NaiveDateTime::parse_from_str(&exp, "%Y-%m-%d %H:%M:%S") {
                 if expiry < chrono::Utc::now().naive_utc() {
                     return Err(AuthError::Expired);
                 }
@@ -240,10 +225,7 @@ async fn authenticate_request(
         Span::current().record("site_id", tracing::field::display(&site_id));
 
         // Return successful auth context
-        return Ok(GrpcAuthContext {
-            site_id,
-            permissions,
-        });
+        return Ok(GrpcAuthContext { site_id, permissions });
     }
 
     // No valid key found
@@ -271,10 +253,9 @@ fn status_to_response(status: tonic::Status) -> Response<BoxBody> {
     }
 
     // Set content-type for gRPC
-    parts.headers.insert(
-        "content-type",
-        http::HeaderValue::from_static("application/grpc"),
-    );
+    parts
+        .headers
+        .insert("content-type", http::HeaderValue::from_static("application/grpc"));
 
     // For unauthorized responses, also set HTTP status
     if status.code() == tonic::Code::Unauthenticated {
@@ -337,10 +318,7 @@ mod tests {
 
         let mut headers = HeaderMap::new();
         // Insert invalid UTF-8 bytes
-        headers.insert(
-            "authorization",
-            HeaderValue::from_bytes(&[0x80, 0x81, 0x82]).unwrap(),
-        );
+        headers.insert("authorization", HeaderValue::from_bytes(&[0x80, 0x81, 0x82]).unwrap());
 
         let header = extract_auth_header(&headers);
         assert_eq!(header, None);
@@ -356,12 +334,14 @@ mod tests {
             response.headers().get("grpc-status"),
             Some(&http::HeaderValue::from_static("16")) // Code::Unauthenticated = 16
         );
-        assert!(response
-            .headers()
-            .get("grpc-message")
-            .unwrap()
-            .as_bytes()
-            .starts_with(b"Invalid API key"));
+        assert!(
+            response
+                .headers()
+                .get("grpc-message")
+                .unwrap()
+                .as_bytes()
+                .starts_with(b"Invalid API key")
+        );
     }
 
     #[test]

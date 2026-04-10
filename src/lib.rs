@@ -19,13 +19,13 @@ pub mod handlers {
     pub mod api_key_handler;
     pub mod auth_handler;
     pub mod collection_handler;
+    pub mod dashboard_handler;
     pub mod entry_handler;
     pub mod file_handler;
     pub mod singleton_handler;
     pub mod site_handler;
-    pub mod dashboard_handler;
 }
+pub mod grpc;
 pub mod repository;
 pub mod router;
 pub mod storage;
-pub mod grpc;

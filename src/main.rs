@@ -64,16 +64,10 @@ async fn main() {
 
     let app = create_router(repository.clone(), config.clone(), storage_manager);
 
-    let addr: SocketAddr = config
-        .bind_address
-        .parse()
-        .expect("Invalid BIND_ADDRESS");
+    let addr: SocketAddr = config.bind_address.parse().expect("Invalid BIND_ADDRESS");
     info!("REST API server running on {}", addr);
 
-    let grpc_addr: SocketAddr = config
-        .grpc_bind_address
-        .parse()
-        .expect("Invalid GRPC_BIND_ADDRESS");
+    let grpc_addr: SocketAddr = config.grpc_bind_address.parse().expect("Invalid GRPC_BIND_ADDRESS");
     info!("gRPC server running on {}", grpc_addr);
 
     let rest_handle = tokio::spawn(async move {
@@ -87,11 +81,7 @@ async fn main() {
             .expect("Server error");
     });
 
-    let grpc_handle = tokio::spawn(spawn_grpc_server(
-        repository.clone(),
-        config.clone(),
-        grpc_addr,
-    ));
+    let grpc_handle = tokio::spawn(spawn_grpc_server(repository.clone(), config.clone(), grpc_addr));
 
     select! {
         result = rest_handle => {
@@ -110,8 +100,7 @@ async fn main() {
 async fn seed_admin(repository: &Repository) {
     if !repository.user.exists("admin").await.unwrap_or(false) {
         let id = uuid::Uuid::now_v7().to_string();
-        let password_hash =
-            bcrypt::hash("admin", bcrypt::DEFAULT_COST).expect("Failed to hash password");
+        let password_hash = bcrypt::hash("admin", bcrypt::DEFAULT_COST).expect("Failed to hash password");
         repository
             .user
             .create(&id, "admin", "admin@cms.local", &password_hash)
@@ -124,9 +113,7 @@ async fn seed_admin(repository: &Repository) {
 
 async fn shutdown_signal() {
     let ctrl_c = async {
-        tokio::signal::ctrl_c()
-            .await
-            .expect("failed to install Ctrl+C handler");
+        tokio::signal::ctrl_c().await.expect("failed to install Ctrl+C handler");
     };
 
     #[cfg(unix)]

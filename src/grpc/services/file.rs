@@ -4,15 +4,13 @@ use tonic::{Request, Response, Status};
 
 use crate::grpc::cms::v1::file_service_server::FileService;
 use crate::grpc::cms::v1::{
-    DeleteResponse, File as ProtoFile,
-    ListFilesRequest, ListFilesResponse, GetFileRequest,
-    DeleteFileRequest, RestoreFileRequest, BatchDeleteFilesRequest,
-    BatchRestoreFilesRequest, BatchOperationResponse,
+    BatchDeleteFilesRequest, BatchOperationResponse, BatchRestoreFilesRequest, DeleteFileRequest, DeleteResponse,
+    File as ProtoFile, GetFileRequest, ListFilesRequest, ListFilesResponse, RestoreFileRequest,
 };
 use crate::grpc::interceptor::get_auth_context;
 use crate::models::file::File;
-use crate::repository::traits::ListFilesParams;
 use crate::repository::Repository;
+use crate::repository::traits::ListFilesParams;
 
 #[derive(Clone)]
 pub struct FileServiceImpl {
@@ -27,10 +25,7 @@ impl FileServiceImpl {
 
 #[tonic::async_trait]
 impl FileService for FileServiceImpl {
-    async fn list_files(
-        &self,
-        request: Request<ListFilesRequest>,
-    ) -> Result<Response<ListFilesResponse>, Status> {
+    async fn list_files(&self, request: Request<ListFilesRequest>) -> Result<Response<ListFilesResponse>, Status> {
         let auth = get_auth_context(&request)?;
         let site_id = auth.site_id;
 
@@ -62,10 +57,7 @@ impl FileService for FileServiceImpl {
         Ok(Response::new(response))
     }
 
-    async fn get_file(
-        &self,
-        request: Request<GetFileRequest>,
-    ) -> Result<Response<ProtoFile>, Status> {
+    async fn get_file(&self, request: Request<GetFileRequest>) -> Result<Response<ProtoFile>, Status> {
         let auth = get_auth_context(&request)?;
         let site_id = auth.site_id;
         let id = request.into_inner().id;
@@ -81,10 +73,7 @@ impl FileService for FileServiceImpl {
         Ok(Response::new(ProtoFile::from(file)))
     }
 
-    async fn delete_file(
-        &self,
-        request: Request<DeleteFileRequest>,
-    ) -> Result<Response<DeleteResponse>, Status> {
+    async fn delete_file(&self, request: Request<DeleteFileRequest>) -> Result<Response<DeleteResponse>, Status> {
         let auth = get_auth_context(&request)?;
         let site_id = auth.site_id;
         let id = request.into_inner().id;
@@ -106,10 +95,7 @@ impl FileService for FileServiceImpl {
         }))
     }
 
-    async fn restore_file(
-        &self,
-        request: Request<RestoreFileRequest>,
-    ) -> Result<Response<ProtoFile>, Status> {
+    async fn restore_file(&self, request: Request<RestoreFileRequest>) -> Result<Response<ProtoFile>, Status> {
         let auth = get_auth_context(&request)?;
         let site_id = auth.site_id;
         let id = request.into_inner().id;
@@ -151,7 +137,9 @@ impl FileService for FileServiceImpl {
             .await
             .map_err(|e| Status::internal(format!("Database error: {}", e)))?;
 
-        Ok(Response::new(BatchOperationResponse { affected: affected as i64 }))
+        Ok(Response::new(BatchOperationResponse {
+            affected: affected as i64,
+        }))
     }
 
     async fn batch_restore_files(
@@ -169,7 +157,9 @@ impl FileService for FileServiceImpl {
             .await
             .map_err(|e| Status::internal(format!("Database error: {}", e)))?;
 
-        Ok(Response::new(BatchOperationResponse { affected: affected as i64 }))
+        Ok(Response::new(BatchOperationResponse {
+            affected: affected as i64,
+        }))
     }
 }
 

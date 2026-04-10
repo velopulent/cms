@@ -7,7 +7,9 @@ pub mod traits;
 use std::sync::Arc;
 
 use crate::database::pool::DbPool;
-use crate::repository::traits::{ApiKeyRepository, CollectionRepository, EntryRepository, FileRepository, SiteRepository, UserRepository};
+use crate::repository::traits::{
+    ApiKeyRepository, CollectionRepository, EntryRepository, FileRepository, SiteRepository, UserRepository,
+};
 
 #[derive(Clone)]
 pub struct Repository {

@@ -1,9 +1,9 @@
 use axum::{
+    Json,
     extract::Request,
     http::StatusCode,
-    response::{IntoResponse, Response},
-    Json,
     middleware::Next,
+    response::{IntoResponse, Response},
 };
 use serde_json::json;
 use std::collections::HashMap;

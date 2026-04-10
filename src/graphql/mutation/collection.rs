@@ -9,11 +9,7 @@ pub struct CollectionMutation;
 
 #[Object]
 impl CollectionMutation {
-    pub async fn create_collection(
-        &self,
-        ctx: &Context<'_>,
-        input: CreateCollectionInput,
-    ) -> Result<Collection> {
+    pub async fn create_collection(&self, ctx: &Context<'_>, input: CreateCollectionInput) -> Result<Collection> {
         let gql_ctx = ctx.data::<GqlContext>()?;
         let site_id = gql_ctx.require_site()?;
         gql_ctx.require_write()?;
@@ -21,22 +17,16 @@ impl CollectionMutation {
         let definition_str = input.definition.to_string();
         let id = Uuid::now_v7().to_string();
 
-        match gql_ctx.repository.collection.create(
-            &id,
-            site_id,
-            &input.name,
-            &input.slug,
-            &definition_str,
-            false,
-        )
-        .await
+        match gql_ctx
+            .repository
+            .collection
+            .create(&id, site_id, &input.name, &input.slug, &definition_str, false)
+            .await
         {
             Ok(db_collection) => Ok(db_collection_to_gql(db_collection)),
-            Err(RepositoryError::UniqueViolation(_)) => {
-                Err(async_graphql::Error::new(
-                    "Collection with this name or slug already exists",
-                ))
-            }
+            Err(RepositoryError::UniqueViolation(_)) => Err(async_graphql::Error::new(
+                "Collection with this name or slug already exists",
+            )),
             Err(e) => Err(async_graphql::Error::new(format!("Database error: {}", e))),
         }
     }
@@ -51,7 +41,10 @@ impl CollectionMutation {
         let site_id = gql_ctx.require_site()?;
         gql_ctx.require_write()?;
 
-        let existing = gql_ctx.repository.collection.get_by_slug(site_id, &slug)
+        let existing = gql_ctx
+            .repository
+            .collection
+            .get_by_slug(site_id, &slug)
             .await
             .map_err(|e| async_graphql::Error::new(format!("Database error: {}", e)))?
             .ok_or_else(|| async_graphql::Error::new("Collection not found"))?;
@@ -66,34 +59,41 @@ impl CollectionMutation {
 
         if let Some(ref new_def_json) = input.definition {
             let new_def_value = &new_def_json.0;
-            let old_def: Option<serde_json::Value> =
-                serde_json::from_str(&existing.definition).ok();
-            let new_def: Option<serde_json::Value> =
-                serde_json::from_value(new_def_value.clone()).ok();
+            let old_def: Option<serde_json::Value> = serde_json::from_str(&existing.definition).ok();
+            let new_def: Option<serde_json::Value> = serde_json::from_value(new_def_value.clone()).ok();
 
             if let (Some(old_d), Some(new_d)) = (old_def, new_def) {
                 let rename_map = compute_field_rename_map(&old_d, &new_d);
 
                 if !rename_map.is_empty() {
                     if existing.is_singleton {
-                        let _ = gql_ctx.repository.collection.migrate_singleton_field_renames(
-                            &existing,
-                            &rename_map,
-                        ).await;
-                    } else if let Ok(items) = gql_ctx.repository.collection.get_content_for_migration(&existing.id).await {
-                        let _ = gql_ctx.repository.collection.migrate_content_field_renames(
-                            &items,
-                            &rename_map,
-                        ).await;
+                        let _ = gql_ctx
+                            .repository
+                            .collection
+                            .migrate_singleton_field_renames(&existing, &rename_map)
+                            .await;
+                    } else if let Ok(items) = gql_ctx
+                        .repository
+                        .collection
+                        .get_content_for_migration(&existing.id)
+                        .await
+                    {
+                        let _ = gql_ctx
+                            .repository
+                            .collection
+                            .migrate_content_field_renames(&items, &rename_map)
+                            .await;
                     }
                 }
             }
         }
 
-        let db_collection =
-            gql_ctx.repository.collection.update(&existing.id, &name, &new_slug, &definition_str)
-                .await
-                .map_err(|e| async_graphql::Error::new(format!("Database error: {}", e)))?;
+        let db_collection = gql_ctx
+            .repository
+            .collection
+            .update(&existing.id, &name, &new_slug, &definition_str)
+            .await
+            .map_err(|e| async_graphql::Error::new(format!("Database error: {}", e)))?;
 
         Ok(db_collection_to_gql(db_collection))
     }
@@ -103,7 +103,10 @@ impl CollectionMutation {
         let site_id = gql_ctx.require_site()?;
         gql_ctx.require_write()?;
 
-        gql_ctx.repository.collection.delete(site_id, &slug)
+        gql_ctx
+            .repository
+            .collection
+            .delete(site_id, &slug)
             .await
             .map_err(|e| async_graphql::Error::new(format!("Database error: {}", e)))?;
 
@@ -118,8 +121,7 @@ fn compute_field_rename_map(
     let old_fields = old_def["fields"].as_array().cloned().unwrap_or_default();
     let new_fields = new_def["fields"].as_array().cloned().unwrap_or_default();
 
-    let mut rename_map: std::collections::HashMap<String, String> =
-        std::collections::HashMap::new();
+    let mut rename_map: std::collections::HashMap<String, String> = std::collections::HashMap::new();
     let mut used_old = vec![false; old_fields.len()];
     let mut used_new = vec![false; new_fields.len()];
 
@@ -140,9 +142,13 @@ fn compute_field_rename_map(
     }
 
     for (i, of) in old_fields.iter().enumerate() {
-        if used_old[i] { continue; }
+        if used_old[i] {
+            continue;
+        }
         for (j, nf) in new_fields.iter().enumerate() {
-            if used_new[j] { continue; }
+            if used_new[j] {
+                continue;
+            }
             if of["name"] != nf["name"]
                 && of["type"] == nf["type"]
                 && of.get("required") == nf.get("required")

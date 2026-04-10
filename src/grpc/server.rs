@@ -58,17 +58,11 @@ pub async fn start_grpc_server(
     // Create tonic service servers
     // Note: We don't use with_interceptor() anymore - authentication is handled
     // by the Tower middleware layer applied at the Server level
-    let collection_svc =
-        crate::grpc::cms::v1::collection_service_server::CollectionServiceServer::new(
-            collection_svc,
-        );
-    let entry_svc =
-        crate::grpc::cms::v1::entry_service_server::EntryServiceServer::new(entry_svc);
-    let singleton_svc =
-        crate::grpc::cms::v1::singleton_service_server::SingletonServiceServer::new(singleton_svc);
+    let collection_svc = crate::grpc::cms::v1::collection_service_server::CollectionServiceServer::new(collection_svc);
+    let entry_svc = crate::grpc::cms::v1::entry_service_server::EntryServiceServer::new(entry_svc);
+    let singleton_svc = crate::grpc::cms::v1::singleton_service_server::SingletonServiceServer::new(singleton_svc);
     let file_svc = crate::grpc::cms::v1::file_service_server::FileServiceServer::new(file_svc);
-    let api_key_svc =
-        crate::grpc::cms::v1::api_key_service_server::ApiKeyServiceServer::new(api_key_svc);
+    let api_key_svc = crate::grpc::cms::v1::api_key_service_server::ApiKeyServiceServer::new(api_key_svc);
 
     info!("gRPC server listening on {}", grpc_addr);
 

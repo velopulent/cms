@@ -9,11 +9,7 @@ pub struct EntryMutation;
 
 #[Object]
 impl EntryMutation {
-    pub async fn create_entry(
-        &self,
-        ctx: &Context<'_>,
-        input: CreateEntryInput,
-    ) -> Result<Entry> {
+    pub async fn create_entry(&self, ctx: &Context<'_>, input: CreateEntryInput) -> Result<Entry> {
         let gql_ctx = ctx.data::<GqlContext>()?;
         let site_id = gql_ctx.require_site()?;
         gql_ctx.require_write()?;
@@ -21,36 +17,29 @@ impl EntryMutation {
         let data_str = input.data.to_string();
         let id = Uuid::now_v7().to_string();
 
-        match gql_ctx.repository.entry.create(
-            &id,
-            site_id,
-            &input.collection_id,
-            &data_str,
-            &input.slug,
-        )
-        .await
+        match gql_ctx
+            .repository
+            .entry
+            .create(&id, site_id, &input.collection_id, &data_str, &input.slug)
+            .await
         {
             Ok(db_entry) => Ok(db_entry_to_gql(db_entry)),
-            Err(RepositoryError::UniqueViolation(_)) => {
-                Err(async_graphql::Error::new(
-                    "Entry with this slug already exists for this collection",
-                ))
-            }
+            Err(RepositoryError::UniqueViolation(_)) => Err(async_graphql::Error::new(
+                "Entry with this slug already exists for this collection",
+            )),
             Err(e) => Err(async_graphql::Error::new(format!("Database error: {}", e))),
         }
     }
 
-    pub async fn update_entry(
-        &self,
-        ctx: &Context<'_>,
-        id: String,
-        input: UpdateEntryInput,
-    ) -> Result<Entry> {
+    pub async fn update_entry(&self, ctx: &Context<'_>, id: String, input: UpdateEntryInput) -> Result<Entry> {
         let gql_ctx = ctx.data::<GqlContext>()?;
         let site_id = gql_ctx.require_site()?;
         gql_ctx.require_write()?;
 
-        let existing = gql_ctx.repository.entry.get_by_id(&id, site_id, false)
+        let existing = gql_ctx
+            .repository
+            .entry
+            .get_by_id(&id, site_id, false)
             .await
             .map_err(|e| async_graphql::Error::new(format!("Database error: {}", e)))?
             .ok_or_else(|| async_graphql::Error::new("Entry not found"))?;
@@ -63,7 +52,10 @@ impl EntryMutation {
         let slug = input.slug.unwrap_or(existing.slug);
         let status = input.status.unwrap_or(existing.status);
 
-        let db_entry = gql_ctx.repository.entry.update(&id, &data_str, &slug, &status)
+        let db_entry = gql_ctx
+            .repository
+            .entry
+            .update(&id, &data_str, &slug, &status)
             .await
             .map_err(|e| async_graphql::Error::new(format!("Database error: {}", e)))?;
 
@@ -75,7 +67,10 @@ impl EntryMutation {
         let site_id = gql_ctx.require_site()?;
         gql_ctx.require_write()?;
 
-        gql_ctx.repository.entry.delete(&id, site_id)
+        gql_ctx
+            .repository
+            .entry
+            .delete(&id, site_id)
             .await
             .map_err(|e| async_graphql::Error::new(format!("Database error: {}", e)))?;
 
@@ -87,7 +82,10 @@ impl EntryMutation {
         let site_id = gql_ctx.require_site()?;
         gql_ctx.require_write()?;
 
-        let db_entry = gql_ctx.repository.entry.publish(&id, site_id)
+        let db_entry = gql_ctx
+            .repository
+            .entry
+            .publish(&id, site_id)
             .await
             .map_err(|e| async_graphql::Error::new(format!("Database error: {}", e)))?;
 
@@ -99,7 +97,10 @@ impl EntryMutation {
         let site_id = gql_ctx.require_site()?;
         gql_ctx.require_write()?;
 
-        let db_entry = gql_ctx.repository.entry.unpublish(&id, site_id)
+        let db_entry = gql_ctx
+            .repository
+            .entry
+            .unpublish(&id, site_id)
             .await
             .map_err(|e| async_graphql::Error::new(format!("Database error: {}", e)))?;
 

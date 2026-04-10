@@ -3,10 +3,7 @@ use std::sync::Arc;
 use tonic::{Request, Response, Status};
 
 use crate::grpc::cms::v1::singleton_service_server::SingletonService;
-use crate::grpc::cms::v1::{
-    Singleton as ProtoSingleton,
-    GetSingletonRequest, UpdateSingletonRequest,
-};
+use crate::grpc::cms::v1::{GetSingletonRequest, Singleton as ProtoSingleton, UpdateSingletonRequest};
 use crate::grpc::interceptor::get_auth_context;
 use crate::models::collection::Collection;
 use crate::repository::Repository;
@@ -24,10 +21,7 @@ impl SingletonServiceImpl {
 
 #[tonic::async_trait]
 impl SingletonService for SingletonServiceImpl {
-    async fn get_singleton(
-        &self,
-        request: Request<GetSingletonRequest>,
-    ) -> Result<Response<ProtoSingleton>, Status> {
+    async fn get_singleton(&self, request: Request<GetSingletonRequest>) -> Result<Response<ProtoSingleton>, Status> {
         let auth = get_auth_context(&request)?;
         let site_id = auth.site_id;
         let slug = request.into_inner().slug;

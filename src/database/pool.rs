@@ -1,8 +1,8 @@
 use sqlx::{
+    Error,
     mysql::{MySqlPool, MySqlPoolOptions},
     postgres::{PgPool, PgPoolOptions},
     sqlite::{SqlitePool, SqlitePoolOptions},
-    Error,
 };
 use std::str::FromStr;
 use std::time::Duration;

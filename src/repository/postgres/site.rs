@@ -52,51 +52,36 @@ impl SiteRepository for PostgresSiteRepository {
     ) -> Result<Site, RepositoryError> {
         let mut tx = self.pool.begin().await?;
 
-        sqlx::query(
-            "INSERT INTO sites (id, name, default_storage_provider, created_by) VALUES ($1, $2, $3, $4)",
-        )
-        .bind(id)
-        .bind(name)
-        .bind(storage_provider)
-        .bind(created_by)
-        .execute(&mut *tx)
-        .await?;
+        sqlx::query("INSERT INTO sites (id, name, default_storage_provider, created_by) VALUES ($1, $2, $3, $4)")
+            .bind(id)
+            .bind(name)
+            .bind(storage_provider)
+            .bind(created_by)
+            .execute(&mut *tx)
+            .await?;
 
         let member_id = uuid::Uuid::now_v7().to_string();
-        sqlx::query(
-            "INSERT INTO site_members (id, site_id, user_id, role) VALUES ($1, $2, $3, 'owner')",
-        )
-        .bind(&member_id)
-        .bind(id)
-        .bind(created_by)
-        .execute(&mut *tx)
-        .await?;
+        sqlx::query("INSERT INTO site_members (id, site_id, user_id, role) VALUES ($1, $2, $3, 'owner')")
+            .bind(&member_id)
+            .bind(id)
+            .bind(created_by)
+            .execute(&mut *tx)
+            .await?;
 
         tx.commit().await?;
 
-        self.get_by_id(id)
-            .await?
-            .ok_or(RepositoryError::NotFound)
+        self.get_by_id(id).await?.ok_or(RepositoryError::NotFound)
     }
 
-    async fn update(
-        &self,
-        id: &str,
-        name: &str,
-        storage_provider: &str,
-    ) -> Result<Site, RepositoryError> {
-        sqlx::query(
-            "UPDATE sites SET name = $1, default_storage_provider = $2, updated_at = NOW() WHERE id = $3",
-        )
-        .bind(name)
-        .bind(storage_provider)
-        .bind(id)
-        .execute(&self.pool)
-        .await?;
+    async fn update(&self, id: &str, name: &str, storage_provider: &str) -> Result<Site, RepositoryError> {
+        sqlx::query("UPDATE sites SET name = $1, default_storage_provider = $2, updated_at = NOW() WHERE id = $3")
+            .bind(name)
+            .bind(storage_provider)
+            .bind(id)
+            .execute(&self.pool)
+            .await?;
 
-        self.get_by_id(id)
-            .await?
-            .ok_or(RepositoryError::NotFound)
+        self.get_by_id(id).await?.ok_or(RepositoryError::NotFound)
     }
 
     async fn delete(&self, id: &str) -> Result<u64, RepositoryError> {

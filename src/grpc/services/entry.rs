@@ -4,15 +4,13 @@ use tonic::{Request, Response, Status};
 
 use crate::grpc::cms::v1::entry_service_server::EntryService;
 use crate::grpc::cms::v1::{
-    DeleteResponse, Entry as ProtoEntry,
-    ListEntriesRequest, ListEntriesResponse, GetEntryRequest,
-    CreateEntryRequest, UpdateEntryRequest, DeleteEntryRequest,
-    PublishEntryRequest, UnpublishEntryRequest,
+    CreateEntryRequest, DeleteEntryRequest, DeleteResponse, Entry as ProtoEntry, GetEntryRequest, ListEntriesRequest,
+    ListEntriesResponse, PublishEntryRequest, UnpublishEntryRequest, UpdateEntryRequest,
 };
 use crate::grpc::interceptor::get_auth_context;
 use crate::models::entry::Entry;
-use crate::repository::traits::ListEntriesParams;
 use crate::repository::Repository;
+use crate::repository::traits::ListEntriesParams;
 use uuid::Uuid;
 
 #[derive(Clone)]
@@ -65,10 +63,7 @@ impl EntryService for EntryServiceImpl {
         Ok(Response::new(response))
     }
 
-    async fn get_entry(
-        &self,
-        request: Request<GetEntryRequest>,
-    ) -> Result<Response<ProtoEntry>, Status> {
+    async fn get_entry(&self, request: Request<GetEntryRequest>) -> Result<Response<ProtoEntry>, Status> {
         let auth = get_auth_context(&request)?;
         let site_id = auth.site_id;
         let id = request.into_inner().id;
@@ -84,10 +79,7 @@ impl EntryService for EntryServiceImpl {
         Ok(Response::new(ProtoEntry::from(entry)))
     }
 
-    async fn create_entry(
-        &self,
-        request: Request<CreateEntryRequest>,
-    ) -> Result<Response<ProtoEntry>, Status> {
+    async fn create_entry(&self, request: Request<CreateEntryRequest>) -> Result<Response<ProtoEntry>, Status> {
         let auth = get_auth_context(&request)?;
         let site_id = auth.site_id;
 
@@ -104,10 +96,7 @@ impl EntryService for EntryServiceImpl {
         Ok(Response::new(ProtoEntry::from(entry)))
     }
 
-    async fn update_entry(
-        &self,
-        request: Request<UpdateEntryRequest>,
-    ) -> Result<Response<ProtoEntry>, Status> {
+    async fn update_entry(&self, request: Request<UpdateEntryRequest>) -> Result<Response<ProtoEntry>, Status> {
         let _auth = get_auth_context(&request)?;
 
         let req = request.into_inner();
@@ -135,10 +124,7 @@ impl EntryService for EntryServiceImpl {
         Ok(Response::new(ProtoEntry::from(entry)))
     }
 
-    async fn delete_entry(
-        &self,
-        request: Request<DeleteEntryRequest>,
-    ) -> Result<Response<DeleteResponse>, Status> {
+    async fn delete_entry(&self, request: Request<DeleteEntryRequest>) -> Result<Response<DeleteResponse>, Status> {
         let auth = get_auth_context(&request)?;
         let site_id = auth.site_id;
         let id = request.into_inner().id;
@@ -160,10 +146,7 @@ impl EntryService for EntryServiceImpl {
         }))
     }
 
-    async fn publish_entry(
-        &self,
-        request: Request<PublishEntryRequest>,
-    ) -> Result<Response<ProtoEntry>, Status> {
+    async fn publish_entry(&self, request: Request<PublishEntryRequest>) -> Result<Response<ProtoEntry>, Status> {
         let auth = get_auth_context(&request)?;
         let site_id = auth.site_id;
         let id = request.into_inner().id;
@@ -178,10 +161,7 @@ impl EntryService for EntryServiceImpl {
         Ok(Response::new(ProtoEntry::from(entry)))
     }
 
-    async fn unpublish_entry(
-        &self,
-        request: Request<UnpublishEntryRequest>,
-    ) -> Result<Response<ProtoEntry>, Status> {
+    async fn unpublish_entry(&self, request: Request<UnpublishEntryRequest>) -> Result<Response<ProtoEntry>, Status> {
         let auth = get_auth_context(&request)?;
         let site_id = auth.site_id;
         let id = request.into_inner().id;

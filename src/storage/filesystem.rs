@@ -21,12 +21,7 @@ impl FileSystemStorage {
         })
     }
 
-    pub async fn put(
-        &self,
-        key: &str,
-        data: Bytes,
-        _content_type: &str,
-    ) -> Result<(), Box<dyn std::error::Error>> {
+    pub async fn put(&self, key: &str, data: Bytes, _content_type: &str) -> Result<(), Box<dyn std::error::Error>> {
         let path = ObjectPath::from(key);
         let payload = object_store::PutPayload::from_bytes(data);
         self.store.put(&path, payload).await?;
@@ -99,7 +94,10 @@ mod tests {
         let storage = FileSystemStorage::new(temp_dir.path().to_str().unwrap()).unwrap();
 
         let data = Bytes::from("Nested content");
-        storage.put("dir1/dir2/test.txt", data.clone(), "text/plain").await.unwrap();
+        storage
+            .put("dir1/dir2/test.txt", data.clone(), "text/plain")
+            .await
+            .unwrap();
 
         let retrieved = storage.get("dir1/dir2/test.txt").await.unwrap();
         assert_eq!(retrieved, data);
@@ -138,7 +136,10 @@ mod tests {
         let storage = FileSystemStorage::new(temp_dir.path().to_str().unwrap()).unwrap();
 
         let data = Bytes::from(vec![0u8, 1, 2, 3, 255]);
-        storage.put("binary.bin", data.clone(), "application/octet-stream").await.unwrap();
+        storage
+            .put("binary.bin", data.clone(), "application/octet-stream")
+            .await
+            .unwrap();
 
         let retrieved = storage.get("binary.bin").await.unwrap();
         assert_eq!(retrieved, data);

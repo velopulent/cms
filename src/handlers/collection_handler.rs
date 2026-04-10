@@ -70,11 +70,7 @@ pub async fn get_collection(
 
     match repository.collection.get_by_slug(&site_id, &collection_slug).await {
         Ok(Some(item)) => (StatusCode::OK, Json(item)).into_response(),
-        Ok(None) => (
-            StatusCode::NOT_FOUND,
-            Json(json!({"error": "Collection not found"})),
-        )
-            .into_response(),
+        Ok(None) => (StatusCode::NOT_FOUND, Json(json!({"error": "Collection not found"}))).into_response(),
         Err(err) => (
             StatusCode::INTERNAL_SERVER_ERROR,
             Json(json!({"error": err.to_string()})),
@@ -112,15 +108,17 @@ pub async fn create_collection(
     let id = Uuid::now_v7().to_string();
     let is_singleton = payload.is_singleton.unwrap_or(false);
 
-    match repository.collection.create(
-        &id,
-        &site_id,
-        &payload.name,
-        &payload.slug,
-        &definition_str,
-        is_singleton,
-    )
-    .await
+    match repository
+        .collection
+        .create(
+            &id,
+            &site_id,
+            &payload.name,
+            &payload.slug,
+            &definition_str,
+            is_singleton,
+        )
+        .await
     {
         Ok(item) => (StatusCode::CREATED, Json(item)).into_response(),
         Err(crate::repository::error::RepositoryError::UniqueViolation(_)) => (
@@ -166,11 +164,7 @@ pub async fn update_collection(
     let existing = match repository.collection.get_by_slug(&site_id, &collection_slug).await {
         Ok(Some(item)) => item,
         Ok(None) => {
-            return (
-                StatusCode::NOT_FOUND,
-                Json(json!({"error": "Collection not found"})),
-            )
-                .into_response();
+            return (StatusCode::NOT_FOUND, Json(json!({"error": "Collection not found"}))).into_response();
         }
         Err(err) => {
             return (
@@ -198,18 +192,25 @@ pub async fn update_collection(
 
             if !rename_map.is_empty() {
                 if existing.is_singleton {
-                    let _ = repository.collection.migrate_singleton_field_renames(
-                        &existing,
-                        &rename_map,
-                    ).await;
+                    let _ = repository
+                        .collection
+                        .migrate_singleton_field_renames(&existing, &rename_map)
+                        .await;
                 } else if let Ok(items) = repository.collection.get_content_for_migration(&existing.id).await {
-                    let _ = repository.collection.migrate_content_field_renames(&items, &rename_map).await;
+                    let _ = repository
+                        .collection
+                        .migrate_content_field_renames(&items, &rename_map)
+                        .await;
                 }
             }
         }
     }
 
-    match repository.collection.update(&existing.id, &name, &new_slug, &definition_str).await {
+    match repository
+        .collection
+        .update(&existing.id, &name, &new_slug, &definition_str)
+        .await
+    {
         Ok(item) => (StatusCode::OK, Json(item)).into_response(),
         Err(err) => (
             StatusCode::INTERNAL_SERVER_ERROR,
@@ -261,8 +262,7 @@ fn compute_field_rename_map(
     let old_fields = old_def["fields"].as_array().cloned().unwrap_or_default();
     let new_fields = new_def["fields"].as_array().cloned().unwrap_or_default();
 
-    let mut rename_map: std::collections::HashMap<String, String> =
-        std::collections::HashMap::new();
+    let mut rename_map: std::collections::HashMap<String, String> = std::collections::HashMap::new();
     let mut used_old = vec![false; old_fields.len()];
     let mut used_new = vec![false; new_fields.len()];
 

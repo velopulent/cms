@@ -25,12 +25,29 @@ pub trait UserRepository: Send + Sync {
 pub trait SiteRepository: Send + Sync {
     async fn list_for_user(&self, user_id: &str) -> Result<Vec<SiteWithRole>, RepositoryError>;
     async fn get_by_id(&self, id: &str) -> Result<Option<Site>, RepositoryError>;
-    async fn create(&self, id: &str, name: &str, storage_provider: &str, created_by: &str) -> Result<Site, RepositoryError>;
+    async fn create(
+        &self,
+        id: &str,
+        name: &str,
+        storage_provider: &str,
+        created_by: &str,
+    ) -> Result<Site, RepositoryError>;
     async fn update(&self, id: &str, name: &str, storage_provider: &str) -> Result<Site, RepositoryError>;
     async fn delete(&self, id: &str) -> Result<u64, RepositoryError>;
     async fn list_members(&self, site_id: &str) -> Result<Vec<SiteMember>, RepositoryError>;
-    async fn add_member(&self, id: &str, site_id: &str, user_id: &str, role: &str) -> Result<SiteMember, RepositoryError>;
-    async fn update_member_role(&self, site_id: &str, user_id: &str, role: &str) -> Result<Option<SiteMember>, RepositoryError>;
+    async fn add_member(
+        &self,
+        id: &str,
+        site_id: &str,
+        user_id: &str,
+        role: &str,
+    ) -> Result<SiteMember, RepositoryError>;
+    async fn update_member_role(
+        &self,
+        site_id: &str,
+        user_id: &str,
+        role: &str,
+    ) -> Result<Option<SiteMember>, RepositoryError>;
     async fn remove_member(&self, site_id: &str, user_id: &str) -> Result<u64, RepositoryError>;
 }
 
@@ -40,13 +57,29 @@ pub trait CollectionRepository: Send + Sync {
     async fn list_singletons_only(&self, site_id: &str) -> Result<Vec<Collection>, RepositoryError>;
     async fn get_by_slug(&self, site_id: &str, slug: &str) -> Result<Option<Collection>, RepositoryError>;
     async fn get_by_id(&self, id: &str) -> Result<Option<Collection>, RepositoryError>;
-    async fn create(&self, id: &str, site_id: &str, name: &str, slug: &str, definition: &str, is_singleton: bool) -> Result<Collection, RepositoryError>;
+    async fn create(
+        &self,
+        id: &str,
+        site_id: &str,
+        name: &str,
+        slug: &str,
+        definition: &str,
+        is_singleton: bool,
+    ) -> Result<Collection, RepositoryError>;
     async fn update(&self, id: &str, name: &str, slug: &str, definition: &str) -> Result<Collection, RepositoryError>;
     async fn update_singleton_data(&self, id: &str, data: &str) -> Result<Collection, RepositoryError>;
     async fn delete(&self, site_id: &str, slug: &str) -> Result<u64, RepositoryError>;
     async fn get_content_for_migration(&self, collection_id: &str) -> Result<Vec<Entry>, RepositoryError>;
-    async fn migrate_content_field_renames(&self, content_items: &[Entry], rename_map: &std::collections::HashMap<String, String>) -> Result<(), RepositoryError>;
-    async fn migrate_singleton_field_renames(&self, collection: &Collection, rename_map: &std::collections::HashMap<String, String>) -> Result<(), RepositoryError>;
+    async fn migrate_content_field_renames(
+        &self,
+        content_items: &[Entry],
+        rename_map: &std::collections::HashMap<String, String>,
+    ) -> Result<(), RepositoryError>;
+    async fn migrate_singleton_field_renames(
+        &self,
+        collection: &Collection,
+        rename_map: &std::collections::HashMap<String, String>,
+    ) -> Result<(), RepositoryError>;
 }
 
 #[async_trait]
@@ -54,8 +87,20 @@ pub trait EntryRepository: Send + Sync {
     async fn get_by_id(&self, id: &str, site_id: &str, published_only: bool) -> Result<Option<Entry>, RepositoryError>;
     async fn get_by_id_any_site(&self, id: &str) -> Result<Option<Entry>, RepositoryError>;
     async fn list(&self, params: ListEntriesParams<'_>) -> Result<EntriesListResult, RepositoryError>;
-    async fn get_by_collection_id(&self, collection_id: &str, status: Option<&str>, published_only: bool) -> Result<Vec<Entry>, RepositoryError>;
-    async fn create(&self, id: &str, site_id: &str, collection_id: &str, data: &str, slug: &str) -> Result<Entry, RepositoryError>;
+    async fn get_by_collection_id(
+        &self,
+        collection_id: &str,
+        status: Option<&str>,
+        published_only: bool,
+    ) -> Result<Vec<Entry>, RepositoryError>;
+    async fn create(
+        &self,
+        id: &str,
+        site_id: &str,
+        collection_id: &str,
+        data: &str,
+        slug: &str,
+    ) -> Result<Entry, RepositoryError>;
     async fn update(&self, id: &str, data: &str, slug: &str, status: &str) -> Result<Entry, RepositoryError>;
     async fn delete(&self, id: &str, site_id: &str) -> Result<u64, RepositoryError>;
     async fn publish(&self, id: &str, site_id: &str) -> Result<Entry, RepositoryError>;
@@ -104,7 +149,21 @@ pub trait FileRepository: Send + Sync {
     async fn get_by_id(&self, id: &str, site_id: &str) -> Result<Option<File>, RepositoryError>;
     async fn get_by_id_any(&self, id: &str) -> Result<Option<File>, RepositoryError>;
     async fn list(&self, params: ListFilesParams<'_>) -> Result<FileListResult, RepositoryError>;
-    async fn create(&self, id: &str, site_id: &str, filename: &str, original_name: &str, mime_type: &str, size: i64, storage_provider: &str, storage_key: &str, thumbnail_key: Option<&str>, width: Option<i32>, height: Option<i32>, created_by: Option<&str>) -> Result<File, RepositoryError>;
+    async fn create(
+        &self,
+        id: &str,
+        site_id: &str,
+        filename: &str,
+        original_name: &str,
+        mime_type: &str,
+        size: i64,
+        storage_provider: &str,
+        storage_key: &str,
+        thumbnail_key: Option<&str>,
+        width: Option<i32>,
+        height: Option<i32>,
+        created_by: Option<&str>,
+    ) -> Result<File, RepositoryError>;
     async fn soft_delete(&self, id: &str, site_id: &str) -> Result<u64, RepositoryError>;
     async fn restore(&self, id: &str, site_id: &str) -> Result<u64, RepositoryError>;
     async fn batch_soft_delete(&self, site_id: &str, ids: &[String]) -> Result<u64, RepositoryError>;
@@ -113,15 +172,31 @@ pub trait FileRepository: Send + Sync {
     async fn get_deleted_by_ids(&self, site_id: &str, ids: &[String]) -> Result<Vec<File>, RepositoryError>;
     async fn batch_permanent_delete(&self, site_id: &str, ids: &[String]) -> Result<u64, RepositoryError>;
     async fn get_references(&self, file_id: &str) -> Result<Vec<FileReference>, RepositoryError>;
-    async fn get_references_for_site(&self, file_id: &str, site_id: &str) -> Result<Vec<FileReference>, RepositoryError>;
+    async fn get_references_for_site(
+        &self,
+        file_id: &str,
+        site_id: &str,
+    ) -> Result<Vec<FileReference>, RepositoryError>;
     async fn get_storage_provider(&self, site_id: &str) -> Result<String, RepositoryError>;
 }
 
 #[async_trait]
 pub trait ApiKeyRepository: Send + Sync {
     async fn list(&self, site_id: &str) -> Result<Vec<ApiKey>, RepositoryError>;
-    async fn create(&self, id: &str, site_id: &str, name: &str, key_hash: &str, key_prefix: &str, key_hmac: &str, permissions: &str) -> Result<(), RepositoryError>;
+    async fn create(
+        &self,
+        id: &str,
+        site_id: &str,
+        name: &str,
+        key_hash: &str,
+        key_prefix: &str,
+        key_hmac: &str,
+        permissions: &str,
+    ) -> Result<(), RepositoryError>;
     async fn delete(&self, id: &str, site_id: &str) -> Result<u64, RepositoryError>;
-    async fn find_by_prefix(&self, prefix: &str) -> Result<Vec<(String, String, String, Option<String>, Option<String>, String)>, RepositoryError>;
+    async fn find_by_prefix(
+        &self,
+        prefix: &str,
+    ) -> Result<Vec<(String, String, String, Option<String>, Option<String>, String)>, RepositoryError>;
     async fn update_last_used(&self, id: &str) -> Result<(), RepositoryError>;
 }

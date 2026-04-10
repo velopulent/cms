@@ -16,7 +16,10 @@ impl QueryRoot {
         let gql_ctx = ctx.data::<GqlContext>()?;
         let site_id = gql_ctx.require_site()?;
 
-        let db_site = gql_ctx.repository.site.get_by_id(site_id)
+        let db_site = gql_ctx
+            .repository
+            .site
+            .get_by_id(site_id)
             .await
             .map_err(|e| async_graphql::Error::new(format!("Database error: {}", e)))?;
 
@@ -37,7 +40,10 @@ impl QueryRoot {
         let gql_ctx = ctx.data::<GqlContext>()?;
         let site_id = gql_ctx.require_site()?;
 
-        let db_collections = gql_ctx.repository.collection.list(site_id)
+        let db_collections = gql_ctx
+            .repository
+            .collection
+            .list(site_id)
             .await
             .map_err(|e| async_graphql::Error::new(format!("Database error: {}", e)))?;
 
@@ -51,7 +57,10 @@ impl QueryRoot {
         let gql_ctx = ctx.data::<GqlContext>()?;
         let site_id = gql_ctx.require_site()?;
 
-        let db_collection = gql_ctx.repository.collection.get_by_slug(site_id, &slug)
+        let db_collection = gql_ctx
+            .repository
+            .collection
+            .get_by_slug(site_id, &slug)
             .await
             .map_err(|e| async_graphql::Error::new(format!("Database error: {}", e)))?;
 
@@ -89,11 +98,15 @@ impl QueryRoot {
             per_page: per_page_val,
         };
 
-        let result = gql_ctx.repository.entry.list(params)
+        let result = gql_ctx
+            .repository
+            .entry
+            .list(params)
             .await
             .map_err(|e| async_graphql::Error::new(format!("Database error: {}", e)))?;
 
-        Ok(result.items
+        Ok(result
+            .items
             .into_iter()
             .map(super::types::entry::db_entry_to_gql)
             .collect())
@@ -103,7 +116,10 @@ impl QueryRoot {
         let gql_ctx = ctx.data::<GqlContext>()?;
         let site_id = gql_ctx.require_site()?;
 
-        let entry = gql_ctx.repository.entry.get_by_id(&id, site_id, false)
+        let entry = gql_ctx
+            .repository
+            .entry
+            .get_by_id(&id, site_id, false)
             .await
             .map_err(|e| async_graphql::Error::new(format!("Database error: {}", e)))?;
 
@@ -135,7 +151,10 @@ impl QueryRoot {
             per_page,
         };
 
-        let result = gql_ctx.repository.file.list(params)
+        let result = gql_ctx
+            .repository
+            .file
+            .list(params)
             .await
             .map_err(|e| async_graphql::Error::new(format!("Database error: {}", e)))?;
 
@@ -150,7 +169,10 @@ impl QueryRoot {
         let gql_ctx = ctx.data::<GqlContext>()?;
         let site_id = gql_ctx.require_site()?;
 
-        let db_file = gql_ctx.repository.file.get_by_id(&id, site_id)
+        let db_file = gql_ctx
+            .repository
+            .file
+            .get_by_id(&id, site_id)
             .await
             .map_err(|e| async_graphql::Error::new(format!("Database error: {}", e)))?;
 
@@ -168,7 +190,10 @@ impl QueryRoot {
         let gql_ctx = ctx.data::<GqlContext>()?;
         let site_id = gql_ctx.require_site()?;
 
-        let refs = gql_ctx.repository.file.get_references_for_site(&file_id, site_id)
+        let refs = gql_ctx
+            .repository
+            .file
+            .get_references_for_site(&file_id, site_id)
             .await
             .map_err(|e| async_graphql::Error::new(format!("Database error: {}", e)))?;
 
