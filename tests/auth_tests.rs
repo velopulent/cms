@@ -1,8 +1,8 @@
 use cms::config::Config;
 use cms::database::pool::DbPool;
 use cms::middleware::auth::{
-    AuthContext, check_read_access_repo, check_write_access_repo, compute_key_hmac, create_token, extract_user_id,
-    verify_token,
+    Principal, SCOPE_CONTENT_READ, SCOPE_CONTENT_WRITE, check_site_access_repo, compute_key_hmac, create_token,
+    extract_user_id, require_site_scope, verify_token,
 };
 use cms::repository::Repository;
 use sqlx::sqlite::SqlitePoolOptions;
@@ -51,14 +51,15 @@ fn test_verify_token_expired_fails() {
 
 #[test]
 fn test_extract_user_id_from_auth_context() {
-    let jwt_ctx = AuthContext::Jwt {
+    let jwt_ctx = Principal::UserSession {
         user_id: "u1".to_string(),
     };
     assert_eq!(extract_user_id(&jwt_ctx), Some("u1"));
 
-    let api_ctx = AuthContext::ApiKey {
+    let api_ctx = Principal::SiteToken {
+        token_id: "t1".to_string(),
         site_id: "s1".to_string(),
-        permissions: "read".to_string(),
+        scopes: [SCOPE_CONTENT_READ.to_string()].into_iter().collect(),
     };
     assert_eq!(extract_user_id(&api_ctx), None);
 }
@@ -81,112 +82,106 @@ fn test_compute_key_hmac_different_keys() {
 }
 
 #[tokio::test]
-async fn test_check_read_access_with_jwt_viewer_role() {
+async fn test_check_site_access_with_jwt_viewer_role() {
     let (_pool, repo) = setup_test_db().await;
     repo.user.create("u1", "alice", "alice@t.com", "h").await.unwrap();
     repo.site.create("s1", "Site", "filesystem", "u1").await.unwrap();
 
-    let auth = AuthContext::Jwt {
-        user_id: "u1".to_string(),
-    };
-    let result = check_read_access_repo(&auth, &repo, "s1").await;
+    let result = check_site_access_repo(&repo, "u1", "s1", "viewer").await;
     assert!(result.is_ok());
 }
 
 #[tokio::test]
-async fn test_check_read_access_with_jwt_no_membership() {
+async fn test_check_site_access_with_jwt_no_membership() {
     let (_pool, repo) = setup_test_db().await;
     repo.user.create("u1", "alice", "alice@t.com", "h").await.unwrap();
     repo.user.create("u2", "bob", "bob@t.com", "h").await.unwrap();
     repo.site.create("s1", "Site", "filesystem", "u1").await.unwrap();
 
-    let auth = AuthContext::Jwt {
-        user_id: "u2".to_string(),
-    };
-    let result = check_read_access_repo(&auth, &repo, "s1").await;
+    let result = check_site_access_repo(&repo, "u2", "s1", "viewer").await;
     assert!(result.is_err());
     let (status, _) = result.unwrap_err();
     assert_eq!(status, axum::http::StatusCode::NOT_FOUND);
 }
 
 #[tokio::test]
-async fn test_check_write_access_with_api_key_correct_site() {
+async fn test_require_site_scope_with_site_token_correct_scope() {
     let (_pool, repo) = setup_test_db().await;
     repo.user.create("u1", "alice", "alice@t.com", "h").await.unwrap();
     repo.site.create("s1", "Site", "filesystem", "u1").await.unwrap();
 
-    let auth = AuthContext::ApiKey {
+    let auth = Principal::SiteToken {
+        token_id: "t1".to_string(),
         site_id: "s1".to_string(),
-        permissions: "write".to_string(),
+        scopes: [SCOPE_CONTENT_WRITE.to_string()].into_iter().collect(),
     };
-    let result = check_write_access_repo(&auth, &repo, "s1").await;
+    let result = require_site_scope(&auth, &repo, Some("s1"), SCOPE_CONTENT_WRITE, "editor").await;
     assert!(result.is_ok());
 }
 
 #[tokio::test]
-async fn test_check_write_access_with_api_key_read_only() {
+async fn test_require_site_scope_with_site_token_missing_scope() {
     let (_pool, repo) = setup_test_db().await;
     repo.user.create("u1", "alice", "alice@t.com", "h").await.unwrap();
     repo.site.create("s1", "Site", "filesystem", "u1").await.unwrap();
 
-    let auth = AuthContext::ApiKey {
+    let auth = Principal::SiteToken {
+        token_id: "t1".to_string(),
         site_id: "s1".to_string(),
-        permissions: "read".to_string(),
+        scopes: [SCOPE_CONTENT_READ.to_string()].into_iter().collect(),
     };
-    let result = check_write_access_repo(&auth, &repo, "s1").await;
+    let result = require_site_scope(&auth, &repo, Some("s1"), SCOPE_CONTENT_WRITE, "editor").await;
     assert!(result.is_err());
     let (status, body) = result.unwrap_err();
     assert_eq!(status, axum::http::StatusCode::FORBIDDEN);
-    assert_eq!(body["error"], "API key does not have write permissions");
+    assert_eq!(body["error"], "Access token does not have the required scope");
 }
 
 #[tokio::test]
-async fn test_check_write_access_with_api_key_wrong_site() {
+async fn test_require_site_scope_with_site_token_wrong_site() {
     let (_pool, repo) = setup_test_db().await;
     repo.user.create("u1", "alice", "alice@t.com", "h").await.unwrap();
     repo.site.create("s1", "Site1", "filesystem", "u1").await.unwrap();
     repo.site.create("s2", "Site2", "filesystem", "u1").await.unwrap();
 
-    let auth = AuthContext::ApiKey {
+    let auth = Principal::SiteToken {
+        token_id: "t1".to_string(),
         site_id: "s1".to_string(),
-        permissions: "write".to_string(),
+        scopes: [SCOPE_CONTENT_WRITE.to_string()].into_iter().collect(),
     };
-    let result = check_write_access_repo(&auth, &repo, "s2").await;
+    let result = require_site_scope(&auth, &repo, Some("s2"), SCOPE_CONTENT_WRITE, "editor").await;
     assert!(result.is_err());
     let (status, body) = result.unwrap_err();
     assert_eq!(status, axum::http::StatusCode::FORBIDDEN);
-    assert_eq!(body["error"], "API key does not have access to this site");
+    assert_eq!(body["error"], "Site token does not have access to this site");
 }
 
 #[tokio::test]
-async fn test_check_read_access_with_api_key_correct_site() {
+async fn test_require_site_scope_with_site_token_read_scope() {
     let (_pool, repo) = setup_test_db().await;
     repo.user.create("u1", "alice", "alice@t.com", "h").await.unwrap();
     repo.site.create("s1", "Site", "filesystem", "u1").await.unwrap();
 
-    let auth = AuthContext::ApiKey {
+    let auth = Principal::SiteToken {
+        token_id: "t1".to_string(),
         site_id: "s1".to_string(),
-        permissions: "read".to_string(),
+        scopes: [SCOPE_CONTENT_READ.to_string()].into_iter().collect(),
     };
-    let result = check_read_access_repo(&auth, &repo, "s1").await;
+    let result = require_site_scope(&auth, &repo, Some("s1"), SCOPE_CONTENT_READ, "viewer").await;
     assert!(result.is_ok());
 }
 
 #[tokio::test]
-async fn test_check_read_access_with_api_key_wrong_site() {
+async fn test_require_site_scope_with_jwt_user_and_explicit_site() {
     let (_pool, repo) = setup_test_db().await;
     repo.user.create("u1", "alice", "alice@t.com", "h").await.unwrap();
     repo.site.create("s1", "Site1", "filesystem", "u1").await.unwrap();
-    repo.site.create("s2", "Site2", "filesystem", "u1").await.unwrap();
 
-    let auth = AuthContext::ApiKey {
-        site_id: "s1".to_string(),
-        permissions: "read".to_string(),
+    let auth = Principal::UserSession {
+        user_id: "u1".to_string(),
     };
-    let result = check_read_access_repo(&auth, &repo, "s2").await;
-    assert!(result.is_err());
-    let (status, _) = result.unwrap_err();
-    assert_eq!(status, axum::http::StatusCode::FORBIDDEN);
+    let result = require_site_scope(&auth, &repo, Some("s1"), SCOPE_CONTENT_READ, "viewer").await;
+    assert!(result.is_ok());
 }
 
 #[test]

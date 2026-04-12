@@ -1,4 +1,5 @@
 use cms::database::pool::DbPool;
+use cms::models::access_token::AccessTokenKind;
 use cms::repository::Repository;
 use cms::repository::error::RepositoryError;
 use cms::repository::traits::ListEntriesParams;
@@ -499,53 +500,87 @@ async fn test_file_references() {
 }
 
 #[tokio::test]
-async fn test_api_key_crud() {
+async fn test_access_token_crud() {
     let (_pool, repo) = setup_test_db().await;
 
     repo.user.create("u1", "alice", "alice@test.com", "h").await.unwrap();
     repo.site.create("s1", "Site", "filesystem", "u1").await.unwrap();
 
-    repo.api_key
+    repo.access_token
         .create(
-            "k1",
-            "s1",
-            "My Key",
+            "t1",
+            AccessTokenKind::Site,
+            Some("s1"),
+            "My Token",
             "hashed_key",
-            "cms_abc12345",
+            "cms_site_abc1234567890123",
             "hmac_hash_value",
-            "read",
+            "content:read,content:write",
+            Some("u1"),
         )
         .await
         .unwrap();
 
-    let keys = repo.api_key.list("s1").await.unwrap();
-    assert_eq!(keys.len(), 1);
-    assert_eq!(keys[0].name, "My Key");
-    assert_eq!(keys[0].key_prefix, "cms_abc12345");
+    let tokens = repo
+        .access_token
+        .list(AccessTokenKind::Site, Some("s1"))
+        .await
+        .unwrap();
+    assert_eq!(tokens.len(), 1);
+    assert_eq!(tokens[0].name, "My Token");
+    assert_eq!(tokens[0].token_prefix, "cms_site_abc1234567890123");
+    assert_eq!(tokens[0].kind, "site");
 
-    assert_eq!(repo.api_key.delete("k1", "s1").await.unwrap(), 1);
-    assert!(repo.api_key.list("s1").await.unwrap().is_empty());
+    assert_eq!(
+        repo.access_token
+            .delete("t1", AccessTokenKind::Site, Some("s1"))
+            .await
+            .unwrap(),
+        1
+    );
+    assert!(repo
+        .access_token
+        .list(AccessTokenKind::Site, Some("s1"))
+        .await
+        .unwrap()
+        .is_empty());
 }
 
 #[tokio::test]
-async fn test_api_key_find_by_prefix() {
+async fn test_access_token_find_by_prefix() {
     let (_pool, repo) = setup_test_db().await;
 
     repo.user.create("u1", "alice", "alice@test.com", "h").await.unwrap();
     repo.site.create("s1", "Site", "filesystem", "u1").await.unwrap();
 
-    repo.api_key
-        .create("k1", "s1", "Key1", "hashed1", "cms_abc12345", "hmac1", "read")
+    repo.access_token
+        .create(
+            "t1",
+            AccessTokenKind::Site,
+            Some("s1"),
+            "Token1",
+            "hashed1",
+            "cms_site_abc1234567890123",
+            "hmac1",
+            "content:read",
+            Some("u1"),
+        )
         .await
         .unwrap();
 
-    let found = repo.api_key.find_by_prefix("cms_abc12345").await.unwrap();
+    let found = repo
+        .access_token
+        .find_by_prefix("cms_site_abc1234567890123")
+        .await
+        .unwrap();
     assert_eq!(found.len(), 1);
-    assert_eq!(found[0].0, "k1");
-    assert_eq!(found[0].2, "hashed1");
-    assert_eq!(found[0].3, Some("hmac1".to_string()));
+    assert_eq!(found[0].0, "t1");
+    assert_eq!(found[0].1, "site");
+    assert_eq!(found[0].2, Some("s1".to_string()));
+    assert_eq!(found[0].3, "hashed1");
+    assert_eq!(found[0].4, Some("hmac1".to_string()));
 
-    let empty = repo.api_key.find_by_prefix("cms_nonexist").await.unwrap();
+    let empty = repo.access_token.find_by_prefix("cms_nonexist").await.unwrap();
     assert!(empty.is_empty());
 }
 
