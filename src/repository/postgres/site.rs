@@ -17,6 +17,16 @@ impl PostgresSiteRepository {
 
 #[async_trait]
 impl SiteRepository for PostgresSiteRepository {
+    async fn list_all(&self) -> Result<Vec<Site>, RepositoryError> {
+        let result = sqlx::query_as::<_, Site>(
+            "SELECT id, name, default_storage_provider, created_by, created_at::text as created_at, updated_at::text as updated_at FROM sites ORDER BY name",
+        )
+        .fetch_all(&self.pool)
+        .await?;
+
+        Ok(result)
+    }
+
     async fn list_for_user(&self, user_id: &str) -> Result<Vec<SiteWithRole>, RepositoryError> {
         let result = sqlx::query_as::<_, SiteWithRole>(
             "SELECT s.id, s.name, s.default_storage_provider, s.created_by, s.created_at::text as created_at, s.updated_at::text as updated_at, sm.role

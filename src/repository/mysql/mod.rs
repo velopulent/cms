@@ -1,11 +1,11 @@
-pub mod api_key;
+pub mod access_token;
 pub mod collection;
 pub mod entry;
 pub mod file;
 pub mod site;
 pub mod user;
 
-pub use api_key::MysqlApiKeyRepository;
+pub use access_token::MysqlAccessTokenRepository;
 pub use collection::MysqlCollectionRepository;
 pub use entry::MysqlEntryRepository;
 pub use file::MysqlFileRepository;

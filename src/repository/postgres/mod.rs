@@ -1,11 +1,11 @@
-pub mod api_key;
+pub mod access_token;
 pub mod collection;
 pub mod entry;
 pub mod file;
 pub mod site;
 pub mod user;
 
-pub use api_key::PostgresApiKeyRepository;
+pub use access_token::PostgresAccessTokenRepository;
 pub use collection::PostgresCollectionRepository;
 pub use entry::PostgresEntryRepository;
 pub use file::PostgresFileRepository;
