@@ -1,17 +1,18 @@
 use hmac::{Hmac, Mac};
 use sha2::Sha256;
+use std::collections::BTreeSet;
 
-/// HMAC type alias for API key validation.
+/// HMAC type alias for access token validation.
 pub type HmacSha256 = Hmac<Sha256>;
 
 /// Computes the HMAC-SHA256 of a token using the provided secret.
 ///
-/// This function is used to validate API keys against stored HMAC hashes.
+/// This function is used to validate access tokens against stored HMAC hashes.
 /// It provides a consistent hashing mechanism across the authentication
 /// layer.
 ///
 /// # Arguments
-/// * `key` - The API key/token to hash
+/// * `key` - The access token to hash
 /// * `hmac_secret` - The secret key used for HMAC computation
 ///
 /// # Returns
@@ -32,38 +33,56 @@ pub fn compute_key_hmac(key: &str, hmac_secret: &str) -> String {
 /// Handlers can extract this context to perform authorization checks.
 #[derive(Clone, Debug)]
 pub struct GrpcAuthContext {
-    /// The site ID associated with the authenticated API key
-    pub site_id: String,
-    /// The permissions string for the API key (e.g., "read", "write", "admin")
-    pub permissions: String,
+    /// The site ID associated with the authenticated site token.
+    /// This is populated only for `cms.site.v1` requests.
+    pub site_id: Option<String>,
+    /// Structured scopes for the authenticated token.
+    pub scopes: BTreeSet<String>,
 }
 
 impl GrpcAuthContext {
-    /// Checks if the authenticated context has the specified permission.
+    /// Checks if the authenticated context has the specified scope.
     ///
     /// # Arguments
     /// * `permission` - The permission to check for
     ///
     /// # Returns
     /// `true` if the permissions string contains the permission, `false` otherwise
-    pub fn has_permission(&self, permission: &str) -> bool {
-        self.permissions.contains(permission)
+    pub fn has_scope(&self, scope: &str) -> bool {
+        self.scopes.contains(scope)
     }
 
-    /// Checks if the context has write permissions.
+    /// Checks if the context has content write permissions.
     ///
     /// # Returns
     /// `true` if the permissions include "write" or "admin"
     pub fn can_write(&self) -> bool {
-        self.has_permission("write") || self.has_permission("admin")
+        self.has_scope(crate::middleware::auth::SCOPE_CONTENT_WRITE)
+            || self.has_scope(crate::middleware::auth::SCOPE_SCHEMA_WRITE)
+            || self.has_scope(crate::middleware::auth::SCOPE_ASSETS_WRITE)
     }
 
-    /// Checks if the context has admin permissions.
-    ///
-    /// # Returns
-    /// `true` if the permissions include "admin"
-    pub fn is_admin(&self) -> bool {
-        self.has_permission("admin")
+    pub fn can_read(&self) -> bool {
+        self.has_scope(crate::middleware::auth::SCOPE_CONTENT_READ)
+            || self.has_scope(crate::middleware::auth::SCOPE_SCHEMA_READ)
+            || self.has_scope(crate::middleware::auth::SCOPE_ASSETS_READ)
+    }
+
+    pub fn require_scope(&self, scope: &str, resource: &str) -> Result<(), tonic::Status> {
+        if self.has_scope(scope) {
+            Ok(())
+        } else {
+            Err(tonic::Status::permission_denied(format!(
+                "Missing required scope '{}' for {}",
+                scope, resource
+            )))
+        }
+    }
+
+    pub fn require_site_id(&self) -> Result<&str, tonic::Status> {
+        self.site_id
+            .as_deref()
+            .ok_or_else(|| tonic::Status::internal("Missing site context for site service"))
     }
 }
 
@@ -169,26 +188,24 @@ mod tests {
     #[test]
     fn test_grpc_auth_context_permissions() {
         let ctx = GrpcAuthContext {
-            site_id: "site123".to_string(),
-            permissions: "read,write".to_string(),
+            site_id: Some("site123".to_string()),
+            scopes: crate::middleware::auth::parse_scopes("content:read,content:write"),
         };
 
-        assert!(ctx.has_permission("read"));
-        assert!(ctx.has_permission("write"));
-        assert!(!ctx.has_permission("admin"));
+        assert!(ctx.has_scope("content:read"));
+        assert!(ctx.has_scope("content:write"));
         assert!(ctx.can_write());
-        assert!(!ctx.is_admin());
+        assert!(ctx.can_read());
     }
 
     #[test]
-    fn test_grpc_auth_context_admin() {
+    fn test_grpc_auth_context_read_only() {
         let ctx = GrpcAuthContext {
-            site_id: "site456".to_string(),
-            permissions: "admin".to_string(),
+            site_id: Some("site456".to_string()),
+            scopes: crate::middleware::auth::parse_scopes("content:read"),
         };
 
-        assert!(ctx.has_permission("admin"));
-        assert!(ctx.can_write());
-        assert!(ctx.is_admin());
+        assert!(ctx.can_read());
+        assert!(!ctx.can_write());
     }
 }

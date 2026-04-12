@@ -10,11 +10,18 @@ use tracing::{Span, error};
 
 use crate::config::Config;
 use crate::grpc::interceptor::{GrpcAuthContext, compute_key_hmac};
+use crate::models::access_token::AccessTokenKind;
 use crate::repository::Repository;
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum GrpcSurface {
+    Site,
+    Admin,
+}
 
 /// Tower Layer for gRPC authentication middleware.
 ///
-/// This layer wraps gRPC services to provide API key authentication
+/// This layer wraps gRPC services to provide access token authentication
 /// using async database lookups. It properly handles authentication
 /// within the Tokio async runtime without blocking.
 #[derive(Clone)]
@@ -27,7 +34,7 @@ impl AuthLayer {
     /// Creates a new authentication layer.
     ///
     /// # Arguments
-    /// * `repository` - Database repository for API key lookups
+    /// * `repository` - Database repository for access token lookups
     /// * `config` - Application configuration containing HMAC secret
     pub fn new(repository: Arc<Repository>, config: Arc<Config>) -> Self {
         Self { repository, config }
@@ -49,7 +56,7 @@ impl<S> Layer<S> for AuthLayer {
 /// Tower Service implementation for gRPC authentication.
 ///
 /// This middleware intercepts incoming gRPC requests, validates the
-/// API key from the Authorization header, and injects authentication
+/// access token from the Authorization header, and injects authentication
 /// context into the request extensions for downstream handlers.
 #[derive(Clone)]
 pub struct AuthMiddleware<S> {
@@ -79,13 +86,20 @@ where
         let repository = self.repository.clone();
         let config = self.config.clone();
 
+        let request_path = request.uri().path().to_string();
+
         // Extract authorization header before moving request into async block
         // This avoids holding a reference to the request across await points
         let auth_header = extract_auth_header(request.headers());
 
         Box::pin(async move {
+            let surface = match grpc_surface_from_path(&request_path) {
+                Ok(surface) => surface,
+                Err(status) => return Ok(status_to_response(status)),
+            };
+
             // Perform async authentication
-            match authenticate_request(auth_header, &repository, &config).await {
+            match authenticate_request(auth_header, &repository, &config, surface).await {
                 Ok(auth_context) => {
                     // Insert auth context into request extensions
                     let mut request = request;
@@ -102,10 +116,10 @@ where
 
                     // Build gRPC-style error response
                     let status = match auth_error {
-                        AuthError::MissingToken => tonic::Status::unauthenticated("Missing API key"),
-                        AuthError::InvalidFormat => tonic::Status::unauthenticated("Invalid API key format"),
-                        AuthError::Expired => tonic::Status::unauthenticated("API key has expired"),
-                        AuthError::InvalidKey => tonic::Status::unauthenticated("Invalid API key"),
+                        AuthError::MissingToken => tonic::Status::unauthenticated("Missing access token"),
+                        AuthError::InvalidFormat => tonic::Status::unauthenticated("Invalid access token format"),
+                        AuthError::Expired => tonic::Status::unauthenticated("Access token has expired"),
+                        AuthError::InvalidKey => tonic::Status::unauthenticated("Invalid access token"),
                         AuthError::Database => tonic::Status::internal("Authentication service unavailable"),
                     };
 
@@ -131,10 +145,10 @@ enum AuthError {
 impl std::fmt::Display for AuthError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            AuthError::MissingToken => write!(f, "Missing API key"),
-            AuthError::InvalidFormat => write!(f, "Invalid API key format"),
-            AuthError::Expired => write!(f, "API key has expired"),
-            AuthError::InvalidKey => write!(f, "Invalid API key"),
+            AuthError::MissingToken => write!(f, "Missing access token"),
+            AuthError::InvalidFormat => write!(f, "Invalid access token format"),
+            AuthError::Expired => write!(f, "Access token has expired"),
+            AuthError::InvalidKey => write!(f, "Invalid access token"),
             AuthError::Database => write!(f, "Database error during authentication"),
         }
     }
@@ -160,7 +174,7 @@ fn extract_auth_header(headers: &HeaderMap) -> Option<String> {
 ///
 /// # Arguments
 /// * `auth_header` - The raw Authorization header value
-/// * `repository` - Database repository for API key lookups
+/// * `repository` - Database repository for access token lookups
 /// * `config` - Application configuration
 ///
 /// # Returns
@@ -170,6 +184,7 @@ async fn authenticate_request(
     auth_header: Option<String>,
     repository: &Repository,
     config: &Config,
+    surface: GrpcSurface,
 ) -> Result<GrpcAuthContext, AuthError> {
     // Extract Bearer token from Authorization header
     let token = auth_header
@@ -182,20 +197,25 @@ async fn authenticate_request(
         return Err(AuthError::InvalidFormat);
     }
 
-    // Extract prefix for database lookup (first 16 chars)
-    let prefix: String = token.chars().take(16).collect();
+    // Extract prefix for database lookup.
+    let prefix: String = token.chars().take(24).collect();
 
     // Compute HMAC for token validation
     let token_hmac = compute_key_hmac(token, &config.hmac_secret);
 
-    // Query database for API keys matching the prefix
-    let keys = repository.api_key.find_by_prefix(&prefix).await.map_err(|e| {
-        error!(error = ?e, "Database error during API key lookup");
+    let required_kind = match surface {
+        GrpcSurface::Site => AccessTokenKind::Site,
+        GrpcSurface::Admin => AccessTokenKind::Instance,
+    };
+
+    // Query database for access tokens matching the prefix
+    let keys = repository.access_token.find_by_prefix(&prefix).await.map_err(|e| {
+        error!(error = ?e, "Database error during access token lookup");
         AuthError::Database
     })?;
 
-    // Validate each key
-    for (key_id, site_id, stored_hash, stored_hmac, expires_at, permissions) in keys {
+        // Validate each token against the expected gRPC surface.
+        for (key_id, kind, site_id, stored_hash, stored_hmac, expires_at, revoked_at, scopes) in keys {
         // Check HMAC or bcrypt hash
         let valid = if let Some(ref stored) = stored_hmac {
             stored == &token_hmac
@@ -205,6 +225,10 @@ async fn authenticate_request(
 
         if !valid {
             continue;
+        }
+
+        if revoked_at.is_some() {
+            return Err(AuthError::InvalidKey);
         }
 
         // Check expiration
@@ -217,19 +241,36 @@ async fn authenticate_request(
         }
 
         // Update last_used timestamp (best-effort, don't fail if this errors)
-        if let Err(e) = repository.api_key.update_last_used(&key_id).await {
-            tracing::warn!(error = ?e, key_id = %key_id, "Failed to update API key last_used timestamp");
+        if let Err(e) = repository.access_token.update_last_used(&key_id).await {
+            tracing::warn!(error = ?e, key_id = %key_id, "Failed to update access token last_used timestamp");
         }
 
-        // Record site_id in tracing span for observability
-        Span::current().record("site_id", tracing::field::display(&site_id));
+        let parsed_kind = kind.parse::<AccessTokenKind>().map_err(|_| AuthError::InvalidKey)?;
+        if parsed_kind != required_kind {
+            return Err(AuthError::InvalidKey);
+        }
+        if let Some(ref site_id) = site_id {
+            Span::current().record("site_id", tracing::field::display(site_id));
+        }
 
-        // Return successful auth context
-        return Ok(GrpcAuthContext { site_id, permissions });
+        return Ok(GrpcAuthContext {
+            site_id,
+            scopes: crate::middleware::auth::parse_scopes(&scopes),
+        });
     }
 
     // No valid key found
     Err(AuthError::InvalidKey)
+}
+
+fn grpc_surface_from_path(path: &str) -> Result<GrpcSurface, tonic::Status> {
+    if path.starts_with("/cms.site.v1.") {
+        Ok(GrpcSurface::Site)
+    } else if path.starts_with("/cms.admin.v1.") {
+        Ok(GrpcSurface::Admin)
+    } else {
+        Err(tonic::Status::unimplemented("Unknown gRPC service"))
+    }
 }
 
 /// Converts a tonic::Status into an HTTP Response.
@@ -326,7 +367,7 @@ mod tests {
 
     #[test]
     fn test_status_to_response_unauthenticated() {
-        let status = tonic::Status::unauthenticated("Invalid API key");
+        let status = tonic::Status::unauthenticated("Invalid access token");
         let response = status_to_response(status);
 
         assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
@@ -340,7 +381,7 @@ mod tests {
                 .get("grpc-message")
                 .unwrap()
                 .as_bytes()
-                .starts_with(b"Invalid API key")
+                .starts_with(b"Invalid access token")
         );
     }
 
