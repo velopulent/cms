@@ -60,22 +60,26 @@ CREATE INDEX IF NOT EXISTS idx_entries_collection ON entries(collection_id);
 CREATE INDEX IF NOT EXISTS idx_entries_status ON entries(status);
 CREATE UNIQUE INDEX IF NOT EXISTS idx_entries_collection_slug ON entries(collection_id, slug);
 
-CREATE TABLE IF NOT EXISTS api_keys (
+CREATE TABLE IF NOT EXISTS access_tokens (
     id TEXT PRIMARY KEY NOT NULL,
-    site_id TEXT NOT NULL REFERENCES sites(id) ON DELETE CASCADE,
+    kind TEXT NOT NULL CHECK(kind IN ('instance', 'site')),
+    site_id TEXT REFERENCES sites(id) ON DELETE CASCADE,
     name TEXT NOT NULL,
-    key_hash TEXT NOT NULL,
-    key_prefix TEXT NOT NULL,
-    key_hmac TEXT,
-    permissions TEXT NOT NULL DEFAULT 'read',
+    token_hash TEXT NOT NULL,
+    token_prefix TEXT NOT NULL,
+    token_hmac TEXT,
+    scopes TEXT NOT NULL,
+    created_by_user_id TEXT REFERENCES users(id),
     last_used_at TEXT,
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
-    expires_at TEXT
+    expires_at TEXT,
+    revoked_at TEXT
 );
 
-CREATE UNIQUE INDEX IF NOT EXISTS idx_api_keys_hash ON api_keys(key_hash);
-CREATE INDEX IF NOT EXISTS idx_api_keys_site ON api_keys(site_id);
-CREATE INDEX IF NOT EXISTS idx_api_keys_prefix ON api_keys(key_prefix);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_access_tokens_hash ON access_tokens(token_hash);
+CREATE INDEX IF NOT EXISTS idx_access_tokens_prefix ON access_tokens(token_prefix);
+CREATE INDEX IF NOT EXISTS idx_access_tokens_kind ON access_tokens(kind);
+CREATE INDEX IF NOT EXISTS idx_access_tokens_site ON access_tokens(site_id);
 
 CREATE TABLE IF NOT EXISTS files (
     id TEXT PRIMARY KEY NOT NULL,
