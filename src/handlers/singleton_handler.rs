@@ -1,6 +1,7 @@
 use axum::{
     Json,
     extract::{Extension, Path},
+    http::HeaderMap,
     http::StatusCode,
     response::{IntoResponse, Response},
 };
@@ -9,7 +10,9 @@ use tracing::instrument;
 
 use crate::handlers::entry_handler::resolve_entries_files_from_value;
 use crate::handlers::file_handler::StorageManager;
-use crate::middleware::auth::{AuthContext, check_read_access_repo, check_write_access_repo};
+use crate::middleware::auth::{
+    HEADER_SITE_ID, Principal, SCOPE_CONTENT_READ, SCOPE_CONTENT_WRITE, require_site_scope,
+};
 use crate::models::collection::{SingletonResponse, UpdateSingletonData};
 use crate::repository::Repository;
 
@@ -29,28 +32,34 @@ fn singleton_to_response(c: &crate::models::collection::Collection) -> Singleton
     }
 }
 
+fn request_site_id(headers: &HeaderMap) -> Option<&str> {
+    headers.get(HEADER_SITE_ID).and_then(|value| value.to_str().ok())
+}
+
 #[utoipa::path(
     get,
-    path = "/api/v1/sites/{site_id}/singletons",
-    params(("site_id" = String, Path, description = "Site ID")),
+    path = "/api/v1/site/singletons",
     responses(
         (status = 200, description = "List of singletons", body = Vec<SingletonResponse>),
         (status = 401, description = "Unauthorized"),
     ),
-    security(("bearer" = []), ("api_key" = [])),
+    security(("bearer" = []), ("access_token" = [])),
     tag = "singletons"
 )]
-#[instrument(skip(repository, auth))]
+#[instrument(skip(repository, principal))]
 pub async fn list_singletons(
-    auth: AuthContext,
-    Path(site_id): Path<String>,
+    principal: Principal,
+    headers: HeaderMap,
     Extension(repository): Extension<Repository>,
 ) -> Response {
-    if let Err((status, err)) = check_read_access_repo(&auth, &repository, &site_id).await {
-        return (status, Json(err)).into_response();
-    }
+    let site = match require_site_scope(&principal, &repository, request_site_id(&headers), SCOPE_CONTENT_READ, "viewer")
+        .await
+    {
+        Ok(site) => site,
+        Err((status, err)) => return (status, Json(err)).into_response(),
+    };
 
-    match repository.collection.list_singletons_only(&site_id).await {
+    match repository.collection.list_singletons_only(&site.site_id).await {
         Ok(items) => {
             let responses: Vec<SingletonResponse> = items.iter().map(singleton_to_response).collect();
             (StatusCode::OK, Json(responses)).into_response()
@@ -65,31 +74,32 @@ pub async fn list_singletons(
 
 #[utoipa::path(
     get,
-    path = "/api/v1/sites/{site_id}/singletons/{slug}",
-    params(
-        ("site_id" = String, Path, description = "Site ID"),
-        ("slug" = String, Path, description = "Singleton slug"),
-    ),
+    path = "/api/v1/site/singletons/{slug}",
+    params(("slug" = String, Path, description = "Singleton slug")),
     responses(
         (status = 200, description = "Singleton with data", body = SingletonResponse),
         (status = 401, description = "Unauthorized"),
         (status = 404, description = "Singleton not found"),
     ),
-    security(("bearer" = []), ("api_key" = [])),
+    security(("bearer" = []), ("access_token" = [])),
     tag = "singletons"
 )]
-#[instrument(skip(repository, storage, auth))]
+#[instrument(skip(repository, storage, principal))]
 pub async fn get_singleton(
-    auth: AuthContext,
-    Path((site_id, slug)): Path<(String, String)>,
+    principal: Principal,
+    headers: HeaderMap,
+    Path(slug): Path<String>,
     Extension(repository): Extension<Repository>,
     Extension(storage): Extension<StorageManager>,
 ) -> Response {
-    if let Err((status, err)) = check_read_access_repo(&auth, &repository, &site_id).await {
-        return (status, Json(err)).into_response();
-    }
+    let site = match require_site_scope(&principal, &repository, request_site_id(&headers), SCOPE_CONTENT_READ, "viewer")
+        .await
+    {
+        Ok(site) => site,
+        Err((status, err)) => return (status, Json(err)).into_response(),
+    };
 
-    match repository.collection.get_by_slug(&site_id, &slug).await {
+    match repository.collection.get_by_slug(&site.site_id, &slug).await {
         Ok(Some(item)) => {
             if !item.is_singleton {
                 return (StatusCode::NOT_FOUND, Json(json!({"error": "Singleton not found"}))).into_response();
@@ -115,11 +125,8 @@ pub async fn get_singleton(
 
 #[utoipa::path(
     put,
-    path = "/api/v1/sites/{site_id}/singletons/{slug}",
-    params(
-        ("site_id" = String, Path, description = "Site ID"),
-        ("slug" = String, Path, description = "Singleton slug"),
-    ),
+    path = "/api/v1/site/singletons/{slug}",
+    params(("slug" = String, Path, description = "Singleton slug")),
     request_body = UpdateSingletonData,
     responses(
         (status = 200, description = "Singleton data updated", body = SingletonResponse),
@@ -127,21 +134,25 @@ pub async fn get_singleton(
         (status = 403, description = "Insufficient permissions"),
         (status = 404, description = "Singleton not found"),
     ),
-    security(("bearer" = []), ("api_key" = [])),
+    security(("bearer" = []), ("access_token" = [])),
     tag = "singletons"
 )]
-#[instrument(skip(repository, auth, payload))]
+#[instrument(skip(repository, principal, payload))]
 pub async fn update_singleton(
-    auth: AuthContext,
-    Path((site_id, slug)): Path<(String, String)>,
+    principal: Principal,
+    headers: HeaderMap,
+    Path(slug): Path<String>,
     Extension(repository): Extension<Repository>,
     Json(payload): Json<UpdateSingletonData>,
 ) -> Response {
-    if let Err((status, err)) = check_write_access_repo(&auth, &repository, &site_id).await {
-        return (status, Json(err)).into_response();
-    }
+    let site = match require_site_scope(&principal, &repository, request_site_id(&headers), SCOPE_CONTENT_WRITE, "editor")
+        .await
+    {
+        Ok(site) => site,
+        Err((status, err)) => return (status, Json(err)).into_response(),
+    };
 
-    match repository.collection.get_by_slug(&site_id, &slug).await {
+    match repository.collection.get_by_slug(&site.site_id, &slug).await {
         Ok(Some(item)) => {
             if !item.is_singleton {
                 return (StatusCode::NOT_FOUND, Json(json!({"error": "Singleton not found"}))).into_response();

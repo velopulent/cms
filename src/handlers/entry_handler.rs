@@ -1,6 +1,7 @@
 use axum::{
     Json,
     extract::{Extension, Path, Query},
+    http::HeaderMap,
     http::StatusCode,
     response::{IntoResponse, Response},
 };
@@ -10,7 +11,9 @@ use tracing::instrument;
 use uuid::Uuid;
 
 use crate::handlers::file_handler::StorageManager;
-use crate::middleware::auth::{AuthContext, check_read_access_repo, check_write_access_repo};
+use crate::middleware::auth::{
+    HEADER_SITE_ID, Principal, SCOPE_CONTENT_READ, SCOPE_CONTENT_WRITE, require_site_scope,
+};
 use crate::models::entry::{CreateEntry, Entry, UpdateEntry};
 use crate::repository::Repository;
 use crate::repository::sqlite::entry::extract_file_ids_from_value;
@@ -25,41 +28,44 @@ pub struct ListParams {
     pub per_page: Option<i64>,
 }
 
+fn request_site_id(headers: &HeaderMap) -> Option<&str> {
+    headers.get(HEADER_SITE_ID).and_then(|value| value.to_str().ok())
+}
+
 #[utoipa::path(
     get,
-    path = "/api/v1/sites/{site_id}/entries",
-    params(
-        ("site_id" = String, Path, description = "Site ID"),
-        ListParams,
-    ),
+    path = "/api/v1/site/entries",
+    params(ListParams),
     responses(
         (status = 200, description = "List of entries", body = Vec<Entry>),
         (status = 401, description = "Unauthorized"),
     ),
-    security(("bearer" = []), ("api_key" = [])),
+    security(("bearer" = []), ("access_token" = [])),
     tag = "entries"
 )]
-#[instrument(skip(repository, auth, params))]
+#[instrument(skip(repository, principal, params))]
 pub async fn list_entries(
-    auth: AuthContext,
-    Path(site_id): Path<String>,
+    principal: Principal,
+    headers: HeaderMap,
     Query(params): Query<ListParams>,
     Extension(repository): Extension<Repository>,
 ) -> Response {
-    if let Err((status, err)) = check_read_access_repo(&auth, &repository, &site_id).await {
-        return (status, Json(err)).into_response();
-    }
+    let site = match require_site_scope(&principal, &repository, request_site_id(&headers), SCOPE_CONTENT_READ, "viewer")
+        .await
+    {
+        Ok(site) => site,
+        Err((status, err)) => return (status, Json(err)).into_response(),
+    };
 
-    let published_only = matches!(auth, AuthContext::ApiKey { .. });
-
+    let published_only = matches!(principal, Principal::SiteToken { .. });
     let page = params.page.unwrap_or(1).max(1);
     let per_page = params.per_page.unwrap_or(50).clamp(1, 200);
 
     let list_params = ListEntriesParams {
-        site_id: &site_id,
+        site_id: &site.site_id,
         collection_slug: params.r#type.as_deref(),
         collection_id: None,
-        status: if matches!(auth, AuthContext::Jwt { .. }) {
+        status: if matches!(principal, Principal::UserSession { .. }) {
             params.status.as_deref()
         } else {
             None
@@ -72,7 +78,7 @@ pub async fn list_entries(
 
     match repository.entry.list(list_params).await {
         Ok(result) => {
-            let items = resolve_entries_list_files(&result.items, &repository, &site_id);
+            let items = resolve_entries_list_files(&result.items, &repository, &site.site_id);
             (
                 StatusCode::OK,
                 Json(json!({
@@ -94,33 +100,34 @@ pub async fn list_entries(
 
 #[utoipa::path(
     get,
-    path = "/api/v1/sites/{site_id}/entries/{id}",
-    params(
-        ("site_id" = String, Path, description = "Site ID"),
-        ("id" = String, Path, description = "Entry ID"),
-    ),
+    path = "/api/v1/site/entries/{id}",
+    params(("id" = String, Path, description = "Entry ID")),
     responses(
         (status = 200, description = "Entry", body = Entry),
         (status = 401, description = "Unauthorized"),
         (status = 404, description = "Entry not found"),
     ),
-    security(("bearer" = []), ("api_key" = [])),
+    security(("bearer" = []), ("access_token" = [])),
     tag = "entries"
 )]
-#[instrument(skip(repository, storage, auth))]
+#[instrument(skip(repository, storage, principal))]
 pub async fn get_entry(
-    auth: AuthContext,
-    Path((site_id, id)): Path<(String, String)>,
+    principal: Principal,
+    headers: HeaderMap,
+    Path(id): Path<String>,
     Extension(repository): Extension<Repository>,
     Extension(storage): Extension<StorageManager>,
 ) -> Response {
-    if let Err((status, err)) = check_read_access_repo(&auth, &repository, &site_id).await {
-        return (status, Json(err)).into_response();
-    }
+    let site = match require_site_scope(&principal, &repository, request_site_id(&headers), SCOPE_CONTENT_READ, "viewer")
+        .await
+    {
+        Ok(site) => site,
+        Err((status, err)) => return (status, Json(err)).into_response(),
+    };
 
-    let published_only = matches!(auth, AuthContext::ApiKey { .. });
+    let published_only = matches!(principal, Principal::SiteToken { .. });
 
-    match repository.entry.get_by_id(&id, &site_id, published_only).await {
+    match repository.entry.get_by_id(&id, &site.site_id, published_only).await {
         Ok(Some(item)) => {
             let resolved = resolve_entry_files(&item, &repository, &storage).await;
             (StatusCode::OK, Json(resolved)).into_response()
@@ -136,8 +143,7 @@ pub async fn get_entry(
 
 #[utoipa::path(
     post,
-    path = "/api/v1/sites/{site_id}/entries",
-    params(("site_id" = String, Path, description = "Site ID")),
+    path = "/api/v1/site/entries",
     request_body = CreateEntry,
     responses(
         (status = 201, description = "Entry created", body = Entry),
@@ -145,32 +151,35 @@ pub async fn get_entry(
         (status = 403, description = "Insufficient permissions"),
         (status = 409, description = "Slug already exists"),
     ),
-    security(("bearer" = []), ("api_key" = [])),
+    security(("bearer" = []), ("access_token" = [])),
     tag = "entries"
 )]
-#[instrument(skip(repository, auth, payload))]
+#[instrument(skip(repository, principal, payload))]
 pub async fn create_entry(
-    auth: AuthContext,
-    Path(site_id): Path<String>,
+    principal: Principal,
+    headers: HeaderMap,
     Extension(repository): Extension<Repository>,
     Json(payload): Json<CreateEntry>,
 ) -> Response {
-    if let Err((status, err)) = check_write_access_repo(&auth, &repository, &site_id).await {
-        return (status, Json(err)).into_response();
-    }
+    let site = match require_site_scope(&principal, &repository, request_site_id(&headers), SCOPE_CONTENT_WRITE, "editor")
+        .await
+    {
+        Ok(site) => site,
+        Err((status, err)) => return (status, Json(err)).into_response(),
+    };
 
     let data_str = payload.data.to_string();
     let id = Uuid::now_v7().to_string();
 
     match repository
         .entry
-        .create(&id, &site_id, &payload.collection_id, &data_str, &payload.slug)
+        .create(&id, &site.site_id, &payload.collection_id, &data_str, &payload.slug)
         .await
     {
         Ok(item) => {
             let _ = repository
                 .entry
-                .sync_file_references(&id, &site_id, &payload.data)
+                .sync_file_references(&id, &site.site_id, &payload.data)
                 .await;
             (StatusCode::CREATED, Json(item)).into_response()
         }
@@ -189,33 +198,34 @@ pub async fn create_entry(
 
 #[utoipa::path(
     put,
-    path = "/api/v1/sites/{site_id}/entries/{id}",
-    params(
-        ("site_id" = String, Path, description = "Site ID"),
-        ("id" = String, Path, description = "Entry ID"),
-    ),
+    path = "/api/v1/site/entries/{id}",
+    params(("id" = String, Path, description = "Entry ID")),
     request_body = UpdateEntry,
     responses(
         (status = 200, description = "Entry updated", body = Entry),
         (status = 401, description = "Unauthorized"),
         (status = 403, description = "Insufficient permissions"),
     ),
-    security(("bearer" = []), ("api_key" = [])),
+    security(("bearer" = []), ("access_token" = [])),
     tag = "entries"
 )]
-#[instrument(skip(repository, auth, payload))]
+#[instrument(skip(repository, principal, payload))]
 pub async fn update_entry(
-    auth: AuthContext,
-    Path((site_id, id)): Path<(String, String)>,
+    principal: Principal,
+    headers: HeaderMap,
+    Path(id): Path<String>,
     Extension(repository): Extension<Repository>,
     Json(payload): Json<UpdateEntry>,
 ) -> Response {
-    if let Err((status, err)) = check_write_access_repo(&auth, &repository, &site_id).await {
-        return (status, Json(err)).into_response();
-    }
+    let site = match require_site_scope(&principal, &repository, request_site_id(&headers), SCOPE_CONTENT_WRITE, "editor")
+        .await
+    {
+        Ok(site) => site,
+        Err((status, err)) => return (status, Json(err)).into_response(),
+    };
 
-    let existing = match repository.entry.get_by_id(&id, &site_id, false).await {
-        Ok(Some(c)) => c,
+    let existing = match repository.entry.get_by_id(&id, &site.site_id, false).await {
+        Ok(Some(entry)) => entry,
         Ok(None) => {
             return (StatusCode::NOT_FOUND, Json(json!({"error": "Entry not found"}))).into_response();
         }
@@ -229,7 +239,7 @@ pub async fn update_entry(
     };
 
     let resolved_data = match payload.data {
-        Some(d) => d,
+        Some(data) => data,
         None => serde_json::from_str(&existing.data).unwrap_or(serde_json::Value::Null),
     };
     let data_str = resolved_data.to_string();
@@ -240,7 +250,7 @@ pub async fn update_entry(
         Ok(item) => {
             let _ = repository
                 .entry
-                .sync_file_references(&id, &site_id, &resolved_data)
+                .sync_file_references(&id, &site.site_id, &resolved_data)
                 .await;
             (StatusCode::OK, Json(item)).into_response()
         }
@@ -259,30 +269,31 @@ pub async fn update_entry(
 
 #[utoipa::path(
     delete,
-    path = "/api/v1/sites/{site_id}/entries/{id}",
-    params(
-        ("site_id" = String, Path, description = "Site ID"),
-        ("id" = String, Path, description = "Entry ID"),
-    ),
+    path = "/api/v1/site/entries/{id}",
+    params(("id" = String, Path, description = "Entry ID")),
     responses(
         (status = 204, description = "Entry deleted"),
         (status = 401, description = "Unauthorized"),
         (status = 403, description = "Insufficient permissions"),
     ),
-    security(("bearer" = []), ("api_key" = [])),
+    security(("bearer" = []), ("access_token" = [])),
     tag = "entries"
 )]
-#[instrument(skip(repository, auth))]
+#[instrument(skip(repository, principal))]
 pub async fn delete_entry(
-    auth: AuthContext,
-    Path((site_id, id)): Path<(String, String)>,
+    principal: Principal,
+    headers: HeaderMap,
+    Path(id): Path<String>,
     Extension(repository): Extension<Repository>,
 ) -> Response {
-    if let Err((status, err)) = check_write_access_repo(&auth, &repository, &site_id).await {
-        return (status, Json(err)).into_response();
-    }
+    let site = match require_site_scope(&principal, &repository, request_site_id(&headers), SCOPE_CONTENT_WRITE, "editor")
+        .await
+    {
+        Ok(site) => site,
+        Err((status, err)) => return (status, Json(err)).into_response(),
+    };
 
-    match repository.entry.delete(&id, &site_id).await {
+    match repository.entry.delete(&id, &site.site_id).await {
         Ok(_) => StatusCode::NO_CONTENT.into_response(),
         Err(err) => (
             StatusCode::INTERNAL_SERVER_ERROR,
@@ -294,31 +305,32 @@ pub async fn delete_entry(
 
 #[utoipa::path(
     post,
-    path = "/api/v1/sites/{site_id}/entries/{id}/publish",
-    params(
-        ("site_id" = String, Path, description = "Site ID"),
-        ("id" = String, Path, description = "Entry ID"),
-    ),
+    path = "/api/v1/site/entries/{id}/publish",
+    params(("id" = String, Path, description = "Entry ID")),
     responses(
         (status = 200, description = "Entry published", body = Entry),
         (status = 401, description = "Unauthorized"),
         (status = 403, description = "Insufficient permissions"),
         (status = 404, description = "Entry not found"),
     ),
-    security(("bearer" = []), ("api_key" = [])),
+    security(("bearer" = []), ("access_token" = [])),
     tag = "entries"
 )]
-#[instrument(skip(repository, auth))]
+#[instrument(skip(repository, principal))]
 pub async fn publish_entry(
-    auth: AuthContext,
-    Path((site_id, id)): Path<(String, String)>,
+    principal: Principal,
+    headers: HeaderMap,
+    Path(id): Path<String>,
     Extension(repository): Extension<Repository>,
 ) -> Response {
-    if let Err((status, err)) = check_write_access_repo(&auth, &repository, &site_id).await {
-        return (status, Json(err)).into_response();
-    }
+    let site = match require_site_scope(&principal, &repository, request_site_id(&headers), SCOPE_CONTENT_WRITE, "editor")
+        .await
+    {
+        Ok(site) => site,
+        Err((status, err)) => return (status, Json(err)).into_response(),
+    };
 
-    match repository.entry.publish(&id, &site_id).await {
+    match repository.entry.publish(&id, &site.site_id).await {
         Ok(item) => (StatusCode::OK, Json(item)).into_response(),
         Err(crate::repository::error::RepositoryError::NotFound) => {
             (StatusCode::NOT_FOUND, Json(json!({"error": "Entry not found"}))).into_response()
@@ -333,31 +345,32 @@ pub async fn publish_entry(
 
 #[utoipa::path(
     post,
-    path = "/api/v1/sites/{site_id}/entries/{id}/unpublish",
-    params(
-        ("site_id" = String, Path, description = "Site ID"),
-        ("id" = String, Path, description = "Entry ID"),
-    ),
+    path = "/api/v1/site/entries/{id}/unpublish",
+    params(("id" = String, Path, description = "Entry ID")),
     responses(
         (status = 200, description = "Entry unpublished", body = Entry),
         (status = 401, description = "Unauthorized"),
         (status = 403, description = "Insufficient permissions"),
         (status = 404, description = "Entry not found"),
     ),
-    security(("bearer" = []), ("api_key" = [])),
+    security(("bearer" = []), ("access_token" = [])),
     tag = "entries"
 )]
-#[instrument(skip(repository, auth))]
+#[instrument(skip(repository, principal))]
 pub async fn unpublish_entry(
-    auth: AuthContext,
-    Path((site_id, id)): Path<(String, String)>,
+    principal: Principal,
+    headers: HeaderMap,
+    Path(id): Path<String>,
     Extension(repository): Extension<Repository>,
 ) -> Response {
-    if let Err((status, err)) = check_write_access_repo(&auth, &repository, &site_id).await {
-        return (status, Json(err)).into_response();
-    }
+    let site = match require_site_scope(&principal, &repository, request_site_id(&headers), SCOPE_CONTENT_WRITE, "editor")
+        .await
+    {
+        Ok(site) => site,
+        Err((status, err)) => return (status, Json(err)).into_response(),
+    };
 
-    match repository.entry.unpublish(&id, &site_id).await {
+    match repository.entry.unpublish(&id, &site.site_id).await {
         Ok(item) => (StatusCode::OK, Json(item)).into_response(),
         Err(crate::repository::error::RepositoryError::NotFound) => {
             (StatusCode::NOT_FOUND, Json(json!({"error": "Entry not found"}))).into_response()

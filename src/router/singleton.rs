@@ -7,7 +7,7 @@ use crate::handlers::singleton_handler::{get_singleton, list_singletons, update_
 
 pub fn singleton_routes() -> Router {
     Router::new()
-        .route("/api/v1/sites/{site_id}/singletons", get(list_singletons))
-        .route("/api/v1/sites/{site_id}/singletons/{slug}", get(get_singleton))
-        .route("/api/v1/sites/{site_id}/singletons/{slug}", put(update_singleton))
+        .route("/api/v1/site/singletons", get(list_singletons))
+        .route("/api/v1/site/singletons/{slug}", get(get_singleton))
+        .route("/api/v1/site/singletons/{slug}", put(update_singleton))
 }

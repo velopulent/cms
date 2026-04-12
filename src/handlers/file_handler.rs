@@ -15,7 +15,9 @@ use tracing::instrument;
 use uuid::Uuid;
 
 use crate::config::Config;
-use crate::middleware::auth::{AuthContext, check_read_access_repo, check_write_access_repo, extract_user_id};
+use crate::middleware::auth::{
+    HEADER_SITE_ID, Principal, SCOPE_ASSETS_READ, SCOPE_ASSETS_WRITE, extract_user_id, require_site_scope,
+};
 use crate::models::file::{BatchFileIds, File, FileWithUrl};
 use crate::repository::Repository;
 use crate::repository::traits::ListFilesParams;
@@ -78,6 +80,10 @@ fn file_to_with_url(file: &File, storage: &StorageManager) -> FileWithUrl {
         url,
         thumbnail_url,
     }
+}
+
+fn request_site_id(headers: &HeaderMap) -> Option<&str> {
+    headers.get(HEADER_SITE_ID).and_then(|value| value.to_str().ok())
 }
 
 fn mime_to_ext(mime: &str) -> &str {
@@ -187,36 +193,36 @@ async fn remove_from_storage(
 
 #[utoipa::path(
     get,
-    path = "/api/v1/sites/{site_id}/files",
-    params(
-        ("site_id" = String, Path, description = "Site ID"),
-        FileListParams,
-    ),
+    path = "/api/v1/site/files",
+    params(FileListParams),
     responses(
         (status = 200, description = "List of files"),
         (status = 401, description = "Unauthorized"),
     ),
-    security(("bearer" = []), ("api_key" = [])),
+    security(("bearer" = []), ("access_token" = [])),
     tag = "files"
 )]
-#[instrument(skip(repository, storage, auth, params))]
+#[instrument(skip(repository, storage, principal, params))]
 pub async fn list_files(
-    auth: AuthContext,
-    Path(site_id): Path<String>,
+    principal: Principal,
+    headers: HeaderMap,
     Query(params): Query<FileListParams>,
     Extension(repository): Extension<Repository>,
     Extension(storage): Extension<StorageManager>,
 ) -> Response {
-    if let Err((status, err)) = check_read_access_repo(&auth, &repository, &site_id).await {
-        return (status, Json(err)).into_response();
-    }
+    let site = match require_site_scope(&principal, &repository, request_site_id(&headers), SCOPE_ASSETS_READ, "viewer")
+        .await
+    {
+        Ok(site) => site,
+        Err((status, err)) => return (status, Json(err)).into_response(),
+    };
 
     let page = params.page.unwrap_or(1).max(1);
     let per_page: i64 = 30;
     let is_trashed = params.trashed.as_deref() == Some("true");
 
     let list_params = ListFilesParams {
-        site_id: &site_id,
+        site_id: &site.site_id,
         trashed: is_trashed,
         search: params.search.as_deref(),
         file_type: params.r#type.as_deref(),
@@ -253,29 +259,32 @@ pub async fn list_files(
 
 #[utoipa::path(
     post,
-    path = "/api/v1/sites/{site_id}/files",
-    params(("site_id" = String, Path, description = "Site ID")),
+    path = "/api/v1/site/files",
     responses(
         (status = 201, description = "File uploaded", body = FileWithUrl),
         (status = 400, description = "Bad request"),
         (status = 401, description = "Unauthorized"),
         (status = 413, description = "File too large"),
     ),
-    security(("bearer" = []), ("api_key" = [])),
+    security(("bearer" = []), ("access_token" = [])),
     tag = "files"
 )]
-#[instrument(skip(repository, storage, config, auth, multipart))]
+#[instrument(skip(repository, storage, config, principal, multipart))]
 pub async fn upload_file(
-    auth: AuthContext,
-    Path(site_id): Path<String>,
+    principal: Principal,
+    headers: HeaderMap,
     Extension(repository): Extension<Repository>,
     Extension(storage): Extension<StorageManager>,
     Extension(config): Extension<Config>,
     mut multipart: Multipart,
 ) -> Response {
-    if let Err((status, err)) = check_write_access_repo(&auth, &repository, &site_id).await {
-        return (status, Json(err)).into_response();
-    }
+    let site = match require_site_scope(&principal, &repository, request_site_id(&headers), SCOPE_ASSETS_WRITE, "editor")
+        .await
+    {
+        Ok(site) => site,
+        Err((status, err)) => return (status, Json(err)).into_response(),
+    };
+    let site_id = site.site_id;
 
     let mut storage_provider = repository
         .file
@@ -418,7 +427,7 @@ pub async fn upload_file(
 
     let thumb_key_str = thumbnail_key.as_deref();
 
-    let created_by = extract_user_id(&auth);
+    let created_by = extract_user_id(&principal);
 
     match repository
         .file
@@ -458,30 +467,31 @@ pub async fn upload_file(
 
 #[utoipa::path(
     get,
-    path = "/api/v1/sites/{site_id}/files/{id}",
-    params(
-        ("site_id" = String, Path, description = "Site ID"),
-        ("id" = String, Path, description = "File ID"),
-    ),
+    path = "/api/v1/site/files/{id}",
+    params(("id" = String, Path, description = "File ID")),
     responses(
         (status = 200, description = "File item", body = FileWithUrl),
         (status = 404, description = "Not found"),
     ),
-    security(("bearer" = []), ("api_key" = [])),
+    security(("bearer" = []), ("access_token" = [])),
     tag = "files"
 )]
-#[instrument(skip(repository, storage, auth))]
+#[instrument(skip(repository, storage, principal))]
 pub async fn get_file(
-    auth: AuthContext,
-    Path((site_id, id)): Path<(String, String)>,
+    principal: Principal,
+    headers: HeaderMap,
+    Path(id): Path<String>,
     Extension(repository): Extension<Repository>,
     Extension(storage): Extension<StorageManager>,
 ) -> Response {
-    if let Err((status, err)) = check_read_access_repo(&auth, &repository, &site_id).await {
-        return (status, Json(err)).into_response();
-    }
+    let site = match require_site_scope(&principal, &repository, request_site_id(&headers), SCOPE_ASSETS_READ, "viewer")
+        .await
+    {
+        Ok(site) => site,
+        Err((status, err)) => return (status, Json(err)).into_response(),
+    };
 
-    match repository.file.get_by_id(&id, &site_id).await {
+    match repository.file.get_by_id(&id, &site.site_id).await {
         Ok(Some(file)) => {
             let with_url = file_to_with_url(&file, &storage);
             (StatusCode::OK, Json(with_url)).into_response()
@@ -497,29 +507,30 @@ pub async fn get_file(
 
 #[utoipa::path(
     delete,
-    path = "/api/v1/sites/{site_id}/files/{id}",
-    params(
-        ("site_id" = String, Path, description = "Site ID"),
-        ("id" = String, Path, description = "File ID"),
-    ),
+    path = "/api/v1/site/files/{id}",
+    params(("id" = String, Path, description = "File ID")),
     responses(
         (status = 200, description = "File soft-deleted"),
         (status = 404, description = "Not found"),
     ),
-    security(("bearer" = []), ("api_key" = [])),
+    security(("bearer" = []), ("access_token" = [])),
     tag = "files"
 )]
-#[instrument(skip(repository, auth))]
+#[instrument(skip(repository, principal))]
 pub async fn delete_file_handler(
-    auth: AuthContext,
-    Path((site_id, id)): Path<(String, String)>,
+    principal: Principal,
+    headers: HeaderMap,
+    Path(id): Path<String>,
     Extension(repository): Extension<Repository>,
 ) -> Response {
-    if let Err((status, err)) = check_write_access_repo(&auth, &repository, &site_id).await {
-        return (status, Json(err)).into_response();
-    }
+    let site = match require_site_scope(&principal, &repository, request_site_id(&headers), SCOPE_ASSETS_WRITE, "editor")
+        .await
+    {
+        Ok(site) => site,
+        Err((status, err)) => return (status, Json(err)).into_response(),
+    };
 
-    match repository.file.soft_delete(&id, &site_id).await {
+    match repository.file.soft_delete(&id, &site.site_id).await {
         Ok(0) => (StatusCode::NOT_FOUND, Json(json!({"error": "File not found"}))).into_response(),
         Ok(_) => (StatusCode::OK, Json(json!({"message": "File deleted"}))).into_response(),
         Err(err) => (
@@ -532,28 +543,29 @@ pub async fn delete_file_handler(
 
 #[utoipa::path(
     get,
-    path = "/api/v1/sites/{site_id}/files/{id}/references",
-    params(
-        ("site_id" = String, Path, description = "Site ID"),
-        ("id" = String, Path, description = "File ID"),
-    ),
+    path = "/api/v1/site/files/{id}/references",
+    params(("id" = String, Path, description = "File ID")),
     responses(
         (status = 200, description = "References found", body = Vec<crate::models::file::FileReference>),
     ),
-    security(("bearer" = []), ("api_key" = [])),
+    security(("bearer" = []), ("access_token" = [])),
     tag = "files"
 )]
-#[instrument(skip(repository, auth))]
+#[instrument(skip(repository, principal))]
 pub async fn get_file_references(
-    auth: AuthContext,
-    Path((site_id, id)): Path<(String, String)>,
+    principal: Principal,
+    headers: HeaderMap,
+    Path(id): Path<String>,
     Extension(repository): Extension<Repository>,
 ) -> Response {
-    if let Err((status, err)) = check_read_access_repo(&auth, &repository, &site_id).await {
-        return (status, Json(err)).into_response();
-    }
+    let site = match require_site_scope(&principal, &repository, request_site_id(&headers), SCOPE_ASSETS_READ, "viewer")
+        .await
+    {
+        Ok(site) => site,
+        Err((status, err)) => return (status, Json(err)).into_response(),
+    };
 
-    match repository.file.get_references(&id).await {
+    match repository.file.get_references_for_site(&id, &site.site_id).await {
         Ok(refs) => (StatusCode::OK, Json(refs)).into_response(),
         Err(err) => (
             StatusCode::INTERNAL_SERVER_ERROR,
@@ -565,29 +577,30 @@ pub async fn get_file_references(
 
 #[utoipa::path(
     post,
-    path = "/api/v1/sites/{site_id}/files/{id}/restore",
-    params(
-        ("site_id" = String, Path, description = "Site ID"),
-        ("id" = String, Path, description = "File ID"),
-    ),
+    path = "/api/v1/site/files/{id}/restore",
+    params(("id" = String, Path, description = "File ID")),
     responses(
         (status = 200, description = "File restored"),
         (status = 404, description = "Not found"),
     ),
-    security(("bearer" = []), ("api_key" = [])),
+    security(("bearer" = []), ("access_token" = [])),
     tag = "files"
 )]
-#[instrument(skip(repository, auth))]
+#[instrument(skip(repository, principal))]
 pub async fn restore_file(
-    auth: AuthContext,
-    Path((site_id, id)): Path<(String, String)>,
+    principal: Principal,
+    headers: HeaderMap,
+    Path(id): Path<String>,
     Extension(repository): Extension<Repository>,
 ) -> Response {
-    if let Err((status, err)) = check_write_access_repo(&auth, &repository, &site_id).await {
-        return (status, Json(err)).into_response();
-    }
+    let site = match require_site_scope(&principal, &repository, request_site_id(&headers), SCOPE_ASSETS_WRITE, "editor")
+        .await
+    {
+        Ok(site) => site,
+        Err((status, err)) => return (status, Json(err)).into_response(),
+    };
 
-    match repository.file.restore(&id, &site_id).await {
+    match repository.file.restore(&id, &site.site_id).await {
         Ok(0) => (
             StatusCode::NOT_FOUND,
             Json(json!({"error": "File not found or not deleted"})),
@@ -604,34 +617,34 @@ pub async fn restore_file(
 
 #[utoipa::path(
     post,
-    path = "/api/v1/sites/{site_id}/files/batch-delete",
-    params(
-        ("site_id" = String, Path, description = "Site ID"),
-    ),
+    path = "/api/v1/site/files/batch-delete",
     request_body = BatchFileIds,
     responses(
         (status = 200, description = "Files soft-deleted"),
         (status = 400, description = "Bad request"),
     ),
-    security(("bearer" = []), ("api_key" = [])),
+    security(("bearer" = []), ("access_token" = [])),
     tag = "files"
 )]
-#[instrument(skip(repository, auth, body))]
+#[instrument(skip(repository, principal, body))]
 pub async fn batch_delete_files(
-    auth: AuthContext,
-    Path(site_id): Path<String>,
+    principal: Principal,
+    headers: HeaderMap,
     Extension(repository): Extension<Repository>,
     Json(body): Json<BatchFileIds>,
 ) -> Response {
-    if let Err((status, err)) = check_write_access_repo(&auth, &repository, &site_id).await {
-        return (status, Json(err)).into_response();
-    }
+    let site = match require_site_scope(&principal, &repository, request_site_id(&headers), SCOPE_ASSETS_WRITE, "editor")
+        .await
+    {
+        Ok(site) => site,
+        Err((status, err)) => return (status, Json(err)).into_response(),
+    };
 
     if body.ids.is_empty() {
         return (StatusCode::BAD_REQUEST, Json(json!({"error": "No file IDs provided"}))).into_response();
     }
 
-    match repository.file.batch_soft_delete(&site_id, &body.ids).await {
+    match repository.file.batch_soft_delete(&site.site_id, &body.ids).await {
         Ok(count) => (StatusCode::OK, Json(json!({"deleted": count}))).into_response(),
         Err(err) => (
             StatusCode::INTERNAL_SERVER_ERROR,
@@ -643,34 +656,34 @@ pub async fn batch_delete_files(
 
 #[utoipa::path(
     post,
-    path = "/api/v1/sites/{site_id}/files/batch-restore",
-    params(
-        ("site_id" = String, Path, description = "Site ID"),
-    ),
+    path = "/api/v1/site/files/batch-restore",
     request_body = BatchFileIds,
     responses(
         (status = 200, description = "Files restored"),
         (status = 400, description = "Bad request"),
     ),
-    security(("bearer" = []), ("api_key" = [])),
+    security(("bearer" = []), ("access_token" = [])),
     tag = "files"
 )]
-#[instrument(skip(repository, auth, body))]
+#[instrument(skip(repository, principal, body))]
 pub async fn batch_restore_files(
-    auth: AuthContext,
-    Path(site_id): Path<String>,
+    principal: Principal,
+    headers: HeaderMap,
     Extension(repository): Extension<Repository>,
     Json(body): Json<BatchFileIds>,
 ) -> Response {
-    if let Err((status, err)) = check_write_access_repo(&auth, &repository, &site_id).await {
-        return (status, Json(err)).into_response();
-    }
+    let site = match require_site_scope(&principal, &repository, request_site_id(&headers), SCOPE_ASSETS_WRITE, "editor")
+        .await
+    {
+        Ok(site) => site,
+        Err((status, err)) => return (status, Json(err)).into_response(),
+    };
 
     if body.ids.is_empty() {
         return (StatusCode::BAD_REQUEST, Json(json!({"error": "No file IDs provided"}))).into_response();
     }
 
-    match repository.file.batch_restore(&site_id, &body.ids).await {
+    match repository.file.batch_restore(&site.site_id, &body.ids).await {
         Ok(count) => (StatusCode::OK, Json(json!({"restored": count}))).into_response(),
         Err(err) => (
             StatusCode::INTERNAL_SERVER_ERROR,
@@ -682,35 +695,35 @@ pub async fn batch_restore_files(
 
 #[utoipa::path(
     post,
-    path = "/api/v1/sites/{site_id}/files/batch-permanent-delete",
-    params(
-        ("site_id" = String, Path, description = "Site ID"),
-    ),
+    path = "/api/v1/site/files/batch-permanent-delete",
     request_body = BatchFileIds,
     responses(
         (status = 200, description = "Files permanently deleted"),
         (status = 400, description = "Bad request"),
     ),
-    security(("bearer" = []), ("api_key" = [])),
+    security(("bearer" = []), ("access_token" = [])),
     tag = "files"
 )]
-#[instrument(skip(repository, storage, auth, body))]
+#[instrument(skip(repository, storage, principal, body))]
 pub async fn batch_permanent_delete_files(
-    auth: AuthContext,
-    Path(site_id): Path<String>,
+    principal: Principal,
+    headers: HeaderMap,
     Extension(repository): Extension<Repository>,
     Extension(storage): Extension<StorageManager>,
     Json(body): Json<BatchFileIds>,
 ) -> Response {
-    if let Err((status, err)) = check_write_access_repo(&auth, &repository, &site_id).await {
-        return (status, Json(err)).into_response();
-    }
+    let site = match require_site_scope(&principal, &repository, request_site_id(&headers), SCOPE_ASSETS_WRITE, "editor")
+        .await
+    {
+        Ok(site) => site,
+        Err((status, err)) => return (status, Json(err)).into_response(),
+    };
 
     if body.ids.is_empty() {
         return (StatusCode::BAD_REQUEST, Json(json!({"error": "No file IDs provided"}))).into_response();
     }
 
-    let files = match repository.file.get_deleted_by_ids(&site_id, &body.ids).await {
+    let files = match repository.file.get_deleted_by_ids(&site.site_id, &body.ids).await {
         Ok(f) => f,
         Err(err) => {
             return (
@@ -728,7 +741,7 @@ pub async fn batch_permanent_delete_files(
         }
     }
 
-    match repository.file.batch_permanent_delete(&site_id, &body.ids).await {
+    match repository.file.batch_permanent_delete(&site.site_id, &body.ids).await {
         Ok(count) => (StatusCode::OK, Json(json!({"deleted": count}))).into_response(),
         Err(err) => (
             StatusCode::INTERNAL_SERVER_ERROR,
