@@ -8,14 +8,56 @@ use serde_json::json;
 use tracing::instrument;
 use uuid::Uuid;
 
-use crate::middleware::auth::{AuthenticatedUser, check_site_access_repo};
-use crate::models::site::{CreateSite, InviteMember, UpdateMemberRole, UpdateSite};
+use crate::middleware::auth::{
+    Principal, SCOPE_MEMBERS_READ, SCOPE_MEMBERS_WRITE, SCOPE_SITES_DELETE, SCOPE_SITES_READ, SCOPE_SITES_WRITE,
+    require_admin_scope,
+};
+use crate::models::site::{CreateSite, InviteMember, Site, SiteMember, SiteWithRole, UpdateMemberRole, UpdateSite};
 use crate::repository::Repository;
 use crate::repository::error::RepositoryError;
 
-#[instrument(skip(repository, auth))]
-pub async fn list_sites(auth: AuthenticatedUser, Extension(repository): Extension<Repository>) -> Response {
-    match repository.site.list_for_user(&auth.user_id).await {
+#[utoipa::path(
+    get,
+    path = "/api/v1/admin/sites",
+    responses(
+        (status = 200, description = "List sites visible to the caller", body = Vec<SiteWithRole>),
+        (status = 401, description = "Unauthorized"),
+        (status = 403, description = "Insufficient permissions"),
+    ),
+    security(("bearer" = []), ("access_token" = [])),
+    tag = "sites"
+)]
+#[instrument(skip(repository, principal))]
+pub async fn list_sites(principal: Principal, Extension(repository): Extension<Repository>) -> Response {
+    if let Err((status, err)) = require_admin_scope(&principal, &repository, None, SCOPE_SITES_READ).await {
+        return (status, Json(err)).into_response();
+    }
+
+    let result = match &principal {
+        Principal::InstanceToken { .. } => repository.site.list_all().await.map(|sites| {
+            sites.into_iter()
+                .map(|site| {
+                    serde_json::json!({
+                        "id": site.id,
+                        "name": site.name,
+                        "default_storage_provider": site.default_storage_provider,
+                        "created_by": site.created_by,
+                        "created_at": site.created_at,
+                        "updated_at": site.updated_at,
+                        "role": "instance_admin",
+                    })
+                })
+                .collect::<Vec<_>>()
+        }),
+        Principal::UserSession { user_id } => repository.site.list_for_user(user_id).await.map(|sites| {
+            sites.into_iter()
+                .map(|site| serde_json::to_value(site).unwrap_or_default())
+                .collect::<Vec<_>>()
+        }),
+        Principal::SiteToken { .. } => unreachable!(),
+    };
+
+    match result {
         Ok(sites) => (StatusCode::OK, Json(sites)).into_response(),
         Err(err) => (
             StatusCode::INTERNAL_SERVER_ERROR,
@@ -25,12 +67,29 @@ pub async fn list_sites(auth: AuthenticatedUser, Extension(repository): Extensio
     }
 }
 
-#[instrument(skip(repository, auth, payload))]
+#[utoipa::path(
+    post,
+    path = "/api/v1/admin/sites",
+    request_body = CreateSite,
+    responses(
+        (status = 201, description = "Site created", body = Site),
+        (status = 400, description = "Invalid request"),
+        (status = 401, description = "Unauthorized"),
+        (status = 403, description = "Insufficient permissions"),
+    ),
+    security(("bearer" = []), ("access_token" = [])),
+    tag = "sites"
+)]
+#[instrument(skip(repository, principal, payload))]
 pub async fn create_site(
-    auth: AuthenticatedUser,
+    principal: Principal,
     Extension(repository): Extension<Repository>,
     Json(payload): Json<CreateSite>,
 ) -> Response {
+    if let Err((status, err)) = require_admin_scope(&principal, &repository, None, SCOPE_SITES_WRITE).await {
+        return (status, Json(err)).into_response();
+    }
+
     if payload.name.trim().is_empty() {
         return (StatusCode::BAD_REQUEST, Json(json!({"error": "Name is required"}))).into_response();
     }
@@ -46,9 +105,11 @@ pub async fn create_site(
 
     let site_id = Uuid::now_v7().to_string();
 
+    let created_by = principal.user_id().unwrap_or("system");
+
     match repository
         .site
-        .create(&site_id, &payload.name, storage_provider, &auth.user_id)
+        .create(&site_id, &payload.name, storage_provider, created_by)
         .await
     {
         Ok(site) => (StatusCode::CREATED, Json(site)).into_response(),
@@ -60,13 +121,26 @@ pub async fn create_site(
     }
 }
 
-#[instrument(skip(repository, auth))]
+#[utoipa::path(
+    get,
+    path = "/api/v1/admin/sites/{site_id}",
+    params(("site_id" = String, Path, description = "Site id")),
+    responses(
+        (status = 200, description = "Site details", body = Site),
+        (status = 401, description = "Unauthorized"),
+        (status = 403, description = "Insufficient permissions"),
+        (status = 404, description = "Site not found"),
+    ),
+    security(("bearer" = []), ("access_token" = [])),
+    tag = "sites"
+)]
+#[instrument(skip(repository, principal))]
 pub async fn get_site(
-    auth: AuthenticatedUser,
+    principal: Principal,
     Path(site_id): Path<String>,
     Extension(repository): Extension<Repository>,
 ) -> Response {
-    if let Err((status, err)) = check_site_access_repo(&repository, &auth.user_id, &site_id, "viewer").await {
+    if let Err((status, err)) = require_admin_scope(&principal, &repository, Some(&site_id), SCOPE_SITES_READ).await {
         return (status, Json(err)).into_response();
     }
 
@@ -81,14 +155,29 @@ pub async fn get_site(
     }
 }
 
-#[instrument(skip(repository, auth, payload))]
+#[utoipa::path(
+    put,
+    path = "/api/v1/admin/sites/{site_id}",
+    params(("site_id" = String, Path, description = "Site id")),
+    request_body = UpdateSite,
+    responses(
+        (status = 200, description = "Site updated", body = Site),
+        (status = 400, description = "Invalid request"),
+        (status = 401, description = "Unauthorized"),
+        (status = 403, description = "Insufficient permissions"),
+        (status = 404, description = "Site not found"),
+    ),
+    security(("bearer" = []), ("access_token" = [])),
+    tag = "sites"
+)]
+#[instrument(skip(repository, principal, payload))]
 pub async fn update_site(
-    auth: AuthenticatedUser,
+    principal: Principal,
     Path(site_id): Path<String>,
     Extension(repository): Extension<Repository>,
     Json(payload): Json<UpdateSite>,
 ) -> Response {
-    if let Err((status, err)) = check_site_access_repo(&repository, &auth.user_id, &site_id, "admin").await {
+    if let Err((status, err)) = require_admin_scope(&principal, &repository, Some(&site_id), SCOPE_SITES_WRITE).await {
         return (status, Json(err)).into_response();
     }
 
@@ -122,13 +211,25 @@ pub async fn update_site(
     }
 }
 
-#[instrument(skip(repository, auth))]
+#[utoipa::path(
+    delete,
+    path = "/api/v1/admin/sites/{site_id}",
+    params(("site_id" = String, Path, description = "Site id")),
+    responses(
+        (status = 204, description = "Site deleted"),
+        (status = 401, description = "Unauthorized"),
+        (status = 403, description = "Insufficient permissions"),
+    ),
+    security(("bearer" = []), ("access_token" = [])),
+    tag = "sites"
+)]
+#[instrument(skip(repository, principal))]
 pub async fn delete_site(
-    auth: AuthenticatedUser,
+    principal: Principal,
     Path(site_id): Path<String>,
     Extension(repository): Extension<Repository>,
 ) -> Response {
-    if let Err((status, err)) = check_site_access_repo(&repository, &auth.user_id, &site_id, "owner").await {
+    if let Err((status, err)) = require_admin_scope(&principal, &repository, Some(&site_id), SCOPE_SITES_DELETE).await {
         return (status, Json(err)).into_response();
     }
 
@@ -142,13 +243,25 @@ pub async fn delete_site(
     }
 }
 
-#[instrument(skip(repository, auth))]
+#[utoipa::path(
+    get,
+    path = "/api/v1/admin/sites/{site_id}/members",
+    params(("site_id" = String, Path, description = "Site id")),
+    responses(
+        (status = 200, description = "List site members", body = Vec<SiteMember>),
+        (status = 401, description = "Unauthorized"),
+        (status = 403, description = "Insufficient permissions"),
+    ),
+    security(("bearer" = []), ("access_token" = [])),
+    tag = "site-members"
+)]
+#[instrument(skip(repository, principal))]
 pub async fn list_members(
-    auth: AuthenticatedUser,
+    principal: Principal,
     Path(site_id): Path<String>,
     Extension(repository): Extension<Repository>,
 ) -> Response {
-    if let Err((status, err)) = check_site_access_repo(&repository, &auth.user_id, &site_id, "viewer").await {
+    if let Err((status, err)) = require_admin_scope(&principal, &repository, Some(&site_id), SCOPE_MEMBERS_READ).await {
         return (status, Json(err)).into_response();
     }
 
@@ -162,14 +275,30 @@ pub async fn list_members(
     }
 }
 
-#[instrument(skip(repository, auth, payload))]
+#[utoipa::path(
+    post,
+    path = "/api/v1/admin/sites/{site_id}/members",
+    params(("site_id" = String, Path, description = "Site id")),
+    request_body = InviteMember,
+    responses(
+        (status = 201, description = "Member invited", body = SiteMember),
+        (status = 400, description = "Invalid request"),
+        (status = 401, description = "Unauthorized"),
+        (status = 403, description = "Insufficient permissions"),
+        (status = 404, description = "User not found"),
+        (status = 409, description = "User already a member"),
+    ),
+    security(("bearer" = []), ("access_token" = [])),
+    tag = "site-members"
+)]
+#[instrument(skip(repository, principal, payload))]
 pub async fn invite_member(
-    auth: AuthenticatedUser,
+    principal: Principal,
     Path(site_id): Path<String>,
     Extension(repository): Extension<Repository>,
     Json(payload): Json<InviteMember>,
 ) -> Response {
-    if let Err((status, err)) = check_site_access_repo(&repository, &auth.user_id, &site_id, "admin").await {
+    if let Err((status, err)) = require_admin_scope(&principal, &repository, Some(&site_id), SCOPE_MEMBERS_WRITE).await {
         return (status, Json(err)).into_response();
     }
 
@@ -217,14 +346,32 @@ pub async fn invite_member(
     }
 }
 
-#[instrument(skip(repository, auth, payload))]
+#[utoipa::path(
+    put,
+    path = "/api/v1/admin/sites/{site_id}/members/{user_id}",
+    params(
+        ("site_id" = String, Path, description = "Site id"),
+        ("user_id" = String, Path, description = "User id")
+    ),
+    request_body = UpdateMemberRole,
+    responses(
+        (status = 200, description = "Member role updated", body = SiteMember),
+        (status = 400, description = "Invalid request"),
+        (status = 401, description = "Unauthorized"),
+        (status = 403, description = "Insufficient permissions"),
+        (status = 404, description = "Member not found"),
+    ),
+    security(("bearer" = []), ("access_token" = [])),
+    tag = "site-members"
+)]
+#[instrument(skip(repository, principal, payload))]
 pub async fn update_member_role(
-    auth: AuthenticatedUser,
+    principal: Principal,
     Path((site_id, member_user_id)): Path<(String, String)>,
     Extension(repository): Extension<Repository>,
     Json(payload): Json<UpdateMemberRole>,
 ) -> Response {
-    if let Err((status, err)) = check_site_access_repo(&repository, &auth.user_id, &site_id, "owner").await {
+    if let Err((status, err)) = require_admin_scope(&principal, &repository, Some(&site_id), SCOPE_MEMBERS_WRITE).await {
         return (status, Json(err)).into_response();
     }
 
@@ -248,17 +395,34 @@ pub async fn update_member_role(
     }
 }
 
-#[instrument(skip(repository, auth))]
+#[utoipa::path(
+    delete,
+    path = "/api/v1/admin/sites/{site_id}/members/{user_id}",
+    params(
+        ("site_id" = String, Path, description = "Site id"),
+        ("user_id" = String, Path, description = "User id")
+    ),
+    responses(
+        (status = 204, description = "Member removed"),
+        (status = 400, description = "Invalid request"),
+        (status = 401, description = "Unauthorized"),
+        (status = 403, description = "Insufficient permissions"),
+        (status = 404, description = "Member not found"),
+    ),
+    security(("bearer" = []), ("access_token" = [])),
+    tag = "site-members"
+)]
+#[instrument(skip(repository, principal))]
 pub async fn remove_member(
-    auth: AuthenticatedUser,
+    principal: Principal,
     Path((site_id, member_user_id)): Path<(String, String)>,
     Extension(repository): Extension<Repository>,
 ) -> Response {
-    if let Err((status, err)) = check_site_access_repo(&repository, &auth.user_id, &site_id, "admin").await {
+    if let Err((status, err)) = require_admin_scope(&principal, &repository, Some(&site_id), SCOPE_MEMBERS_WRITE).await {
         return (status, Json(err)).into_response();
     }
 
-    if member_user_id == auth.user_id {
+    if principal.user_id().is_some_and(|user_id| member_user_id == user_id) {
         return (
             StatusCode::BAD_REQUEST,
             Json(json!({"error": "Cannot remove yourself from the site"})),
