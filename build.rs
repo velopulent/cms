@@ -4,18 +4,22 @@ fn main() {
     println!("cargo:rerun-if-changed=dashboard/");
     println!("cargo:rerun-if-changed=proto/");
 
-    let status = Command::new("bun")
-        .arg("run")
-        .arg("build")
-        .current_dir("dashboard")
-        .status()
-        .expect("Failed to build dashboard");
+    let skip_dashboard = std::env::var("SKIP_DASHBOARD_BUILD").ok().as_deref() == Some("1");
 
-    if !status.success() {
-        panic!("Dashboard build failed");
+    if !skip_dashboard {
+        let status = Command::new("bun")
+            .arg("run")
+            .arg("build")
+            .current_dir("dashboard")
+            .status()
+            .expect("Failed to build dashboard");
+
+        if !status.success() {
+            panic!("Dashboard build failed");
+        }
     }
 
-    let proto_files = ["proto/cms.proto"];
+    let proto_files = ["proto/site.proto", "proto/admin.proto"];
     let include_dirs = ["proto"];
     tonic_build::configure()
         .build_server(true)

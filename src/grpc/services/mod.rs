@@ -1,5 +1,8 @@
 pub mod collection;
+pub mod admin_membership;
+pub mod admin_site;
+pub mod admin_token;
+pub mod collection;
 pub mod entry;
-pub mod singleton;
 pub mod file;
-pub mod api_key;
+pub mod singleton;
