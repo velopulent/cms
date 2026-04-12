@@ -1,5 +1,6 @@
 const BASE_URL = "/api/v1";
 const AUTH_URL = "/api/auth";
+const SITE_HEADER = "x-cms-site-id";
 
 export async function api<T>(
   path: string,
@@ -32,6 +33,20 @@ export async function api<T>(
   }
 
   return res.json();
+}
+
+export async function siteApi<T>(
+  siteId: string,
+  path: string,
+  options: RequestInit = {},
+): Promise<T> {
+  return api<T>(`/site${path}`, {
+    ...options,
+    headers: {
+      [SITE_HEADER]: siteId,
+      ...(options.headers as Record<string, string>),
+    },
+  });
 }
 
 // Auth API uses unversioned path
@@ -171,6 +186,85 @@ export interface ApiKeyResponse {
   created_at: string;
 }
 
+interface AccessToken {
+  id: string;
+  kind: string;
+  site_id: string | null;
+  name: string;
+  token_prefix: string;
+  scopes: string;
+  last_used_at: string | null;
+  created_at: string;
+  expires_at: string | null;
+}
+
+interface AccessTokenResponse {
+  id: string;
+  kind: string;
+  site_id: string | null;
+  name: string;
+  token: string;
+  token_prefix: string;
+  scopes: string[];
+  created_at: string;
+}
+
+function scopesFromPermission(permission?: string) {
+  if (permission === "write") {
+    return [
+      "site:read",
+      "schema:read",
+      "schema:write",
+      "content:read",
+      "content:write",
+      "assets:read",
+      "assets:write",
+      "tokens:read",
+      "tokens:write",
+    ];
+  }
+
+  return [
+    "site:read",
+    "schema:read",
+    "content:read",
+    "assets:read",
+    "tokens:read",
+  ];
+}
+
+function permissionFromScopes(scopes: string[] | string) {
+  const list = Array.isArray(scopes)
+    ? scopes
+    : scopes.split(",").map((scope) => scope.trim()).filter(Boolean);
+  return list.some((scope) => scope.endsWith(":write")) ? "write" : "read";
+}
+
+function mapAccessToken(token: AccessToken): ApiKey {
+  return {
+    id: token.id,
+    site_id: token.site_id ?? "",
+    name: token.name,
+    key_prefix: token.token_prefix,
+    permissions: permissionFromScopes(token.scopes),
+    last_used_at: token.last_used_at,
+    created_at: token.created_at,
+    expires_at: token.expires_at,
+  };
+}
+
+function mapCreatedAccessToken(token: AccessTokenResponse): ApiKeyResponse {
+  return {
+    id: token.id,
+    site_id: token.site_id ?? "",
+    name: token.name,
+    key: token.token,
+    key_prefix: token.token_prefix,
+    permissions: permissionFromScopes(token.scopes),
+    created_at: token.created_at,
+  };
+}
+
 export interface FileItem {
   id: string;
   site_id: string;
@@ -234,46 +328,46 @@ export async function logoutApi() {
 // --- Sites API ---
 
 export async function getSites() {
-  return api<SiteWithRole[]>("/sites");
+  return api<SiteWithRole[]>("/admin/sites");
 }
 
 export async function createSite(data: {
   name: string;
   default_storage_provider?: string;
 }) {
-  return api<Site>("/sites", {
+  return api<Site>("/admin/sites", {
     method: "POST",
     body: JSON.stringify(data),
   });
 }
 
 export async function getSite(id: string) {
-  return api<Site>(`/sites/${id}`);
+  return api<Site>(`/admin/sites/${id}`);
 }
 
 export async function updateSite(
   id: string,
   data: { name?: string; default_storage_provider?: string },
 ) {
-  return api<Site>(`/sites/${id}`, {
+  return api<Site>(`/admin/sites/${id}`, {
     method: "PUT",
     body: JSON.stringify(data),
   });
 }
 
 export async function deleteSite(id: string) {
-  return api<void>(`/sites/${id}`, { method: "DELETE" });
+  return api<void>(`/admin/sites/${id}`, { method: "DELETE" });
 }
 
 export async function getSiteMembers(id: string) {
-  return api<SiteMember[]>(`/sites/${id}/members`);
+  return api<SiteMember[]>(`/admin/sites/${id}/members`);
 }
 
 export async function inviteMember(
   siteId: string,
   data: { username: string; role: string },
 ) {
-  return api<SiteMember>(`/sites/${siteId}/members`, {
+  return api<SiteMember>(`/admin/sites/${siteId}/members`, {
     method: "POST",
     body: JSON.stringify(data),
   });
@@ -284,14 +378,14 @@ export async function updateMemberRole(
   userId: string,
   role: string,
 ) {
-  return api<SiteMember>(`/sites/${siteId}/members/${userId}`, {
+  return api<SiteMember>(`/admin/sites/${siteId}/members/${userId}`, {
     method: "PUT",
     body: JSON.stringify({ role }),
   });
 }
 
 export async function removeMember(siteId: string, userId: string) {
-  return api<void>(`/sites/${siteId}/members/${userId}`, {
+  return api<void>(`/admin/sites/${siteId}/members/${userId}`, {
     method: "DELETE",
   });
 }
@@ -299,18 +393,20 @@ export async function removeMember(siteId: string, userId: string) {
 // --- API Keys API ---
 
 export async function getApiKeys(siteId: string) {
-  return api<ApiKey[]>(`/sites/${siteId}/api-keys`);
+  const tokens = await siteApi<AccessToken[]>(siteId, "/tokens");
+  return tokens.map(mapAccessToken);
 }
 
 export async function createApiKey(siteId: string, name: string, permissions?: string) {
-  return api<ApiKeyResponse>(`/sites/${siteId}/api-keys`, {
+  const token = await siteApi<AccessTokenResponse>(siteId, "/tokens", {
     method: "POST",
-    body: JSON.stringify({ name, permissions }),
+    body: JSON.stringify({ name, scopes: scopesFromPermission(permissions) }),
   });
+  return mapCreatedAccessToken(token);
 }
 
 export async function deleteApiKey(siteId: string, keyId: string) {
-  return api<void>(`/sites/${siteId}/api-keys/${keyId}`, {
+  return siteApi<void>(siteId, `/tokens/${keyId}`, {
     method: "DELETE",
   });
 }
@@ -318,11 +414,11 @@ export async function deleteApiKey(siteId: string, keyId: string) {
 // --- Collections API (site-scoped) ---
 
 export async function getCollections(siteId: string) {
-  return api<Collection[]>(`/sites/${siteId}/collections`);
+  return siteApi<Collection[]>(siteId, "/collections");
 }
 
 export async function getCollection(siteId: string, slug: string) {
-  return api<Collection>(`/sites/${siteId}/collections/${slug}`);
+  return siteApi<Collection>(siteId, `/collections/${slug}`);
 }
 
 export async function createCollection(
@@ -334,7 +430,7 @@ export async function createCollection(
     is_singleton?: boolean;
   },
 ) {
-  return api<Collection>(`/sites/${siteId}/collections`, {
+  return siteApi<Collection>(siteId, "/collections", {
     method: "POST",
     body: JSON.stringify(data),
   });
@@ -345,14 +441,14 @@ export async function updateCollection(
   slug: string,
   data: { name?: string; slug?: string; definition?: SchemaDefinition },
 ) {
-  return api<Collection>(`/sites/${siteId}/collections/${slug}`, {
+  return siteApi<Collection>(siteId, `/collections/${slug}`, {
     method: "PUT",
     body: JSON.stringify(data),
   });
 }
 
 export async function deleteCollection(siteId: string, slug: string) {
-  return api<void>(`/sites/${siteId}/collections/${slug}`, {
+  return siteApi<void>(siteId, `/collections/${slug}`, {
     method: "DELETE",
   });
 }
@@ -376,11 +472,11 @@ export async function getEntries(
   if (params.page) query.set("page", String(params.page));
   if (params.pageSize) query.set("per_page", String(params.pageSize));
   const qs = query.toString();
-  return api<EntryListResponse>(`/sites/${siteId}/entries${qs ? `?${qs}` : ""}`);
+  return siteApi<EntryListResponse>(siteId, `/entries${qs ? `?${qs}` : ""}`);
 }
 
 export async function getEntryById(siteId: string, id: string) {
-  return api<Entry>(`/sites/${siteId}/entries/${id}`);
+  return siteApi<Entry>(siteId, `/entries/${id}`);
 }
 
 export async function createEntry(
@@ -391,7 +487,7 @@ export async function createEntry(
     slug: string;
   },
 ) {
-  return api<Entry>(`/sites/${siteId}/entries`, {
+  return siteApi<Entry>(siteId, "/entries", {
     method: "POST",
     body: JSON.stringify(data),
   });
@@ -406,24 +502,24 @@ export async function updateEntry(
     status?: string;
   },
 ) {
-  return api<Entry>(`/sites/${siteId}/entries/${id}`, {
+  return siteApi<Entry>(siteId, `/entries/${id}`, {
     method: "PUT",
     body: JSON.stringify(data),
   });
 }
 
 export async function deleteEntry(siteId: string, id: string) {
-  return api<void>(`/sites/${siteId}/entries/${id}`, { method: "DELETE" });
+  return siteApi<void>(siteId, `/entries/${id}`, { method: "DELETE" });
 }
 
 export async function publishEntry(siteId: string, id: string) {
-  return api<Entry>(`/sites/${siteId}/entries/${id}/publish`, {
+  return siteApi<Entry>(siteId, `/entries/${id}/publish`, {
     method: "POST",
   });
 }
 
 export async function unpublishEntry(siteId: string, id: string) {
-  return api<Entry>(`/sites/${siteId}/entries/${id}/unpublish`, {
+  return siteApi<Entry>(siteId, `/entries/${id}/unpublish`, {
     method: "POST",
   });
 }
@@ -445,7 +541,7 @@ export async function getFiles(
   if (params.type) query.set("type", params.type);
   if (params.trashed) query.set("trashed", "true");
   const qs = query.toString();
-  return api<FileListResponse>(`/sites/${siteId}/files${qs ? `?${qs}` : ""}`);
+  return siteApi<FileListResponse>(siteId, `/files${qs ? `?${qs}` : ""}`);
 }
 
 export async function uploadFile(
@@ -457,9 +553,12 @@ export async function uploadFile(
   formData.append("file", file);
   formData.append("storage_provider", provider);
 
-  const res = await fetch(`${BASE_URL}/sites/${siteId}/files`, {
+  const res = await fetch(`${BASE_URL}/site/files`, {
     method: "POST",
     credentials: "include",
+    headers: {
+      [SITE_HEADER]: siteId,
+    },
     body: formData,
   });
 
@@ -478,53 +577,50 @@ export async function uploadFile(
 }
 
 export async function deleteFile(siteId: string, fileId: string) {
-  return api<{ message: string }>(`/sites/${siteId}/files/${fileId}`, {
+  return siteApi<{ message: string }>(siteId, `/files/${fileId}`, {
     method: "DELETE",
   });
 }
 
 export async function getFileReferences(siteId: string, fileId: string) {
-  return api<FileReference[]>(`/sites/${siteId}/files/${fileId}/references`);
+  return siteApi<FileReference[]>(siteId, `/files/${fileId}/references`);
 }
 
 export async function restoreFile(siteId: string, fileId: string) {
-  return api<{ message: string }>(`/sites/${siteId}/files/${fileId}/restore`, {
+  return siteApi<{ message: string }>(siteId, `/files/${fileId}/restore`, {
     method: "POST",
   });
 }
 
 export async function batchDeleteFiles(siteId: string, ids: string[]) {
-  return api<{ deleted: number }>(`/sites/${siteId}/files/batch-delete`, {
+  return siteApi<{ deleted: number }>(siteId, "/files/batch-delete", {
     method: "POST",
     body: JSON.stringify({ ids }),
   });
 }
 
 export async function batchRestoreFiles(siteId: string, ids: string[]) {
-  return api<{ restored: number }>(`/sites/${siteId}/files/batch-restore`, {
+  return siteApi<{ restored: number }>(siteId, "/files/batch-restore", {
     method: "POST",
     body: JSON.stringify({ ids }),
   });
 }
 
 export async function batchPermanentDeleteFiles(siteId: string, ids: string[]) {
-  return api<{ deleted: number }>(
-    `/sites/${siteId}/files/batch-permanent-delete`,
-    {
-      method: "POST",
-      body: JSON.stringify({ ids }),
-    },
-  );
+  return siteApi<{ deleted: number }>(siteId, "/files/batch-permanent-delete", {
+    method: "POST",
+    body: JSON.stringify({ ids }),
+  });
 }
 
 // --- Singletons API (site-scoped) ---
 
 export async function getSingletons(siteId: string) {
-  return api<SingletonResponse[]>(`/sites/${siteId}/singletons`);
+  return siteApi<SingletonResponse[]>(siteId, "/singletons");
 }
 
 export async function getSingleton(siteId: string, slug: string) {
-  return api<SingletonResponse>(`/sites/${siteId}/singletons/${slug}`);
+  return siteApi<SingletonResponse>(siteId, `/singletons/${slug}`);
 }
 
 export async function updateSingletonData(
@@ -532,7 +628,7 @@ export async function updateSingletonData(
   slug: string,
   data: Record<string, unknown>,
 ) {
-  return api<SingletonResponse>(`/sites/${siteId}/singletons/${slug}`, {
+  return siteApi<SingletonResponse>(siteId, `/singletons/${slug}`, {
     method: "PUT",
     body: JSON.stringify({ data }),
   });
