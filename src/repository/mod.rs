@@ -8,7 +8,7 @@ use std::sync::Arc;
 
 use crate::database::pool::DbPool;
 use crate::repository::traits::{
-    ApiKeyRepository, CollectionRepository, EntryRepository, FileRepository, SiteRepository, UserRepository,
+    AccessTokenRepository, CollectionRepository, EntryRepository, FileRepository, SiteRepository, UserRepository,
 };
 
 #[derive(Clone)]
@@ -18,7 +18,7 @@ pub struct Repository {
     pub entry: Arc<dyn EntryRepository>,
     pub collection: Arc<dyn CollectionRepository>,
     pub file: Arc<dyn FileRepository>,
-    pub api_key: Arc<dyn ApiKeyRepository>,
+    pub access_token: Arc<dyn AccessTokenRepository>,
 }
 
 impl Repository {
@@ -30,7 +30,7 @@ impl Repository {
                 entry: Arc::new(postgres::PostgresEntryRepository::new(pg_pool.clone())),
                 collection: Arc::new(postgres::PostgresCollectionRepository::new(pg_pool.clone())),
                 file: Arc::new(postgres::PostgresFileRepository::new(pg_pool.clone())),
-                api_key: Arc::new(postgres::PostgresApiKeyRepository::new(pg_pool.clone())),
+                access_token: Arc::new(postgres::PostgresAccessTokenRepository::new(pg_pool.clone())),
             },
             DbPool::MySql(mysql_pool) => Self {
                 user: Arc::new(mysql::MysqlUserRepository::new(mysql_pool.clone())),
@@ -38,7 +38,7 @@ impl Repository {
                 entry: Arc::new(mysql::MysqlEntryRepository::new(mysql_pool.clone())),
                 collection: Arc::new(mysql::MysqlCollectionRepository::new(mysql_pool.clone())),
                 file: Arc::new(mysql::MysqlFileRepository::new(mysql_pool.clone())),
-                api_key: Arc::new(mysql::MysqlApiKeyRepository::new(mysql_pool.clone())),
+                access_token: Arc::new(mysql::MysqlAccessTokenRepository::new(mysql_pool.clone())),
             },
             DbPool::Sqlite(sqlite_pool) => Self {
                 user: Arc::new(sqlite::SqliteUserRepository::new(sqlite_pool.clone())),
@@ -46,7 +46,7 @@ impl Repository {
                 entry: Arc::new(sqlite::SqliteEntryRepository::new(sqlite_pool.clone())),
                 collection: Arc::new(sqlite::SqliteCollectionRepository::new(sqlite_pool.clone())),
                 file: Arc::new(sqlite::SqliteFileRepository::new(sqlite_pool.clone())),
-                api_key: Arc::new(sqlite::SqliteApiKeyRepository::new(sqlite_pool.clone())),
+                access_token: Arc::new(sqlite::SqliteAccessTokenRepository::new(sqlite_pool.clone())),
             },
         }
     }

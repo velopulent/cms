@@ -34,7 +34,7 @@ pub struct Config {
     pub rate_limit_max_requests: u32,
     pub rate_limit_window_secs: u64,
 
-    // Hash secret for API key fast lookup
+    // Hash secret for access token fast lookup
     pub hmac_secret: String,
 }
 

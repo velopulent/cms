@@ -2,7 +2,7 @@ use async_trait::async_trait;
 use serde_json::Value;
 
 use crate::models::{
-    api_key::ApiKey,
+    access_token::{AccessToken, AccessTokenKind},
     collection::Collection,
     entry::Entry,
     file::{File, FileReference},
@@ -23,6 +23,7 @@ pub trait UserRepository: Send + Sync {
 
 #[async_trait]
 pub trait SiteRepository: Send + Sync {
+    async fn list_all(&self) -> Result<Vec<Site>, RepositoryError>;
     async fn list_for_user(&self, user_id: &str) -> Result<Vec<SiteWithRole>, RepositoryError>;
     async fn get_by_id(&self, id: &str) -> Result<Option<Site>, RepositoryError>;
     async fn create(
@@ -180,23 +181,42 @@ pub trait FileRepository: Send + Sync {
     async fn get_storage_provider(&self, site_id: &str) -> Result<String, RepositoryError>;
 }
 
+pub type AccessTokenLookupRow = (
+    String,
+    String,
+    Option<String>,
+    String,
+    Option<String>,
+    Option<String>,
+    Option<String>,
+    String,
+);
+
 #[async_trait]
-pub trait ApiKeyRepository: Send + Sync {
-    async fn list(&self, site_id: &str) -> Result<Vec<ApiKey>, RepositoryError>;
+pub trait AccessTokenRepository: Send + Sync {
+    async fn list(
+        &self,
+        kind: AccessTokenKind,
+        site_id: Option<&str>,
+    ) -> Result<Vec<AccessToken>, RepositoryError>;
     async fn create(
         &self,
         id: &str,
-        site_id: &str,
+        kind: AccessTokenKind,
+        site_id: Option<&str>,
         name: &str,
-        key_hash: &str,
-        key_prefix: &str,
-        key_hmac: &str,
-        permissions: &str,
+        token_hash: &str,
+        token_prefix: &str,
+        token_hmac: &str,
+        scopes: &str,
+        created_by_user_id: Option<&str>,
     ) -> Result<(), RepositoryError>;
-    async fn delete(&self, id: &str, site_id: &str) -> Result<u64, RepositoryError>;
-    async fn find_by_prefix(
+    async fn delete(
         &self,
-        prefix: &str,
-    ) -> Result<Vec<(String, String, String, Option<String>, Option<String>, String)>, RepositoryError>;
+        id: &str,
+        kind: AccessTokenKind,
+        site_id: Option<&str>,
+    ) -> Result<u64, RepositoryError>;
+    async fn find_by_prefix(&self, prefix: &str) -> Result<Vec<AccessTokenLookupRow>, RepositoryError>;
     async fn update_last_used(&self, id: &str) -> Result<(), RepositoryError>;
 }

@@ -8,7 +8,7 @@ pub mod middleware {
     pub mod rate_limit;
 }
 pub mod models {
-    pub mod api_key;
+    pub mod access_token;
     pub mod collection;
     pub mod entry;
     pub mod file;
@@ -16,7 +16,7 @@ pub mod models {
     pub mod user;
 }
 pub mod handlers {
-    pub mod api_key_handler;
+    pub mod access_token_handler;
     pub mod auth_handler;
     pub mod collection_handler;
     pub mod dashboard_handler;

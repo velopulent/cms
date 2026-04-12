@@ -8,7 +8,9 @@ use tracing::info;
 
 use crate::config::Config;
 use crate::grpc::middleware::AuthLayer;
-use crate::grpc::services::api_key::ApiKeyServiceImpl;
+use crate::grpc::services::admin_membership::AdminMembershipServiceImpl;
+use crate::grpc::services::admin_site::AdminSiteServiceImpl;
+use crate::grpc::services::admin_token::AdminTokenServiceImpl;
 use crate::grpc::services::collection::CollectionServiceImpl;
 use crate::grpc::services::entry::EntryServiceImpl;
 use crate::grpc::services::file::FileServiceImpl;
@@ -18,8 +20,8 @@ use crate::repository::Repository;
 /// Starts the gRPC server with authentication middleware.
 ///
 /// This function initializes the gRPC server with all services and applies
-/// the authentication middleware layer to handle API key validation. The
-/// middleware performs async database lookups for API key verification.
+/// the authentication middleware layer to handle access token validation. The
+/// middleware performs async database lookups for access token verification.
 ///
 /// # Arguments
 /// * `repository` - Database repository for persistence operations
@@ -45,7 +47,7 @@ pub async fn start_grpc_server(
     let config = Arc::new(config);
 
     // Create the authentication layer
-    // This middleware will intercept all requests and validate API keys
+    // This middleware will intercept all requests and validate access tokens
     let auth_layer = AuthLayer::new(repository.clone(), config.clone());
 
     // Initialize service implementations
@@ -53,16 +55,21 @@ pub async fn start_grpc_server(
     let entry_svc = EntryServiceImpl::new(repository.clone());
     let singleton_svc = SingletonServiceImpl::new(repository.clone());
     let file_svc = FileServiceImpl::new(repository.clone());
-    let api_key_svc = ApiKeyServiceImpl::new(repository.clone(), config.hmac_secret.clone());
+    let admin_site_svc = AdminSiteServiceImpl::new(repository.clone());
+    let admin_membership_svc = AdminMembershipServiceImpl::new(repository.clone());
+    let admin_token_svc = AdminTokenServiceImpl::new(repository.clone(), config.clone());
 
     // Create tonic service servers
     // Note: We don't use with_interceptor() anymore - authentication is handled
     // by the Tower middleware layer applied at the Server level
-    let collection_svc = crate::grpc::cms::v1::collection_service_server::CollectionServiceServer::new(collection_svc);
-    let entry_svc = crate::grpc::cms::v1::entry_service_server::EntryServiceServer::new(entry_svc);
-    let singleton_svc = crate::grpc::cms::v1::singleton_service_server::SingletonServiceServer::new(singleton_svc);
-    let file_svc = crate::grpc::cms::v1::file_service_server::FileServiceServer::new(file_svc);
-    let api_key_svc = crate::grpc::cms::v1::api_key_service_server::ApiKeyServiceServer::new(api_key_svc);
+    let collection_svc = crate::grpc::cms::site::v1::collection_service_server::CollectionServiceServer::new(collection_svc);
+    let entry_svc = crate::grpc::cms::site::v1::entry_service_server::EntryServiceServer::new(entry_svc);
+    let singleton_svc = crate::grpc::cms::site::v1::singleton_service_server::SingletonServiceServer::new(singleton_svc);
+    let file_svc = crate::grpc::cms::site::v1::file_service_server::FileServiceServer::new(file_svc);
+    let admin_site_svc = crate::grpc::cms::admin::v1::site_service_server::SiteServiceServer::new(admin_site_svc);
+    let admin_membership_svc =
+        crate::grpc::cms::admin::v1::membership_service_server::MembershipServiceServer::new(admin_membership_svc);
+    let admin_token_svc = crate::grpc::cms::admin::v1::token_service_server::TokenServiceServer::new(admin_token_svc);
 
     info!("gRPC server listening on {}", grpc_addr);
 
@@ -74,7 +81,9 @@ pub async fn start_grpc_server(
         .add_service(entry_svc)
         .add_service(singleton_svc)
         .add_service(file_svc)
-        .add_service(api_key_svc)
+        .add_service(admin_site_svc)
+        .add_service(admin_membership_svc)
+        .add_service(admin_token_svc)
         .serve(grpc_addr)
         .await?;
 

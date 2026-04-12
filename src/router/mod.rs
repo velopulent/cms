@@ -1,4 +1,4 @@
-mod api_keys;
+mod access_tokens;
 mod auth;
 mod collections;
 mod dashboard;
@@ -29,7 +29,7 @@ pub fn create_router(repository: Repository, config: Config, storage: StorageMan
     Router::new()
         .merge(auth::auth_routes())
         .merge(sites::site_routes())
-        .merge(api_keys::api_key_routes())
+        .merge(access_tokens::access_token_routes())
         .merge(collections::collection_routes())
         .merge(entry::entry_routes())
         .merge(singleton::singleton_routes())
