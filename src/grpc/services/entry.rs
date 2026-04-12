@@ -2,8 +2,8 @@ use std::sync::Arc;
 
 use tonic::{Request, Response, Status};
 
-use crate::grpc::cms::v1::entry_service_server::EntryService;
-use crate::grpc::cms::v1::{
+use crate::grpc::cms::site::v1::entry_service_server::EntryService;
+use crate::grpc::cms::site::v1::{
     CreateEntryRequest, DeleteEntryRequest, DeleteResponse, Entry as ProtoEntry, GetEntryRequest, ListEntriesRequest,
     ListEntriesResponse, PublishEntryRequest, UnpublishEntryRequest, UpdateEntryRequest,
 };
@@ -31,7 +31,8 @@ impl EntryService for EntryServiceImpl {
         request: Request<ListEntriesRequest>,
     ) -> Result<Response<ListEntriesResponse>, Status> {
         let auth = get_auth_context(&request)?;
-        let site_id = auth.site_id;
+        auth.require_scope(crate::middleware::auth::SCOPE_CONTENT_READ, "entries")?;
+        let site_id = auth.require_site_id()?.to_string();
 
         let req = request.into_inner();
 
@@ -65,7 +66,8 @@ impl EntryService for EntryServiceImpl {
 
     async fn get_entry(&self, request: Request<GetEntryRequest>) -> Result<Response<ProtoEntry>, Status> {
         let auth = get_auth_context(&request)?;
-        let site_id = auth.site_id;
+        auth.require_scope(crate::middleware::auth::SCOPE_CONTENT_READ, "entries")?;
+        let site_id = auth.require_site_id()?.to_string();
         let id = request.into_inner().id;
 
         let entry = self
@@ -81,7 +83,8 @@ impl EntryService for EntryServiceImpl {
 
     async fn create_entry(&self, request: Request<CreateEntryRequest>) -> Result<Response<ProtoEntry>, Status> {
         let auth = get_auth_context(&request)?;
-        let site_id = auth.site_id;
+        auth.require_scope(crate::middleware::auth::SCOPE_CONTENT_WRITE, "entries")?;
+        let site_id = auth.require_site_id()?.to_string();
 
         let req = request.into_inner();
         let id = Uuid::now_v7().to_string();
@@ -97,14 +100,16 @@ impl EntryService for EntryServiceImpl {
     }
 
     async fn update_entry(&self, request: Request<UpdateEntryRequest>) -> Result<Response<ProtoEntry>, Status> {
-        let _auth = get_auth_context(&request)?;
+        let auth = get_auth_context(&request)?;
+        auth.require_scope(crate::middleware::auth::SCOPE_CONTENT_WRITE, "entries")?;
+        let site_id = auth.require_site_id()?.to_string();
 
         let req = request.into_inner();
 
         let existing = self
             .repository
             .entry
-            .get_by_id_any_site(&req.id)
+            .get_by_id(&req.id, &site_id, false)
             .await
             .map_err(|e| Status::internal(format!("Database error: {}", e)))?
             .ok_or_else(|| Status::not_found("Entry not found"))?;
@@ -126,7 +131,8 @@ impl EntryService for EntryServiceImpl {
 
     async fn delete_entry(&self, request: Request<DeleteEntryRequest>) -> Result<Response<DeleteResponse>, Status> {
         let auth = get_auth_context(&request)?;
-        let site_id = auth.site_id;
+        auth.require_scope(crate::middleware::auth::SCOPE_CONTENT_WRITE, "entries")?;
+        let site_id = auth.require_site_id()?.to_string();
         let id = request.into_inner().id;
 
         let deleted = self
@@ -148,7 +154,8 @@ impl EntryService for EntryServiceImpl {
 
     async fn publish_entry(&self, request: Request<PublishEntryRequest>) -> Result<Response<ProtoEntry>, Status> {
         let auth = get_auth_context(&request)?;
-        let site_id = auth.site_id;
+        auth.require_scope(crate::middleware::auth::SCOPE_CONTENT_WRITE, "entries")?;
+        let site_id = auth.require_site_id()?.to_string();
         let id = request.into_inner().id;
 
         let entry = self
@@ -163,7 +170,8 @@ impl EntryService for EntryServiceImpl {
 
     async fn unpublish_entry(&self, request: Request<UnpublishEntryRequest>) -> Result<Response<ProtoEntry>, Status> {
         let auth = get_auth_context(&request)?;
-        let site_id = auth.site_id;
+        auth.require_scope(crate::middleware::auth::SCOPE_CONTENT_WRITE, "entries")?;
+        let site_id = auth.require_site_id()?.to_string();
         let id = request.into_inner().id;
 
         let entry = self

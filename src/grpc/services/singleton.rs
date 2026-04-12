@@ -2,8 +2,8 @@ use std::sync::Arc;
 
 use tonic::{Request, Response, Status};
 
-use crate::grpc::cms::v1::singleton_service_server::SingletonService;
-use crate::grpc::cms::v1::{GetSingletonRequest, Singleton as ProtoSingleton, UpdateSingletonRequest};
+use crate::grpc::cms::site::v1::singleton_service_server::SingletonService;
+use crate::grpc::cms::site::v1::{GetSingletonRequest, Singleton as ProtoSingleton, UpdateSingletonRequest};
 use crate::grpc::interceptor::get_auth_context;
 use crate::models::collection::Collection;
 use crate::repository::Repository;
@@ -23,7 +23,8 @@ impl SingletonServiceImpl {
 impl SingletonService for SingletonServiceImpl {
     async fn get_singleton(&self, request: Request<GetSingletonRequest>) -> Result<Response<ProtoSingleton>, Status> {
         let auth = get_auth_context(&request)?;
-        let site_id = auth.site_id;
+        auth.require_scope(crate::middleware::auth::SCOPE_CONTENT_READ, "singletons")?;
+        let site_id = auth.require_site_id()?.to_string();
         let slug = request.into_inner().slug;
 
         let collection = self
@@ -46,7 +47,8 @@ impl SingletonService for SingletonServiceImpl {
         request: Request<UpdateSingletonRequest>,
     ) -> Result<Response<ProtoSingleton>, Status> {
         let auth = get_auth_context(&request)?;
-        let site_id = auth.site_id;
+        auth.require_scope(crate::middleware::auth::SCOPE_CONTENT_WRITE, "singletons")?;
+        let site_id = auth.require_site_id()?.to_string();
         let req = request.into_inner();
 
         let collection = self
