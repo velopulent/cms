@@ -17,7 +17,7 @@ use crate::repository::Repository;
 
 #[utoipa::path(
     get,
-    path = "/api/v1/site/collections",
+    path = "/api/v1/collections",
     responses(
         (status = 200, description = "List of collections", body = Vec<Collection>),
         (status = 401, description = "Unauthorized"),
@@ -34,7 +34,7 @@ pub async fn list_collections(
     let site_id = headers.get(HEADER_SITE_ID).and_then(|v| v.to_str().ok());
     let site = match require_site_scope(&principal, &repository, site_id, SCOPE_SCHEMA_READ, "viewer").await {
         Ok(site) => site,
-        Err((status, err)) => return (status, Json(err)).into_response(),
+        Err((status, err)) => return (status, err).into_response(),
     };
 
     match repository.collection.list(&site.site_id).await {
@@ -49,7 +49,7 @@ pub async fn list_collections(
 
 #[utoipa::path(
     get,
-    path = "/api/v1/site/collections/{collection_slug}",
+    path = "/api/v1/collections/{collection_slug}",
     params(("collection_slug" = String, Path, description = "Collection slug")),
     responses(
         (status = 200, description = "Collection details", body = Collection),
@@ -69,7 +69,7 @@ pub async fn get_collection(
     let site_id = headers.get(HEADER_SITE_ID).and_then(|v| v.to_str().ok());
     let site = match require_site_scope(&principal, &repository, site_id, SCOPE_SCHEMA_READ, "viewer").await {
         Ok(site) => site,
-        Err((status, err)) => return (status, Json(err)).into_response(),
+        Err((status, err)) => return (status, err).into_response(),
     };
 
     match repository.collection.get_by_slug(&site.site_id, &collection_slug).await {
@@ -85,7 +85,7 @@ pub async fn get_collection(
 
 #[utoipa::path(
     post,
-    path = "/api/v1/site/collections",
+    path = "/api/v1/collections",
     request_body = CreateCollection,
     responses(
         (status = 201, description = "Collection created", body = Collection),
@@ -106,7 +106,7 @@ pub async fn create_collection(
     let site_id = headers.get(HEADER_SITE_ID).and_then(|v| v.to_str().ok());
     let site = match require_site_scope(&principal, &repository, site_id, SCOPE_SCHEMA_WRITE, "editor").await {
         Ok(site) => site,
-        Err((status, err)) => return (status, Json(err)).into_response(),
+        Err((status, err)) => return (status, err).into_response(),
     };
 
     let definition_str = payload.definition.to_string();
@@ -141,7 +141,7 @@ pub async fn create_collection(
 
 #[utoipa::path(
     put,
-    path = "/api/v1/site/collections/{collection_slug}",
+    path = "/api/v1/collections/{collection_slug}",
     params(("collection_slug" = String, Path, description = "Collection slug")),
     request_body = UpdateCollection,
     responses(
@@ -163,7 +163,7 @@ pub async fn update_collection(
     let site_id = headers.get(HEADER_SITE_ID).and_then(|v| v.to_str().ok());
     let site = match require_site_scope(&principal, &repository, site_id, SCOPE_SCHEMA_WRITE, "editor").await {
         Ok(site) => site,
-        Err((status, err)) => return (status, Json(err)).into_response(),
+        Err((status, err)) => return (status, err).into_response(),
     };
 
     let existing = match repository.collection.get_by_slug(&site.site_id, &collection_slug).await {
@@ -227,7 +227,7 @@ pub async fn update_collection(
 
 #[utoipa::path(
     delete,
-    path = "/api/v1/site/collections/{collection_slug}",
+    path = "/api/v1/collections/{collection_slug}",
     params(("collection_slug" = String, Path, description = "Collection slug")),
     responses(
         (status = 204, description = "Collection deleted"),
@@ -247,7 +247,7 @@ pub async fn delete_collection(
     let site_id = headers.get(HEADER_SITE_ID).and_then(|v| v.to_str().ok());
     let site = match require_site_scope(&principal, &repository, site_id, SCOPE_SCHEMA_WRITE, "editor").await {
         Ok(site) => site,
-        Err((status, err)) => return (status, Json(err)).into_response(),
+        Err((status, err)) => return (status, err).into_response(),
     };
 
     match repository.collection.delete(&site.site_id, &collection_slug).await {
