@@ -1,7 +1,6 @@
 use std::sync::Arc;
 
 use tonic::{Request, Response, Status};
-use uuid::Uuid;
 
 use crate::grpc::cms::v1::site_service_server::SiteService;
 use crate::grpc::cms::v1::{
