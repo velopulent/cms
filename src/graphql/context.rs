@@ -70,6 +70,16 @@ impl GqlContext {
         }
     }
 
+    pub fn require_site_scope(&self, scope: &str) -> async_graphql::Result<()> {
+        match &self.principal {
+            Some(Principal::SiteToken { scopes, .. }) if scopes.contains(scope) => Ok(()),
+            Some(Principal::SiteToken { .. }) => {
+                Err(async_graphql::Error::new("Access token does not have the required scope"))
+            }
+            _ => Err(async_graphql::Error::new("Site token authentication required")),
+        }
+    }
+
     pub fn require_write(&self) -> async_graphql::Result<()> {
         if self.scopes.contains(crate::middleware::auth::SCOPE_CONTENT_WRITE)
             || self.scopes.contains(crate::middleware::auth::SCOPE_SCHEMA_WRITE)
