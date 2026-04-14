@@ -3,8 +3,8 @@ use std::sync::Arc;
 use tonic::{Request, Response, Status};
 use uuid::Uuid;
 
-use crate::grpc::cms::admin::v1::membership_service_server::MembershipService;
-use crate::grpc::cms::admin::v1::{
+use crate::grpc::cms::v1::membership_service_server::MembershipService;
+use crate::grpc::cms::v1::{
     DeleteResponse, InviteMemberRequest, ListMembersRequest, ListMembersResponse, RemoveMemberRequest,
     SiteMember as ProtoSiteMember, UpdateMemberRoleRequest,
 };
@@ -15,21 +15,21 @@ use crate::repository::Repository;
 use crate::repository::error::RepositoryError;
 
 #[derive(Clone)]
-pub struct AdminMembershipServiceImpl {
+pub struct MembershipServiceImpl {
     repository: Arc<Repository>,
 }
 
-impl AdminMembershipServiceImpl {
+impl MembershipServiceImpl {
     pub fn new(repository: Arc<Repository>) -> Self {
         Self { repository }
     }
 }
 
 #[tonic::async_trait]
-impl MembershipService for AdminMembershipServiceImpl {
+impl MembershipService for MembershipServiceImpl {
     async fn list_members(&self, request: Request<ListMembersRequest>) -> Result<Response<ListMembersResponse>, Status> {
         let auth = get_auth_context(&request)?;
-        auth.require_scope(SCOPE_MEMBERS_READ, "site members")?;
+        auth.require_instance_scope(SCOPE_MEMBERS_READ)?;
         let site_id = request.into_inner().site_id;
 
         let members = self
@@ -46,7 +46,7 @@ impl MembershipService for AdminMembershipServiceImpl {
 
     async fn invite_member(&self, request: Request<InviteMemberRequest>) -> Result<Response<ProtoSiteMember>, Status> {
         let auth = get_auth_context(&request)?;
-        auth.require_scope(SCOPE_MEMBERS_WRITE, "site members")?;
+        auth.require_instance_scope(SCOPE_MEMBERS_WRITE)?;
         let req = request.into_inner();
 
         let valid_roles = ["owner", "admin", "editor", "viewer"];
@@ -82,7 +82,7 @@ impl MembershipService for AdminMembershipServiceImpl {
         request: Request<UpdateMemberRoleRequest>,
     ) -> Result<Response<ProtoSiteMember>, Status> {
         let auth = get_auth_context(&request)?;
-        auth.require_scope(SCOPE_MEMBERS_WRITE, "site members")?;
+        auth.require_instance_scope(SCOPE_MEMBERS_WRITE)?;
         let req = request.into_inner();
 
         let valid_roles = ["owner", "admin", "editor", "viewer"];
@@ -103,7 +103,7 @@ impl MembershipService for AdminMembershipServiceImpl {
 
     async fn remove_member(&self, request: Request<RemoveMemberRequest>) -> Result<Response<DeleteResponse>, Status> {
         let auth = get_auth_context(&request)?;
-        auth.require_scope(SCOPE_MEMBERS_WRITE, "site members")?;
+        auth.require_instance_scope(SCOPE_MEMBERS_WRITE)?;
         let req = request.into_inner();
 
         let deleted = self
