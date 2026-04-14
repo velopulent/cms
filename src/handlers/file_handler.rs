@@ -193,7 +193,7 @@ async fn remove_from_storage(
 
 #[utoipa::path(
     get,
-    path = "/api/v1/site/files",
+    path = "/api/v1/files",
     params(FileListParams),
     responses(
         (status = 200, description = "List of files"),
@@ -214,7 +214,7 @@ pub async fn list_files(
         .await
     {
         Ok(site) => site,
-        Err((status, err)) => return (status, Json(err)).into_response(),
+        Err((status, err)) => return (status, err).into_response(),
     };
 
     let page = params.page.unwrap_or(1).max(1);
@@ -259,7 +259,7 @@ pub async fn list_files(
 
 #[utoipa::path(
     post,
-    path = "/api/v1/site/files",
+    path = "/api/v1/files",
     responses(
         (status = 201, description = "File uploaded", body = FileWithUrl),
         (status = 400, description = "Bad request"),
@@ -282,7 +282,7 @@ pub async fn upload_file(
         .await
     {
         Ok(site) => site,
-        Err((status, err)) => return (status, Json(err)).into_response(),
+        Err((status, err)) => return (status, err).into_response(),
     };
     let site_id = site.site_id;
 
@@ -488,7 +488,7 @@ pub async fn get_file(
         .await
     {
         Ok(site) => site,
-        Err((status, err)) => return (status, Json(err)).into_response(),
+        Err((status, err)) => return (status, err).into_response(),
     };
 
     match repository.file.get_by_id(&id, &site.site_id).await {
@@ -527,7 +527,7 @@ pub async fn delete_file_handler(
         .await
     {
         Ok(site) => site,
-        Err((status, err)) => return (status, Json(err)).into_response(),
+        Err((status, err)) => return (status, err).into_response(),
     };
 
     match repository.file.soft_delete(&id, &site.site_id).await {
@@ -562,7 +562,7 @@ pub async fn get_file_references(
         .await
     {
         Ok(site) => site,
-        Err((status, err)) => return (status, Json(err)).into_response(),
+        Err((status, err)) => return (status, err).into_response(),
     };
 
     match repository.file.get_references_for_site(&id, &site.site_id).await {
@@ -597,7 +597,7 @@ pub async fn restore_file(
         .await
     {
         Ok(site) => site,
-        Err((status, err)) => return (status, Json(err)).into_response(),
+        Err((status, err)) => return (status, err).into_response(),
     };
 
     match repository.file.restore(&id, &site.site_id).await {
@@ -637,7 +637,7 @@ pub async fn batch_delete_files(
         .await
     {
         Ok(site) => site,
-        Err((status, err)) => return (status, Json(err)).into_response(),
+        Err((status, err)) => return (status, err).into_response(),
     };
 
     if body.ids.is_empty() {
@@ -676,7 +676,7 @@ pub async fn batch_restore_files(
         .await
     {
         Ok(site) => site,
-        Err((status, err)) => return (status, Json(err)).into_response(),
+        Err((status, err)) => return (status, err).into_response(),
     };
 
     if body.ids.is_empty() {
@@ -716,7 +716,7 @@ pub async fn batch_permanent_delete_files(
         .await
     {
         Ok(site) => site,
-        Err((status, err)) => return (status, Json(err)).into_response(),
+        Err((status, err)) => return (status, err).into_response(),
     };
 
     if body.ids.is_empty() {
