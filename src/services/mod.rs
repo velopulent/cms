@@ -27,7 +27,6 @@ impl Services {
     pub fn new(repository: Repository, config: &Config, storage: StorageManager) -> Self {
         let repository = Arc::new(repository);
         let config = Arc::new(config.clone());
-        let storage_frozen = storage.clone();
 
         Self {
             auth: Arc::new(auth::AuthService::new(
