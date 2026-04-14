@@ -5,8 +5,8 @@ use tonic::{Request, Response, Status};
 use uuid::Uuid;
 
 use crate::config::Config;
-use crate::grpc::cms::admin::v1::token_service_server::TokenService;
-use crate::grpc::cms::admin::v1::{
+use crate::grpc::cms::v1::token_service_server::TokenService;
+use crate::grpc::cms::v1::{
     AccessToken as ProtoAccessToken, CreateInstanceTokenRequest, CreateSiteTokenRequest, CreateTokenResponse,
     DeleteInstanceTokenRequest, DeleteResponse, DeleteSiteTokenRequest, ListInstanceTokensRequest,
     ListInstanceTokensResponse, ListSiteTokensRequest, ListSiteTokensResponse,
