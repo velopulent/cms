@@ -8,8 +8,8 @@ use tracing::info;
 
 use crate::config::Config;
 use crate::grpc::middleware::AuthLayer;
-use crate::grpc::services::admin_membership::AdminMembershipServiceImpl;
-use crate::grpc::services::admin_site::AdminSiteServiceImpl;
+use crate::grpc::services::admin_membership::MembershipServiceImpl;
+use crate::grpc::services::admin_site::SiteServiceImpl;
 use crate::grpc::services::admin_token::AdminTokenServiceImpl;
 use crate::grpc::services::collection::CollectionServiceImpl;
 use crate::grpc::services::entry::EntryServiceImpl;
@@ -55,21 +55,18 @@ pub async fn start_grpc_server(
     let entry_svc = EntryServiceImpl::new(repository.clone());
     let singleton_svc = SingletonServiceImpl::new(repository.clone());
     let file_svc = FileServiceImpl::new(repository.clone());
-    let admin_site_svc = AdminSiteServiceImpl::new(repository.clone());
-    let admin_membership_svc = AdminMembershipServiceImpl::new(repository.clone());
-    let admin_token_svc = AdminTokenServiceImpl::new(repository.clone(), config.clone());
+    let site_svc = SiteServiceImpl::new(repository.clone());
+    let membership_svc = MembershipServiceImpl::new(repository.clone());
+    let token_svc = AdminTokenServiceImpl::new(repository.clone(), config.clone());
 
-    // Create tonic service servers
-    // Note: We don't use with_interceptor() anymore - authentication is handled
-    // by the Tower middleware layer applied at the Server level
-    let collection_svc = crate::grpc::cms::site::v1::collection_service_server::CollectionServiceServer::new(collection_svc);
-    let entry_svc = crate::grpc::cms::site::v1::entry_service_server::EntryServiceServer::new(entry_svc);
-    let singleton_svc = crate::grpc::cms::site::v1::singleton_service_server::SingletonServiceServer::new(singleton_svc);
-    let file_svc = crate::grpc::cms::site::v1::file_service_server::FileServiceServer::new(file_svc);
-    let admin_site_svc = crate::grpc::cms::admin::v1::site_service_server::SiteServiceServer::new(admin_site_svc);
-    let admin_membership_svc =
-        crate::grpc::cms::admin::v1::membership_service_server::MembershipServiceServer::new(admin_membership_svc);
-    let admin_token_svc = crate::grpc::cms::admin::v1::token_service_server::TokenServiceServer::new(admin_token_svc);
+    // Create tonic service servers - all under unified cms.v1 package
+    let collection_svc = crate::grpc::cms::v1::collection_service_server::CollectionServiceServer::new(collection_svc);
+    let entry_svc = crate::grpc::cms::v1::entry_service_server::EntryServiceServer::new(entry_svc);
+    let singleton_svc = crate::grpc::cms::v1::singleton_service_server::SingletonServiceServer::new(singleton_svc);
+    let file_svc = crate::grpc::cms::v1::file_service_server::FileServiceServer::new(file_svc);
+    let site_svc = crate::grpc::cms::v1::site_service_server::SiteServiceServer::new(site_svc);
+    let membership_svc = crate::grpc::cms::v1::membership_service_server::MembershipServiceServer::new(membership_svc);
+    let token_svc = crate::grpc::cms::v1::token_service_server::TokenServiceServer::new(token_svc);
 
     info!("gRPC server listening on {}", grpc_addr);
 
@@ -81,9 +78,9 @@ pub async fn start_grpc_server(
         .add_service(entry_svc)
         .add_service(singleton_svc)
         .add_service(file_svc)
-        .add_service(admin_site_svc)
-        .add_service(admin_membership_svc)
-        .add_service(admin_token_svc)
+        .add_service(site_svc)
+        .add_service(membership_svc)
+        .add_service(token_svc)
         .serve(grpc_addr)
         .await?;
 
