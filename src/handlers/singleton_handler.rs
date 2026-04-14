@@ -5,7 +5,6 @@ use axum::{
     http::StatusCode,
     response::{IntoResponse, Response},
 };
-use serde_json::json;
 use tracing::instrument;
 
 use crate::middleware::auth::{
