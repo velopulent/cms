@@ -1,10 +1,7 @@
 use std::sync::Arc;
 
-use bcrypt::{DEFAULT_COST, hash};
 use tonic::{Request, Response, Status};
-use uuid::Uuid;
 
-use crate::config::Config;
 use crate::grpc::cms::v1::token_service_server::TokenService;
 use crate::grpc::cms::v1::{
     AccessToken as ProtoAccessToken, CreateInstanceTokenRequest, CreateSiteTokenRequest, CreateTokenResponse,
@@ -12,106 +9,19 @@ use crate::grpc::cms::v1::{
     ListInstanceTokensResponse, ListSiteTokensRequest, ListSiteTokensResponse,
 };
 use crate::grpc::interceptor::get_auth_context;
-use crate::middleware::auth::{
-    SCOPE_TOKENS_READ, SCOPE_TOKENS_WRITE, default_instance_scopes, default_site_scopes, scopes_to_string,
-};
-use crate::models::access_token::{AccessToken, AccessTokenKind};
-use crate::repository::Repository;
+use crate::middleware::auth::{SCOPE_TOKENS_READ, SCOPE_TOKENS_WRITE};
+use crate::models::access_token::AccessToken;
+use crate::services::access_token::AccessTokenService;
 
 #[derive(Clone)]
 pub struct AdminTokenServiceImpl {
-    repository: Arc<Repository>,
-    hmac_secret: String,
+    app_token_service: Arc<AccessTokenService>,
 }
 
 impl AdminTokenServiceImpl {
-    pub fn new(repository: Arc<Repository>, config: Arc<Config>) -> Self {
-        Self {
-            repository,
-            hmac_secret: config.hmac_secret.clone(),
-        }
+    pub fn new(token_service: Arc<AccessTokenService>) -> Self {
+        Self { app_token_service: token_service }
     }
-}
-
-fn validate_scopes(kind: AccessTokenKind, requested: Vec<String>) -> Result<Vec<String>, Status> {
-    let allowed = match kind {
-        AccessTokenKind::Instance => default_instance_scopes()
-            .into_iter()
-            .map(ToString::to_string)
-            .collect::<std::collections::BTreeSet<_>>(),
-        AccessTokenKind::Site => default_site_scopes()
-            .into_iter()
-            .map(ToString::to_string)
-            .collect::<std::collections::BTreeSet<_>>(),
-    };
-
-    let scopes = if requested.is_empty() {
-        allowed.iter().cloned().collect()
-    } else {
-        requested
-    };
-
-    for scope in &scopes {
-        if !allowed.contains(scope) {
-            return Err(Status::invalid_argument(format!("Unsupported scope '{}'", scope)));
-        }
-    }
-
-    Ok(scopes)
-}
-
-async fn create_token_record(
-    repository: &Repository,
-    hmac_secret: &str,
-    kind: AccessTokenKind,
-    site_id: Option<&str>,
-    name: String,
-    scopes: Vec<String>,
-) -> Result<CreateTokenResponse, Status> {
-    if name.trim().is_empty() {
-        return Err(Status::invalid_argument("Name is required"));
-    }
-
-    let raw_token = format!("{}{}", kind.prefix(), Uuid::new_v4().to_string().replace('-', ""));
-    let prefix: String = raw_token.chars().take(24).collect();
-    let token_hash = hash(&raw_token, DEFAULT_COST).map_err(|e| Status::internal(format!("Hash error: {}", e)))?;
-    let token_hmac = crate::middleware::auth::compute_key_hmac(&raw_token, hmac_secret);
-    let scope_refs = scopes.iter().map(String::as_str).collect::<Vec<_>>();
-    let scopes_string = scopes_to_string(&scope_refs);
-    let id = Uuid::now_v7().to_string();
-
-    repository
-        .access_token
-        .create(
-            &id,
-            kind.clone(),
-            site_id,
-            &name,
-            &token_hash,
-            &prefix,
-            &token_hmac,
-            &scopes_string,
-            None,
-        )
-        .await
-        .map_err(|e| Status::internal(format!("Database error: {}", e)))?;
-
-    Ok(CreateTokenResponse {
-        access_token: Some(ProtoAccessToken {
-            id,
-            kind: kind.to_string(),
-            site_id: site_id.map(ToString::to_string),
-            name,
-            token_prefix: prefix,
-            scopes,
-            created_by_user_id: None,
-            last_used_at: None,
-            created_at: chrono::Utc::now().format("%Y-%m-%d %H:%M:%S").to_string(),
-            expires_at: None,
-            revoked_at: None,
-        }),
-        token: raw_token,
-    })
 }
 
 #[tonic::async_trait]
@@ -124,11 +34,10 @@ impl TokenService for AdminTokenServiceImpl {
         auth.require_scope(SCOPE_TOKENS_READ, "instance tokens")?;
 
         let tokens = self
-            .repository
-            .access_token
-            .list(AccessTokenKind::Instance, None)
+            .app_token_service
+            .list_instance_tokens()
             .await
-            .map_err(|e| Status::internal(format!("Database error: {}", e)))?;
+            .map_err(|e| Status::internal(format!("Error: {}", e)))?;
 
         Ok(Response::new(ListInstanceTokensResponse {
             tokens: tokens.into_iter().map(ProtoAccessToken::from).collect(),
@@ -142,19 +51,29 @@ impl TokenService for AdminTokenServiceImpl {
         let auth = get_auth_context(&request)?;
         auth.require_scope(SCOPE_TOKENS_WRITE, "instance tokens")?;
         let req = request.into_inner();
-        let scopes = validate_scopes(AccessTokenKind::Instance, req.scopes)?;
 
-        Ok(Response::new(
-            create_token_record(
-                &self.repository,
-                &self.hmac_secret,
-                AccessTokenKind::Instance,
-                None,
-                req.name,
-                scopes,
-            )
-            .await?,
-        ))
+        let response = self
+            .app_token_service
+            .create_instance_token(req.name, req.scopes)
+            .await
+            .map_err(|e| Status::internal(format!("Error: {}", e)))?;
+
+        Ok(Response::new(CreateTokenResponse {
+            access_token: Some(ProtoAccessToken {
+                id: response.id,
+                kind: response.kind,
+                site_id: response.site_id,
+                name: response.name,
+                token_prefix: response.token_prefix,
+                scopes: response.scopes,
+                created_by_user_id: None,
+                last_used_at: None,
+                created_at: response.created_at,
+                expires_at: None,
+                revoked_at: None,
+            }),
+            token: response.token,
+        }))
     }
 
     async fn delete_instance_token(
@@ -166,11 +85,10 @@ impl TokenService for AdminTokenServiceImpl {
         let token_id = request.into_inner().token_id;
 
         let deleted = self
-            .repository
-            .access_token
-            .delete(&token_id, AccessTokenKind::Instance, None)
+            .app_token_service
+            .delete_instance_token(&token_id)
             .await
-            .map_err(|e| Status::internal(format!("Database error: {}", e)))?;
+            .map_err(|e| Status::internal(format!("Error: {}", e)))?;
 
         Ok(Response::new(DeleteResponse {
             success: deleted > 0,
@@ -191,11 +109,10 @@ impl TokenService for AdminTokenServiceImpl {
         let site_id = request.into_inner().site_id;
 
         let tokens = self
-            .repository
-            .access_token
-            .list(AccessTokenKind::Site, Some(&site_id))
+            .app_token_service
+            .list_site_tokens(&site_id)
             .await
-            .map_err(|e| Status::internal(format!("Database error: {}", e)))?;
+            .map_err(|e| Status::internal(format!("Error: {}", e)))?;
 
         Ok(Response::new(ListSiteTokensResponse {
             tokens: tokens.into_iter().map(ProtoAccessToken::from).collect(),
@@ -209,19 +126,29 @@ impl TokenService for AdminTokenServiceImpl {
         let auth = get_auth_context(&request)?;
         auth.require_scope(SCOPE_TOKENS_WRITE, "site tokens")?;
         let req = request.into_inner();
-        let scopes = validate_scopes(AccessTokenKind::Site, req.scopes)?;
 
-        Ok(Response::new(
-            create_token_record(
-                &self.repository,
-                &self.hmac_secret,
-                AccessTokenKind::Site,
-                Some(&req.site_id),
-                req.name,
-                scopes,
-            )
-            .await?,
-        ))
+        let response = self
+            .app_token_service
+            .create_site_token(&req.site_id, req.name, req.scopes, None)
+            .await
+            .map_err(|e| Status::internal(format!("Error: {}", e)))?;
+
+        Ok(Response::new(CreateTokenResponse {
+            access_token: Some(ProtoAccessToken {
+                id: response.id,
+                kind: response.kind,
+                site_id: response.site_id,
+                name: response.name,
+                token_prefix: response.token_prefix,
+                scopes: response.scopes,
+                created_by_user_id: None,
+                last_used_at: None,
+                created_at: response.created_at,
+                expires_at: None,
+                revoked_at: None,
+            }),
+            token: response.token,
+        }))
     }
 
     async fn delete_site_token(
@@ -233,11 +160,10 @@ impl TokenService for AdminTokenServiceImpl {
         let req = request.into_inner();
 
         let deleted = self
-            .repository
-            .access_token
-            .delete(&req.token_id, AccessTokenKind::Site, Some(&req.site_id))
+            .app_token_service
+            .delete_site_token(&req.token_id, &req.site_id)
             .await
-            .map_err(|e| Status::internal(format!("Database error: {}", e)))?;
+            .map_err(|e| Status::internal(format!("Error: {}", e)))?;
 
         Ok(Response::new(DeleteResponse {
             success: deleted > 0,
