@@ -2,8 +2,8 @@ use std::sync::Arc;
 
 use tonic::{Request, Response, Status};
 
-use crate::grpc::cms::site::v1::file_service_server::FileService;
-use crate::grpc::cms::site::v1::{
+use crate::grpc::cms::v1::file_service_server::FileService;
+use crate::grpc::cms::v1::{
     BatchDeleteFilesRequest, BatchOperationResponse, BatchRestoreFilesRequest, DeleteFileRequest, DeleteResponse,
     File as ProtoFile, GetFileRequest, ListFilesRequest, ListFilesResponse, RestoreFileRequest,
 };
@@ -27,7 +27,7 @@ impl FileServiceImpl {
 impl FileService for FileServiceImpl {
     async fn list_files(&self, request: Request<ListFilesRequest>) -> Result<Response<ListFilesResponse>, Status> {
         let auth = get_auth_context(&request)?;
-        auth.require_scope(crate::middleware::auth::SCOPE_ASSETS_READ, "files")?;
+        auth.require_site_scope(crate::middleware::auth::SCOPE_ASSETS_READ)?;
         let site_id = auth.require_site_id()?.to_string();
 
         let req = request.into_inner();
@@ -60,7 +60,7 @@ impl FileService for FileServiceImpl {
 
     async fn get_file(&self, request: Request<GetFileRequest>) -> Result<Response<ProtoFile>, Status> {
         let auth = get_auth_context(&request)?;
-        auth.require_scope(crate::middleware::auth::SCOPE_ASSETS_READ, "files")?;
+        auth.require_site_scope(crate::middleware::auth::SCOPE_ASSETS_READ)?;
         let site_id = auth.require_site_id()?.to_string();
         let id = request.into_inner().id;
 
@@ -77,7 +77,7 @@ impl FileService for FileServiceImpl {
 
     async fn delete_file(&self, request: Request<DeleteFileRequest>) -> Result<Response<DeleteResponse>, Status> {
         let auth = get_auth_context(&request)?;
-        auth.require_scope(crate::middleware::auth::SCOPE_ASSETS_WRITE, "files")?;
+        auth.require_site_scope(crate::middleware::auth::SCOPE_ASSETS_WRITE)?;
         let site_id = auth.require_site_id()?.to_string();
         let id = request.into_inner().id;
 
@@ -100,7 +100,7 @@ impl FileService for FileServiceImpl {
 
     async fn restore_file(&self, request: Request<RestoreFileRequest>) -> Result<Response<ProtoFile>, Status> {
         let auth = get_auth_context(&request)?;
-        auth.require_scope(crate::middleware::auth::SCOPE_ASSETS_WRITE, "files")?;
+        auth.require_site_scope(crate::middleware::auth::SCOPE_ASSETS_WRITE)?;
         let site_id = auth.require_site_id()?.to_string();
         let id = request.into_inner().id;
 
@@ -131,7 +131,7 @@ impl FileService for FileServiceImpl {
         request: Request<BatchDeleteFilesRequest>,
     ) -> Result<Response<BatchOperationResponse>, Status> {
         let auth = get_auth_context(&request)?;
-        auth.require_scope(crate::middleware::auth::SCOPE_ASSETS_WRITE, "files")?;
+        auth.require_site_scope(crate::middleware::auth::SCOPE_ASSETS_WRITE)?;
         let site_id = auth.require_site_id()?.to_string();
         let ids = request.into_inner().ids;
 
@@ -152,7 +152,7 @@ impl FileService for FileServiceImpl {
         request: Request<BatchRestoreFilesRequest>,
     ) -> Result<Response<BatchOperationResponse>, Status> {
         let auth = get_auth_context(&request)?;
-        auth.require_scope(crate::middleware::auth::SCOPE_ASSETS_WRITE, "files")?;
+        auth.require_site_scope(crate::middleware::auth::SCOPE_ASSETS_WRITE)?;
         let site_id = auth.require_site_id()?.to_string();
         let ids = request.into_inner().ids;
 
