@@ -11,10 +11,12 @@ use crate::graphql::context::GqlContext;
 use crate::graphql::schema::{CmsSchema, build_schema};
 use crate::handlers::file_handler::StorageManager;
 use crate::repository::Repository;
+use crate::services::Services;
 
 async fn graphql_handler(
     axum::extract::Extension(schema): axum::extract::Extension<Arc<CmsSchema>>,
     axum::extract::Extension(repository): axum::extract::Extension<Repository>,
+    axum::extract::Extension(services): axum::extract::Extension<Services>,
     axum::extract::Extension(storage): axum::extract::Extension<StorageManager>,
     axum::extract::Extension(config): axum::extract::Extension<Config>,
     headers: HeaderMap,
@@ -22,7 +24,7 @@ async fn graphql_handler(
 ) -> async_graphql_axum::GraphQLResponse {
     let auth_header = headers.get("Authorization").and_then(|v| v.to_str().ok());
 
-    let gql_ctx = GqlContext::from_request(repository, storage, auth_header, &config.hmac_secret).await;
+    let gql_ctx = GqlContext::from_request(repository, services, auth_header, &config.hmac_secret).await;
 
     let response = schema.execute(req.into_inner().data(gql_ctx)).await;
     async_graphql_axum::GraphQLResponse::from(response)
