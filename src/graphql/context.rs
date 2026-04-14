@@ -1,10 +1,11 @@
 use crate::repository::Repository;
+use crate::services::Services;
 
 use crate::middleware::auth::{Principal, verify_access_token};
 
 pub struct GqlContext {
     pub repository: Repository,
-    pub storage: crate::handlers::file_handler::StorageManager,
+    pub services: Services,
     pub principal: Option<Principal>,
     pub site_id: Option<String>,
     pub scopes: std::collections::BTreeSet<String>,
@@ -13,7 +14,7 @@ pub struct GqlContext {
 impl GqlContext {
     pub async fn from_request(
         repository: Repository,
-        storage: crate::handlers::file_handler::StorageManager,
+        services: Services,
         auth_header: Option<&str>,
         hmac_secret: &str,
     ) -> Self {
@@ -47,7 +48,7 @@ impl GqlContext {
 
         Self {
             repository,
-            storage,
+            services,
             principal,
             site_id,
             scopes,
