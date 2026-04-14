@@ -19,7 +19,7 @@ fn main() {
         }
     }
 
-    let proto_files = ["proto/site.proto", "proto/admin.proto"];
+    let proto_files = ["proto/cms.proto"];
     let include_dirs = ["proto"];
     tonic_build::configure()
         .build_server(true)
