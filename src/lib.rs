@@ -29,4 +29,5 @@ pub mod handlers {
 pub mod grpc;
 pub mod repository;
 pub mod router;
+pub mod services;
 pub mod storage;
