@@ -18,7 +18,7 @@ use crate::repository::error::RepositoryError;
 
 #[utoipa::path(
     get,
-    path = "/api/v1/admin/sites",
+    path = "/api/v1/sites",
     responses(
         (status = 200, description = "List sites visible to the caller", body = Vec<SiteWithRole>),
         (status = 401, description = "Unauthorized"),
@@ -30,7 +30,7 @@ use crate::repository::error::RepositoryError;
 #[instrument(skip(repository, principal))]
 pub async fn list_sites(principal: Principal, Extension(repository): Extension<Repository>) -> Response {
     if let Err((status, err)) = require_admin_scope(&principal, &repository, None, SCOPE_SITES_READ).await {
-        return (status, Json(err)).into_response();
+        return (status, err).into_response();
     }
 
     let result = match &principal {
@@ -69,7 +69,7 @@ pub async fn list_sites(principal: Principal, Extension(repository): Extension<R
 
 #[utoipa::path(
     post,
-    path = "/api/v1/admin/sites",
+    path = "/api/v1/sites",
     request_body = CreateSite,
     responses(
         (status = 201, description = "Site created", body = Site),
@@ -87,7 +87,7 @@ pub async fn create_site(
     Json(payload): Json<CreateSite>,
 ) -> Response {
     if let Err((status, err)) = require_admin_scope(&principal, &repository, None, SCOPE_SITES_WRITE).await {
-        return (status, Json(err)).into_response();
+        return (status, err).into_response();
     }
 
     if payload.name.trim().is_empty() {
@@ -123,7 +123,7 @@ pub async fn create_site(
 
 #[utoipa::path(
     get,
-    path = "/api/v1/admin/sites/{site_id}",
+    path = "/api/v1/sites/{site_id}",
     params(("site_id" = String, Path, description = "Site id")),
     responses(
         (status = 200, description = "Site details", body = Site),
@@ -141,7 +141,7 @@ pub async fn get_site(
     Extension(repository): Extension<Repository>,
 ) -> Response {
     if let Err((status, err)) = require_admin_scope(&principal, &repository, Some(&site_id), SCOPE_SITES_READ).await {
-        return (status, Json(err)).into_response();
+        return (status, err).into_response();
     }
 
     match repository.site.get_by_id(&site_id).await {
@@ -157,7 +157,7 @@ pub async fn get_site(
 
 #[utoipa::path(
     put,
-    path = "/api/v1/admin/sites/{site_id}",
+    path = "/api/v1/sites/{site_id}",
     params(("site_id" = String, Path, description = "Site id")),
     request_body = UpdateSite,
     responses(
@@ -178,7 +178,7 @@ pub async fn update_site(
     Json(payload): Json<UpdateSite>,
 ) -> Response {
     if let Err((status, err)) = require_admin_scope(&principal, &repository, Some(&site_id), SCOPE_SITES_WRITE).await {
-        return (status, Json(err)).into_response();
+        return (status, err).into_response();
     }
 
     let existing = match repository.site.get_by_id(&site_id).await {
@@ -213,7 +213,7 @@ pub async fn update_site(
 
 #[utoipa::path(
     delete,
-    path = "/api/v1/admin/sites/{site_id}",
+    path = "/api/v1/sites/{site_id}",
     params(("site_id" = String, Path, description = "Site id")),
     responses(
         (status = 204, description = "Site deleted"),
@@ -230,7 +230,7 @@ pub async fn delete_site(
     Extension(repository): Extension<Repository>,
 ) -> Response {
     if let Err((status, err)) = require_admin_scope(&principal, &repository, Some(&site_id), SCOPE_SITES_DELETE).await {
-        return (status, Json(err)).into_response();
+        return (status, err).into_response();
     }
 
     match repository.site.delete(&site_id).await {
@@ -245,7 +245,7 @@ pub async fn delete_site(
 
 #[utoipa::path(
     get,
-    path = "/api/v1/admin/sites/{site_id}/members",
+    path = "/api/v1/sites/{site_id}/members",
     params(("site_id" = String, Path, description = "Site id")),
     responses(
         (status = 200, description = "List site members", body = Vec<SiteMember>),
@@ -262,7 +262,7 @@ pub async fn list_members(
     Extension(repository): Extension<Repository>,
 ) -> Response {
     if let Err((status, err)) = require_admin_scope(&principal, &repository, Some(&site_id), SCOPE_MEMBERS_READ).await {
-        return (status, Json(err)).into_response();
+        return (status, err).into_response();
     }
 
     match repository.site.list_members(&site_id).await {
@@ -277,7 +277,7 @@ pub async fn list_members(
 
 #[utoipa::path(
     post,
-    path = "/api/v1/admin/sites/{site_id}/members",
+    path = "/api/v1/sites/{site_id}/members",
     params(("site_id" = String, Path, description = "Site id")),
     request_body = InviteMember,
     responses(
@@ -299,7 +299,7 @@ pub async fn invite_member(
     Json(payload): Json<InviteMember>,
 ) -> Response {
     if let Err((status, err)) = require_admin_scope(&principal, &repository, Some(&site_id), SCOPE_MEMBERS_WRITE).await {
-        return (status, Json(err)).into_response();
+        return (status, err).into_response();
     }
 
     let valid_roles = ["owner", "admin", "editor", "viewer"];
@@ -348,7 +348,7 @@ pub async fn invite_member(
 
 #[utoipa::path(
     put,
-    path = "/api/v1/admin/sites/{site_id}/members/{user_id}",
+    path = "/api/v1/sites/{site_id}/members/{user_id}",
     params(
         ("site_id" = String, Path, description = "Site id"),
         ("user_id" = String, Path, description = "User id")
@@ -372,7 +372,7 @@ pub async fn update_member_role(
     Json(payload): Json<UpdateMemberRole>,
 ) -> Response {
     if let Err((status, err)) = require_admin_scope(&principal, &repository, Some(&site_id), SCOPE_MEMBERS_WRITE).await {
-        return (status, Json(err)).into_response();
+        return (status, err).into_response();
     }
 
     let valid_roles = ["owner", "admin", "editor", "viewer"];
@@ -397,7 +397,7 @@ pub async fn update_member_role(
 
 #[utoipa::path(
     delete,
-    path = "/api/v1/admin/sites/{site_id}/members/{user_id}",
+    path = "/api/v1/sites/{site_id}/members/{user_id}",
     params(
         ("site_id" = String, Path, description = "Site id"),
         ("user_id" = String, Path, description = "User id")
@@ -419,7 +419,7 @@ pub async fn remove_member(
     Extension(repository): Extension<Repository>,
 ) -> Response {
     if let Err((status, err)) = require_admin_scope(&principal, &repository, Some(&site_id), SCOPE_MEMBERS_WRITE).await {
-        return (status, Json(err)).into_response();
+        return (status, err).into_response();
     }
 
     if principal.user_id().is_some_and(|user_id| member_user_id == user_id) {
