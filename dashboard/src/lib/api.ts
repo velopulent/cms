@@ -40,7 +40,7 @@ export async function siteApi<T>(
   path: string,
   options: RequestInit = {},
 ): Promise<T> {
-  return api<T>(`/site${path}`, {
+  return api<T>(path, {
     ...options,
     headers: {
       [SITE_HEADER]: siteId,
@@ -328,46 +328,46 @@ export async function logoutApi() {
 // --- Sites API ---
 
 export async function getSites() {
-  return api<SiteWithRole[]>("/admin/sites");
+  return api<SiteWithRole[]>("/sites");
 }
 
 export async function createSite(data: {
   name: string;
   default_storage_provider?: string;
 }) {
-  return api<Site>("/admin/sites", {
+  return api<Site>("/sites", {
     method: "POST",
     body: JSON.stringify(data),
   });
 }
 
 export async function getSite(id: string) {
-  return api<Site>(`/admin/sites/${id}`);
+  return api<Site>(`/sites/${id}`);
 }
 
 export async function updateSite(
   id: string,
   data: { name?: string; default_storage_provider?: string },
 ) {
-  return api<Site>(`/admin/sites/${id}`, {
+  return api<Site>(`/sites/${id}`, {
     method: "PUT",
     body: JSON.stringify(data),
   });
 }
 
 export async function deleteSite(id: string) {
-  return api<void>(`/admin/sites/${id}`, { method: "DELETE" });
+  return api<void>(`/sites/${id}`, { method: "DELETE" });
 }
 
 export async function getSiteMembers(id: string) {
-  return api<SiteMember[]>(`/admin/sites/${id}/members`);
+  return api<SiteMember[]>(`/sites/${id}/members`);
 }
 
 export async function inviteMember(
   siteId: string,
   data: { username: string; role: string },
 ) {
-  return api<SiteMember>(`/admin/sites/${siteId}/members`, {
+  return api<SiteMember>(`/sites/${siteId}/members`, {
     method: "POST",
     body: JSON.stringify(data),
   });
@@ -378,27 +378,27 @@ export async function updateMemberRole(
   userId: string,
   role: string,
 ) {
-  return api<SiteMember>(`/admin/sites/${siteId}/members/${userId}`, {
+  return api<SiteMember>(`/sites/${siteId}/members/${userId}`, {
     method: "PUT",
     body: JSON.stringify({ role }),
   });
 }
 
 export async function removeMember(siteId: string, userId: string) {
-  return api<void>(`/admin/sites/${siteId}/members/${userId}`, {
+  return api<void>(`/sites/${siteId}/members/${userId}`, {
     method: "DELETE",
   });
 }
 
-// --- API Keys API ---
+// --- API Keys API (site-scoped) ---
 
 export async function getApiKeys(siteId: string) {
-  const tokens = await siteApi<AccessToken[]>(siteId, "/tokens");
+  const tokens = await siteApi<AccessToken[]>(siteId, "/site-tokens");
   return tokens.map(mapAccessToken);
 }
 
 export async function createApiKey(siteId: string, name: string, permissions?: string) {
-  const token = await siteApi<AccessTokenResponse>(siteId, "/tokens", {
+  const token = await siteApi<AccessTokenResponse>(siteId, "/site-tokens", {
     method: "POST",
     body: JSON.stringify({ name, scopes: scopesFromPermission(permissions) }),
   });
@@ -406,7 +406,7 @@ export async function createApiKey(siteId: string, name: string, permissions?: s
 }
 
 export async function deleteApiKey(siteId: string, keyId: string) {
-  return siteApi<void>(siteId, `/tokens/${keyId}`, {
+  return siteApi<void>(siteId, `/site-tokens/${keyId}`, {
     method: "DELETE",
   });
 }
@@ -553,7 +553,7 @@ export async function uploadFile(
   formData.append("file", file);
   formData.append("storage_provider", provider);
 
-  const res = await fetch(`${BASE_URL}/site/files`, {
+  const res = await fetch(`${BASE_URL}/files`, {
     method: "POST",
     credentials: "include",
     headers: {
