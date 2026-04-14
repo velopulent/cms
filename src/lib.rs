@@ -5,6 +5,7 @@ pub mod graphql;
 pub mod tracing;
 pub mod middleware {
     pub mod auth;
+    pub mod error;
     pub mod rate_limit;
 }
 pub mod models {
