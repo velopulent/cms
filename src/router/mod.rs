@@ -19,10 +19,13 @@ use crate::config::Config;
 use crate::handlers::file_handler::StorageManager;
 use crate::middleware::rate_limit::RateLimiter;
 use crate::repository::Repository;
+use crate::services::Services;
 use crate::tracing::trace_request;
 
 pub fn create_router(repository: Repository, config: Config, storage: StorageManager) -> Router {
     let rate_limiter = RateLimiter::new(config.rate_limit_max_requests, config.rate_limit_window_secs);
+
+    let services = Services::new(repository.clone(), &config, storage.clone());
 
     let cors = CorsLayer::new().allow_origin(Any).allow_methods(Any).allow_headers(Any);
 
@@ -37,13 +40,13 @@ pub fn create_router(repository: Repository, config: Config, storage: StorageMan
         .merge(graphql::graphql_routes())
         .merge(docs::docs_routes())
         .layer(axum::middleware::from_fn_with_state((), trace_request))
-        // Dashboard
         .merge(dashboard::dashboard_routes())
         .layer(TraceLayer::new_for_http())
         .layer(cors)
-        .layer(RequestBodyLimitLayer::new(10 * 1024 * 1024)) // 10MB default body limit
+        .layer(RequestBodyLimitLayer::new(10 * 1024 * 1024))
         .layer(Extension(repository))
         .layer(Extension(config))
         .layer(Extension(storage))
+        .layer(Extension(services))
         .layer(Extension(rate_limiter))
 }
