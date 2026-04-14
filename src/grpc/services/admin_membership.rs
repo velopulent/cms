@@ -1,7 +1,6 @@
 use std::sync::Arc;
 
 use tonic::{Request, Response, Status};
-use uuid::Uuid;
 
 use crate::grpc::cms::v1::membership_service_server::MembershipService;
 use crate::grpc::cms::v1::{
@@ -11,17 +10,16 @@ use crate::grpc::cms::v1::{
 use crate::grpc::interceptor::get_auth_context;
 use crate::middleware::auth::{SCOPE_MEMBERS_READ, SCOPE_MEMBERS_WRITE};
 use crate::models::site::SiteMember;
-use crate::repository::Repository;
-use crate::repository::error::RepositoryError;
+use crate::services::site::SiteService;
 
 #[derive(Clone)]
 pub struct MembershipServiceImpl {
-    repository: Arc<Repository>,
+    app_site_service: Arc<SiteService>,
 }
 
 impl MembershipServiceImpl {
-    pub fn new(repository: Arc<Repository>) -> Self {
-        Self { repository }
+    pub fn new(site_service: Arc<SiteService>) -> Self {
+        Self { app_site_service: site_service }
     }
 }
 
@@ -33,11 +31,10 @@ impl MembershipService for MembershipServiceImpl {
         let site_id = request.into_inner().site_id;
 
         let members = self
-            .repository
-            .site
+            .app_site_service
             .list_members(&site_id)
             .await
-            .map_err(|e| Status::internal(format!("Database error: {}", e)))?;
+            .map_err(|e| Status::internal(format!("Error: {}", e)))?;
 
         Ok(Response::new(ListMembersResponse {
             members: members.into_iter().map(ProtoSiteMember::from).collect(),
@@ -49,29 +46,15 @@ impl MembershipService for MembershipServiceImpl {
         auth.require_instance_scope(SCOPE_MEMBERS_WRITE)?;
         let req = request.into_inner();
 
-        let valid_roles = ["owner", "admin", "editor", "viewer"];
-        if !valid_roles.contains(&req.role.as_str()) {
-            return Err(Status::invalid_argument(
-                "Invalid role. Must be owner, admin, editor, or viewer",
-            ));
-        }
-
-        let user_id = self
-            .repository
-            .user
-            .find_id_by_username(&req.username)
-            .await
-            .map_err(|e| Status::internal(format!("Database error: {}", e)))?
-            .ok_or_else(|| Status::not_found("User not found"))?;
-
         let member = self
-            .repository
-            .site
-            .add_member(&Uuid::now_v7().to_string(), &req.site_id, &user_id, &req.role)
+            .app_site_service
+            .invite_member(&req.site_id, &req.username, &req.role)
             .await
             .map_err(|e| match e {
-                RepositoryError::UniqueViolation(_) => Status::already_exists("User is already a member of this site"),
-                other => Status::internal(format!("Database error: {}", other)),
+                crate::services::site::SiteError::UserNotFound => Status::not_found("User not found"),
+                crate::services::site::SiteError::AlreadyMember => Status::already_exists("User is already a member of this site"),
+                crate::services::site::SiteError::InvalidRole(msg) => Status::invalid_argument(msg),
+                _ => Status::internal(format!("Error: {}", e)),
             })?;
 
         Ok(Response::new(ProtoSiteMember::from(member)))
@@ -85,17 +68,11 @@ impl MembershipService for MembershipServiceImpl {
         auth.require_instance_scope(SCOPE_MEMBERS_WRITE)?;
         let req = request.into_inner();
 
-        let valid_roles = ["owner", "admin", "editor", "viewer"];
-        if !valid_roles.contains(&req.role.as_str()) {
-            return Err(Status::invalid_argument("Invalid role"));
-        }
-
         let member = self
-            .repository
-            .site
+            .app_site_service
             .update_member_role(&req.site_id, &req.user_id, &req.role)
             .await
-            .map_err(|e| Status::internal(format!("Database error: {}", e)))?
+            .map_err(|e| Status::internal(format!("Error: {}", e)))?
             .ok_or_else(|| Status::not_found("Member not found"))?;
 
         Ok(Response::new(ProtoSiteMember::from(member)))
@@ -107,11 +84,10 @@ impl MembershipService for MembershipServiceImpl {
         let req = request.into_inner();
 
         let deleted = self
-            .repository
-            .site
-            .remove_member(&req.site_id, &req.user_id)
+            .app_site_service
+            .remove_member(&req.site_id, &req.user_id, "grpc-call")
             .await
-            .map_err(|e| Status::internal(format!("Database error: {}", e)))?;
+            .map_err(|e| Status::internal(format!("Error: {}", e)))?;
 
         Ok(Response::new(DeleteResponse {
             success: deleted > 0,
