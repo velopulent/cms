@@ -44,7 +44,7 @@ impl FileService for FileServiceImpl {
 
         let result = self
             .app_file_service
-            .list_files(&site_id, params)
+            .list_files(params)
             .await
             .map_err(|e| Status::internal(format!("Error: {}", e)))?;
 
