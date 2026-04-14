@@ -224,6 +224,7 @@ mod tests {
         let ctx = GrpcAuthContext {
             site_id: Some("site123".to_string()),
             scopes: crate::middleware::auth::parse_scopes("content:read,content:write"),
+            token_kind: AccessTokenKind::Site,
         };
 
         assert!(ctx.has_scope("content:read"));
@@ -237,6 +238,7 @@ mod tests {
         let ctx = GrpcAuthContext {
             site_id: Some("site456".to_string()),
             scopes: crate::middleware::auth::parse_scopes("content:read"),
+            token_kind: AccessTokenKind::Site,
         };
 
         assert!(ctx.can_read());

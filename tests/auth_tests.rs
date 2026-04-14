@@ -134,7 +134,7 @@ async fn test_require_site_scope_with_site_token_missing_scope() {
     assert!(result.is_err());
     let (status, body) = result.unwrap_err();
     assert_eq!(status, axum::http::StatusCode::FORBIDDEN);
-    assert_eq!(body["error"], "Access token does not have the required scope");
+    assert_eq!(body.error, "insufficient_scope");
 }
 
 #[tokio::test]
@@ -153,7 +153,7 @@ async fn test_require_site_scope_with_site_token_wrong_site() {
     assert!(result.is_err());
     let (status, body) = result.unwrap_err();
     assert_eq!(status, axum::http::StatusCode::FORBIDDEN);
-    assert_eq!(body["error"], "Site token does not have access to this site");
+    assert_eq!(body.error, "forbidden");
 }
 
 #[tokio::test]
