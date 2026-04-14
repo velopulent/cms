@@ -9,21 +9,36 @@ use crate::models::site::{CreateSite, InviteMember, Site, SiteMember, SiteWithRo
 #[derive(OpenApi)]
 #[openapi(
     info(
-        title = "CMS Site API",
+        title = "CMS API",
         version = "1.0.0",
-        description = "Headless CMS site-scoped API for schema, content, assets, and site tokens. \
-            Site tokens do not require an explicit site_id in route paths. Dashboard JWT callers can pass x-cms-site-id.",
+        description = "Headless CMS unified API. Site-scoped endpoints use cms_sk_* tokens. \
+            Instance-scoped endpoints use cms_ik_* tokens. Dashboard JWT callers can pass x-cms-site-id for site context.",
         contact(name = "CMS", url = "https://cms.velopulent.com"),
         license(name = "MIT")
     ),
     paths(
-        // Collections
+        // Instance-scoped: Sites
+        crate::handlers::site_handler::list_sites,
+        crate::handlers::site_handler::create_site,
+        crate::handlers::site_handler::get_site,
+        crate::handlers::site_handler::update_site,
+        crate::handlers::site_handler::delete_site,
+        // Instance-scoped: Site members
+        crate::handlers::site_handler::list_members,
+        crate::handlers::site_handler::invite_member,
+        crate::handlers::site_handler::update_member_role,
+        crate::handlers::site_handler::remove_member,
+        // Instance-scoped: Tokens
+        crate::handlers::access_token_handler::list_instance_tokens,
+        crate::handlers::access_token_handler::create_instance_token,
+        crate::handlers::access_token_handler::delete_instance_token,
+        // Site-scoped: Collections
         crate::handlers::collection_handler::list_collections,
         crate::handlers::collection_handler::get_collection,
         crate::handlers::collection_handler::create_collection,
         crate::handlers::collection_handler::update_collection,
         crate::handlers::collection_handler::delete_collection,
-        // Entries
+        // Site-scoped: Entries
         crate::handlers::entry_handler::list_entries,
         crate::handlers::entry_handler::get_entry,
         crate::handlers::entry_handler::create_entry,
@@ -31,11 +46,11 @@ use crate::models::site::{CreateSite, InviteMember, Site, SiteMember, SiteWithRo
         crate::handlers::entry_handler::delete_entry,
         crate::handlers::entry_handler::publish_entry,
         crate::handlers::entry_handler::unpublish_entry,
-        // Singletons
+        // Site-scoped: Singletons
         crate::handlers::singleton_handler::list_singletons,
         crate::handlers::singleton_handler::get_singleton,
         crate::handlers::singleton_handler::update_singleton,
-        // Files
+        // Site-scoped: Files
         crate::handlers::file_handler::list_files,
         crate::handlers::file_handler::upload_file,
         crate::handlers::file_handler::get_file,
@@ -45,68 +60,38 @@ use crate::models::site::{CreateSite, InviteMember, Site, SiteMember, SiteWithRo
         crate::handlers::file_handler::batch_delete_files,
         crate::handlers::file_handler::batch_restore_files,
         crate::handlers::file_handler::batch_permanent_delete_files,
-        // Site tokens
+        // Site-scoped: Tokens
         crate::handlers::access_token_handler::list_site_tokens,
         crate::handlers::access_token_handler::create_site_token,
         crate::handlers::access_token_handler::delete_site_token,
     ),
     components(schemas(
+        // Site
+        Site, SiteWithRole, CreateSite, UpdateSite,
+        // Site members
+        SiteMember, InviteMember, UpdateMemberRole,
+        // Tokens
+        AccessToken, CreateInstanceToken, CreateSiteToken, AccessTokenResponse,
         // Collection
         Collection, CreateCollection, UpdateCollection,
         // Entry
         Entry, CreateEntry, UpdateEntry,
         // File
         File, FileWithUrl, FileReference, BatchFileIds,
-        // Site tokens
-        AccessToken, CreateSiteToken, AccessTokenResponse,
-    )),
-    modifiers(&SecurityAddon),
-    tags(
-        (name = "collections", description = "Collection management"),
-        (name = "entries", description = "Entry management"),
-        (name = "singletons", description = "Singleton management"),
-        (name = "files", description = "File management"),
-        (name = "site-tokens", description = "Site-scoped access token management"),
-    )
-)]
-pub struct SiteApiDoc;
-
-#[derive(OpenApi)]
-#[openapi(
-    info(
-        title = "CMS Admin API",
-        version = "1.0.0",
-        description = "Headless CMS admin API for multi-site management, membership management, and instance tokens.",
-        contact(name = "CMS", url = "https://cms.velopulent.com"),
-        license(name = "MIT")
-    ),
-    paths(
-        crate::handlers::site_handler::list_sites,
-        crate::handlers::site_handler::create_site,
-        crate::handlers::site_handler::get_site,
-        crate::handlers::site_handler::update_site,
-        crate::handlers::site_handler::delete_site,
-        crate::handlers::site_handler::list_members,
-        crate::handlers::site_handler::invite_member,
-        crate::handlers::site_handler::update_member_role,
-        crate::handlers::site_handler::remove_member,
-        crate::handlers::access_token_handler::list_instance_tokens,
-        crate::handlers::access_token_handler::create_instance_token,
-        crate::handlers::access_token_handler::delete_instance_token,
-    ),
-    components(schemas(
-        Site, SiteWithRole, CreateSite, UpdateSite,
-        SiteMember, InviteMember, UpdateMemberRole,
-        AccessToken, CreateInstanceToken, AccessTokenResponse,
     )),
     modifiers(&SecurityAddon),
     tags(
         (name = "sites", description = "Instance-wide site management"),
         (name = "site-members", description = "Site membership management"),
-        (name = "admin-tokens", description = "Instance-scoped access token management"),
+        (name = "instance-tokens", description = "Instance-scoped access token management"),
+        (name = "collections", description = "Collection management (site-scoped)"),
+        (name = "entries", description = "Entry management (site-scoped)"),
+        (name = "singletons", description = "Singleton management (site-scoped)"),
+        (name = "files", description = "File management (site-scoped)"),
+        (name = "site-tokens", description = "Site-scoped access token management"),
     )
 )]
-pub struct AdminApiDoc;
+pub struct CmsApiDoc;
 
 pub struct SecurityAddon;
 
