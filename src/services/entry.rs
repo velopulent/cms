@@ -55,7 +55,6 @@ impl EntryService {
     pub async fn list_entries(
         &self,
         params: ListEntriesParams<'_>,
-        published_only: bool,
     ) -> Result<EntriesListResult, EntryError> {
         self.repository
             .entry
