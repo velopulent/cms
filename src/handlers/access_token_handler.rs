@@ -110,7 +110,7 @@ async fn create_token_record(
 
 #[utoipa::path(
     get,
-    path = "/api/v1/site/tokens",
+    path = "/api/v1/site-tokens",
     responses(
         (status = 200, description = "List site-scoped access tokens", body = Vec<AccessToken>),
         (status = 401, description = "Unauthorized"),
@@ -128,7 +128,7 @@ pub async fn list_site_tokens(
     let site_id = header_site_id(&headers);
     let site = match require_site_scope(&principal, &repository, site_id, SCOPE_TOKENS_READ, "admin").await {
         Ok(site) => site,
-        Err((status, err)) => return (status, Json(err)).into_response(),
+        Err((status, err)) => return (status, err).into_response(),
     };
 
     match repository
@@ -147,7 +147,7 @@ pub async fn list_site_tokens(
 
 #[utoipa::path(
     post,
-    path = "/api/v1/site/tokens",
+    path = "/api/v1/site-tokens",
     request_body = CreateSiteToken,
     responses(
         (status = 201, description = "Site token created", body = AccessTokenResponse),
@@ -169,7 +169,7 @@ pub async fn create_site_token(
     let site_id = header_site_id(&headers);
     let site = match require_site_scope(&principal, &repository, site_id, SCOPE_TOKENS_WRITE, "admin").await {
         Ok(site) => site,
-        Err((status, err)) => return (status, Json(err)).into_response(),
+        Err((status, err)) => return (status, err).into_response(),
     };
 
     if payload.name.trim().is_empty() {
@@ -199,7 +199,7 @@ pub async fn create_site_token(
 
 #[utoipa::path(
     delete,
-    path = "/api/v1/site/tokens/{token_id}",
+    path = "/api/v1/site-tokens/{token_id}",
     params(("token_id" = String, Path, description = "Site token id")),
     responses(
         (status = 204, description = "Site token deleted"),
@@ -220,7 +220,7 @@ pub async fn delete_site_token(
     let site_id = header_site_id(&headers);
     let site = match require_site_scope(&principal, &repository, site_id, SCOPE_TOKENS_WRITE, "admin").await {
         Ok(site) => site,
-        Err((status, err)) => return (status, Json(err)).into_response(),
+        Err((status, err)) => return (status, err).into_response(),
     };
 
     match repository
@@ -240,7 +240,7 @@ pub async fn delete_site_token(
 
 #[utoipa::path(
     get,
-    path = "/api/v1/admin/tokens",
+    path = "/api/v1/tokens",
     responses(
         (status = 200, description = "List instance-scoped access tokens", body = Vec<AccessToken>),
         (status = 401, description = "Unauthorized"),
@@ -252,7 +252,7 @@ pub async fn delete_site_token(
 #[instrument(skip(repository, principal))]
 pub async fn list_instance_tokens(principal: Principal, Extension(repository): Extension<Repository>) -> Response {
     if let Err((status, err)) = require_admin_scope(&principal, &repository, None, SCOPE_TOKENS_READ).await {
-        return (status, Json(err)).into_response();
+        return (status, err).into_response();
     }
 
     match repository.access_token.list(AccessTokenKind::Instance, None).await {
@@ -267,7 +267,7 @@ pub async fn list_instance_tokens(principal: Principal, Extension(repository): E
 
 #[utoipa::path(
     post,
-    path = "/api/v1/admin/tokens",
+    path = "/api/v1/tokens",
     request_body = CreateInstanceToken,
     responses(
         (status = 201, description = "Instance token created", body = AccessTokenResponse),
@@ -286,7 +286,7 @@ pub async fn create_instance_token(
     Json(payload): Json<CreateInstanceToken>,
 ) -> Response {
     if let Err((status, err)) = require_admin_scope(&principal, &repository, None, SCOPE_TOKENS_WRITE).await {
-        return (status, Json(err)).into_response();
+        return (status, err).into_response();
     }
 
     if payload.name.trim().is_empty() {
@@ -316,7 +316,7 @@ pub async fn create_instance_token(
 
 #[utoipa::path(
     delete,
-    path = "/api/v1/admin/tokens/{token_id}",
+    path = "/api/v1/tokens/{token_id}",
     params(("token_id" = String, Path, description = "Instance token id")),
     responses(
         (status = 204, description = "Instance token deleted"),
@@ -334,7 +334,7 @@ pub async fn delete_instance_token(
     Extension(repository): Extension<Repository>,
 ) -> Response {
     if let Err((status, err)) = require_admin_scope(&principal, &repository, None, SCOPE_TOKENS_WRITE).await {
-        return (status, Json(err)).into_response();
+        return (status, err).into_response();
     }
 
     match repository
