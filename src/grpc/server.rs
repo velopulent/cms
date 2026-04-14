@@ -16,28 +16,8 @@ use crate::grpc::services::entry::EntryServiceImpl;
 use crate::grpc::services::file::FileServiceImpl;
 use crate::grpc::services::singleton::SingletonServiceImpl;
 use crate::repository::Repository;
+use crate::services::Services;
 
-/// Starts the gRPC server with authentication middleware.
-///
-/// This function initializes the gRPC server with all services and applies
-/// the authentication middleware layer to handle access token validation. The
-/// middleware performs async database lookups for access token verification.
-///
-/// # Arguments
-/// * `repository` - Database repository for persistence operations
-/// * `config` - Application configuration
-/// * `grpc_addr` - Socket address to bind the server to
-///
-/// # Returns
-/// * `Ok(())` - Server shut down gracefully
-/// * `Err(...)` - Server failed to start or encountered an error
-///
-/// # Example
-/// ```rust,ignore
-/// let repo = Repository::new().await?;
-/// let config = Config::load()?;
-/// start_grpc_server(repo, config, "0.0.0.0:50051".parse()?).await?;
-/// ```
 pub async fn start_grpc_server(
     repository: Repository,
     config: Config,
@@ -46,20 +26,21 @@ pub async fn start_grpc_server(
     let repository = Arc::new(repository);
     let config = Arc::new(config);
 
-    // Create the authentication layer
-    // This middleware will intercept all requests and validate access tokens
+    let services = Services::new((*repository).clone(), &config, crate::handlers::file_handler::StorageManager {
+        filesystem: None,
+        s3: None,
+    });
+
     let auth_layer = AuthLayer::new(repository.clone(), config.clone());
 
-    // Initialize service implementations
-    let collection_svc = CollectionServiceImpl::new(repository.clone());
-    let entry_svc = EntryServiceImpl::new(repository.clone());
-    let singleton_svc = SingletonServiceImpl::new(repository.clone());
-    let file_svc = FileServiceImpl::new(repository.clone());
-    let site_svc = SiteServiceImpl::new(repository.clone());
-    let membership_svc = MembershipServiceImpl::new(repository.clone());
-    let token_svc = AdminTokenServiceImpl::new(repository.clone(), config.clone());
+    let collection_svc = CollectionServiceImpl::new(services.collection.clone());
+    let entry_svc = EntryServiceImpl::new(services.entry.clone());
+    let singleton_svc = SingletonServiceImpl::new(services.singleton.clone());
+    let file_svc = FileServiceImpl::new(services.file.clone());
+    let site_svc = SiteServiceImpl::new(services.site.clone());
+    let membership_svc = MembershipServiceImpl::new(services.site.clone());
+    let token_svc = AdminTokenServiceImpl::new(services.access_token.clone());
 
-    // Create tonic service servers - all under unified cms.v1 package
     let collection_svc = crate::grpc::cms::v1::collection_service_server::CollectionServiceServer::new(collection_svc);
     let entry_svc = crate::grpc::cms::v1::entry_service_server::EntryServiceServer::new(entry_svc);
     let singleton_svc = crate::grpc::cms::v1::singleton_service_server::SingletonServiceServer::new(singleton_svc);
@@ -70,8 +51,6 @@ pub async fn start_grpc_server(
 
     info!("gRPC server listening on {}", grpc_addr);
 
-    // Build and start the server with authentication middleware
-    // The layer() method applies the AuthLayer to all services
     Server::builder()
         .layer(auth_layer)
         .add_service(collection_svc)
@@ -87,18 +66,6 @@ pub async fn start_grpc_server(
     Ok(())
 }
 
-/// Spawns the gRPC server as a background task.
-///
-/// This is a convenience wrapper around `start_grpc_server` that returns
-/// a boxed future suitable for spawning with tokio::spawn.
-///
-/// # Arguments
-/// * `repository` - Database repository
-/// * `config` - Application configuration
-/// * `grpc_addr` - Socket address to bind to
-///
-/// # Returns
-/// A pinned boxed future that resolves when the server shuts down
 pub fn spawn_grpc_server(
     repository: Repository,
     config: Config,
