@@ -75,7 +75,7 @@ pub async fn list_entries(
         per_page,
     };
 
-    match services.entry.list_entries(list_params, published_only).await {
+    match services.entry.list_entries(list_params).await {
         Ok(result) => {
             let items = services.entry.resolve_entries_list_files(&result.items).await;
             (
