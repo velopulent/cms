@@ -6,7 +6,6 @@ use axum::{
 use tracing::instrument;
 
 use crate::models::user::{CreateUser, LoginRequest};
-use crate::services::auth::AuthService;
 use crate::services::Services;
 
 #[instrument(skip(services, payload))]
