@@ -2,7 +2,6 @@ use async_graphql::{Context, Object, Result};
 
 use crate::graphql::context::GqlContext;
 use crate::graphql::types::collection::*;
-use crate::services::collection::CollectionService;
 
 pub struct CollectionMutation;
 
