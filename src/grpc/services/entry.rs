@@ -48,7 +48,7 @@ impl EntryService for EntryServiceImpl {
 
         let result = self
             .app_entry_service
-            .list_entries(params, false)
+            .list_entries(params)
             .await
             .map_err(|e| Status::internal(format!("Error: {}", e)))?;
 
