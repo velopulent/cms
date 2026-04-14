@@ -8,16 +8,14 @@ use axum::{
 use serde::Deserialize;
 use serde_json::json;
 use tracing::instrument;
-use uuid::Uuid;
 
-use crate::handlers::file_handler::StorageManager;
 use crate::middleware::auth::{
     HEADER_SITE_ID, Principal, SCOPE_CONTENT_READ, SCOPE_CONTENT_WRITE, require_site_scope,
 };
 use crate::models::entry::{CreateEntry, Entry, UpdateEntry};
 use crate::repository::Repository;
-use crate::repository::sqlite::entry::extract_file_ids_from_value;
 use crate::repository::traits::ListEntriesParams;
+use crate::services::Services;
 
 #[derive(Deserialize, utoipa::IntoParams)]
 pub struct ListParams {
@@ -37,18 +35,19 @@ fn request_site_id(headers: &HeaderMap) -> Option<&str> {
     path = "/api/v1/entries",
     params(ListParams),
     responses(
-        (status = 200, description = "List of entries", body = Vec<Entry>),
+        (status = 200, description = "List of entries"),
         (status = 401, description = "Unauthorized"),
     ),
     security(("bearer" = []), ("access_token" = [])),
     tag = "entries"
 )]
-#[instrument(skip(repository, principal, params))]
+#[instrument(skip(repository, services, principal, params))]
 pub async fn list_entries(
     principal: Principal,
     headers: HeaderMap,
     Query(params): Query<ListParams>,
     Extension(repository): Extension<Repository>,
+    Extension(services): Extension<Services>,
 ) -> Response {
     let site = match require_site_scope(&principal, &repository, request_site_id(&headers), SCOPE_CONTENT_READ, "viewer")
         .await
@@ -76,9 +75,9 @@ pub async fn list_entries(
         per_page,
     };
 
-    match repository.entry.list(list_params).await {
+    match services.entry.list_entries(list_params, published_only).await {
         Ok(result) => {
-            let items = resolve_entries_list_files(&result.items, &repository, &site.site_id);
+            let items = services.entry.resolve_entries_list_files(&result.items).await;
             (
                 StatusCode::OK,
                 Json(json!({
@@ -90,11 +89,7 @@ pub async fn list_entries(
             )
                 .into_response()
         }
-        Err(err) => (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(json!({"error": err.to_string()})),
-        )
-            .into_response(),
+        Err(e) => e.into_response(),
     }
 }
 
@@ -110,13 +105,13 @@ pub async fn list_entries(
     security(("bearer" = []), ("access_token" = [])),
     tag = "entries"
 )]
-#[instrument(skip(repository, storage, principal))]
+#[instrument(skip(repository, services, principal))]
 pub async fn get_entry(
     principal: Principal,
     headers: HeaderMap,
     Path(id): Path<String>,
     Extension(repository): Extension<Repository>,
-    Extension(storage): Extension<StorageManager>,
+    Extension(services): Extension<Services>,
 ) -> Response {
     let site = match require_site_scope(&principal, &repository, request_site_id(&headers), SCOPE_CONTENT_READ, "viewer")
         .await
@@ -127,17 +122,15 @@ pub async fn get_entry(
 
     let published_only = matches!(principal, Principal::SiteToken { .. });
 
-    match repository.entry.get_by_id(&id, &site.site_id, published_only).await {
+    match services.entry.get_entry(&id, &site.site_id, published_only).await {
         Ok(Some(item)) => {
-            let resolved = resolve_entry_files(&item, &repository, &storage).await;
+            let resolved = services.entry.resolve_entry_files(&item).await.unwrap_or_else(|_| {
+                serde_json::from_str(&item.data).unwrap_or_default()
+            });
             (StatusCode::OK, Json(resolved)).into_response()
         }
         Ok(None) => (StatusCode::NOT_FOUND, Json(json!({"error": "Entry not found"}))).into_response(),
-        Err(err) => (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(json!({"error": err.to_string()})),
-        )
-            .into_response(),
+        Err(e) => e.into_response(),
     }
 }
 
@@ -154,11 +147,12 @@ pub async fn get_entry(
     security(("bearer" = []), ("access_token" = [])),
     tag = "entries"
 )]
-#[instrument(skip(repository, principal, payload))]
+#[instrument(skip(repository, services, principal, payload))]
 pub async fn create_entry(
     principal: Principal,
     headers: HeaderMap,
     Extension(repository): Extension<Repository>,
+    Extension(services): Extension<Services>,
     Json(payload): Json<CreateEntry>,
 ) -> Response {
     let site = match require_site_scope(&principal, &repository, request_site_id(&headers), SCOPE_CONTENT_WRITE, "editor")
@@ -168,31 +162,13 @@ pub async fn create_entry(
         Err((status, err)) => return (status, err).into_response(),
     };
 
-    let data_str = payload.data.to_string();
-    let id = Uuid::now_v7().to_string();
-
-    match repository
+    match services
         .entry
-        .create(&id, &site.site_id, &payload.collection_id, &data_str, &payload.slug)
+        .create_entry(&site.site_id, &payload.collection_id, &payload.data, &payload.slug)
         .await
     {
-        Ok(item) => {
-            let _ = repository
-                .entry
-                .sync_file_references(&id, &site.site_id, &payload.data)
-                .await;
-            (StatusCode::CREATED, Json(item)).into_response()
-        }
-        Err(crate::repository::error::RepositoryError::UniqueViolation(_)) => (
-            StatusCode::CONFLICT,
-            Json(json!({"error": "Entry with this slug already exists for this collection"})),
-        )
-            .into_response(),
-        Err(err) => (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(json!({"error": err.to_string()})),
-        )
-            .into_response(),
+        Ok(item) => (StatusCode::CREATED, Json(item)).into_response(),
+        Err(e) => e.into_response(),
     }
 }
 
@@ -209,12 +185,13 @@ pub async fn create_entry(
     security(("bearer" = []), ("access_token" = [])),
     tag = "entries"
 )]
-#[instrument(skip(repository, principal, payload))]
+#[instrument(skip(repository, services, principal, payload))]
 pub async fn update_entry(
     principal: Principal,
     headers: HeaderMap,
     Path(id): Path<String>,
     Extension(repository): Extension<Repository>,
+    Extension(services): Extension<Services>,
     Json(payload): Json<UpdateEntry>,
 ) -> Response {
     let site = match require_site_scope(&principal, &repository, request_site_id(&headers), SCOPE_CONTENT_WRITE, "editor")
@@ -224,46 +201,13 @@ pub async fn update_entry(
         Err((status, err)) => return (status, err).into_response(),
     };
 
-    let existing = match repository.entry.get_by_id(&id, &site.site_id, false).await {
-        Ok(Some(entry)) => entry,
-        Ok(None) => {
-            return (StatusCode::NOT_FOUND, Json(json!({"error": "Entry not found"}))).into_response();
-        }
-        Err(err) => {
-            return (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(json!({"error": err.to_string()})),
-            )
-                .into_response();
-        }
-    };
-
-    let resolved_data = match payload.data {
-        Some(data) => data,
-        None => serde_json::from_str(&existing.data).unwrap_or(serde_json::Value::Null),
-    };
-    let data_str = resolved_data.to_string();
-    let slug = payload.slug.unwrap_or(existing.slug);
-    let status = payload.status.unwrap_or(existing.status);
-
-    match repository.entry.update(&id, &data_str, &slug, &status).await {
-        Ok(item) => {
-            let _ = repository
-                .entry
-                .sync_file_references(&id, &site.site_id, &resolved_data)
-                .await;
-            (StatusCode::OK, Json(item)).into_response()
-        }
-        Err(crate::repository::error::RepositoryError::UniqueViolation(_)) => (
-            StatusCode::CONFLICT,
-            Json(json!({"error": "Entry with this slug already exists for this collection"})),
-        )
-            .into_response(),
-        Err(err) => (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(json!({"error": err.to_string()})),
-        )
-            .into_response(),
+    match services
+        .entry
+        .update_entry(&id, &site.site_id, payload.data.as_ref(), payload.slug.as_deref(), payload.status.as_deref())
+        .await
+    {
+        Ok(item) => (StatusCode::OK, Json(item)).into_response(),
+        Err(e) => e.into_response(),
     }
 }
 
@@ -279,12 +223,13 @@ pub async fn update_entry(
     security(("bearer" = []), ("access_token" = [])),
     tag = "entries"
 )]
-#[instrument(skip(repository, principal))]
+#[instrument(skip(repository, services, principal))]
 pub async fn delete_entry(
     principal: Principal,
     headers: HeaderMap,
     Path(id): Path<String>,
     Extension(repository): Extension<Repository>,
+    Extension(services): Extension<Services>,
 ) -> Response {
     let site = match require_site_scope(&principal, &repository, request_site_id(&headers), SCOPE_CONTENT_WRITE, "editor")
         .await
@@ -293,13 +238,9 @@ pub async fn delete_entry(
         Err((status, err)) => return (status, err).into_response(),
     };
 
-    match repository.entry.delete(&id, &site.site_id).await {
+    match services.entry.delete_entry(&id, &site.site_id).await {
         Ok(_) => StatusCode::NO_CONTENT.into_response(),
-        Err(err) => (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(json!({"error": err.to_string()})),
-        )
-            .into_response(),
+        Err(e) => e.into_response(),
     }
 }
 
@@ -316,12 +257,13 @@ pub async fn delete_entry(
     security(("bearer" = []), ("access_token" = [])),
     tag = "entries"
 )]
-#[instrument(skip(repository, principal))]
+#[instrument(skip(repository, services, principal))]
 pub async fn publish_entry(
     principal: Principal,
     headers: HeaderMap,
     Path(id): Path<String>,
     Extension(repository): Extension<Repository>,
+    Extension(services): Extension<Services>,
 ) -> Response {
     let site = match require_site_scope(&principal, &repository, request_site_id(&headers), SCOPE_CONTENT_WRITE, "editor")
         .await
@@ -330,16 +272,9 @@ pub async fn publish_entry(
         Err((status, err)) => return (status, err).into_response(),
     };
 
-    match repository.entry.publish(&id, &site.site_id).await {
+    match services.entry.publish_entry(&id, &site.site_id).await {
         Ok(item) => (StatusCode::OK, Json(item)).into_response(),
-        Err(crate::repository::error::RepositoryError::NotFound) => {
-            (StatusCode::NOT_FOUND, Json(json!({"error": "Entry not found"}))).into_response()
-        }
-        Err(err) => (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(json!({"error": err.to_string()})),
-        )
-            .into_response(),
+        Err(e) => e.into_response(),
     }
 }
 
@@ -356,12 +291,13 @@ pub async fn publish_entry(
     security(("bearer" = []), ("access_token" = [])),
     tag = "entries"
 )]
-#[instrument(skip(repository, principal))]
+#[instrument(skip(repository, services, principal))]
 pub async fn unpublish_entry(
     principal: Principal,
     headers: HeaderMap,
     Path(id): Path<String>,
     Extension(repository): Extension<Repository>,
+    Extension(services): Extension<Services>,
 ) -> Response {
     let site = match require_site_scope(&principal, &repository, request_site_id(&headers), SCOPE_CONTENT_WRITE, "editor")
         .await
@@ -370,83 +306,8 @@ pub async fn unpublish_entry(
         Err((status, err)) => return (status, err).into_response(),
     };
 
-    match repository.entry.unpublish(&id, &site.site_id).await {
+    match services.entry.unpublish_entry(&id, &site.site_id).await {
         Ok(item) => (StatusCode::OK, Json(item)).into_response(),
-        Err(crate::repository::error::RepositoryError::NotFound) => {
-            (StatusCode::NOT_FOUND, Json(json!({"error": "Entry not found"}))).into_response()
-        }
-        Err(err) => (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(json!({"error": err.to_string()})),
-        )
-            .into_response(),
+        Err(e) => e.into_response(),
     }
-}
-
-pub async fn resolve_entries_files_from_value(
-    data: &serde_json::Value,
-    repository: &Repository,
-    storage: &StorageManager,
-    site_id: &str,
-) -> serde_json::Value {
-    let file_ids = extract_file_ids_from_value(data);
-
-    let mut file_map = serde_json::Map::new();
-
-    if !file_ids.is_empty() {
-        if let Ok(file_items) = repository.file.get_by_ids(site_id, &file_ids).await {
-            for f in file_items {
-                let url = match f.storage_provider.as_str() {
-                    "s3" => storage
-                        .s3
-                        .as_ref()
-                        .map(|s| s.url(&f.storage_key))
-                        .unwrap_or_else(|| format!("/api/files/{}", f.id)),
-                    _ => format!("/api/files/{}", f.id),
-                };
-
-                file_map.insert(
-                    f.id.clone(),
-                    json!({
-                        "id": f.id,
-                        "url": url,
-                        "thumbnail_url": f.thumbnail_key.as_ref().map(|_| format!("/api/files/{}/thumbnail", f.id)),
-                        "filename": f.filename,
-                        "original_name": f.original_name,
-                        "mime_type": f.mime_type,
-                        "size": f.size,
-                        "width": f.width,
-                        "height": f.height,
-                    }),
-                );
-            }
-        }
-    }
-
-    let mut result = data.clone();
-    if let serde_json::Value::Object(ref mut obj) = result {
-        obj.insert("_files".to_string(), serde_json::Value::Object(file_map));
-    }
-    result
-}
-
-async fn resolve_entry_files(entry: &Entry, repository: &Repository, storage: &StorageManager) -> serde_json::Value {
-    let data: serde_json::Value = serde_json::from_str(&entry.data).unwrap_or_default();
-    let resolved_data = resolve_entries_files_from_value(&data, repository, storage, &entry.site_id).await;
-    json!({
-        "id": entry.id,
-        "site_id": entry.site_id,
-        "collection_id": entry.collection_id,
-        "data": resolved_data.get("data").cloned().unwrap_or(data),
-        "slug": entry.slug,
-        "status": entry.status,
-        "created_at": entry.created_at,
-        "updated_at": entry.updated_at,
-        "published_at": entry.published_at,
-        "_files": resolved_data.get("_files").cloned().unwrap_or(serde_json::Value::Object(serde_json::Map::new())),
-    })
-}
-
-fn resolve_entries_list_files(items: &[Entry], _repository: &Repository, _site_id: &str) -> Vec<Entry> {
-    items.to_vec()
 }
