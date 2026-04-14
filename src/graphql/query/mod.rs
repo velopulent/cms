@@ -6,13 +6,63 @@ use super::types::entry::Entry;
 use super::types::file::File;
 use super::types::site::Site;
 
+use crate::middleware::auth::SCOPE_SITES_READ;
 use crate::repository::traits::{ListEntriesParams, ListFilesParams};
 
 pub struct QueryRoot;
 
 #[Object]
 impl QueryRoot {
-    async fn site(&self, ctx: &Context<'_>) -> Result<Site> {
+    /// Instance-scoped: List all sites (requires cms_ik_* token with sites:read scope)
+    async fn sites(&self, ctx: &Context<'_>) -> Result<Vec<Site>> {
+        let gql_ctx = ctx.data::<GqlContext>()?;
+        gql_ctx.require_instance_scope(SCOPE_SITES_READ)?;
+
+        let sites = gql_ctx
+            .repository
+            .site
+            .list_all()
+            .await
+            .map_err(|e| async_graphql::Error::new(format!("Database error: {}", e)))?;
+
+        Ok(sites
+            .into_iter()
+            .map(|s| Site {
+                id: s.id,
+                name: s.name,
+                default_storage_provider: s.default_storage_provider,
+                created_by: s.created_by,
+                created_at: s.created_at,
+                updated_at: s.updated_at,
+            })
+            .collect())
+    }
+
+    /// Instance-scoped: Get a site by ID (requires cms_ik_* token with sites:read scope)
+    async fn site(&self, ctx: &Context<'_>, id: String) -> Result<Site> {
+        let gql_ctx = ctx.data::<GqlContext>()?;
+        gql_ctx.require_instance_scope(SCOPE_SITES_READ)?;
+
+        let site = gql_ctx
+            .repository
+            .site
+            .get_by_id(&id)
+            .await
+            .map_err(|e| async_graphql::Error::new(format!("Database error: {}", e)))?
+            .ok_or_else(|| async_graphql::Error::new("Site not found"))?;
+
+        Ok(Site {
+            id: site.id,
+            name: site.name,
+            default_storage_provider: site.default_storage_provider,
+            created_by: site.created_by,
+            created_at: site.created_at,
+            updated_at: site.updated_at,
+        })
+    }
+
+    /// Site-scoped: Get the current site (requires cms_sk_* token)
+    async fn current_site(&self, ctx: &Context<'_>) -> Result<Site> {
         let gql_ctx = ctx.data::<GqlContext>()?;
         let site_id = gql_ctx.require_site()?;
 
@@ -36,6 +86,7 @@ impl QueryRoot {
         }
     }
 
+    /// Site-scoped: List collections (requires cms_sk_* token)
     async fn collections(&self, ctx: &Context<'_>) -> Result<Vec<Collection>> {
         let gql_ctx = ctx.data::<GqlContext>()?;
         let site_id = gql_ctx.require_site()?;
@@ -53,6 +104,7 @@ impl QueryRoot {
             .collect())
     }
 
+    /// Site-scoped: Get a collection by slug (requires cms_sk_* token)
     async fn collection(&self, ctx: &Context<'_>, slug: String) -> Result<Collection> {
         let gql_ctx = ctx.data::<GqlContext>()?;
         let site_id = gql_ctx.require_site()?;
@@ -70,6 +122,7 @@ impl QueryRoot {
         }
     }
 
+    /// Site-scoped: List entries (requires cms_sk_* token)
     async fn entries(
         &self,
         ctx: &Context<'_>,
@@ -112,6 +165,7 @@ impl QueryRoot {
             .collect())
     }
 
+    /// Site-scoped: Get an entry by ID (requires cms_sk_* token)
     async fn entry(&self, ctx: &Context<'_>, id: String) -> Result<Entry> {
         let gql_ctx = ctx.data::<GqlContext>()?;
         let site_id = gql_ctx.require_site()?;
@@ -129,6 +183,7 @@ impl QueryRoot {
         }
     }
 
+    /// Site-scoped: List files (requires cms_sk_* token)
     async fn files(
         &self,
         ctx: &Context<'_>,
@@ -165,6 +220,7 @@ impl QueryRoot {
             .collect())
     }
 
+    /// Site-scoped: Get a file by ID (requires cms_sk_* token)
     async fn file(&self, ctx: &Context<'_>, id: String) -> Result<File> {
         let gql_ctx = ctx.data::<GqlContext>()?;
         let site_id = gql_ctx.require_site()?;
@@ -182,6 +238,7 @@ impl QueryRoot {
         }
     }
 
+    /// Site-scoped: Get file references (requires cms_sk_* token)
     async fn file_references(
         &self,
         ctx: &Context<'_>,
