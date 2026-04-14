@@ -5,21 +5,22 @@ use tonic::{Request, Response, Status};
 use crate::grpc::cms::v1::file_service_server::FileService;
 use crate::grpc::cms::v1::{
     BatchDeleteFilesRequest, BatchOperationResponse, BatchRestoreFilesRequest, DeleteFileRequest, DeleteResponse,
-    File as ProtoFile, GetFileRequest, ListFilesRequest, ListFilesResponse, RestoreFileRequest,
+    GetFileRequest, ListFilesRequest, ListFilesResponse, RestoreFileRequest,
 };
+use crate::grpc::cms::v1::File as ProtoFile;
 use crate::grpc::interceptor::get_auth_context;
 use crate::models::file::File;
-use crate::repository::Repository;
 use crate::repository::traits::ListFilesParams;
+use crate::services::file::FileService as AppFileService;
 
 #[derive(Clone)]
 pub struct FileServiceImpl {
-    repository: Arc<Repository>,
+    app_file_service: Arc<AppFileService>,
 }
 
 impl FileServiceImpl {
-    pub fn new(repository: Arc<Repository>) -> Self {
-        Self { repository }
+    pub fn new(file_service: Arc<AppFileService>) -> Self {
+        Self { app_file_service: file_service }
     }
 }
 
@@ -42,11 +43,10 @@ impl FileService for FileServiceImpl {
         };
 
         let result = self
-            .repository
-            .file
-            .list(params)
+            .app_file_service
+            .list_files(&site_id, params)
             .await
-            .map_err(|e| Status::internal(format!("Database error: {}", e)))?;
+            .map_err(|e| Status::internal(format!("Error: {}", e)))?;
 
         let response = ListFilesResponse {
             files: result.items.into_iter().map(ProtoFile::from).collect(),
@@ -65,11 +65,10 @@ impl FileService for FileServiceImpl {
         let id = request.into_inner().id;
 
         let file = self
-            .repository
-            .file
-            .get_by_id(&id, &site_id)
+            .app_file_service
+            .get_file(&id, &site_id)
             .await
-            .map_err(|e| Status::internal(format!("Database error: {}", e)))?
+            .map_err(|e| Status::internal(format!("Error: {}", e)))?
             .ok_or_else(|| Status::not_found("File not found"))?;
 
         Ok(Response::new(ProtoFile::from(file)))
@@ -82,11 +81,10 @@ impl FileService for FileServiceImpl {
         let id = request.into_inner().id;
 
         let deleted = self
-            .repository
-            .file
+            .app_file_service
             .soft_delete(&id, &site_id)
             .await
-            .map_err(|e| Status::internal(format!("Database error: {}", e)))?;
+            .map_err(|e| Status::internal(format!("Error: {}", e)))?;
 
         Ok(Response::new(DeleteResponse {
             success: deleted > 0,
@@ -105,22 +103,20 @@ impl FileService for FileServiceImpl {
         let id = request.into_inner().id;
 
         let restored = self
-            .repository
-            .file
+            .app_file_service
             .restore(&id, &site_id)
             .await
-            .map_err(|e| Status::internal(format!("Database error: {}", e)))?;
+            .map_err(|e| Status::internal(format!("Error: {}", e)))?;
 
         if restored == 0 {
             return Err(Status::not_found("File not found or not deleted"));
         }
 
         let file = self
-            .repository
-            .file
-            .get_by_id(&id, &site_id)
+            .app_file_service
+            .get_file(&id, &site_id)
             .await
-            .map_err(|e| Status::internal(format!("Database error: {}", e)))?
+            .map_err(|e| Status::internal(format!("Error: {}", e)))?
             .ok_or_else(|| Status::internal("File not found after restore"))?;
 
         Ok(Response::new(ProtoFile::from(file)))
@@ -136,11 +132,10 @@ impl FileService for FileServiceImpl {
         let ids = request.into_inner().ids;
 
         let affected = self
-            .repository
-            .file
+            .app_file_service
             .batch_soft_delete(&site_id, &ids)
             .await
-            .map_err(|e| Status::internal(format!("Database error: {}", e)))?;
+            .map_err(|e| Status::internal(format!("Error: {}", e)))?;
 
         Ok(Response::new(BatchOperationResponse {
             affected: affected as i64,
@@ -157,11 +152,10 @@ impl FileService for FileServiceImpl {
         let ids = request.into_inner().ids;
 
         let affected = self
-            .repository
-            .file
+            .app_file_service
             .batch_restore(&site_id, &ids)
             .await
-            .map_err(|e| Status::internal(format!("Database error: {}", e)))?;
+            .map_err(|e| Status::internal(format!("Error: {}", e)))?;
 
         Ok(Response::new(BatchOperationResponse {
             affected: affected as i64,
