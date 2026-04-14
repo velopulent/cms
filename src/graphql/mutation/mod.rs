@@ -5,6 +5,7 @@ pub mod file;
 use async_graphql::{Context, Object, Result};
 use uuid::Uuid;
 
+use crate::graphql::context::GqlContext;
 use crate::graphql::types::collection::*;
 use crate::graphql::types::entry::{CreateEntryInput, Entry, UpdateEntryInput};
 use crate::graphql::types::site::Site;
@@ -14,28 +15,25 @@ pub struct MutationRoot;
 
 #[Object]
 impl MutationRoot {
-    // --- Instance Mutations (requires InstanceToken) ---
-
     async fn create_site(
         &self,
         ctx: &Context<'_>,
         name: String,
         default_storage_provider: Option<String>,
     ) -> Result<Site> {
-        let gql_ctx = ctx.data::<crate::graphql::context::GqlContext>()?;
+        let gql_ctx = ctx.data::<GqlContext>()?;
         gql_ctx.require_instance_scope(SCOPE_SITES_WRITE)?;
 
         let site = gql_ctx
-            .repository
+            .services
             .site
-            .create(
-                &Uuid::now_v7().to_string(),
+            .create_site(
                 &name,
-                default_storage_provider.as_deref().unwrap_or("filesystem"),
+                default_storage_provider.as_deref(),
                 "system",
             )
             .await
-            .map_err(|e| async_graphql::Error::new(format!("Database error: {}", e)))?;
+            .map_err(|e| async_graphql::Error::new(format!("Error: {}", e)))?;
 
         Ok(Site {
             id: site.id,
@@ -54,29 +52,15 @@ impl MutationRoot {
         name: Option<String>,
         default_storage_provider: Option<String>,
     ) -> Result<Site> {
-        let gql_ctx = ctx.data::<crate::graphql::context::GqlContext>()?;
+        let gql_ctx = ctx.data::<GqlContext>()?;
         gql_ctx.require_instance_scope(SCOPE_SITES_WRITE)?;
 
-        let existing = gql_ctx
-            .repository
-            .site
-            .get_by_id(&id)
-            .await
-            .map_err(|e| async_graphql::Error::new(format!("Database error: {}", e)))?
-            .ok_or_else(|| async_graphql::Error::new("Site not found"))?;
-
         let site = gql_ctx
-            .repository
+            .services
             .site
-            .update(
-                &id,
-                name.as_deref().unwrap_or(&existing.name),
-                default_storage_provider
-                    .as_deref()
-                    .unwrap_or(&existing.default_storage_provider),
-            )
+            .update_site(&id, name.as_deref(), default_storage_provider.as_deref())
             .await
-            .map_err(|e| async_graphql::Error::new(format!("Database error: {}", e)))?;
+            .map_err(|e| async_graphql::Error::new(format!("Error: {}", e)))?;
 
         Ok(Site {
             id: site.id,
@@ -89,20 +73,18 @@ impl MutationRoot {
     }
 
     async fn delete_site(&self, ctx: &Context<'_>, id: String) -> Result<bool> {
-        let gql_ctx = ctx.data::<crate::graphql::context::GqlContext>()?;
+        let gql_ctx = ctx.data::<GqlContext>()?;
         gql_ctx.require_instance_scope(SCOPE_SITES_DELETE)?;
 
         gql_ctx
-            .repository
+            .services
             .site
-            .delete(&id)
+            .delete_site(&id)
             .await
-            .map_err(|e| async_graphql::Error::new(format!("Database error: {}", e)))?;
+            .map_err(|e| async_graphql::Error::new(format!("Error: {}", e)))?;
 
         Ok(true)
     }
-
-    // --- Collections (requires SiteToken) ---
 
     async fn create_collection(&self, ctx: &Context<'_>, input: CreateCollectionInput) -> Result<Collection> {
         collection::CollectionMutation.create_collection(ctx, input).await
@@ -120,8 +102,6 @@ impl MutationRoot {
     async fn delete_collection(&self, ctx: &Context<'_>, slug: String) -> Result<bool> {
         collection::CollectionMutation.delete_collection(ctx, slug).await
     }
-
-    // --- Entries (requires SiteToken) ---
 
     async fn create_entry(&self, ctx: &Context<'_>, input: CreateEntryInput) -> Result<Entry> {
         entry::EntryMutation.create_entry(ctx, input).await
@@ -142,8 +122,6 @@ impl MutationRoot {
     async fn unpublish_entry(&self, ctx: &Context<'_>, id: String) -> Result<Entry> {
         entry::EntryMutation.unpublish_entry(ctx, id).await
     }
-
-    // --- Files (requires SiteToken) ---
 
     async fn delete_file(&self, ctx: &Context<'_>, id: String) -> Result<bool> {
         file::FileMutation.delete_file(ctx, id).await
