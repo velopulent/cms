@@ -146,7 +146,7 @@ impl QueryRoot {
         let result = gql_ctx
             .services
             .entry
-            .list_entries(params, false)
+            .list_entries(params)
             .await
             .map_err(|e| async_graphql::Error::new(format!("Database error: {}", e)))?;
 
@@ -197,7 +197,7 @@ impl QueryRoot {
         let result = gql_ctx
             .services
             .file
-            .list_files(site_id, params)
+            .list_files(params)
             .await
             .map_err(|e| async_graphql::Error::new(format!("Database error: {}", e)))?;
 
