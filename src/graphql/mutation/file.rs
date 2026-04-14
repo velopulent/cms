@@ -12,11 +12,11 @@ impl FileMutation {
         gql_ctx.require_write()?;
 
         gql_ctx
-            .repository
+            .services
             .file
             .soft_delete(&id, site_id)
             .await
-            .map_err(|e| async_graphql::Error::new(format!("Database error: {}", e)))?;
+            .map_err(|e| async_graphql::Error::new(format!("Error: {}", e)))?;
 
         Ok(true)
     }
@@ -27,11 +27,11 @@ impl FileMutation {
         gql_ctx.require_write()?;
 
         gql_ctx
-            .repository
+            .services
             .file
             .restore(&id, site_id)
             .await
-            .map_err(|e| async_graphql::Error::new(format!("Database error: {}", e)))?;
+            .map_err(|e| async_graphql::Error::new(format!("Error: {}", e)))?;
 
         Ok(true)
     }
@@ -42,11 +42,11 @@ impl FileMutation {
         gql_ctx.require_write()?;
 
         let count = gql_ctx
-            .repository
+            .services
             .file
             .batch_soft_delete(site_id, &ids)
             .await
-            .map_err(|e| async_graphql::Error::new(format!("Database error: {}", e)))?;
+            .map_err(|e| async_graphql::Error::new(format!("Error: {}", e)))?;
 
         Ok(count as i64)
     }
@@ -57,11 +57,11 @@ impl FileMutation {
         gql_ctx.require_write()?;
 
         let count = gql_ctx
-            .repository
+            .services
             .file
             .batch_restore(site_id, &ids)
             .await
-            .map_err(|e| async_graphql::Error::new(format!("Database error: {}", e)))?;
+            .map_err(|e| async_graphql::Error::new(format!("Error: {}", e)))?;
 
         Ok(count as i64)
     }
