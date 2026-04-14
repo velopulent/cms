@@ -15,7 +15,7 @@ use crate::config::Config;
 use crate::middleware::auth::{
     HEADER_SITE_ID, Principal, SCOPE_ASSETS_READ, SCOPE_ASSETS_WRITE, extract_user_id, require_site_scope,
 };
-use crate::models::file::{BatchFileIds, File, FileWithUrl};
+use crate::models::file::{BatchFileIds, FileWithUrl};
 use crate::repository::Repository;
 use crate::repository::traits::ListFilesParams;
 use crate::services::Services;
@@ -87,7 +87,7 @@ pub async fn list_files(
         per_page,
     };
 
-    match services.file.list_files(&site.site_id, list_params).await {
+    match services.file.list_files(list_params).await {
         Ok(result) => {
             let with_urls: Vec<FileWithUrl> = result.items.iter().map(|f| services.file.file_to_with_url(f)).collect();
             (
@@ -447,19 +447,17 @@ pub async fn batch_permanent_delete_files(
     }
 }
 
-#[instrument(skip(repository, services))]
+#[instrument(skip(services))]
 pub async fn serve_file(
     Path(id): Path<String>,
-    Extension(repository): Extension<Repository>,
     Extension(services): Extension<Services>,
 ) -> Response {
     serve_file_by_key(&id, &services, false).await
 }
 
-#[instrument(skip(repository, services))]
+#[instrument(skip(services))]
 pub async fn serve_file_thumbnail(
     Path(id): Path<String>,
-    Extension(repository): Extension<Repository>,
     Extension(services): Extension<Services>,
 ) -> Response {
     serve_file_by_key(&id, &services, true).await
@@ -495,11 +493,11 @@ async fn serve_file_by_key(id: &str, services: &Services, use_thumbnail: bool) -
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use crate::handlers::file_handler::StorageManager;
 
     #[test]
     fn test_storage_manager_flags_no_storage() {
-        let sm = crate::handlers::file_handler::StorageManager {
+        let sm = StorageManager {
             filesystem: None,
             s3: None,
         };
