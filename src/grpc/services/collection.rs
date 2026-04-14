@@ -2,8 +2,8 @@ use std::sync::Arc;
 
 use tonic::{Request, Response, Status};
 
-use crate::grpc::cms::site::v1::collection_service_server::CollectionService;
-use crate::grpc::cms::site::v1::{
+use crate::grpc::cms::v1::collection_service_server::CollectionService;
+use crate::grpc::cms::v1::{
     Collection as ProtoCollection, CreateCollectionRequest, DeleteCollectionRequest, DeleteResponse,
     GetCollectionRequest, ListCollectionsRequest, ListCollectionsResponse, UpdateCollectionRequest,
 };
@@ -30,7 +30,7 @@ impl CollectionService for CollectionServiceImpl {
         request: Request<ListCollectionsRequest>,
     ) -> Result<Response<ListCollectionsResponse>, Status> {
         let auth = get_auth_context(&request)?;
-        auth.require_scope(crate::middleware::auth::SCOPE_SCHEMA_READ, "collections")?;
+        auth.require_site_scope(crate::middleware::auth::SCOPE_SCHEMA_READ)?;
         let site_id = auth.require_site_id()?.to_string();
 
         let collections = self
@@ -52,7 +52,7 @@ impl CollectionService for CollectionServiceImpl {
         request: Request<GetCollectionRequest>,
     ) -> Result<Response<ProtoCollection>, Status> {
         let auth = get_auth_context(&request)?;
-        auth.require_scope(crate::middleware::auth::SCOPE_SCHEMA_READ, "collections")?;
+        auth.require_site_scope(crate::middleware::auth::SCOPE_SCHEMA_READ)?;
         let site_id = auth.require_site_id()?.to_string();
         let slug = &request.into_inner().slug;
 
@@ -72,7 +72,7 @@ impl CollectionService for CollectionServiceImpl {
         request: Request<CreateCollectionRequest>,
     ) -> Result<Response<ProtoCollection>, Status> {
         let auth = get_auth_context(&request)?;
-        auth.require_scope(crate::middleware::auth::SCOPE_SCHEMA_WRITE, "collections")?;
+        auth.require_site_scope(crate::middleware::auth::SCOPE_SCHEMA_WRITE)?;
         let site_id = auth.require_site_id()?.to_string();
 
         let req = request.into_inner();
@@ -99,7 +99,7 @@ impl CollectionService for CollectionServiceImpl {
         request: Request<UpdateCollectionRequest>,
     ) -> Result<Response<ProtoCollection>, Status> {
         let auth = get_auth_context(&request)?;
-        auth.require_scope(crate::middleware::auth::SCOPE_SCHEMA_WRITE, "collections")?;
+        auth.require_site_scope(crate::middleware::auth::SCOPE_SCHEMA_WRITE)?;
 
         let req = request.into_inner();
 
@@ -135,7 +135,7 @@ impl CollectionService for CollectionServiceImpl {
         request: Request<DeleteCollectionRequest>,
     ) -> Result<Response<DeleteResponse>, Status> {
         let auth = get_auth_context(&request)?;
-        auth.require_scope(crate::middleware::auth::SCOPE_SCHEMA_WRITE, "collections")?;
+        auth.require_site_scope(crate::middleware::auth::SCOPE_SCHEMA_WRITE)?;
         let site_id = auth.require_site_id()?.to_string();
         let req = request.into_inner();
 
