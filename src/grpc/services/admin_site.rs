@@ -11,16 +11,16 @@ use crate::grpc::cms::v1::{
 use crate::grpc::interceptor::get_auth_context;
 use crate::middleware::auth::{SCOPE_SITES_DELETE, SCOPE_SITES_READ, SCOPE_SITES_WRITE};
 use crate::models::site::Site;
-use crate::repository::Repository;
+use crate::services::site::SiteService as AppSiteService;
 
 #[derive(Clone)]
 pub struct SiteServiceImpl {
-    repository: Arc<Repository>,
+    app_site_service: Arc<AppSiteService>,
 }
 
 impl SiteServiceImpl {
-    pub fn new(repository: Arc<Repository>) -> Self {
-        Self { repository }
+    pub fn new(site_service: Arc<AppSiteService>) -> Self {
+        Self { app_site_service: site_service }
     }
 }
 
@@ -31,14 +31,26 @@ impl SiteService for SiteServiceImpl {
         auth.require_instance_scope(SCOPE_SITES_READ)?;
 
         let sites = self
-            .repository
-            .site
-            .list_all()
+            .app_site_service
+            .list_sites_instance()
             .await
-            .map_err(|e| Status::internal(format!("Database error: {}", e)))?;
+            .map_err(|e| Status::internal(format!("Error: {}", e)))?;
 
         Ok(Response::new(ListSitesResponse {
-            sites: sites.into_iter().map(ProtoSite::from).collect(),
+            sites: sites
+                .into_iter()
+                .filter_map(|s| {
+                    let obj = s.as_object()?;
+                    Some(ProtoSite {
+                        id: obj["id"].as_str()?.to_string(),
+                        name: obj["name"].as_str()?.to_string(),
+                        default_storage_provider: obj["default_storage_provider"].as_str()?.to_string(),
+                        created_by: obj["created_by"].as_str()?.to_string(),
+                        created_at: obj["created_at"].as_str()?.to_string(),
+                        updated_at: obj["updated_at"].as_str()?.to_string(),
+                    })
+                })
+                .collect(),
         }))
     }
 
@@ -48,11 +60,10 @@ impl SiteService for SiteServiceImpl {
         let site_id = request.into_inner().site_id;
 
         let site = self
-            .repository
-            .site
-            .get_by_id(&site_id)
+            .app_site_service
+            .get_site(&site_id)
             .await
-            .map_err(|e| Status::internal(format!("Database error: {}", e)))?
+            .map_err(|e| Status::internal(format!("Error: {}", e)))?
             .ok_or_else(|| Status::not_found("Site not found"))?;
 
         Ok(Response::new(ProtoSite::from(site)))
@@ -75,11 +86,10 @@ impl SiteService for SiteServiceImpl {
         }
 
         let site = self
-            .repository
-            .site
-            .create(&Uuid::now_v7().to_string(), &req.name, storage_provider, "system")
+            .app_site_service
+            .create_site(&req.name, Some(storage_provider), "system")
             .await
-            .map_err(|e| Status::internal(format!("Database error: {}", e)))?;
+            .map_err(|e| Status::internal(format!("Error: {}", e)))?;
 
         Ok(Response::new(ProtoSite::from(site)))
     }
@@ -89,32 +99,11 @@ impl SiteService for SiteServiceImpl {
         auth.require_instance_scope(SCOPE_SITES_WRITE)?;
         let req = request.into_inner();
 
-        let existing = self
-            .repository
-            .site
-            .get_by_id(&req.site_id)
-            .await
-            .map_err(|e| Status::internal(format!("Database error: {}", e)))?
-            .ok_or_else(|| Status::not_found("Site not found"))?;
-
-        let name = req.name.as_deref().unwrap_or(&existing.name);
-        let storage_provider = req
-            .default_storage_provider
-            .as_deref()
-            .unwrap_or(&existing.default_storage_provider);
-
-        if storage_provider != "filesystem" && storage_provider != "s3" {
-            return Err(Status::invalid_argument(
-                "Invalid storage provider. Must be 'filesystem' or 's3'",
-            ));
-        }
-
         let site = self
-            .repository
-            .site
-            .update(&req.site_id, name, storage_provider)
+            .app_site_service
+            .update_site(&req.site_id, req.name.as_deref(), req.default_storage_provider.as_deref())
             .await
-            .map_err(|e| Status::internal(format!("Database error: {}", e)))?;
+            .map_err(|e| Status::internal(format!("Error: {}", e)))?;
 
         Ok(Response::new(ProtoSite::from(site)))
     }
@@ -125,11 +114,10 @@ impl SiteService for SiteServiceImpl {
         let site_id = request.into_inner().site_id;
 
         let deleted = self
-            .repository
-            .site
-            .delete(&site_id)
+            .app_site_service
+            .delete_site(&site_id)
             .await
-            .map_err(|e| Status::internal(format!("Database error: {}", e)))?;
+            .map_err(|e| Status::internal(format!("Error: {}", e)))?;
 
         Ok(Response::new(DeleteResponse {
             success: deleted > 0,
