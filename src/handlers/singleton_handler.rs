@@ -38,7 +38,7 @@ fn request_site_id(headers: &HeaderMap) -> Option<&str> {
 
 #[utoipa::path(
     get,
-    path = "/api/v1/site/singletons",
+    path = "/api/v1/singletons",
     responses(
         (status = 200, description = "List of singletons", body = Vec<SingletonResponse>),
         (status = 401, description = "Unauthorized"),
@@ -56,7 +56,7 @@ pub async fn list_singletons(
         .await
     {
         Ok(site) => site,
-        Err((status, err)) => return (status, Json(err)).into_response(),
+        Err((status, err)) => return (status, err).into_response(),
     };
 
     match repository.collection.list_singletons_only(&site.site_id).await {
@@ -96,7 +96,7 @@ pub async fn get_singleton(
         .await
     {
         Ok(site) => site,
-        Err((status, err)) => return (status, Json(err)).into_response(),
+        Err((status, err)) => return (status, err).into_response(),
     };
 
     match repository.collection.get_by_slug(&site.site_id, &slug).await {
@@ -149,7 +149,7 @@ pub async fn update_singleton(
         .await
     {
         Ok(site) => site,
-        Err((status, err)) => return (status, Json(err)).into_response(),
+        Err((status, err)) => return (status, err).into_response(),
     };
 
     match repository.collection.get_by_slug(&site.site_id, &slug).await {
