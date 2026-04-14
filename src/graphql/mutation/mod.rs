@@ -3,7 +3,6 @@ pub mod entry;
 pub mod file;
 
 use async_graphql::{Context, Object, Result};
-use uuid::Uuid;
 
 use crate::graphql::context::GqlContext;
 use crate::graphql::types::collection::*;
