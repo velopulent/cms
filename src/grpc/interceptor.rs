@@ -2,6 +2,8 @@ use hmac::{Hmac, Mac};
 use sha2::Sha256;
 use std::collections::BTreeSet;
 
+use crate::models::access_token::AccessTokenKind;
+
 /// HMAC type alias for access token validation.
 pub type HmacSha256 = Hmac<Sha256>;
 
@@ -29,15 +31,17 @@ pub fn compute_key_hmac(key: &str, hmac_secret: &str) -> String {
 /// Authentication context for gRPC requests.
 ///
 /// This struct is injected into request extensions by the authentication
-/// middleware and contains the authenticated site's ID and permissions.
+/// middleware and contains the authenticated site's ID, permissions, and token type.
 /// Handlers can extract this context to perform authorization checks.
 #[derive(Clone, Debug)]
 pub struct GrpcAuthContext {
     /// The site ID associated with the authenticated site token.
-    /// This is populated only for `cms.site.v1` requests.
+    /// This is populated only for site-scoped tokens.
     pub site_id: Option<String>,
     /// Structured scopes for the authenticated token.
     pub scopes: BTreeSet<String>,
+    /// The kind of token used for authentication.
+    pub token_kind: AccessTokenKind,
 }
 
 impl GrpcAuthContext {
@@ -83,6 +87,36 @@ impl GrpcAuthContext {
         self.site_id
             .as_deref()
             .ok_or_else(|| tonic::Status::internal("Missing site context for site service"))
+    }
+
+    pub fn require_instance_token(&self) -> Result<(), tonic::Status> {
+        if self.token_kind == AccessTokenKind::Instance {
+            Ok(())
+        } else {
+            Err(tonic::Status::unauthenticated(
+                "This endpoint requires a cms_ik_* token.",
+            ))
+        }
+    }
+
+    pub fn require_site_token(&self) -> Result<(), tonic::Status> {
+        if self.token_kind == AccessTokenKind::Site {
+            Ok(())
+        } else {
+            Err(tonic::Status::unauthenticated(
+                "This endpoint requires a cms_sk_* token.",
+            ))
+        }
+    }
+
+    pub fn require_instance_scope(&self, scope: &str) -> Result<(), tonic::Status> {
+        self.require_instance_token()?;
+        self.require_scope(scope, "instance operations")
+    }
+
+    pub fn require_site_scope(&self, scope: &str) -> Result<(), tonic::Status> {
+        self.require_site_token()?;
+        self.require_scope(scope, "site operations")
     }
 }
 
