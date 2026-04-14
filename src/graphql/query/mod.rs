@@ -13,40 +13,41 @@ pub struct QueryRoot;
 
 #[Object]
 impl QueryRoot {
-    /// Instance-scoped: List all sites (requires cms_ik_* token with sites:read scope)
     async fn sites(&self, ctx: &Context<'_>) -> Result<Vec<Site>> {
         let gql_ctx = ctx.data::<GqlContext>()?;
         gql_ctx.require_instance_scope(SCOPE_SITES_READ)?;
 
         let sites = gql_ctx
-            .repository
+            .services
             .site
-            .list_all()
+            .list_sites_instance()
             .await
             .map_err(|e| async_graphql::Error::new(format!("Database error: {}", e)))?;
 
         Ok(sites
             .into_iter()
-            .map(|s| Site {
-                id: s.id,
-                name: s.name,
-                default_storage_provider: s.default_storage_provider,
-                created_by: s.created_by,
-                created_at: s.created_at,
-                updated_at: s.updated_at,
+            .map(|s| {
+                let obj = s.as_object().unwrap();
+                Site {
+                    id: obj["id"].as_str().unwrap_or("").to_string(),
+                    name: obj["name"].as_str().unwrap_or("").to_string(),
+                    default_storage_provider: obj["default_storage_provider"].as_str().unwrap_or("").to_string(),
+                    created_by: obj["created_by"].as_str().unwrap_or("").to_string(),
+                    created_at: obj["created_at"].as_str().unwrap_or("").to_string(),
+                    updated_at: obj["updated_at"].as_str().unwrap_or("").to_string(),
+                }
             })
             .collect())
     }
 
-    /// Instance-scoped: Get a site by ID (requires cms_ik_* token with sites:read scope)
     async fn site(&self, ctx: &Context<'_>, id: String) -> Result<Site> {
         let gql_ctx = ctx.data::<GqlContext>()?;
         gql_ctx.require_instance_scope(SCOPE_SITES_READ)?;
 
         let site = gql_ctx
-            .repository
+            .services
             .site
-            .get_by_id(&id)
+            .get_site(&id)
             .await
             .map_err(|e| async_graphql::Error::new(format!("Database error: {}", e)))?
             .ok_or_else(|| async_graphql::Error::new("Site not found"))?;
@@ -61,40 +62,36 @@ impl QueryRoot {
         })
     }
 
-    /// Site-scoped: Get the current site (requires cms_sk_* token)
     async fn current_site(&self, ctx: &Context<'_>) -> Result<Site> {
         let gql_ctx = ctx.data::<GqlContext>()?;
         let site_id = gql_ctx.require_site()?;
 
-        let db_site = gql_ctx
-            .repository
+        let site = gql_ctx
+            .services
             .site
-            .get_by_id(site_id)
+            .get_site(site_id)
             .await
-            .map_err(|e| async_graphql::Error::new(format!("Database error: {}", e)))?;
+            .map_err(|e| async_graphql::Error::new(format!("Database error: {}", e)))?
+            .ok_or_else(|| async_graphql::Error::new("Site not found"))?;
 
-        match db_site {
-            Some(s) => Ok(Site {
-                id: s.id,
-                name: s.name,
-                default_storage_provider: s.default_storage_provider,
-                created_by: s.created_by,
-                created_at: s.created_at,
-                updated_at: s.updated_at,
-            }),
-            None => Err(async_graphql::Error::new("Site not found")),
-        }
+        Ok(Site {
+            id: site.id,
+            name: site.name,
+            default_storage_provider: site.default_storage_provider,
+            created_by: site.created_by,
+            created_at: site.created_at,
+            updated_at: site.updated_at,
+        })
     }
 
-    /// Site-scoped: List collections (requires cms_sk_* token)
     async fn collections(&self, ctx: &Context<'_>) -> Result<Vec<Collection>> {
         let gql_ctx = ctx.data::<GqlContext>()?;
         let site_id = gql_ctx.require_site()?;
 
         let db_collections = gql_ctx
-            .repository
+            .services
             .collection
-            .list(site_id)
+            .list_collections(site_id)
             .await
             .map_err(|e| async_graphql::Error::new(format!("Database error: {}", e)))?;
 
@@ -104,25 +101,21 @@ impl QueryRoot {
             .collect())
     }
 
-    /// Site-scoped: Get a collection by slug (requires cms_sk_* token)
     async fn collection(&self, ctx: &Context<'_>, slug: String) -> Result<Collection> {
         let gql_ctx = ctx.data::<GqlContext>()?;
         let site_id = gql_ctx.require_site()?;
 
         let db_collection = gql_ctx
-            .repository
+            .services
             .collection
-            .get_by_slug(site_id, &slug)
+            .get_collection(site_id, &slug)
             .await
-            .map_err(|e| async_graphql::Error::new(format!("Database error: {}", e)))?;
+            .map_err(|e| async_graphql::Error::new(format!("Database error: {}", e)))?
+            .ok_or_else(|| async_graphql::Error::new("Collection not found"))?;
 
-        match db_collection {
-            Some(c) => Ok(super::types::collection::db_collection_to_gql(c)),
-            None => Err(async_graphql::Error::new("Collection not found")),
-        }
+        Ok(super::types::collection::db_collection_to_gql(db_collection))
     }
 
-    /// Site-scoped: List entries (requires cms_sk_* token)
     async fn entries(
         &self,
         ctx: &Context<'_>,
@@ -136,7 +129,6 @@ impl QueryRoot {
         let gql_ctx = ctx.data::<GqlContext>()?;
         let site_id = gql_ctx.require_site()?;
 
-        let status_filter = status.as_deref();
         let page_val = page.unwrap_or(1).max(1);
         let per_page_val = per_page.unwrap_or(50).clamp(1, 200);
 
@@ -144,17 +136,17 @@ impl QueryRoot {
             site_id,
             collection_slug: r#type.as_deref(),
             collection_id: collection_id.as_deref(),
-            status: status_filter,
+            status: status.as_deref(),
             search: search.as_deref(),
-            published_only: status_filter.is_none(),
+            published_only: status.is_none(),
             page: page_val,
             per_page: per_page_val,
         };
 
         let result = gql_ctx
-            .repository
+            .services
             .entry
-            .list(params)
+            .list_entries(params, false)
             .await
             .map_err(|e| async_graphql::Error::new(format!("Database error: {}", e)))?;
 
@@ -165,25 +157,21 @@ impl QueryRoot {
             .collect())
     }
 
-    /// Site-scoped: Get an entry by ID (requires cms_sk_* token)
     async fn entry(&self, ctx: &Context<'_>, id: String) -> Result<Entry> {
         let gql_ctx = ctx.data::<GqlContext>()?;
         let site_id = gql_ctx.require_site()?;
 
         let entry = gql_ctx
-            .repository
+            .services
             .entry
-            .get_by_id(&id, site_id, false)
+            .get_entry(&id, site_id, false)
             .await
-            .map_err(|e| async_graphql::Error::new(format!("Database error: {}", e)))?;
+            .map_err(|e| async_graphql::Error::new(format!("Database error: {}", e)))?
+            .ok_or_else(|| async_graphql::Error::new("Entry not found"))?;
 
-        match entry {
-            Some(e) => Ok(super::types::entry::db_entry_to_gql(e)),
-            None => Err(async_graphql::Error::new("Entry not found")),
-        }
+        Ok(super::types::entry::db_entry_to_gql(entry))
     }
 
-    /// Site-scoped: List files (requires cms_sk_* token)
     async fn files(
         &self,
         ctx: &Context<'_>,
@@ -194,7 +182,7 @@ impl QueryRoot {
         let gql_ctx = ctx.data::<GqlContext>()?;
         let site_id = gql_ctx.require_site()?;
 
-        let page = page.unwrap_or(1).max(1);
+        let page_val = page.unwrap_or(1).max(1);
         let per_page: i64 = 30;
 
         let params = ListFilesParams {
@@ -202,14 +190,14 @@ impl QueryRoot {
             trashed: false,
             search: search.as_deref(),
             file_type: file_type.as_deref(),
-            page,
+            page: page_val,
             per_page,
         };
 
         let result = gql_ctx
-            .repository
+            .services
             .file
-            .list(params)
+            .list_files(site_id, params)
             .await
             .map_err(|e| async_graphql::Error::new(format!("Database error: {}", e)))?;
 
@@ -220,25 +208,21 @@ impl QueryRoot {
             .collect())
     }
 
-    /// Site-scoped: Get a file by ID (requires cms_sk_* token)
     async fn file(&self, ctx: &Context<'_>, id: String) -> Result<File> {
         let gql_ctx = ctx.data::<GqlContext>()?;
         let site_id = gql_ctx.require_site()?;
 
         let db_file = gql_ctx
-            .repository
+            .services
             .file
-            .get_by_id(&id, site_id)
+            .get_file(&id, site_id)
             .await
-            .map_err(|e| async_graphql::Error::new(format!("Database error: {}", e)))?;
+            .map_err(|e| async_graphql::Error::new(format!("Database error: {}", e)))?
+            .ok_or_else(|| async_graphql::Error::new("File not found"))?;
 
-        match db_file {
-            Some(f) => Ok(super::types::file::db_file_to_gql(f, gql_ctx)),
-            None => Err(async_graphql::Error::new("File not found")),
-        }
+        Ok(super::types::file::db_file_to_gql(db_file, gql_ctx))
     }
 
-    /// Site-scoped: Get file references (requires cms_sk_* token)
     async fn file_references(
         &self,
         ctx: &Context<'_>,
@@ -248,9 +232,9 @@ impl QueryRoot {
         let site_id = gql_ctx.require_site()?;
 
         let refs = gql_ctx
-            .repository
+            .services
             .file
-            .get_references_for_site(&file_id, site_id)
+            .get_file_references(&file_id, site_id)
             .await
             .map_err(|e| async_graphql::Error::new(format!("Database error: {}", e)))?;
 
