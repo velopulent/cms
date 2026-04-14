@@ -5,17 +5,16 @@ use tonic::{Request, Response, Status};
 use crate::grpc::cms::v1::singleton_service_server::SingletonService;
 use crate::grpc::cms::v1::{GetSingletonRequest, Singleton as ProtoSingleton, UpdateSingletonRequest};
 use crate::grpc::interceptor::get_auth_context;
-use crate::models::collection::Collection;
-use crate::repository::Repository;
+use crate::services::singleton::SingletonService as AppSingletonService;
 
 #[derive(Clone)]
 pub struct SingletonServiceImpl {
-    repository: Arc<Repository>,
+    app_singleton_service: Arc<AppSingletonService>,
 }
 
 impl SingletonServiceImpl {
-    pub fn new(repository: Arc<Repository>) -> Self {
-        Self { repository }
+    pub fn new(singleton_service: Arc<AppSingletonService>) -> Self {
+        Self { app_singleton_service: singleton_service }
     }
 }
 
@@ -27,19 +26,13 @@ impl SingletonService for SingletonServiceImpl {
         let site_id = auth.require_site_id()?.to_string();
         let slug = request.into_inner().slug;
 
-        let collection = self
-            .repository
-            .collection
-            .get_by_slug(&site_id, &slug)
+        let singleton = self
+            .app_singleton_service
+            .get_singleton(&site_id, &slug)
             .await
-            .map_err(|e| Status::internal(format!("Database error: {}", e)))?
-            .ok_or_else(|| Status::not_found("Singleton not found"))?;
+            .map_err(|e| Status::internal(format!("Error: {}", e)))?;
 
-        if !collection.is_singleton {
-            return Err(Status::not_found("Collection is not a singleton"));
-        }
-
-        Ok(Response::new(ProtoSingleton::from(collection)))
+        Ok(Response::new(ProtoSingleton::from(singleton)))
     }
 
     async fn update_singleton(
@@ -51,38 +44,27 @@ impl SingletonService for SingletonServiceImpl {
         let site_id = auth.require_site_id()?.to_string();
         let req = request.into_inner();
 
-        let collection = self
-            .repository
-            .collection
-            .get_by_slug(&site_id, &req.slug)
+        let data: serde_json::Value = serde_json::from_str(&req.data).unwrap_or_default();
+
+        let singleton = self
+            .app_singleton_service
+            .update_singleton(&site_id, &req.slug, &data)
             .await
-            .map_err(|e| Status::internal(format!("Database error: {}", e)))?
-            .ok_or_else(|| Status::not_found("Singleton not found"))?;
+            .map_err(|e| Status::internal(format!("Error: {}", e)))?;
 
-        if !collection.is_singleton {
-            return Err(Status::not_found("Collection is not a singleton"));
-        }
-
-        let updated = self
-            .repository
-            .collection
-            .update_singleton_data(&collection.id, &req.data)
-            .await
-            .map_err(|e| Status::internal(format!("Database error: {}", e)))?;
-
-        Ok(Response::new(ProtoSingleton::from(updated)))
+        Ok(Response::new(ProtoSingleton::from(singleton)))
     }
 }
 
-impl From<Collection> for ProtoSingleton {
-    fn from(c: Collection) -> Self {
+impl From<crate::models::collection::SingletonResponse> for ProtoSingleton {
+    fn from(c: crate::models::collection::SingletonResponse) -> Self {
         ProtoSingleton {
             id: c.id,
             site_id: c.site_id,
             name: c.name,
             slug: c.slug,
-            definition: c.definition,
-            data: c.singleton_data,
+            definition: c.definition.to_string(),
+            data: c.data.map(|d| d.to_string()),
             created_at: c.created_at,
             updated_at: c.updated_at,
         }
