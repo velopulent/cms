@@ -11,7 +11,7 @@ use crate::middleware::auth::{
     HEADER_SITE_ID, Principal, SCOPE_TOKENS_READ, SCOPE_TOKENS_WRITE,
     require_admin_scope, require_site_scope,
 };
-use crate::models::access_token::{AccessTokenKind, CreateInstanceToken, CreateSiteToken};
+use crate::models::access_token::{CreateInstanceToken, CreateSiteToken};
 use crate::repository::Repository;
 use crate::services::Services;
 
