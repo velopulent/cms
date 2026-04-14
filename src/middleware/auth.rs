@@ -4,6 +4,7 @@ use std::str::FromStr;
 use axum::{
     extract::FromRequestParts,
     http::{StatusCode, request::Parts},
+    Json,
 };
 use hmac::{Hmac, Mac};
 use jsonwebtoken::{Algorithm, DecodingKey, EncodingKey, Validation, decode, encode};
@@ -11,6 +12,7 @@ use sha2::Sha256;
 use tracing::Span;
 
 use crate::config::Config;
+use crate::middleware::error::AuthError;
 use crate::models::access_token::AccessTokenKind;
 use crate::models::user::Claims;
 use crate::repository::Repository;
@@ -86,6 +88,79 @@ impl Principal {
             _ => None,
         }
     }
+
+    pub fn is_instance_token(&self) -> bool {
+        matches!(self, Self::InstanceToken { .. })
+    }
+
+    pub fn is_site_token(&self) -> bool {
+        matches!(self, Self::SiteToken { .. })
+    }
+
+    pub fn is_user_session(&self) -> bool {
+        matches!(self, Self::UserSession { .. })
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct RequireInstanceToken(pub Principal);
+
+impl<S> FromRequestParts<S> for RequireInstanceToken
+where
+    S: Send + Sync,
+{
+    type Rejection = (StatusCode, Json<AuthError>);
+
+    async fn from_request_parts(parts: &mut Parts, state: &S) -> Result<Self, Self::Rejection> {
+        let principal = Principal::from_request_parts(parts, state).await?;
+        match principal {
+            Principal::InstanceToken { .. } => Ok(Self(principal)),
+            _ => Err(AuthError::instance_token_required()),
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct RequireSiteToken {
+    pub site_id: String,
+    pub scopes: BTreeSet<String>,
+}
+
+impl<S> FromRequestParts<S> for RequireSiteToken
+where
+    S: Send + Sync,
+{
+    type Rejection = (StatusCode, Json<AuthError>);
+
+    async fn from_request_parts(parts: &mut Parts, state: &S) -> Result<Self, Self::Rejection> {
+        let principal = Principal::from_request_parts(parts, state).await?;
+        match principal {
+            Principal::SiteToken { token_id: _, site_id, scopes } => Ok(Self { site_id, scopes }),
+            _ => Err(AuthError::site_token_required()),
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub enum SiteOrUserPrincipal {
+    SiteToken { site_id: String, scopes: BTreeSet<String> },
+    UserSession { user_id: String },
+}
+
+impl<S> FromRequestParts<S> for SiteOrUserPrincipal
+where
+    S: Send + Sync,
+{
+    type Rejection = (StatusCode, Json<AuthError>);
+
+    async fn from_request_parts(parts: &mut Parts, state: &S) -> Result<Self, Self::Rejection> {
+        let principal = Principal::from_request_parts(parts, state).await?;
+        match principal {
+            Principal::SiteToken { token_id: _, site_id, scopes } => Ok(Self::SiteToken { site_id, scopes }),
+            Principal::UserSession { user_id } => Ok(Self::UserSession { user_id }),
+            Principal::InstanceToken { .. } => Err(AuthError::instance_token_denied()),
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -124,14 +199,6 @@ pub fn verify_token(token: &str, jwt_secret: &str) -> Result<Claims, jsonwebtoke
     let data = decode::<Claims>(token, &DecodingKey::from_secret(jwt_secret.as_bytes()), &validation)?;
 
     Ok(data.claims)
-}
-
-fn unauthorized_error(msg: &str) -> (StatusCode, String) {
-    (StatusCode::UNAUTHORIZED, serde_json::json!({"error": msg}).to_string())
-}
-
-fn forbidden_error(msg: &str) -> (StatusCode, serde_json::Value) {
-    (StatusCode::FORBIDDEN, serde_json::json!({"error": msg}))
 }
 
 pub fn parse_scopes(value: &str) -> BTreeSet<String> {
@@ -177,12 +244,12 @@ impl<S> FromRequestParts<S> for AuthenticatedUser
 where
     S: Send + Sync,
 {
-    type Rejection = (StatusCode, String);
+    type Rejection = (StatusCode, Json<AuthError>);
 
     async fn from_request_parts(parts: &mut Parts, state: &S) -> Result<Self, Self::Rejection> {
         match Principal::from_request_parts(parts, state).await? {
             Principal::UserSession { user_id } => Ok(Self { user_id }),
-            _ => Err(unauthorized_error("User session required")),
+            _ => Err(AuthError::unauthorized("User session required")),
         }
     }
 }
@@ -191,7 +258,7 @@ impl<S> FromRequestParts<S> for Principal
 where
     S: Send + Sync,
 {
-    type Rejection = (StatusCode, String);
+    type Rejection = (StatusCode, Json<AuthError>);
 
     async fn from_request_parts(parts: &mut Parts, _state: &S) -> Result<Self, Self::Rejection> {
         if let Some(token) = extract_bearer_token(parts) {
@@ -199,12 +266,12 @@ where
                 let repository = parts
                     .extensions
                     .get::<Repository>()
-                    .ok_or(unauthorized_error("Internal server error"))?;
+                    .ok_or_else(|| AuthError::unauthorized("Internal server error"))?;
 
                 let config = parts
                     .extensions
                     .get::<Config>()
-                    .ok_or(unauthorized_error("Internal server error"))?;
+                    .ok_or_else(|| AuthError::unauthorized("Internal server error"))?;
 
                 return verify_access_token(&token, repository, &config.hmac_secret).await;
             }
@@ -212,10 +279,10 @@ where
             let config = parts
                 .extensions
                 .get::<Config>()
-                .ok_or(unauthorized_error("Internal server error"))?;
+                .ok_or_else(|| AuthError::unauthorized("Internal server error"))?;
 
             let claims = verify_token(&token, &config.jwt_secret)
-                .map_err(|_| unauthorized_error("Invalid or expired token"))?;
+                .map_err(|_| AuthError::unauthorized("Invalid or expired token"))?;
 
             Span::current().record("user_id", tracing::field::display(&claims.sub));
 
@@ -226,17 +293,17 @@ where
             let config = parts
                 .extensions
                 .get::<Config>()
-                .ok_or(unauthorized_error("Internal server error"))?;
+                .ok_or_else(|| AuthError::unauthorized("Internal server error"))?;
 
             let claims =
-                verify_token(&token, &config.jwt_secret).map_err(|_| unauthorized_error("Invalid or expired token"))?;
+                verify_token(&token, &config.jwt_secret).map_err(|_| AuthError::unauthorized("Invalid or expired token"))?;
 
             Span::current().record("user_id", tracing::field::display(&claims.sub));
 
             return Ok(Self::UserSession { user_id: claims.sub });
         }
 
-        Err(unauthorized_error("Missing authentication"))
+        Err(AuthError::unauthorized("Missing authentication"))
     }
 }
 
@@ -244,14 +311,14 @@ pub(crate) async fn verify_access_token(
     token: &str,
     repository: &Repository,
     hmac_secret: &str,
-) -> Result<Principal, (StatusCode, String)> {
+) -> Result<Principal, (StatusCode, Json<AuthError>)> {
     let prefix: String = token.chars().take(24).collect();
 
     let keys = repository
         .access_token
         .find_by_prefix(&prefix)
         .await
-        .map_err(|_| unauthorized_error("Internal server error"))?;
+        .map_err(|_| AuthError::unauthorized("Internal server error"))?;
 
     let token_hmac = compute_key_hmac(token, hmac_secret);
 
@@ -265,26 +332,26 @@ pub(crate) async fn verify_access_token(
         }
 
         if revoked_at.is_some() {
-            return Err(unauthorized_error("Access token has been revoked"));
+            return Err(AuthError::unauthorized("Access token has been revoked"));
         }
 
         if let Some(exp) = expires_at {
             if let Ok(expiry) = chrono::NaiveDateTime::parse_from_str(&exp, "%Y-%m-%d %H:%M:%S") {
                 if expiry < chrono::Utc::now().naive_utc() {
-                    return Err(unauthorized_error("Access token has expired"));
+                    return Err(AuthError::unauthorized("Access token has expired"));
                 }
             }
         }
 
         let _ = repository.access_token.update_last_used(&token_id).await;
 
-        let kind = AccessTokenKind::from_str(&kind).map_err(|_| unauthorized_error("Invalid access token"))?;
+        let kind = AccessTokenKind::from_str(&kind).map_err(|_| AuthError::unauthorized("Invalid access token"))?;
         let scopes = parse_scopes(&scopes);
 
         return match kind {
             AccessTokenKind::Instance => Ok(Principal::InstanceToken { token_id, scopes }),
             AccessTokenKind::Site => {
-                let site_id = site_id.ok_or(unauthorized_error("Site token missing site binding"))?;
+                let site_id = site_id.ok_or_else(|| AuthError::unauthorized("Site token missing site binding"))?;
                 Span::current().record("site_id", tracing::field::display(&site_id));
                 Ok(Principal::SiteToken {
                     token_id,
@@ -295,7 +362,7 @@ pub(crate) async fn verify_access_token(
         };
     }
 
-    Err(unauthorized_error("Invalid access token"))
+    Err(AuthError::unauthorized("Invalid access token"))
 }
 
 pub fn verify_csrf(parts: &Parts, config: &Config) -> Result<(), (StatusCode, String)> {
@@ -320,32 +387,32 @@ pub async fn require_admin_scope(
     repository: &Repository,
     site_id: Option<&str>,
     scope: &str,
-) -> Result<(), (StatusCode, serde_json::Value)> {
+) -> Result<(), (StatusCode, Json<AuthError>)> {
     match principal {
         Principal::InstanceToken { scopes, .. } => {
             if scopes.contains(scope) {
                 Ok(())
             } else {
-                Err(forbidden_error("Access token does not have the required scope"))
+                Err(AuthError::insufficient_scope(scope))
             }
         }
         Principal::UserSession { user_id } => match scope {
             SCOPE_SITES_READ | SCOPE_SITES_WRITE => Ok(()),
             SCOPE_SITES_DELETE => {
-                let site_id = site_id.ok_or(forbidden_error("Site id is required"))?;
+                let site_id = site_id.ok_or_else(|| AuthError::forbidden("Site id is required"))?;
                 check_site_access_repo(repository, user_id, site_id, "owner").await
             }
             SCOPE_MEMBERS_READ => {
-                let site_id = site_id.ok_or(forbidden_error("Site id is required"))?;
+                let site_id = site_id.ok_or_else(|| AuthError::forbidden("Site id is required"))?;
                 check_site_access_repo(repository, user_id, site_id, "viewer").await
             }
             SCOPE_MEMBERS_WRITE | SCOPE_TOKENS_READ | SCOPE_TOKENS_WRITE => {
-                let site_id = site_id.ok_or(forbidden_error("Site id is required"))?;
+                let site_id = site_id.ok_or_else(|| AuthError::forbidden("Site id is required"))?;
                 check_site_access_repo(repository, user_id, site_id, "admin").await
             }
-            _ => Err(forbidden_error("Unsupported admin scope")),
+            _ => Err(AuthError::forbidden("Unsupported admin scope")),
         },
-        Principal::SiteToken { .. } => Err(forbidden_error("Site tokens cannot access admin APIs")),
+        Principal::SiteToken { .. } => Err(AuthError::site_token_denied()),
     }
 }
 
@@ -353,12 +420,12 @@ pub async fn resolve_site_context(
     principal: &Principal,
     repository: &Repository,
     explicit_site_id: Option<&str>,
-) -> Result<SiteContext, (StatusCode, serde_json::Value)> {
+) -> Result<SiteContext, (StatusCode, Json<AuthError>)> {
     match principal {
         Principal::SiteToken { site_id, .. } => {
             if let Some(explicit) = explicit_site_id {
                 if explicit != site_id {
-                    return Err(forbidden_error("Site token does not have access to this site"));
+                    return Err(AuthError::forbidden("Site token does not have access to this site"));
                 }
             }
             Ok(SiteContext {
@@ -366,13 +433,13 @@ pub async fn resolve_site_context(
             })
         }
         Principal::UserSession { user_id } => {
-            let site_id = explicit_site_id.ok_or(forbidden_error("Missing site context"))?;
+            let site_id = explicit_site_id.ok_or_else(|| AuthError::forbidden("Missing site context"))?;
             check_site_access_repo(repository, user_id, site_id, "viewer").await?;
             Ok(SiteContext {
                 site_id: site_id.to_string(),
             })
         }
-        Principal::InstanceToken { .. } => Err(forbidden_error("Instance tokens cannot access site APIs")),
+        Principal::InstanceToken { .. } => Err(AuthError::instance_token_denied()),
     }
 }
 
@@ -382,7 +449,7 @@ pub async fn require_site_scope(
     explicit_site_id: Option<&str>,
     scope: &str,
     jwt_min_role: &str,
-) -> Result<SiteContext, (StatusCode, serde_json::Value)> {
+) -> Result<SiteContext, (StatusCode, Json<AuthError>)> {
     let site = resolve_site_context(principal, repository, explicit_site_id).await?;
 
     match principal {
@@ -390,14 +457,14 @@ pub async fn require_site_scope(
             if scopes.contains(scope) {
                 Ok(site)
             } else {
-                Err(forbidden_error("Access token does not have the required scope"))
+                Err(AuthError::insufficient_scope(scope))
             }
         }
         Principal::UserSession { user_id } => {
             check_site_access_repo(repository, user_id, &site.site_id, jwt_min_role).await?;
             Ok(site)
         }
-        Principal::InstanceToken { .. } => Err(forbidden_error("Instance tokens cannot access site APIs")),
+        Principal::InstanceToken { .. } => Err(AuthError::instance_token_denied()),
     }
 }
 
@@ -417,7 +484,7 @@ pub async fn check_site_access_repo(
     user_id: &str,
     site_id: &str,
     min_role: &str,
-) -> Result<(), (StatusCode, serde_json::Value)> {
+) -> Result<(), (StatusCode, Json<AuthError>)> {
     let role_order = |r: &str| match r {
         "owner" => 4,
         "admin" => 3,
@@ -431,14 +498,23 @@ pub async fn check_site_access_repo(
     let role = repository.user.get_role(user_id, site_id).await.map_err(|e| {
         (
             StatusCode::INTERNAL_SERVER_ERROR,
-            serde_json::json!({"error": e.to_string()}),
+            Json(AuthError {
+                error: "internal_error".into(),
+                message: e.to_string(),
+            }),
         )
     })?;
 
     match role {
         Some(r) if role_order(&r) >= min_level => Ok(()),
-        Some(_) => Err(forbidden_error("Insufficient permissions")),
-        None => Err((StatusCode::NOT_FOUND, serde_json::json!({"error": "Site not found"}))),
+        Some(_) => Err(AuthError::insufficient_role(min_role)),
+        None => Err((
+            StatusCode::NOT_FOUND,
+            Json(AuthError {
+                error: "not_found".into(),
+                message: "Site not found".into(),
+            }),
+        )),
     }
 }
 
