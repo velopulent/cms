@@ -25,16 +25,8 @@ pub struct FileReference {
     pub field_name: String,
 }
 
-pub fn db_file_to_gql(f: crate::models::file::File, gql_ctx: &GqlContext) -> File {
-    let url = match f.storage_provider.as_str() {
-        "s3" => gql_ctx
-            .storage
-            .s3
-            .as_ref()
-            .map(|s| s.url(&f.storage_key))
-            .unwrap_or_else(|| format!("/api/files/{}", f.id)),
-        _ => format!("/api/files/{}", f.id),
-    };
+pub fn db_file_to_gql(f: crate::models::file::File, _gql_ctx: &GqlContext) -> File {
+    let url = format!("/api/files/{}", f.id);
     let thumbnail_url = f
         .thumbnail_key
         .as_ref()
