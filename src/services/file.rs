@@ -84,7 +84,6 @@ impl FileService {
 
     pub async fn list_files(
         &self,
-        site_id: &str,
         params: ListFilesParams<'_>,
     ) -> Result<FileListResult, FileError> {
         self.repository
