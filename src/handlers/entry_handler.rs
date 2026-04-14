@@ -34,7 +34,7 @@ fn request_site_id(headers: &HeaderMap) -> Option<&str> {
 
 #[utoipa::path(
     get,
-    path = "/api/v1/site/entries",
+    path = "/api/v1/entries",
     params(ListParams),
     responses(
         (status = 200, description = "List of entries", body = Vec<Entry>),
@@ -54,7 +54,7 @@ pub async fn list_entries(
         .await
     {
         Ok(site) => site,
-        Err((status, err)) => return (status, Json(err)).into_response(),
+        Err((status, err)) => return (status, err).into_response(),
     };
 
     let published_only = matches!(principal, Principal::SiteToken { .. });
@@ -122,7 +122,7 @@ pub async fn get_entry(
         .await
     {
         Ok(site) => site,
-        Err((status, err)) => return (status, Json(err)).into_response(),
+        Err((status, err)) => return (status, err).into_response(),
     };
 
     let published_only = matches!(principal, Principal::SiteToken { .. });
@@ -143,7 +143,7 @@ pub async fn get_entry(
 
 #[utoipa::path(
     post,
-    path = "/api/v1/site/entries",
+    path = "/api/v1/entries",
     request_body = CreateEntry,
     responses(
         (status = 201, description = "Entry created", body = Entry),
@@ -165,7 +165,7 @@ pub async fn create_entry(
         .await
     {
         Ok(site) => site,
-        Err((status, err)) => return (status, Json(err)).into_response(),
+        Err((status, err)) => return (status, err).into_response(),
     };
 
     let data_str = payload.data.to_string();
@@ -221,7 +221,7 @@ pub async fn update_entry(
         .await
     {
         Ok(site) => site,
-        Err((status, err)) => return (status, Json(err)).into_response(),
+        Err((status, err)) => return (status, err).into_response(),
     };
 
     let existing = match repository.entry.get_by_id(&id, &site.site_id, false).await {
@@ -290,7 +290,7 @@ pub async fn delete_entry(
         .await
     {
         Ok(site) => site,
-        Err((status, err)) => return (status, Json(err)).into_response(),
+        Err((status, err)) => return (status, err).into_response(),
     };
 
     match repository.entry.delete(&id, &site.site_id).await {
@@ -327,7 +327,7 @@ pub async fn publish_entry(
         .await
     {
         Ok(site) => site,
-        Err((status, err)) => return (status, Json(err)).into_response(),
+        Err((status, err)) => return (status, err).into_response(),
     };
 
     match repository.entry.publish(&id, &site.site_id).await {
@@ -367,7 +367,7 @@ pub async fn unpublish_entry(
         .await
     {
         Ok(site) => site,
-        Err((status, err)) => return (status, Json(err)).into_response(),
+        Err((status, err)) => return (status, err).into_response(),
     };
 
     match repository.entry.unpublish(&id, &site.site_id).await {
