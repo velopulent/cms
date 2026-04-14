@@ -1,7 +1,7 @@
 use axum::extract::DefaultBodyLimit;
 use axum::{
-    Router,
     routing::{delete, get, post},
+    Router,
 };
 use tower_http::limit::RequestBodyLimitLayer;
 
@@ -12,24 +12,23 @@ use crate::handlers::file_handler::{
 
 pub fn file_routes(max_upload_bytes: usize) -> Router {
     Router::new()
-        .route("/api/v1/site/files", get(list_files))
-        // Upload route uses a nested router to disable DefaultBodyLimit
-        // before applying RequestBodyLimitLayer (avoids type inference issue
-        // with MethodRouter::layer)
+        .route("/api/v1/files", get(list_files))
         .merge(
             Router::new()
-                .route("/api/v1/site/files", post(upload_file))
+                .route("/api/v1/files", post(upload_file))
                 .layer(DefaultBodyLimit::disable())
                 .layer(RequestBodyLimitLayer::new(max_upload_bytes)),
         )
-        .route("/api/v1/site/files/batch-delete", post(batch_delete_files))
-        .route("/api/v1/site/files/batch-restore", post(batch_restore_files))
-        .route("/api/v1/site/files/batch-permanent-delete", post(batch_permanent_delete_files))
-        .route("/api/v1/site/files/{id}", get(get_file))
-        .route("/api/v1/site/files/{id}", delete(delete_file_handler))
-        .route("/api/v1/site/files/{id}/references", get(get_file_references))
-        .route("/api/v1/site/files/{id}/restore", post(restore_file))
-        // File serving (public, no auth)
+        .route("/api/v1/files/batch-delete", post(batch_delete_files))
+        .route("/api/v1/files/batch-restore", post(batch_restore_files))
+        .route(
+            "/api/v1/files/batch-permanent-delete",
+            post(batch_permanent_delete_files),
+        )
+        .route("/api/v1/files/{id}", get(get_file))
+        .route("/api/v1/files/{id}", delete(delete_file_handler))
+        .route("/api/v1/files/{id}/references", get(get_file_references))
+        .route("/api/v1/files/{id}/restore", post(restore_file))
         .route("/api/files/{id}", get(serve_file))
         .route("/api/files/{id}/thumbnail", get(serve_file_thumbnail))
 }
