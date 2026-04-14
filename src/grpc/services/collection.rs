@@ -9,17 +9,16 @@ use crate::grpc::cms::v1::{
 };
 use crate::grpc::interceptor::get_auth_context;
 use crate::models::collection::Collection;
-use crate::repository::Repository;
-use uuid::Uuid;
+use crate::services::collection::CollectionService as AppCollectionService;
 
 #[derive(Clone)]
 pub struct CollectionServiceImpl {
-    repository: Arc<Repository>,
+    app_collection_service: Arc<AppCollectionService>,
 }
 
 impl CollectionServiceImpl {
-    pub fn new(repository: Arc<Repository>) -> Self {
-        Self { repository }
+    pub fn new(collection_service: Arc<AppCollectionService>) -> Self {
+        Self { app_collection_service: collection_service }
     }
 }
 
@@ -34,14 +33,13 @@ impl CollectionService for CollectionServiceImpl {
         let site_id = auth.require_site_id()?.to_string();
 
         let collections = self
-            .repository
-            .collection
-            .list(&site_id)
+            .app_collection_service
+            .list_collections(&site_id)
             .await
-            .map_err(|e| Status::internal(format!("Database error: {}", e)))?;
+            .map_err(|e| Status::internal(format!("Error: {}", e)))?;
 
         let response = ListCollectionsResponse {
-            collections: collections.into_iter().map(ProtoCollection::from).collect(),
+            collections: collections.into_iter().map(CollectionServiceImpl::collection_to_proto).collect(),
         };
 
         Ok(Response::new(response))
@@ -57,14 +55,13 @@ impl CollectionService for CollectionServiceImpl {
         let slug = &request.into_inner().slug;
 
         let collection = self
-            .repository
-            .collection
-            .get_by_slug(&site_id, slug)
+            .app_collection_service
+            .get_collection(&site_id, slug)
             .await
-            .map_err(|e| Status::internal(format!("Database error: {}", e)))?
+            .map_err(|e| Status::internal(format!("Error: {}", e)))?
             .ok_or_else(|| Status::not_found("Collection not found"))?;
 
-        Ok(Response::new(ProtoCollection::from(collection)))
+        Ok(Response::new(CollectionServiceImpl::collection_to_proto(collection)))
     }
 
     async fn create_collection(
@@ -77,7 +74,7 @@ impl CollectionService for CollectionServiceImpl {
 
         let req = request.into_inner();
 
-        let id = Uuid::now_v7().to_string();
+        let id = uuid::Uuid::now_v7().to_string();
         let definition = if req.definition.is_empty() {
             "{}".to_string()
         } else {
@@ -85,13 +82,12 @@ impl CollectionService for CollectionServiceImpl {
         };
 
         let collection = self
-            .repository
-            .collection
-            .create(&id, &site_id, &req.name, &req.slug, &definition, req.is_singleton)
+            .app_collection_service
+            .create_collection(&site_id, &req.name, &req.slug, &definition, req.is_singleton)
             .await
-            .map_err(|e| Status::internal(format!("Database error: {}", e)))?;
+            .map_err(|e| Status::internal(format!("Error: {}", e)))?;
 
-        Ok(Response::new(ProtoCollection::from(collection)))
+        Ok(Response::new(CollectionServiceImpl::collection_to_proto(collection)))
     }
 
     async fn update_collection(
@@ -100,34 +96,30 @@ impl CollectionService for CollectionServiceImpl {
     ) -> Result<Response<ProtoCollection>, Status> {
         let auth = get_auth_context(&request)?;
         auth.require_site_scope(crate::middleware::auth::SCOPE_SCHEMA_WRITE)?;
+        let site_id = auth.require_site_id()?.to_string();
 
         let req = request.into_inner();
 
         let existing = self
-            .repository
-            .collection
+            .app_collection_service
             .get_by_id(&req.id)
             .await
-            .map_err(|e| Status::internal(format!("Database error: {}", e)))?
+            .map_err(|e| Status::internal(format!("Error: {}", e)))?
             .ok_or_else(|| Status::not_found("Collection not found"))?;
 
-        if existing.site_id != auth.require_site_id()? {
-            return Err(Status::permission_denied("Collection does not belong to this site"));
-        }
-
         let collection = self
-            .repository
-            .collection
-            .update(
-                &req.id,
-                req.name.as_ref().unwrap_or(&existing.name),
-                req.slug.as_ref().unwrap_or(&existing.slug),
-                req.definition.as_ref().unwrap_or(&existing.definition),
+            .app_collection_service
+            .update_collection(
+                &site_id,
+                &existing.slug,
+                req.name.as_deref(),
+                req.slug.as_deref(),
+                req.definition.as_deref(),
             )
             .await
-            .map_err(|e| Status::internal(format!("Database error: {}", e)))?;
+            .map_err(|e| Status::internal(format!("Error: {}", e)))?;
 
-        Ok(Response::new(ProtoCollection::from(collection)))
+        Ok(Response::new(CollectionServiceImpl::collection_to_proto(collection)))
     }
 
     async fn delete_collection(
@@ -140,11 +132,10 @@ impl CollectionService for CollectionServiceImpl {
         let req = request.into_inner();
 
         let deleted = self
-            .repository
-            .collection
-            .delete(&site_id, &req.slug)
+            .app_collection_service
+            .delete_collection(&site_id, &req.slug)
             .await
-            .map_err(|e| Status::internal(format!("Database error: {}", e)))?;
+            .map_err(|e| Status::internal(format!("Error: {}", e)))?;
 
         Ok(Response::new(DeleteResponse {
             success: deleted > 0,
@@ -157,8 +148,8 @@ impl CollectionService for CollectionServiceImpl {
     }
 }
 
-impl From<Collection> for ProtoCollection {
-    fn from(c: Collection) -> Self {
+impl CollectionServiceImpl {
+    fn collection_to_proto(c: Collection) -> ProtoCollection {
         ProtoCollection {
             id: c.id,
             site_id: c.site_id,
