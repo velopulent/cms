@@ -17,7 +17,7 @@ async fn graphql_handler(
     axum::extract::Extension(schema): axum::extract::Extension<Arc<CmsSchema>>,
     axum::extract::Extension(repository): axum::extract::Extension<Repository>,
     axum::extract::Extension(services): axum::extract::Extension<Services>,
-    axum::extract::Extension(storage): axum::extract::Extension<StorageManager>,
+    axum::extract::Extension(_storage): axum::extract::Extension<StorageManager>,
     axum::extract::Extension(config): axum::extract::Extension<Config>,
     headers: HeaderMap,
     req: async_graphql_axum::GraphQLRequest,
