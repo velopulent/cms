@@ -9,18 +9,17 @@ use crate::grpc::cms::v1::{
 };
 use crate::grpc::interceptor::get_auth_context;
 use crate::models::entry::Entry;
-use crate::repository::Repository;
 use crate::repository::traits::ListEntriesParams;
-use uuid::Uuid;
+use crate::services::entry::EntryService as AppEntryService;
 
 #[derive(Clone)]
 pub struct EntryServiceImpl {
-    repository: Arc<Repository>,
+    app_entry_service: Arc<AppEntryService>,
 }
 
 impl EntryServiceImpl {
-    pub fn new(repository: Arc<Repository>) -> Self {
-        Self { repository }
+    pub fn new(entry_service: Arc<AppEntryService>) -> Self {
+        Self { app_entry_service: entry_service }
     }
 }
 
@@ -48,11 +47,10 @@ impl EntryService for EntryServiceImpl {
         };
 
         let result = self
-            .repository
-            .entry
-            .list(params)
+            .app_entry_service
+            .list_entries(params, false)
             .await
-            .map_err(|e| Status::internal(format!("Database error: {}", e)))?;
+            .map_err(|e| Status::internal(format!("Error: {}", e)))?;
 
         let response = ListEntriesResponse {
             items: result.items.into_iter().map(ProtoEntry::from).collect(),
@@ -71,11 +69,10 @@ impl EntryService for EntryServiceImpl {
         let id = request.into_inner().id;
 
         let entry = self
-            .repository
-            .entry
-            .get_by_id(&id, &site_id, false)
+            .app_entry_service
+            .get_entry(&id, &site_id, false)
             .await
-            .map_err(|e| Status::internal(format!("Database error: {}", e)))?
+            .map_err(|e| Status::internal(format!("Error: {}", e)))?
             .ok_or_else(|| Status::not_found("Entry not found"))?;
 
         Ok(Response::new(ProtoEntry::from(entry)))
@@ -87,14 +84,13 @@ impl EntryService for EntryServiceImpl {
         let site_id = auth.require_site_id()?.to_string();
 
         let req = request.into_inner();
-        let id = Uuid::now_v7().to_string();
+        let data: serde_json::Value = serde_json::from_str(&req.data).unwrap_or_default();
 
         let entry = self
-            .repository
-            .entry
-            .create(&id, &site_id, &req.collection_id, &req.data, &req.slug)
+            .app_entry_service
+            .create_entry(&site_id, &req.collection_id, &data, &req.slug)
             .await
-            .map_err(|e| Status::internal(format!("Database error: {}", e)))?;
+            .map_err(|e| Status::internal(format!("Error: {}", e)))?;
 
         Ok(Response::new(ProtoEntry::from(entry)))
     }
@@ -105,26 +101,19 @@ impl EntryService for EntryServiceImpl {
         let site_id = auth.require_site_id()?.to_string();
 
         let req = request.into_inner();
-
-        let existing = self
-            .repository
-            .entry
-            .get_by_id(&req.id, &site_id, false)
-            .await
-            .map_err(|e| Status::internal(format!("Database error: {}", e)))?
-            .ok_or_else(|| Status::not_found("Entry not found"))?;
+        let data: Option<serde_json::Value> = req.data.as_ref().map(|d| serde_json::from_str(d).unwrap_or_default());
 
         let entry = self
-            .repository
-            .entry
-            .update(
+            .app_entry_service
+            .update_entry(
                 &req.id,
-                req.data.as_ref().unwrap_or(&existing.data),
-                req.slug.as_ref().unwrap_or(&existing.slug),
-                req.status.as_ref().unwrap_or(&existing.status),
+                &site_id,
+                data.as_ref(),
+                req.slug.as_deref(),
+                req.status.as_deref(),
             )
             .await
-            .map_err(|e| Status::internal(format!("Database error: {}", e)))?;
+            .map_err(|e| Status::internal(format!("Error: {}", e)))?;
 
         Ok(Response::new(ProtoEntry::from(entry)))
     }
@@ -136,11 +125,10 @@ impl EntryService for EntryServiceImpl {
         let id = request.into_inner().id;
 
         let deleted = self
-            .repository
-            .entry
-            .delete(&id, &site_id)
+            .app_entry_service
+            .delete_entry(&id, &site_id)
             .await
-            .map_err(|e| Status::internal(format!("Database error: {}", e)))?;
+            .map_err(|e| Status::internal(format!("Error: {}", e)))?;
 
         Ok(Response::new(DeleteResponse {
             success: deleted > 0,
@@ -159,11 +147,10 @@ impl EntryService for EntryServiceImpl {
         let id = request.into_inner().id;
 
         let entry = self
-            .repository
-            .entry
-            .publish(&id, &site_id)
+            .app_entry_service
+            .publish_entry(&id, &site_id)
             .await
-            .map_err(|e| Status::internal(format!("Database error: {}", e)))?;
+            .map_err(|e| Status::internal(format!("Error: {}", e)))?;
 
         Ok(Response::new(ProtoEntry::from(entry)))
     }
@@ -175,11 +162,10 @@ impl EntryService for EntryServiceImpl {
         let id = request.into_inner().id;
 
         let entry = self
-            .repository
-            .entry
-            .unpublish(&id, &site_id)
+            .app_entry_service
+            .unpublish_entry(&id, &site_id)
             .await
-            .map_err(|e| Status::internal(format!("Database error: {}", e)))?;
+            .map_err(|e| Status::internal(format!("Error: {}", e)))?;
 
         Ok(Response::new(ProtoEntry::from(entry)))
     }
