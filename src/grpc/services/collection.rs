@@ -74,7 +74,6 @@ impl CollectionService for CollectionServiceImpl {
 
         let req = request.into_inner();
 
-        let id = uuid::Uuid::now_v7().to_string();
         let definition = if req.definition.is_empty() {
             "{}".to_string()
         } else {
