@@ -194,11 +194,7 @@ pub type AccessTokenLookupRow = (
 
 #[async_trait]
 pub trait AccessTokenRepository: Send + Sync {
-    async fn list(
-        &self,
-        kind: AccessTokenKind,
-        site_id: Option<&str>,
-    ) -> Result<Vec<AccessToken>, RepositoryError>;
+    async fn list(&self, kind: AccessTokenKind, site_id: Option<&str>) -> Result<Vec<AccessToken>, RepositoryError>;
     async fn create(
         &self,
         id: &str,
@@ -211,12 +207,7 @@ pub trait AccessTokenRepository: Send + Sync {
         scopes: &str,
         created_by_user_id: Option<&str>,
     ) -> Result<(), RepositoryError>;
-    async fn delete(
-        &self,
-        id: &str,
-        kind: AccessTokenKind,
-        site_id: Option<&str>,
-    ) -> Result<u64, RepositoryError>;
+    async fn delete(&self, id: &str, kind: AccessTokenKind, site_id: Option<&str>) -> Result<u64, RepositoryError>;
     async fn find_by_prefix(&self, prefix: &str) -> Result<Vec<AccessTokenLookupRow>, RepositoryError>;
     async fn update_last_used(&self, id: &str) -> Result<(), RepositoryError>;
 }

@@ -7,9 +7,7 @@ use axum::{
 };
 use tracing::instrument;
 
-use crate::middleware::auth::{
-    HEADER_SITE_ID, Principal, SCOPE_CONTENT_READ, SCOPE_CONTENT_WRITE, require_site_scope,
-};
+use crate::middleware::auth::{HEADER_SITE_ID, Principal, SCOPE_CONTENT_READ, SCOPE_CONTENT_WRITE, require_site_scope};
 use crate::models::collection::{SingletonResponse, UpdateSingletonData};
 use crate::repository::Repository;
 use crate::services::Services;
@@ -35,8 +33,14 @@ pub async fn list_singletons(
     Extension(repository): Extension<Repository>,
     Extension(services): Extension<Services>,
 ) -> Response {
-    let site = match require_site_scope(&principal, &repository, request_site_id(&headers), SCOPE_CONTENT_READ, "viewer")
-        .await
+    let site = match require_site_scope(
+        &principal,
+        &repository,
+        request_site_id(&headers),
+        SCOPE_CONTENT_READ,
+        "viewer",
+    )
+    .await
     {
         Ok(site) => site,
         Err((status, err)) => return (status, err).into_response(),
@@ -68,8 +72,14 @@ pub async fn get_singleton(
     Extension(repository): Extension<Repository>,
     Extension(services): Extension<Services>,
 ) -> Response {
-    let site = match require_site_scope(&principal, &repository, request_site_id(&headers), SCOPE_CONTENT_READ, "viewer")
-        .await
+    let site = match require_site_scope(
+        &principal,
+        &repository,
+        request_site_id(&headers),
+        SCOPE_CONTENT_READ,
+        "viewer",
+    )
+    .await
     {
         Ok(site) => site,
         Err((status, err)) => return (status, err).into_response(),
@@ -104,14 +114,24 @@ pub async fn update_singleton(
     Extension(services): Extension<Services>,
     Json(payload): Json<UpdateSingletonData>,
 ) -> Response {
-    let site = match require_site_scope(&principal, &repository, request_site_id(&headers), SCOPE_CONTENT_WRITE, "editor")
-        .await
+    let site = match require_site_scope(
+        &principal,
+        &repository,
+        request_site_id(&headers),
+        SCOPE_CONTENT_WRITE,
+        "editor",
+    )
+    .await
     {
         Ok(site) => site,
         Err((status, err)) => return (status, err).into_response(),
     };
 
-    match services.singleton.update_singleton(&site.site_id, &slug, &payload.data).await {
+    match services
+        .singleton
+        .update_singleton(&site.site_id, &slug, &payload.data)
+        .await
+    {
         Ok(response) => (StatusCode::OK, Json(response)).into_response(),
         Err(e) => e.into_response(),
     }

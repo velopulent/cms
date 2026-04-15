@@ -1,6 +1,6 @@
 use axum::{
-    routing::{delete, get, post},
     Router,
+    routing::{delete, get, post},
 };
 
 use crate::handlers::access_token_handler::{

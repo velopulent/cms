@@ -14,7 +14,9 @@ pub struct SingletonServiceImpl {
 
 impl SingletonServiceImpl {
     pub fn new(singleton_service: Arc<AppSingletonService>) -> Self {
-        Self { app_singleton_service: singleton_service }
+        Self {
+            app_singleton_service: singleton_service,
+        }
     }
 }
 

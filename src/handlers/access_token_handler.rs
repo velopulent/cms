@@ -8,8 +8,7 @@ use serde_json::json;
 use tracing::instrument;
 
 use crate::middleware::auth::{
-    HEADER_SITE_ID, Principal, SCOPE_TOKENS_READ, SCOPE_TOKENS_WRITE,
-    require_admin_scope, require_site_scope,
+    HEADER_SITE_ID, Principal, SCOPE_TOKENS_READ, SCOPE_TOKENS_WRITE, require_admin_scope, require_site_scope,
 };
 use crate::models::access_token::{CreateInstanceToken, CreateSiteToken};
 use crate::repository::Repository;
@@ -183,11 +182,7 @@ pub async fn create_instance_token(
 
     let scopes = payload.scopes.unwrap_or_default();
 
-    match services
-        .access_token
-        .create_instance_token(payload.name, scopes)
-        .await
-    {
+    match services.access_token.create_instance_token(payload.name, scopes).await {
         Ok(response) => (StatusCode::CREATED, Json(response)).into_response(),
         Err(e) => e.into_response(),
     }

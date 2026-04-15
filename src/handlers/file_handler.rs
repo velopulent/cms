@@ -67,8 +67,14 @@ pub async fn list_files(
     Extension(repository): Extension<Repository>,
     Extension(services): Extension<Services>,
 ) -> Response {
-    let site = match require_site_scope(&principal, &repository, request_site_id(&headers), SCOPE_ASSETS_READ, "viewer")
-        .await
+    let site = match require_site_scope(
+        &principal,
+        &repository,
+        request_site_id(&headers),
+        SCOPE_ASSETS_READ,
+        "viewer",
+    )
+    .await
     {
         Ok(site) => site,
         Err((status, err)) => return (status, err).into_response(),
@@ -126,15 +132,25 @@ pub async fn upload_file(
     Extension(config): Extension<Config>,
     mut multipart: Multipart,
 ) -> Response {
-    let site = match require_site_scope(&principal, &repository, request_site_id(&headers), SCOPE_ASSETS_WRITE, "editor")
-        .await
+    let site = match require_site_scope(
+        &principal,
+        &repository,
+        request_site_id(&headers),
+        SCOPE_ASSETS_WRITE,
+        "editor",
+    )
+    .await
     {
         Ok(site) => site,
         Err((status, err)) => return (status, err).into_response(),
     };
     let site_id = site.site_id;
 
-    let storage_provider = services.file.get_storage_provider(&site_id).await.unwrap_or_else(|_| "filesystem".into());
+    let storage_provider = services
+        .file
+        .get_storage_provider(&site_id)
+        .await
+        .unwrap_or_else(|_| "filesystem".into());
 
     let mut file_data: Option<Bytes> = None;
     let mut file_name: Option<String> = None;
@@ -190,11 +206,21 @@ pub async fn upload_file(
     let content_type = file_content_type.unwrap_or_else(|| "application/octet-stream".into());
     let created_by = extract_user_id(&principal);
 
-    let provider_to_use = requested_storage_provider.as_deref().filter(|p| *p == "s3").unwrap_or(&storage_provider);
+    let provider_to_use = requested_storage_provider
+        .as_deref()
+        .filter(|p| *p == "s3")
+        .unwrap_or(&storage_provider);
 
     match services
         .file
-        .upload_file(&site_id, file_data, &file_name, &content_type, Some(provider_to_use), created_by)
+        .upload_file(
+            &site_id,
+            file_data,
+            &file_name,
+            &content_type,
+            Some(provider_to_use),
+            created_by,
+        )
         .await
     {
         Ok(file) => (StatusCode::CREATED, Json(file)).into_response(),
@@ -221,8 +247,14 @@ pub async fn get_file(
     Extension(repository): Extension<Repository>,
     Extension(services): Extension<Services>,
 ) -> Response {
-    let site = match require_site_scope(&principal, &repository, request_site_id(&headers), SCOPE_ASSETS_READ, "viewer")
-        .await
+    let site = match require_site_scope(
+        &principal,
+        &repository,
+        request_site_id(&headers),
+        SCOPE_ASSETS_READ,
+        "viewer",
+    )
+    .await
     {
         Ok(site) => site,
         Err((status, err)) => return (status, err).into_response(),
@@ -257,8 +289,14 @@ pub async fn delete_file_handler(
     Extension(repository): Extension<Repository>,
     Extension(services): Extension<Services>,
 ) -> Response {
-    let site = match require_site_scope(&principal, &repository, request_site_id(&headers), SCOPE_ASSETS_WRITE, "editor")
-        .await
+    let site = match require_site_scope(
+        &principal,
+        &repository,
+        request_site_id(&headers),
+        SCOPE_ASSETS_WRITE,
+        "editor",
+    )
+    .await
     {
         Ok(site) => site,
         Err((status, err)) => return (status, err).into_response(),
@@ -289,8 +327,14 @@ pub async fn get_file_references(
     Extension(repository): Extension<Repository>,
     Extension(services): Extension<Services>,
 ) -> Response {
-    let site = match require_site_scope(&principal, &repository, request_site_id(&headers), SCOPE_ASSETS_READ, "viewer")
-        .await
+    let site = match require_site_scope(
+        &principal,
+        &repository,
+        request_site_id(&headers),
+        SCOPE_ASSETS_READ,
+        "viewer",
+    )
+    .await
     {
         Ok(site) => site,
         Err((status, err)) => return (status, err).into_response(),
@@ -321,8 +365,14 @@ pub async fn restore_file(
     Extension(repository): Extension<Repository>,
     Extension(services): Extension<Services>,
 ) -> Response {
-    let site = match require_site_scope(&principal, &repository, request_site_id(&headers), SCOPE_ASSETS_WRITE, "editor")
-        .await
+    let site = match require_site_scope(
+        &principal,
+        &repository,
+        request_site_id(&headers),
+        SCOPE_ASSETS_WRITE,
+        "editor",
+    )
+    .await
     {
         Ok(site) => site,
         Err((status, err)) => return (status, err).into_response(),
@@ -358,8 +408,14 @@ pub async fn batch_delete_files(
     Extension(services): Extension<Services>,
     Json(body): Json<BatchFileIds>,
 ) -> Response {
-    let site = match require_site_scope(&principal, &repository, request_site_id(&headers), SCOPE_ASSETS_WRITE, "editor")
-        .await
+    let site = match require_site_scope(
+        &principal,
+        &repository,
+        request_site_id(&headers),
+        SCOPE_ASSETS_WRITE,
+        "editor",
+    )
+    .await
     {
         Ok(site) => site,
         Err((status, err)) => return (status, err).into_response(),
@@ -394,8 +450,14 @@ pub async fn batch_restore_files(
     Extension(services): Extension<Services>,
     Json(body): Json<BatchFileIds>,
 ) -> Response {
-    let site = match require_site_scope(&principal, &repository, request_site_id(&headers), SCOPE_ASSETS_WRITE, "editor")
-        .await
+    let site = match require_site_scope(
+        &principal,
+        &repository,
+        request_site_id(&headers),
+        SCOPE_ASSETS_WRITE,
+        "editor",
+    )
+    .await
     {
         Ok(site) => site,
         Err((status, err)) => return (status, err).into_response(),
@@ -430,8 +492,14 @@ pub async fn batch_permanent_delete_files(
     Extension(services): Extension<Services>,
     Json(body): Json<BatchFileIds>,
 ) -> Response {
-    let site = match require_site_scope(&principal, &repository, request_site_id(&headers), SCOPE_ASSETS_WRITE, "editor")
-        .await
+    let site = match require_site_scope(
+        &principal,
+        &repository,
+        request_site_id(&headers),
+        SCOPE_ASSETS_WRITE,
+        "editor",
+    )
+    .await
     {
         Ok(site) => site,
         Err((status, err)) => return (status, err).into_response(),
@@ -448,18 +516,12 @@ pub async fn batch_permanent_delete_files(
 }
 
 #[instrument(skip(services))]
-pub async fn serve_file(
-    Path(id): Path<String>,
-    Extension(services): Extension<Services>,
-) -> Response {
+pub async fn serve_file(Path(id): Path<String>, Extension(services): Extension<Services>) -> Response {
     serve_file_by_key(&id, &services, false).await
 }
 
 #[instrument(skip(services))]
-pub async fn serve_file_thumbnail(
-    Path(id): Path<String>,
-    Extension(services): Extension<Services>,
-) -> Response {
+pub async fn serve_file_thumbnail(Path(id): Path<String>, Extension(services): Extension<Services>) -> Response {
     serve_file_by_key(&id, &services, true).await
 }
 

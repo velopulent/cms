@@ -1,8 +1,8 @@
 use std::sync::Arc;
 
 use axum::{Json, http::StatusCode, response::IntoResponse};
-use serde_json::json;
 use serde_json::Value;
+use serde_json::json;
 use thiserror::Error;
 use uuid::Uuid;
 
@@ -33,15 +33,12 @@ pub enum EntryError {
 impl EntryError {
     pub fn into_response(self) -> axum::response::Response {
         let (status, body) = match self {
-            EntryError::NotFound => {
-                (StatusCode::NOT_FOUND, Json(json!({"error": "Entry not found"})))
-            }
-            EntryError::AlreadyExists => {
-                (StatusCode::CONFLICT, Json(json!({"error": "Entry with this slug already exists for this collection"})))
-            }
-            EntryError::DatabaseError(msg) => {
-                (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": msg})))
-            }
+            EntryError::NotFound => (StatusCode::NOT_FOUND, Json(json!({"error": "Entry not found"}))),
+            EntryError::AlreadyExists => (
+                StatusCode::CONFLICT,
+                Json(json!({"error": "Entry with this slug already exists for this collection"})),
+            ),
+            EntryError::DatabaseError(msg) => (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": msg}))),
         };
         (status, body).into_response()
     }
@@ -52,10 +49,7 @@ impl EntryService {
         Self { repository, storage }
     }
 
-    pub async fn list_entries(
-        &self,
-        params: ListEntriesParams<'_>,
-    ) -> Result<EntriesListResult, EntryError> {
+    pub async fn list_entries(&self, params: ListEntriesParams<'_>) -> Result<EntriesListResult, EntryError> {
         self.repository
             .entry
             .list(params)
@@ -63,12 +57,7 @@ impl EntryService {
             .map_err(|e| EntryError::DatabaseError(e.to_string()))
     }
 
-    pub async fn get_entry(
-        &self,
-        id: &str,
-        site_id: &str,
-        published_only: bool,
-    ) -> Result<Option<Entry>, EntryError> {
+    pub async fn get_entry(&self, id: &str, site_id: &str, published_only: bool) -> Result<Option<Entry>, EntryError> {
         self.repository
             .entry
             .get_by_id(id, site_id, published_only)
@@ -95,11 +84,7 @@ impl EntryService {
                 _ => EntryError::DatabaseError(e.to_string()),
             })?;
 
-        let _ = self
-            .repository
-            .entry
-            .sync_file_references(&id, site_id, data)
-            .await;
+        let _ = self.repository.entry.sync_file_references(&id, site_id, data).await;
 
         self.repository
             .entry
@@ -165,25 +150,17 @@ impl EntryService {
     }
 
     pub async fn publish_entry(&self, id: &str, site_id: &str) -> Result<Entry, EntryError> {
-        self.repository
-            .entry
-            .publish(id, site_id)
-            .await
-            .map_err(|e| match e {
-                RepositoryError::NotFound => EntryError::NotFound,
-                _ => EntryError::DatabaseError(e.to_string()),
-            })
+        self.repository.entry.publish(id, site_id).await.map_err(|e| match e {
+            RepositoryError::NotFound => EntryError::NotFound,
+            _ => EntryError::DatabaseError(e.to_string()),
+        })
     }
 
     pub async fn unpublish_entry(&self, id: &str, site_id: &str) -> Result<Entry, EntryError> {
-        self.repository
-            .entry
-            .unpublish(id, site_id)
-            .await
-            .map_err(|e| match e {
-                RepositoryError::NotFound => EntryError::NotFound,
-                _ => EntryError::DatabaseError(e.to_string()),
-            })
+        self.repository.entry.unpublish(id, site_id).await.map_err(|e| match e {
+            RepositoryError::NotFound => EntryError::NotFound,
+            _ => EntryError::DatabaseError(e.to_string()),
+        })
     }
 
     pub async fn resolve_entry_files(&self, entry: &Entry) -> Result<Value, EntryError> {

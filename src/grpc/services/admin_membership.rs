@@ -19,13 +19,18 @@ pub struct MembershipServiceImpl {
 
 impl MembershipServiceImpl {
     pub fn new(site_service: Arc<SiteService>) -> Self {
-        Self { app_site_service: site_service }
+        Self {
+            app_site_service: site_service,
+        }
     }
 }
 
 #[tonic::async_trait]
 impl MembershipService for MembershipServiceImpl {
-    async fn list_members(&self, request: Request<ListMembersRequest>) -> Result<Response<ListMembersResponse>, Status> {
+    async fn list_members(
+        &self,
+        request: Request<ListMembersRequest>,
+    ) -> Result<Response<ListMembersResponse>, Status> {
         let auth = get_auth_context(&request)?;
         auth.require_instance_scope(SCOPE_MEMBERS_READ)?;
         let site_id = request.into_inner().site_id;
@@ -52,7 +57,9 @@ impl MembershipService for MembershipServiceImpl {
             .await
             .map_err(|e| match e {
                 crate::services::site::SiteError::UserNotFound => Status::not_found("User not found"),
-                crate::services::site::SiteError::AlreadyMember => Status::already_exists("User is already a member of this site"),
+                crate::services::site::SiteError::AlreadyMember => {
+                    Status::already_exists("User is already a member of this site")
+                }
                 crate::services::site::SiteError::InvalidRole(msg) => Status::invalid_argument(msg),
                 _ => Status::internal(format!("Error: {}", e)),
             })?;

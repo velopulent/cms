@@ -1,10 +1,10 @@
-pub mod auth;
-pub mod site;
 pub mod access_token;
+pub mod auth;
 pub mod collection;
 pub mod entry;
 pub mod file;
 pub mod singleton;
+pub mod site;
 
 use std::sync::Arc;
 
@@ -46,10 +46,7 @@ impl Services {
                 storage.clone(),
                 config.clone(),
             )),
-            singleton: Arc::new(singleton::SingletonService::new(
-                repository.clone(),
-                storage,
-            )),
+            singleton: Arc::new(singleton::SingletonService::new(repository.clone(), storage)),
         }
     }
 }

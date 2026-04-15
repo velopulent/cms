@@ -8,9 +8,7 @@ use axum::{
 use serde_json::json;
 use tracing::instrument;
 
-use crate::middleware::auth::{
-    HEADER_SITE_ID, Principal, SCOPE_SCHEMA_READ, SCOPE_SCHEMA_WRITE, require_site_scope,
-};
+use crate::middleware::auth::{HEADER_SITE_ID, Principal, SCOPE_SCHEMA_READ, SCOPE_SCHEMA_WRITE, require_site_scope};
 use crate::models::collection::{Collection, CreateCollection, UpdateCollection};
 use crate::repository::Repository;
 use crate::services::Services;
@@ -70,7 +68,11 @@ pub async fn get_collection(
         Err((status, err)) => return (status, err).into_response(),
     };
 
-    match services.collection.get_collection(&site.site_id, &collection_slug).await {
+    match services
+        .collection
+        .get_collection(&site.site_id, &collection_slug)
+        .await
+    {
         Ok(Some(item)) => (StatusCode::OK, Json(item)).into_response(),
         Ok(None) => (StatusCode::NOT_FOUND, Json(json!({"error": "Collection not found"}))).into_response(),
         Err(e) => e.into_response(),
@@ -109,7 +111,13 @@ pub async fn create_collection(
 
     match services
         .collection
-        .create_collection(&site.site_id, &payload.name, &payload.slug, &definition_str, is_singleton)
+        .create_collection(
+            &site.site_id,
+            &payload.name,
+            &payload.slug,
+            &definition_str,
+            is_singleton,
+        )
         .await
     {
         Ok(item) => (StatusCode::CREATED, Json(item)).into_response(),
@@ -149,7 +157,13 @@ pub async fn update_collection(
 
     match services
         .collection
-        .update_collection(&site.site_id, &collection_slug, payload.name.as_deref(), payload.slug.as_deref(), definition_str.as_deref())
+        .update_collection(
+            &site.site_id,
+            &collection_slug,
+            payload.name.as_deref(),
+            payload.slug.as_deref(),
+            definition_str.as_deref(),
+        )
         .await
     {
         Ok(item) => (StatusCode::OK, Json(item)).into_response(),
@@ -183,7 +197,11 @@ pub async fn delete_collection(
         Err((status, err)) => return (status, err).into_response(),
     };
 
-    match services.collection.delete_collection(&site.site_id, &collection_slug).await {
+    match services
+        .collection
+        .delete_collection(&site.site_id, &collection_slug)
+        .await
+    {
         Ok(_) => StatusCode::NO_CONTENT.into_response(),
         Err(e) => e.into_response(),
     }

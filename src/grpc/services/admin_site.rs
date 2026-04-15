@@ -19,7 +19,9 @@ pub struct SiteServiceImpl {
 
 impl SiteServiceImpl {
     pub fn new(site_service: Arc<AppSiteService>) -> Self {
-        Self { app_site_service: site_service }
+        Self {
+            app_site_service: site_service,
+        }
     }
 }
 
@@ -100,7 +102,11 @@ impl SiteService for SiteServiceImpl {
 
         let site = self
             .app_site_service
-            .update_site(&req.site_id, req.name.as_deref(), req.default_storage_provider.as_deref())
+            .update_site(
+                &req.site_id,
+                req.name.as_deref(),
+                req.default_storage_provider.as_deref(),
+            )
             .await
             .map_err(|e| Status::internal(format!("Error: {}", e)))?;
 

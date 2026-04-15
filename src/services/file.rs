@@ -47,27 +47,22 @@ pub enum FileError {
 impl FileError {
     pub fn into_response(self) -> axum::response::Response {
         let (status, body) = match self {
-            FileError::NotFound => {
-                (StatusCode::NOT_FOUND, Json(json!({"error": "File not found"})))
-            }
-            FileError::NotFoundOrNotDeleted => {
-                (StatusCode::NOT_FOUND, Json(json!({"error": "File not found or not deleted"})))
-            }
-            FileError::NoFileProvided => {
-                (StatusCode::BAD_REQUEST, Json(json!({"error": "No file provided"})))
-            }
-            FileError::FileTooLarge(msg) => {
-                (StatusCode::PAYLOAD_TOO_LARGE, Json(json!({"error": msg})))
-            }
-            FileError::StorageError(msg) => {
-                (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": format!("Failed to store file: {}", msg)})))
-            }
-            FileError::NoStorageConfigured => {
-                (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": "No storage providers configured"})))
-            }
-            FileError::DatabaseError(msg) => {
-                (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": msg})))
-            }
+            FileError::NotFound => (StatusCode::NOT_FOUND, Json(json!({"error": "File not found"}))),
+            FileError::NotFoundOrNotDeleted => (
+                StatusCode::NOT_FOUND,
+                Json(json!({"error": "File not found or not deleted"})),
+            ),
+            FileError::NoFileProvided => (StatusCode::BAD_REQUEST, Json(json!({"error": "No file provided"}))),
+            FileError::FileTooLarge(msg) => (StatusCode::PAYLOAD_TOO_LARGE, Json(json!({"error": msg}))),
+            FileError::StorageError(msg) => (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({"error": format!("Failed to store file: {}", msg)})),
+            ),
+            FileError::NoStorageConfigured => (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({"error": "No storage providers configured"})),
+            ),
+            FileError::DatabaseError(msg) => (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": msg}))),
         };
         (status, body).into_response()
     }
@@ -82,10 +77,7 @@ impl FileService {
         }
     }
 
-    pub async fn list_files(
-        &self,
-        params: ListFilesParams<'_>,
-    ) -> Result<FileListResult, FileError> {
+    pub async fn list_files(&self, params: ListFilesParams<'_>) -> Result<FileListResult, FileError> {
         self.repository
             .file
             .list(params)
@@ -274,7 +266,9 @@ impl FileService {
             .map_err(|e| FileError::DatabaseError(e.to_string()))?;
 
         for file in &files {
-            let _ = self.remove_from_storage(&file.storage_key, &file.storage_provider).await;
+            let _ = self
+                .remove_from_storage(&file.storage_key, &file.storage_provider)
+                .await;
             if let Some(ref tk) = file.thumbnail_key {
                 let _ = self.remove_from_storage(tk, &file.storage_provider).await;
             }
@@ -421,11 +415,7 @@ impl FileService {
         }
     }
 
-    async fn read_from_storage(
-        &self,
-        key: &str,
-        provider: &str,
-    ) -> Result<Bytes, Box<dyn std::error::Error>> {
+    async fn read_from_storage(&self, key: &str, provider: &str) -> Result<Bytes, Box<dyn std::error::Error>> {
         match provider {
             "filesystem" => {
                 if let Some(fs) = &self.storage.filesystem {
@@ -445,11 +435,7 @@ impl FileService {
         }
     }
 
-    async fn remove_from_storage(
-        &self,
-        key: &str,
-        provider: &str,
-    ) -> Result<(), Box<dyn std::error::Error>> {
+    async fn remove_from_storage(&self, key: &str, provider: &str) -> Result<(), Box<dyn std::error::Error>> {
         match provider {
             "filesystem" => {
                 if let Some(fs) = &self.storage.filesystem {

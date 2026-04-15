@@ -1,8 +1,8 @@
 use std::sync::Arc;
 
 use axum::{Json, response::IntoResponse};
-use serde_json::json;
 use serde_json::Value;
+use serde_json::json;
 use thiserror::Error;
 
 use crate::handlers::file_handler::StorageManager;
@@ -30,15 +30,18 @@ pub enum SingletonError {
 impl SingletonError {
     pub fn into_response(self) -> axum::response::Response {
         let (status, body) = match self {
-            SingletonError::NotFound => {
-                (axum::http::StatusCode::NOT_FOUND, Json(json!({"error": "Singleton not found"})))
-            }
-            SingletonError::NotASingleton => {
-                (axum::http::StatusCode::NOT_FOUND, Json(json!({"error": "Singleton not found"})))
-            }
-            SingletonError::DatabaseError(msg) => {
-                (axum::http::StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": msg})))
-            }
+            SingletonError::NotFound => (
+                axum::http::StatusCode::NOT_FOUND,
+                Json(json!({"error": "Singleton not found"})),
+            ),
+            SingletonError::NotASingleton => (
+                axum::http::StatusCode::NOT_FOUND,
+                Json(json!({"error": "Singleton not found"})),
+            ),
+            SingletonError::DatabaseError(msg) => (
+                axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({"error": msg})),
+            ),
         };
         (status, body).into_response()
     }

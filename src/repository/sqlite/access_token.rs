@@ -17,11 +17,7 @@ impl SqliteAccessTokenRepository {
 
 #[async_trait]
 impl AccessTokenRepository for SqliteAccessTokenRepository {
-    async fn list(
-        &self,
-        kind: AccessTokenKind,
-        site_id: Option<&str>,
-    ) -> Result<Vec<AccessToken>, RepositoryError> {
+    async fn list(&self, kind: AccessTokenKind, site_id: Option<&str>) -> Result<Vec<AccessToken>, RepositoryError> {
         let rows = match site_id {
             Some(site_id) => {
                 sqlx::query_as::<_, AccessToken>(
@@ -79,12 +75,7 @@ impl AccessTokenRepository for SqliteAccessTokenRepository {
         Ok(())
     }
 
-    async fn delete(
-        &self,
-        id: &str,
-        kind: AccessTokenKind,
-        site_id: Option<&str>,
-    ) -> Result<u64, RepositoryError> {
+    async fn delete(&self, id: &str, kind: AccessTokenKind, site_id: Option<&str>) -> Result<u64, RepositoryError> {
         let result = match site_id {
             Some(site_id) => {
                 sqlx::query("DELETE FROM access_tokens WHERE id = ? AND kind = ? AND site_id = ?")

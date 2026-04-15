@@ -46,23 +46,19 @@ impl SiteError {
     pub fn into_response(self) -> axum::response::Response {
         let (status, body) = match self {
             SiteError::NotFound => (StatusCode::NOT_FOUND, Json(json!({"error": "Site not found"}))),
-            SiteError::InvalidStorageProvider(msg) => {
-                (StatusCode::BAD_REQUEST, Json(json!({"error": msg})))
-            }
+            SiteError::InvalidStorageProvider(msg) => (StatusCode::BAD_REQUEST, Json(json!({"error": msg}))),
             SiteError::InvalidRole(msg) => (StatusCode::BAD_REQUEST, Json(json!({"error": msg}))),
-            SiteError::CannotRemoveSelf => {
-                (StatusCode::BAD_REQUEST, Json(json!({"error": "Cannot remove yourself from the site"})))
-            }
+            SiteError::CannotRemoveSelf => (
+                StatusCode::BAD_REQUEST,
+                Json(json!({"error": "Cannot remove yourself from the site"})),
+            ),
             SiteError::UserNotFound => (StatusCode::NOT_FOUND, Json(json!({"error": "User not found"}))),
-            SiteError::AlreadyMember => {
-                (StatusCode::CONFLICT, Json(json!({"error": "User is already a member of this site"})))
-            }
-            SiteError::MemberNotFound => {
-                (StatusCode::NOT_FOUND, Json(json!({"error": "Member not found"})))
-            }
-            SiteError::DatabaseError(msg) => {
-                (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": msg})))
-            }
+            SiteError::AlreadyMember => (
+                StatusCode::CONFLICT,
+                Json(json!({"error": "User is already a member of this site"})),
+            ),
+            SiteError::MemberNotFound => (StatusCode::NOT_FOUND, Json(json!({"error": "Member not found"}))),
+            SiteError::DatabaseError(msg) => (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": msg}))),
         };
         (status, body).into_response()
     }
@@ -77,12 +73,8 @@ impl SiteService {
 
     pub async fn list_sites_for_principal(&self, principal: &Principal) -> Result<Vec<serde_json::Value>, SiteError> {
         match principal {
-            Principal::InstanceToken { .. } => {
-                self.list_sites_instance().await
-            }
-            Principal::UserSession { user_id } => {
-                self.list_sites_for_user(user_id).await
-            }
+            Principal::InstanceToken { .. } => self.list_sites_instance().await,
+            Principal::UserSession { user_id } => self.list_sites_for_user(user_id).await,
             Principal::SiteToken { .. } => {
                 unreachable!("SiteToken should not be used for listing sites")
             }
@@ -248,12 +240,7 @@ impl SiteService {
             .map_err(|e| SiteError::DatabaseError(e.to_string()))
     }
 
-    pub async fn remove_member(
-        &self,
-        site_id: &str,
-        user_id: &str,
-        by_user_id: &str,
-    ) -> Result<u64, SiteError> {
+    pub async fn remove_member(&self, site_id: &str, user_id: &str, by_user_id: &str) -> Result<u64, SiteError> {
         if user_id == by_user_id {
             return Err(SiteError::CannotRemoveSelf);
         }

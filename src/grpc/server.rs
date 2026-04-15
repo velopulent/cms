@@ -26,10 +26,14 @@ pub async fn start_grpc_server(
     let repository = Arc::new(repository);
     let config = Arc::new(config);
 
-    let services = Services::new((*repository).clone(), &config, crate::handlers::file_handler::StorageManager {
-        filesystem: None,
-        s3: None,
-    });
+    let services = Services::new(
+        (*repository).clone(),
+        &config,
+        crate::handlers::file_handler::StorageManager {
+            filesystem: None,
+            s3: None,
+        },
+    );
 
     let auth_layer = AuthLayer::new(repository.clone(), config.clone());
 

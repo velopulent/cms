@@ -2,12 +2,12 @@ use std::sync::Arc;
 
 use tonic::{Request, Response, Status};
 
+use crate::grpc::cms::v1::File as ProtoFile;
 use crate::grpc::cms::v1::file_service_server::FileService;
 use crate::grpc::cms::v1::{
     BatchDeleteFilesRequest, BatchOperationResponse, BatchRestoreFilesRequest, DeleteFileRequest, DeleteResponse,
     GetFileRequest, ListFilesRequest, ListFilesResponse, RestoreFileRequest,
 };
-use crate::grpc::cms::v1::File as ProtoFile;
 use crate::grpc::interceptor::get_auth_context;
 use crate::models::file::File;
 use crate::repository::traits::ListFilesParams;
@@ -20,7 +20,9 @@ pub struct FileServiceImpl {
 
 impl FileServiceImpl {
     pub fn new(file_service: Arc<AppFileService>) -> Self {
-        Self { app_file_service: file_service }
+        Self {
+            app_file_service: file_service,
+        }
     }
 }
 

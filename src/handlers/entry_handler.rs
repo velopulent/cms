@@ -9,9 +9,7 @@ use serde::Deserialize;
 use serde_json::json;
 use tracing::instrument;
 
-use crate::middleware::auth::{
-    HEADER_SITE_ID, Principal, SCOPE_CONTENT_READ, SCOPE_CONTENT_WRITE, require_site_scope,
-};
+use crate::middleware::auth::{HEADER_SITE_ID, Principal, SCOPE_CONTENT_READ, SCOPE_CONTENT_WRITE, require_site_scope};
 use crate::models::entry::{CreateEntry, Entry, UpdateEntry};
 use crate::repository::Repository;
 use crate::repository::traits::ListEntriesParams;
@@ -49,8 +47,14 @@ pub async fn list_entries(
     Extension(repository): Extension<Repository>,
     Extension(services): Extension<Services>,
 ) -> Response {
-    let site = match require_site_scope(&principal, &repository, request_site_id(&headers), SCOPE_CONTENT_READ, "viewer")
-        .await
+    let site = match require_site_scope(
+        &principal,
+        &repository,
+        request_site_id(&headers),
+        SCOPE_CONTENT_READ,
+        "viewer",
+    )
+    .await
     {
         Ok(site) => site,
         Err((status, err)) => return (status, err).into_response(),
@@ -113,8 +117,14 @@ pub async fn get_entry(
     Extension(repository): Extension<Repository>,
     Extension(services): Extension<Services>,
 ) -> Response {
-    let site = match require_site_scope(&principal, &repository, request_site_id(&headers), SCOPE_CONTENT_READ, "viewer")
-        .await
+    let site = match require_site_scope(
+        &principal,
+        &repository,
+        request_site_id(&headers),
+        SCOPE_CONTENT_READ,
+        "viewer",
+    )
+    .await
     {
         Ok(site) => site,
         Err((status, err)) => return (status, err).into_response(),
@@ -124,9 +134,11 @@ pub async fn get_entry(
 
     match services.entry.get_entry(&id, &site.site_id, published_only).await {
         Ok(Some(item)) => {
-            let resolved = services.entry.resolve_entry_files(&item).await.unwrap_or_else(|_| {
-                serde_json::from_str(&item.data).unwrap_or_default()
-            });
+            let resolved = services
+                .entry
+                .resolve_entry_files(&item)
+                .await
+                .unwrap_or_else(|_| serde_json::from_str(&item.data).unwrap_or_default());
             (StatusCode::OK, Json(resolved)).into_response()
         }
         Ok(None) => (StatusCode::NOT_FOUND, Json(json!({"error": "Entry not found"}))).into_response(),
@@ -155,8 +167,14 @@ pub async fn create_entry(
     Extension(services): Extension<Services>,
     Json(payload): Json<CreateEntry>,
 ) -> Response {
-    let site = match require_site_scope(&principal, &repository, request_site_id(&headers), SCOPE_CONTENT_WRITE, "editor")
-        .await
+    let site = match require_site_scope(
+        &principal,
+        &repository,
+        request_site_id(&headers),
+        SCOPE_CONTENT_WRITE,
+        "editor",
+    )
+    .await
     {
         Ok(site) => site,
         Err((status, err)) => return (status, err).into_response(),
@@ -194,8 +212,14 @@ pub async fn update_entry(
     Extension(services): Extension<Services>,
     Json(payload): Json<UpdateEntry>,
 ) -> Response {
-    let site = match require_site_scope(&principal, &repository, request_site_id(&headers), SCOPE_CONTENT_WRITE, "editor")
-        .await
+    let site = match require_site_scope(
+        &principal,
+        &repository,
+        request_site_id(&headers),
+        SCOPE_CONTENT_WRITE,
+        "editor",
+    )
+    .await
     {
         Ok(site) => site,
         Err((status, err)) => return (status, err).into_response(),
@@ -203,7 +227,13 @@ pub async fn update_entry(
 
     match services
         .entry
-        .update_entry(&id, &site.site_id, payload.data.as_ref(), payload.slug.as_deref(), payload.status.as_deref())
+        .update_entry(
+            &id,
+            &site.site_id,
+            payload.data.as_ref(),
+            payload.slug.as_deref(),
+            payload.status.as_deref(),
+        )
         .await
     {
         Ok(item) => (StatusCode::OK, Json(item)).into_response(),
@@ -231,8 +261,14 @@ pub async fn delete_entry(
     Extension(repository): Extension<Repository>,
     Extension(services): Extension<Services>,
 ) -> Response {
-    let site = match require_site_scope(&principal, &repository, request_site_id(&headers), SCOPE_CONTENT_WRITE, "editor")
-        .await
+    let site = match require_site_scope(
+        &principal,
+        &repository,
+        request_site_id(&headers),
+        SCOPE_CONTENT_WRITE,
+        "editor",
+    )
+    .await
     {
         Ok(site) => site,
         Err((status, err)) => return (status, err).into_response(),
@@ -265,8 +301,14 @@ pub async fn publish_entry(
     Extension(repository): Extension<Repository>,
     Extension(services): Extension<Services>,
 ) -> Response {
-    let site = match require_site_scope(&principal, &repository, request_site_id(&headers), SCOPE_CONTENT_WRITE, "editor")
-        .await
+    let site = match require_site_scope(
+        &principal,
+        &repository,
+        request_site_id(&headers),
+        SCOPE_CONTENT_WRITE,
+        "editor",
+    )
+    .await
     {
         Ok(site) => site,
         Err((status, err)) => return (status, err).into_response(),
@@ -299,8 +341,14 @@ pub async fn unpublish_entry(
     Extension(repository): Extension<Repository>,
     Extension(services): Extension<Services>,
 ) -> Response {
-    let site = match require_site_scope(&principal, &repository, request_site_id(&headers), SCOPE_CONTENT_WRITE, "editor")
-        .await
+    let site = match require_site_scope(
+        &principal,
+        &repository,
+        request_site_id(&headers),
+        SCOPE_CONTENT_WRITE,
+        "editor",
+    )
+    .await
     {
         Ok(site) => site,
         Err((status, err)) => return (status, err).into_response(),

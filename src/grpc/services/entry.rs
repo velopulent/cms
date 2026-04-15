@@ -19,7 +19,9 @@ pub struct EntryServiceImpl {
 
 impl EntryServiceImpl {
     pub fn new(entry_service: Arc<AppEntryService>) -> Self {
-        Self { app_entry_service: entry_service }
+        Self {
+            app_entry_service: entry_service,
+        }
     }
 }
 

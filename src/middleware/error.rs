@@ -1,4 +1,4 @@
-use axum::{http::StatusCode, Json};
+use axum::{Json, http::StatusCode};
 use serde::Serialize;
 
 pub fn unauthorized_error(message: &str) -> (StatusCode, String) {

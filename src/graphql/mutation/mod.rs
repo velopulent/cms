@@ -26,11 +26,7 @@ impl MutationRoot {
         let site = gql_ctx
             .services
             .site
-            .create_site(
-                &name,
-                default_storage_provider.as_deref(),
-                "system",
-            )
+            .create_site(&name, default_storage_provider.as_deref(), "system")
             .await
             .map_err(|e| async_graphql::Error::new(format!("Error: {}", e)))?;
 

@@ -18,7 +18,9 @@ pub struct CollectionServiceImpl {
 
 impl CollectionServiceImpl {
     pub fn new(collection_service: Arc<AppCollectionService>) -> Self {
-        Self { app_collection_service: collection_service }
+        Self {
+            app_collection_service: collection_service,
+        }
     }
 }
 
@@ -39,7 +41,10 @@ impl CollectionService for CollectionServiceImpl {
             .map_err(|e| Status::internal(format!("Error: {}", e)))?;
 
         let response = ListCollectionsResponse {
-            collections: collections.into_iter().map(CollectionServiceImpl::collection_to_proto).collect(),
+            collections: collections
+                .into_iter()
+                .map(CollectionServiceImpl::collection_to_proto)
+                .collect(),
         };
 
         Ok(Response::new(response))

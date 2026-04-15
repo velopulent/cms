@@ -2,9 +2,9 @@ use std::collections::BTreeSet;
 use std::str::FromStr;
 
 use axum::{
+    Json,
     extract::FromRequestParts,
     http::{StatusCode, request::Parts},
-    Json,
 };
 use hmac::{Hmac, Mac};
 use jsonwebtoken::{Algorithm, DecodingKey, EncodingKey, Validation, decode, encode};
@@ -65,8 +65,13 @@ pub struct AuthenticatedUser {
 
 #[derive(Debug, Clone)]
 pub enum Principal {
-    UserSession { user_id: String },
-    InstanceToken { token_id: String, scopes: BTreeSet<String> },
+    UserSession {
+        user_id: String,
+    },
+    InstanceToken {
+        token_id: String,
+        scopes: BTreeSet<String>,
+    },
     SiteToken {
         token_id: String,
         site_id: String,
@@ -135,7 +140,11 @@ where
     async fn from_request_parts(parts: &mut Parts, state: &S) -> Result<Self, Self::Rejection> {
         let principal = Principal::from_request_parts(parts, state).await?;
         match principal {
-            Principal::SiteToken { token_id: _, site_id, scopes } => Ok(Self { site_id, scopes }),
+            Principal::SiteToken {
+                token_id: _,
+                site_id,
+                scopes,
+            } => Ok(Self { site_id, scopes }),
             _ => Err(AuthError::site_token_required()),
         }
     }
@@ -156,7 +165,11 @@ where
     async fn from_request_parts(parts: &mut Parts, state: &S) -> Result<Self, Self::Rejection> {
         let principal = Principal::from_request_parts(parts, state).await?;
         match principal {
-            Principal::SiteToken { token_id: _, site_id, scopes } => Ok(Self::SiteToken { site_id, scopes }),
+            Principal::SiteToken {
+                token_id: _,
+                site_id,
+                scopes,
+            } => Ok(Self::SiteToken { site_id, scopes }),
             Principal::UserSession { user_id } => Ok(Self::UserSession { user_id }),
             Principal::InstanceToken { .. } => Err(AuthError::instance_token_denied()),
         }
@@ -295,8 +308,8 @@ where
                 .get::<Config>()
                 .ok_or_else(|| AuthError::unauthorized("Internal server error"))?;
 
-            let claims =
-                verify_token(&token, &config.jwt_secret).map_err(|_| AuthError::unauthorized("Invalid or expired token"))?;
+            let claims = verify_token(&token, &config.jwt_secret)
+                .map_err(|_| AuthError::unauthorized("Invalid or expired token"))?;
 
             Span::current().record("user_id", tracing::field::display(&claims.sub));
 
@@ -469,7 +482,8 @@ pub async fn require_site_scope(
 }
 
 pub fn site_context_from_headers(parts: &Parts) -> Option<String> {
-    parts.headers
+    parts
+        .headers
         .get(HEADER_SITE_ID)
         .and_then(|value| value.to_str().ok())
         .map(ToString::to_string)

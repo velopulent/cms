@@ -138,7 +138,11 @@ pub async fn update_site(
 
     match services
         .site
-        .update_site(&site_id, payload.name.as_deref(), payload.default_storage_provider.as_deref())
+        .update_site(
+            &site_id,
+            payload.name.as_deref(),
+            payload.default_storage_provider.as_deref(),
+        )
         .await
     {
         Ok(site) => (StatusCode::OK, Json(site)).into_response(),
@@ -228,11 +232,16 @@ pub async fn invite_member(
     Extension(services): Extension<Services>,
     Json(payload): Json<InviteMember>,
 ) -> Response {
-    if let Err((status, err)) = require_admin_scope(&principal, &repository, Some(&site_id), SCOPE_MEMBERS_WRITE).await {
+    if let Err((status, err)) = require_admin_scope(&principal, &repository, Some(&site_id), SCOPE_MEMBERS_WRITE).await
+    {
         return (status, err).into_response();
     }
 
-    match services.site.invite_member(&site_id, &payload.username, &payload.role).await {
+    match services
+        .site
+        .invite_member(&site_id, &payload.username, &payload.role)
+        .await
+    {
         Ok(member) => (StatusCode::CREATED, Json(member)).into_response(),
         Err(e) => e.into_response(),
     }
@@ -264,11 +273,16 @@ pub async fn update_member_role(
     Extension(services): Extension<Services>,
     Json(payload): Json<UpdateMemberRole>,
 ) -> Response {
-    if let Err((status, err)) = require_admin_scope(&principal, &repository, Some(&site_id), SCOPE_MEMBERS_WRITE).await {
+    if let Err((status, err)) = require_admin_scope(&principal, &repository, Some(&site_id), SCOPE_MEMBERS_WRITE).await
+    {
         return (status, err).into_response();
     }
 
-    match services.site.update_member_role(&site_id, &member_user_id, &payload.role).await {
+    match services
+        .site
+        .update_member_role(&site_id, &member_user_id, &payload.role)
+        .await
+    {
         Ok(Some(member)) => (StatusCode::OK, Json(member)).into_response(),
         Ok(None) => (StatusCode::NOT_FOUND, Json(json!({"error": "Member not found"}))).into_response(),
         Err(e) => e.into_response(),
@@ -299,7 +313,8 @@ pub async fn remove_member(
     Extension(repository): Extension<Repository>,
     Extension(services): Extension<Services>,
 ) -> Response {
-    if let Err((status, err)) = require_admin_scope(&principal, &repository, Some(&site_id), SCOPE_MEMBERS_WRITE).await {
+    if let Err((status, err)) = require_admin_scope(&principal, &repository, Some(&site_id), SCOPE_MEMBERS_WRITE).await
+    {
         return (status, err).into_response();
     }
 

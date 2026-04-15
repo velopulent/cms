@@ -521,11 +521,7 @@ async fn test_access_token_crud() {
         .await
         .unwrap();
 
-    let tokens = repo
-        .access_token
-        .list(AccessTokenKind::Site, Some("s1"))
-        .await
-        .unwrap();
+    let tokens = repo.access_token.list(AccessTokenKind::Site, Some("s1")).await.unwrap();
     assert_eq!(tokens.len(), 1);
     assert_eq!(tokens[0].name, "My Token");
     assert_eq!(tokens[0].token_prefix, "cms_site_abc1234567890123");
@@ -538,12 +534,13 @@ async fn test_access_token_crud() {
             .unwrap(),
         1
     );
-    assert!(repo
-        .access_token
-        .list(AccessTokenKind::Site, Some("s1"))
-        .await
-        .unwrap()
-        .is_empty());
+    assert!(
+        repo.access_token
+            .list(AccessTokenKind::Site, Some("s1"))
+            .await
+            .unwrap()
+            .is_empty()
+    );
 }
 
 #[tokio::test]

@@ -6,9 +6,7 @@ use serde_json::json;
 use thiserror::Error;
 use uuid::Uuid;
 
-use crate::middleware::auth::{
-    default_instance_scopes, default_site_scopes, scopes_to_string, compute_key_hmac,
-};
+use crate::middleware::auth::{compute_key_hmac, default_instance_scopes, default_site_scopes, scopes_to_string};
 use crate::models::access_token::{AccessToken, AccessTokenKind, AccessTokenResponse};
 use crate::repository::Repository;
 
@@ -60,14 +58,8 @@ impl AccessTokenService {
 
     pub fn validate_scopes(&self, kind: AccessTokenKind, scopes: Vec<String>) -> Result<Vec<String>, TokenError> {
         let allowed: std::collections::BTreeSet<String> = match kind {
-            AccessTokenKind::Instance => default_instance_scopes()
-                .into_iter()
-                .map(ToString::to_string)
-                .collect(),
-            AccessTokenKind::Site => default_site_scopes()
-                .into_iter()
-                .map(ToString::to_string)
-                .collect(),
+            AccessTokenKind::Instance => default_instance_scopes().into_iter().map(ToString::to_string).collect(),
+            AccessTokenKind::Site => default_site_scopes().into_iter().map(ToString::to_string).collect(),
         };
 
         let scopes = if scopes.is_empty() {
@@ -105,8 +97,7 @@ impl AccessTokenService {
 
         let raw_token = Self::build_token(kind.clone());
         let prefix: String = raw_token.chars().take(24).collect();
-        let token_hash = hash(&raw_token, DEFAULT_COST)
-            .map_err(|e| TokenError::HashError(e.to_string()))?;
+        let token_hash = hash(&raw_token, DEFAULT_COST).map_err(|e| TokenError::HashError(e.to_string()))?;
         let token_hmac = compute_key_hmac(&raw_token, &self.hmac_secret);
         let id = Uuid::now_v7().to_string();
         let scope_refs = scopes.iter().map(String::as_str).collect::<Vec<_>>();
@@ -156,14 +147,8 @@ impl AccessTokenService {
         created_by: Option<&str>,
     ) -> Result<AccessTokenResponse, TokenError> {
         let scopes = self.validate_scopes(AccessTokenKind::Site, scopes)?;
-        self.create_token_record(
-            AccessTokenKind::Site,
-            Some(site_id),
-            name,
-            scopes,
-            created_by,
-        )
-        .await
+        self.create_token_record(AccessTokenKind::Site, Some(site_id), name, scopes, created_by)
+            .await
     }
 
     pub async fn delete_site_token(&self, token_id: &str, site_id: &str) -> Result<u64, TokenError> {

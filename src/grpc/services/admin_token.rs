@@ -20,7 +20,9 @@ pub struct AdminTokenServiceImpl {
 
 impl AdminTokenServiceImpl {
     pub fn new(token_service: Arc<AccessTokenService>) -> Self {
-        Self { app_token_service: token_service }
+        Self {
+            app_token_service: token_service,
+        }
     }
 }
 

@@ -9,10 +9,7 @@ use crate::models::user::{CreateUser, LoginRequest};
 use crate::services::Services;
 
 #[instrument(skip(services, payload))]
-pub async fn register(
-    Extension(services): Extension<Services>,
-    Json(payload): Json<CreateUser>,
-) -> Response {
+pub async fn register(Extension(services): Extension<Services>, Json(payload): Json<CreateUser>) -> Response {
     let user = match services
         .auth
         .register(&payload.username, &payload.email, &payload.password)
@@ -31,10 +28,7 @@ pub async fn register(
 }
 
 #[instrument(skip(services, payload))]
-pub async fn login(
-    Extension(services): Extension<Services>,
-    Json(payload): Json<LoginRequest>,
-) -> Response {
+pub async fn login(Extension(services): Extension<Services>, Json(payload): Json<LoginRequest>) -> Response {
     let (user, token) = match services.auth.login(&payload.username, &payload.password).await {
         Ok((u, t)) => (u, t),
         Err(e) => return e.into_response(),
@@ -48,10 +42,7 @@ pub async fn logout(services: Extension<Services>) -> Response {
 }
 
 #[instrument(skip(services))]
-pub async fn me(
-    services: Extension<Services>,
-    auth: crate::middleware::auth::AuthenticatedUser,
-) -> Response {
+pub async fn me(services: Extension<Services>, auth: crate::middleware::auth::AuthenticatedUser) -> Response {
     match services.auth.get_user(&auth.user_id).await {
         Ok(Some(user)) => {
             use axum::{Json, http::StatusCode};

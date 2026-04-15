@@ -1,7 +1,7 @@
 use axum::extract::DefaultBodyLimit;
 use axum::{
-    routing::{delete, get, post},
     Router,
+    routing::{delete, get, post},
 };
 use tower_http::limit::RequestBodyLimitLayer;
 

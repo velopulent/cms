@@ -35,7 +35,9 @@ impl GqlContext {
                                 site_id = Some(key_site_id.clone());
                                 scopes = token_scopes.clone();
                             }
-                            Principal::InstanceToken { scopes: token_scopes, .. } => {
+                            Principal::InstanceToken {
+                                scopes: token_scopes, ..
+                            } => {
                                 scopes = token_scopes.clone();
                             }
                             Principal::UserSession { .. } => {}
@@ -64,9 +66,9 @@ impl GqlContext {
     pub fn require_instance_scope(&self, scope: &str) -> async_graphql::Result<()> {
         match &self.principal {
             Some(Principal::InstanceToken { scopes, .. }) if scopes.contains(scope) => Ok(()),
-            Some(Principal::InstanceToken { .. }) => {
-                Err(async_graphql::Error::new("Access token does not have the required admin scope"))
-            }
+            Some(Principal::InstanceToken { .. }) => Err(async_graphql::Error::new(
+                "Access token does not have the required admin scope",
+            )),
             _ => Err(async_graphql::Error::new("Instance token authentication required")),
         }
     }
@@ -74,9 +76,9 @@ impl GqlContext {
     pub fn require_site_scope(&self, scope: &str) -> async_graphql::Result<()> {
         match &self.principal {
             Some(Principal::SiteToken { scopes, .. }) if scopes.contains(scope) => Ok(()),
-            Some(Principal::SiteToken { .. }) => {
-                Err(async_graphql::Error::new("Access token does not have the required scope"))
-            }
+            Some(Principal::SiteToken { .. }) => Err(async_graphql::Error::new(
+                "Access token does not have the required scope",
+            )),
             _ => Err(async_graphql::Error::new("Site token authentication required")),
         }
     }
@@ -100,7 +102,9 @@ impl GqlContext {
         if key_site == site_id {
             Ok(())
         } else {
-            Err(async_graphql::Error::new("Site token does not have access to this site"))
+            Err(async_graphql::Error::new(
+                "Site token does not have access to this site",
+            ))
         }
     }
 }

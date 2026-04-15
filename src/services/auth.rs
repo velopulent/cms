@@ -1,9 +1,9 @@
 use std::sync::Arc;
 
-use axum_extra::extract::cookie::Cookie;
-use axum::http::{HeaderValue, StatusCode};
 use axum::Json;
+use axum::http::{HeaderValue, StatusCode};
 use axum::response::{IntoResponse, Response};
+use axum_extra::extract::cookie::Cookie;
 use bcrypt::{DEFAULT_COST, hash, verify};
 use regex::Regex;
 use serde_json::json;
@@ -54,8 +54,14 @@ impl AuthError {
     pub fn into_response(self) -> Response {
         let (status, body) = match self {
             AuthError::ValidationError(msg) => (StatusCode::BAD_REQUEST, Json(json!({"error": msg}))),
-            AuthError::UserExists => (StatusCode::CONFLICT, Json(json!({"error": "Username or email already exists"}))),
-            AuthError::InvalidCredentials => (StatusCode::UNAUTHORIZED, Json(json!({"error": "Invalid username or password"}))),
+            AuthError::UserExists => (
+                StatusCode::CONFLICT,
+                Json(json!({"error": "Username or email already exists"})),
+            ),
+            AuthError::InvalidCredentials => (
+                StatusCode::UNAUTHORIZED,
+                Json(json!({"error": "Invalid username or password"})),
+            ),
             AuthError::NotFound => (StatusCode::NOT_FOUND, Json(json!({"error": "User not found"}))),
             AuthError::TokenError(msg) | AuthError::HashError(msg) | AuthError::DatabaseError(msg) => {
                 (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": msg})))
@@ -74,12 +80,7 @@ impl AuthService {
         }
     }
 
-    pub async fn register(
-        &self,
-        username: &str,
-        email: &str,
-        password: &str,
-    ) -> Result<UserPublic, AuthError> {
+    pub async fn register(&self, username: &str, email: &str, password: &str) -> Result<UserPublic, AuthError> {
         let username = username.trim();
         let email = email.trim();
         let password = password.trim();
@@ -142,8 +143,8 @@ impl AuthService {
             _ => return Err(AuthError::InvalidCredentials),
         }
 
-        let token = create_token(user.id.clone(), &self.jwt_secret)
-            .map_err(|e| AuthError::TokenError(e.to_string()))?;
+        let token =
+            create_token(user.id.clone(), &self.jwt_secret).map_err(|e| AuthError::TokenError(e.to_string()))?;
 
         Ok((
             UserPublic {
@@ -161,11 +162,13 @@ impl AuthService {
             .find_by_id(user_id)
             .await
             .map_err(|e| AuthError::DatabaseError(e.to_string()))
-            .map(|opt| opt.map(|u| UserPublic {
-                id: u.id,
-                username: u.username,
-                email: u.email,
-            }))
+            .map(|opt| {
+                opt.map(|u| UserPublic {
+                    id: u.id,
+                    username: u.username,
+                    email: u.email,
+                })
+            })
     }
 
     pub fn cookie_secure(&self) -> bool {

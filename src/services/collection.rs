@@ -30,15 +30,12 @@ pub enum CollectionError {
 impl CollectionError {
     pub fn into_response(self) -> axum::response::Response {
         let (status, body) = match self {
-            CollectionError::NotFound => {
-                (StatusCode::NOT_FOUND, Json(json!({"error": "Collection not found"})))
-            }
-            CollectionError::AlreadyExists => {
-                (StatusCode::CONFLICT, Json(json!({"error": "Collection with this name or slug already exists"})))
-            }
-            CollectionError::DatabaseError(msg) => {
-                (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": msg})))
-            }
+            CollectionError::NotFound => (StatusCode::NOT_FOUND, Json(json!({"error": "Collection not found"}))),
+            CollectionError::AlreadyExists => (
+                StatusCode::CONFLICT,
+                Json(json!({"error": "Collection with this name or slug already exists"})),
+            ),
+            CollectionError::DatabaseError(msg) => (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": msg}))),
         };
         (status, body).into_response()
     }
@@ -172,10 +169,7 @@ impl CollectionService {
     }
 }
 
-pub fn compute_field_rename_map(
-    old_def: &serde_json::Value,
-    new_def: &serde_json::Value,
-) -> HashMap<String, String> {
+pub fn compute_field_rename_map(old_def: &serde_json::Value, new_def: &serde_json::Value) -> HashMap<String, String> {
     let old_fields = old_def["fields"].as_array().cloned().unwrap_or_default();
     let new_fields = new_def["fields"].as_array().cloned().unwrap_or_default();
 
