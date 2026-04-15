@@ -92,7 +92,7 @@ export interface AuthResponse {
 export interface Site {
   id: string;
   name: string;
-  default_storage_provider: string;
+  storage_provider: string;
   created_by: string;
   created_at: string;
   updated_at: string;
@@ -333,7 +333,7 @@ export async function getSites() {
 
 export async function createSite(data: {
   name: string;
-  default_storage_provider?: string;
+  storage_provider?: string;
 }) {
   return api<Site>("/sites", {
     method: "POST",
@@ -347,7 +347,7 @@ export async function getSite(id: string) {
 
 export async function updateSite(
   id: string,
-  data: { name?: string; default_storage_provider?: string },
+  data: { name?: string; storage_provider?: string },
 ) {
   return api<Site>(`/sites/${id}`, {
     method: "PUT",

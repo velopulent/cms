@@ -134,7 +134,7 @@ function CreateSiteDialog({
     }) =>
       createSite({
         name,
-        default_storage_provider: storageProvider,
+        storage_provider: storageProvider,
       }),
     onSuccess: (site) => {
       queryClient.invalidateQueries({ queryKey: ["sites"] });

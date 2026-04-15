@@ -93,7 +93,7 @@ function SiteSettingsPage() {
     }) =>
       updateSite(siteId, {
         name,
-        default_storage_provider: storageProvider,
+        storage_provider: storageProvider,
       }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["site", siteId] });
@@ -107,7 +107,7 @@ function SiteSettingsPage() {
     if (site && !initialized) {
       form.reset();
       form.setFieldValue("name", site.name);
-      form.setFieldValue("storageProvider", site.default_storage_provider);
+      form.setFieldValue("storageProvider", site.storage_provider);
       setInitialized(true);
     }
   }, [site, initialized, form]);
@@ -246,7 +246,7 @@ function SiteSettingsPage() {
 
             {form.getFieldValue("name") !== site?.name ||
             form.getFieldValue("storageProvider") !==
-              site?.default_storage_provider ? (
+              site?.storage_provider ? (
               <div className="flex items-start gap-2 rounded-md border border-amber-200 bg-amber-50 p-3">
                 <AlertTriangle className="mt-0.5 size-4 text-amber-600" />
                 <div className="text-sm text-amber-800">

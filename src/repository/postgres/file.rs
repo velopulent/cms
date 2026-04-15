@@ -332,7 +332,7 @@ impl FileRepository for PostgresFileRepository {
     }
 
     async fn get_storage_provider(&self, site_id: &str) -> Result<String, RepositoryError> {
-        let provider: Option<String> = sqlx::query_scalar("SELECT default_storage_provider FROM sites WHERE id = $1")
+        let provider: Option<String> = sqlx::query_scalar("SELECT storage_provider FROM sites WHERE id = $1")
             .bind(site_id)
             .fetch_optional(&self.pool)
             .await?;

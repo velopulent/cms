@@ -274,7 +274,7 @@ pub struct Site {
     #[prost(string, tag = "2")]
     pub name: ::prost::alloc::string::String,
     #[prost(string, tag = "3")]
-    pub default_storage_provider: ::prost::alloc::string::String,
+    pub storage_provider: ::prost::alloc::string::String,
     #[prost(string, tag = "4")]
     pub created_by: ::prost::alloc::string::String,
     #[prost(string, tag = "5")]
@@ -316,7 +316,7 @@ pub struct CreateSiteRequest {
     #[prost(string, tag = "1")]
     pub name: ::prost::alloc::string::String,
     #[prost(string, optional, tag = "2")]
-    pub default_storage_provider: ::core::option::Option<::prost::alloc::string::String>,
+    pub storage_provider: ::core::option::Option<::prost::alloc::string::String>,
 }
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct UpdateSiteRequest {
@@ -325,7 +325,7 @@ pub struct UpdateSiteRequest {
     #[prost(string, optional, tag = "2")]
     pub name: ::core::option::Option<::prost::alloc::string::String>,
     #[prost(string, optional, tag = "3")]
-    pub default_storage_provider: ::core::option::Option<::prost::alloc::string::String>,
+    pub storage_provider: ::core::option::Option<::prost::alloc::string::String>,
 }
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct DeleteSiteRequest {

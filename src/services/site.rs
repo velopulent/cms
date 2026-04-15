@@ -94,7 +94,7 @@ impl SiteService {
                         json!({
                             "id": site.id,
                             "name": site.name,
-                            "default_storage_provider": site.default_storage_provider,
+                            "storage_provider": site.storage_provider,
                             "created_by": site.created_by,
                             "created_at": site.created_at,
                             "updated_at": site.updated_at,
@@ -171,7 +171,7 @@ impl SiteService {
         let name = name.unwrap_or(&existing.name);
         let storage_provider = storage_provider
             .filter(|v| *v == "filesystem" || *v == "s3")
-            .unwrap_or(&existing.default_storage_provider);
+            .unwrap_or(&existing.storage_provider);
 
         self.repository
             .site

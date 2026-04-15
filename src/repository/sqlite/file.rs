@@ -319,7 +319,7 @@ impl FileRepository for SqliteFileRepository {
     }
 
     async fn get_storage_provider(&self, site_id: &str) -> Result<String, RepositoryError> {
-        let provider: Option<String> = sqlx::query_scalar("SELECT default_storage_provider FROM sites WHERE id = ?")
+        let provider: Option<String> = sqlx::query_scalar("SELECT storage_provider FROM sites WHERE id = ?")
             .bind(site_id)
             .fetch_optional(&self.pool)
             .await?;

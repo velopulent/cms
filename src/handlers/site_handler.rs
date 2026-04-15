@@ -70,7 +70,7 @@ pub async fn create_site(
 
     match services
         .site
-        .create_site(&payload.name, payload.default_storage_provider.as_deref(), created_by)
+        .create_site(&payload.name, payload.storage_provider.as_deref(), created_by)
         .await
     {
         Ok(site) => (StatusCode::CREATED, Json(site)).into_response(),
@@ -141,7 +141,7 @@ pub async fn update_site(
         .update_site(
             &site_id,
             payload.name.as_deref(),
-            payload.default_storage_provider.as_deref(),
+            payload.storage_provider.as_deref(),
         )
         .await
     {

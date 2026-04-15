@@ -19,7 +19,7 @@ impl SqliteSiteRepository {
 impl SiteRepository for SqliteSiteRepository {
     async fn list_all(&self) -> Result<Vec<Site>, RepositoryError> {
         let result = sqlx::query_as::<_, Site>(
-            "SELECT id, name, default_storage_provider, created_by, created_at, updated_at FROM sites ORDER BY name",
+            "SELECT id, name, storage_provider, created_by, created_at, updated_at FROM sites ORDER BY name",
         )
         .fetch_all(&self.pool)
         .await?;
@@ -29,7 +29,7 @@ impl SiteRepository for SqliteSiteRepository {
 
     async fn list_for_user(&self, user_id: &str) -> Result<Vec<SiteWithRole>, RepositoryError> {
         let result = sqlx::query_as::<_, SiteWithRole>(
-            "SELECT s.id, s.name, s.default_storage_provider, s.created_by, s.created_at, s.updated_at, sm.role
+            "SELECT s.id, s.name, s.storage_provider, s.created_by, s.created_at, s.updated_at, sm.role
              FROM sites s
              JOIN site_members sm ON s.id = sm.site_id
              WHERE sm.user_id = ?
@@ -44,7 +44,7 @@ impl SiteRepository for SqliteSiteRepository {
 
     async fn get_by_id(&self, id: &str) -> Result<Option<Site>, RepositoryError> {
         let result = sqlx::query_as::<_, Site>(
-            "SELECT id, name, default_storage_provider, created_by, created_at, updated_at FROM sites WHERE id = ?",
+            "SELECT id, name, storage_provider, created_by, created_at, updated_at FROM sites WHERE id = ?",
         )
         .bind(id)
         .fetch_optional(&self.pool)
@@ -62,7 +62,7 @@ impl SiteRepository for SqliteSiteRepository {
     ) -> Result<Site, RepositoryError> {
         let mut tx = self.pool.begin().await?;
 
-        sqlx::query("INSERT INTO sites (id, name, default_storage_provider, created_by) VALUES (?, ?, ?, ?)")
+        sqlx::query("INSERT INTO sites (id, name, storage_provider, created_by) VALUES (?, ?, ?, ?)")
             .bind(id)
             .bind(name)
             .bind(storage_provider)
@@ -85,7 +85,7 @@ impl SiteRepository for SqliteSiteRepository {
 
     async fn update(&self, id: &str, name: &str, storage_provider: &str) -> Result<Site, RepositoryError> {
         sqlx::query(
-            "UPDATE sites SET name = ?, default_storage_provider = ?, updated_at = datetime('now') WHERE id = ?",
+            "UPDATE sites SET name = ?, storage_provider = ?, updated_at = datetime('now') WHERE id = ?",
         )
         .bind(name)
         .bind(storage_provider)

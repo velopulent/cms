@@ -10,7 +10,7 @@ CREATE TABLE IF NOT EXISTS users (
 CREATE TABLE IF NOT EXISTS sites (
     id TEXT PRIMARY KEY NOT NULL,
     name TEXT NOT NULL,
-    default_storage_provider TEXT NOT NULL DEFAULT 'filesystem',
+    storage_provider TEXT NOT NULL DEFAULT 'filesystem',
     created_by TEXT NOT NULL REFERENCES users(id),
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
     updated_at TEXT NOT NULL DEFAULT (datetime('now'))

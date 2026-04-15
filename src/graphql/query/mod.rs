@@ -31,7 +31,7 @@ impl QueryRoot {
                 Site {
                     id: obj["id"].as_str().unwrap_or("").to_string(),
                     name: obj["name"].as_str().unwrap_or("").to_string(),
-                    default_storage_provider: obj["default_storage_provider"].as_str().unwrap_or("").to_string(),
+                    storage_provider: obj["storage_provider"].as_str().unwrap_or("").to_string(),
                     created_by: obj["created_by"].as_str().unwrap_or("").to_string(),
                     created_at: obj["created_at"].as_str().unwrap_or("").to_string(),
                     updated_at: obj["updated_at"].as_str().unwrap_or("").to_string(),
@@ -55,7 +55,7 @@ impl QueryRoot {
         Ok(Site {
             id: site.id,
             name: site.name,
-            default_storage_provider: site.default_storage_provider,
+            storage_provider: site.storage_provider,
             created_by: site.created_by,
             created_at: site.created_at,
             updated_at: site.updated_at,
@@ -77,7 +77,7 @@ impl QueryRoot {
         Ok(Site {
             id: site.id,
             name: site.name,
-            default_storage_provider: site.default_storage_provider,
+            storage_provider: site.storage_provider,
             created_by: site.created_by,
             created_at: site.created_at,
             updated_at: site.updated_at,

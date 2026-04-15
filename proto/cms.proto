@@ -259,7 +259,7 @@ message BatchRestoreFilesRequest {
 message Site {
   string id = 1;
   string name = 2;
-  string default_storage_provider = 3;
+  string storage_provider = 3;
   string created_by = 4;
   string created_at = 5;
   string updated_at = 6;
@@ -287,13 +287,13 @@ message GetSiteRequest {
 
 message CreateSiteRequest {
   string name = 1;
-  optional string default_storage_provider = 2;
+  optional string storage_provider = 2;
 }
 
 message UpdateSiteRequest {
   string site_id = 1;
   optional string name = 2;
-  optional string default_storage_provider = 3;
+  optional string storage_provider = 3;
 }
 
 message DeleteSiteRequest {

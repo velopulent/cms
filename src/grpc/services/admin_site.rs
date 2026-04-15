@@ -45,7 +45,7 @@ impl SiteService for SiteServiceImpl {
                     Some(ProtoSite {
                         id: obj["id"].as_str()?.to_string(),
                         name: obj["name"].as_str()?.to_string(),
-                        default_storage_provider: obj["default_storage_provider"].as_str()?.to_string(),
+                        storage_provider: obj["storage_provider"].as_str()?.to_string(),
                         created_by: obj["created_by"].as_str()?.to_string(),
                         created_at: obj["created_at"].as_str()?.to_string(),
                         updated_at: obj["updated_at"].as_str()?.to_string(),
@@ -79,7 +79,7 @@ impl SiteService for SiteServiceImpl {
             return Err(Status::invalid_argument("Name is required"));
         }
 
-        let storage_provider = req.default_storage_provider.as_deref().unwrap_or("filesystem");
+        let storage_provider = req.storage_provider.as_deref().unwrap_or("filesystem");
         if storage_provider != "filesystem" && storage_provider != "s3" {
             return Err(Status::invalid_argument(
                 "Invalid storage provider. Must be 'filesystem' or 's3'",
@@ -105,7 +105,7 @@ impl SiteService for SiteServiceImpl {
             .update_site(
                 &req.site_id,
                 req.name.as_deref(),
-                req.default_storage_provider.as_deref(),
+                req.storage_provider.as_deref(),
             )
             .await
             .map_err(|e| Status::internal(format!("Error: {}", e)))?;
@@ -140,7 +140,7 @@ impl From<Site> for ProtoSite {
         Self {
             id: site.id,
             name: site.name,
-            default_storage_provider: site.default_storage_provider,
+            storage_provider: site.storage_provider,
             created_by: site.created_by,
             created_at: site.created_at,
             updated_at: site.updated_at,

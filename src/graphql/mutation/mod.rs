@@ -18,7 +18,7 @@ impl MutationRoot {
         &self,
         ctx: &Context<'_>,
         name: String,
-        default_storage_provider: Option<String>,
+        storage_provider: Option<String>,
     ) -> Result<Site> {
         let gql_ctx = ctx.data::<GqlContext>()?;
         gql_ctx.require_instance_scope(SCOPE_SITES_WRITE)?;
@@ -26,14 +26,14 @@ impl MutationRoot {
         let site = gql_ctx
             .services
             .site
-            .create_site(&name, default_storage_provider.as_deref(), "system")
+            .create_site(&name, storage_provider.as_deref(), "system")
             .await
             .map_err(|e| async_graphql::Error::new(format!("Error: {}", e)))?;
 
         Ok(Site {
             id: site.id,
             name: site.name,
-            default_storage_provider: site.default_storage_provider,
+            storage_provider: site.storage_provider,
             created_by: site.created_by,
             created_at: site.created_at,
             updated_at: site.updated_at,
@@ -45,7 +45,7 @@ impl MutationRoot {
         ctx: &Context<'_>,
         id: String,
         name: Option<String>,
-        default_storage_provider: Option<String>,
+        storage_provider: Option<String>,
     ) -> Result<Site> {
         let gql_ctx = ctx.data::<GqlContext>()?;
         gql_ctx.require_instance_scope(SCOPE_SITES_WRITE)?;
@@ -53,14 +53,14 @@ impl MutationRoot {
         let site = gql_ctx
             .services
             .site
-            .update_site(&id, name.as_deref(), default_storage_provider.as_deref())
+            .update_site(&id, name.as_deref(), storage_provider.as_deref())
             .await
             .map_err(|e| async_graphql::Error::new(format!("Error: {}", e)))?;
 
         Ok(Site {
             id: site.id,
             name: site.name,
-            default_storage_provider: site.default_storage_provider,
+            storage_provider: site.storage_provider,
             created_by: site.created_by,
             created_at: site.created_at,
             updated_at: site.updated_at,
