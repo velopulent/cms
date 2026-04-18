@@ -324,8 +324,6 @@ pub struct UpdateSiteRequest {
     pub site_id: ::prost::alloc::string::String,
     #[prost(string, optional, tag = "2")]
     pub name: ::core::option::Option<::prost::alloc::string::String>,
-    #[prost(string, optional, tag = "3")]
-    pub storage_provider: ::core::option::Option<::prost::alloc::string::String>,
 }
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct DeleteSiteRequest {
