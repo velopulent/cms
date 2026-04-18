@@ -45,7 +45,7 @@ impl MutationRoot {
         ctx: &Context<'_>,
         id: String,
         name: Option<String>,
-        storage_provider: Option<String>,
+        _storage_provider: Option<String>,
     ) -> Result<Site> {
         let gql_ctx = ctx.data::<GqlContext>()?;
         gql_ctx.require_instance_scope(SCOPE_SITES_WRITE)?;
@@ -53,7 +53,7 @@ impl MutationRoot {
         let site = gql_ctx
             .services
             .site
-            .update_site(&id, name.as_deref(), storage_provider.as_deref())
+            .update_site(&id, name.as_deref())
             .await
             .map_err(|e| async_graphql::Error::new(format!("Error: {}", e)))?;
 
