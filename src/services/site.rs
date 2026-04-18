@@ -7,12 +7,13 @@ use uuid::Uuid;
 
 use crate::middleware::auth::Principal;
 use crate::models::site::{Site, SiteMember};
-use crate::repository::Repository;
 use crate::repository::error::RepositoryError;
+use crate::repository::traits::{SiteRepository, UserRepository};
 
 #[derive(Clone)]
 pub struct SiteService {
-    repository: Arc<Repository>,
+    site_repo: Arc<dyn SiteRepository>,
+    user_repo: Arc<dyn UserRepository>,
 }
 
 #[derive(Error, Debug)]
@@ -67,8 +68,8 @@ impl SiteError {
 const VALID_ROLES: [&str; 4] = ["owner", "admin", "editor", "viewer"];
 
 impl SiteService {
-    pub fn new(repository: Arc<Repository>) -> Self {
-        Self { repository }
+    pub fn new(site_repo: Arc<dyn SiteRepository>, user_repo: Arc<dyn UserRepository>) -> Self {
+        Self { site_repo, user_repo }
     }
 
     pub async fn list_sites_for_principal(&self, principal: &Principal) -> Result<Vec<serde_json::Value>, SiteError> {
@@ -82,8 +83,7 @@ impl SiteService {
     }
 
     pub async fn list_sites_instance(&self) -> Result<Vec<serde_json::Value>, SiteError> {
-        self.repository
-            .site
+        self.site_repo
             .list_all()
             .await
             .map_err(|e| SiteError::DatabaseError(e.to_string()))
@@ -106,8 +106,7 @@ impl SiteService {
     }
 
     pub async fn list_sites_for_user(&self, user_id: &str) -> Result<Vec<serde_json::Value>, SiteError> {
-        self.repository
-            .site
+        self.site_repo
             .list_for_user(user_id)
             .await
             .map_err(|e| SiteError::DatabaseError(e.to_string()))
@@ -120,8 +119,7 @@ impl SiteService {
     }
 
     pub async fn get_site(&self, site_id: &str) -> Result<Option<Site>, SiteError> {
-        self.repository
-            .site
+        self.site_repo
             .get_by_id(site_id)
             .await
             .map_err(|e| SiteError::DatabaseError(e.to_string()))
@@ -147,8 +145,7 @@ impl SiteService {
 
         let site_id = Uuid::now_v7().to_string();
 
-        self.repository
-            .site
+        self.site_repo
             .create(&site_id, name, storage_provider, created_by)
             .await
             .map_err(|e| SiteError::DatabaseError(e.to_string()))
@@ -161,8 +158,7 @@ impl SiteService {
         storage_provider: Option<&str>,
     ) -> Result<Site, SiteError> {
         let existing = self
-            .repository
-            .site
+            .site_repo
             .get_by_id(site_id)
             .await
             .map_err(|e| SiteError::DatabaseError(e.to_string()))?
@@ -173,24 +169,21 @@ impl SiteService {
             .filter(|v| *v == "filesystem" || *v == "s3")
             .unwrap_or(&existing.storage_provider);
 
-        self.repository
-            .site
+        self.site_repo
             .update(site_id, name, storage_provider)
             .await
             .map_err(|e| SiteError::DatabaseError(e.to_string()))
     }
 
     pub async fn delete_site(&self, site_id: &str) -> Result<u64, SiteError> {
-        self.repository
-            .site
+        self.site_repo
             .delete(site_id)
             .await
             .map_err(|e| SiteError::DatabaseError(e.to_string()))
     }
 
     pub async fn list_members(&self, site_id: &str) -> Result<Vec<SiteMember>, SiteError> {
-        self.repository
-            .site
+        self.site_repo
             .list_members(site_id)
             .await
             .map_err(|e| SiteError::DatabaseError(e.to_string()))
@@ -204,8 +197,7 @@ impl SiteService {
         }
 
         let user_id = self
-            .repository
-            .user
+            .user_repo
             .find_id_by_username(username)
             .await
             .map_err(|e| SiteError::DatabaseError(e.to_string()))?
@@ -213,8 +205,7 @@ impl SiteService {
 
         let member_id = Uuid::now_v7().to_string();
 
-        self.repository
-            .site
+        self.site_repo
             .add_member(&member_id, site_id, &user_id, role)
             .await
             .map_err(|e| match e {
@@ -233,8 +224,7 @@ impl SiteService {
             return Err(SiteError::InvalidRole("Invalid role".into()));
         }
 
-        self.repository
-            .site
+        self.site_repo
             .update_member_role(site_id, user_id, role)
             .await
             .map_err(|e| SiteError::DatabaseError(e.to_string()))
@@ -245,8 +235,7 @@ impl SiteService {
             return Err(SiteError::CannotRemoveSelf);
         }
 
-        self.repository
-            .site
+        self.site_repo
             .remove_member(site_id, user_id)
             .await
             .map_err(|e| SiteError::DatabaseError(e.to_string()))

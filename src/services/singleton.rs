@@ -7,11 +7,12 @@ use thiserror::Error;
 
 use crate::handlers::file_handler::StorageManager;
 use crate::models::collection::{Collection, SingletonResponse};
-use crate::repository::Repository;
+use crate::repository::traits::{CollectionRepository, FileRepository};
 
 #[derive(Clone)]
 pub struct SingletonService {
-    repository: Arc<Repository>,
+    collection_repo: Arc<dyn CollectionRepository>,
+    file_repo: Arc<dyn FileRepository>,
     storage: StorageManager,
 }
 
@@ -48,8 +49,8 @@ impl SingletonError {
 }
 
 impl SingletonService {
-    pub fn new(repository: Arc<Repository>, storage: StorageManager) -> Self {
-        Self { repository, storage }
+    pub fn new(collection_repo: Arc<dyn CollectionRepository>, file_repo: Arc<dyn FileRepository>, storage: StorageManager) -> Self {
+        Self { collection_repo, file_repo, storage }
     }
 
     fn collection_to_response(c: &Collection) -> SingletonResponse {
@@ -70,8 +71,7 @@ impl SingletonService {
 
     pub async fn list_singletons(&self, site_id: &str) -> Result<Vec<SingletonResponse>, SingletonError> {
         let items = self
-            .repository
-            .collection
+            .collection_repo
             .list_singletons_only(site_id)
             .await
             .map_err(|e| SingletonError::DatabaseError(e.to_string()))?;
@@ -81,8 +81,7 @@ impl SingletonService {
 
     pub async fn get_singleton(&self, site_id: &str, slug: &str) -> Result<SingletonResponse, SingletonError> {
         let item = self
-            .repository
-            .collection
+            .collection_repo
             .get_by_slug(site_id, slug)
             .await
             .map_err(|e| SingletonError::DatabaseError(e.to_string()))?
@@ -109,8 +108,7 @@ impl SingletonService {
         data: &Value,
     ) -> Result<SingletonResponse, SingletonError> {
         let item = self
-            .repository
-            .collection
+            .collection_repo
             .get_by_slug(site_id, slug)
             .await
             .map_err(|e| SingletonError::DatabaseError(e.to_string()))?
@@ -123,8 +121,7 @@ impl SingletonService {
         let data_str = data.to_string();
 
         let updated = self
-            .repository
-            .collection
+            .collection_repo
             .update_singleton_data(&item.id, &data_str)
             .await
             .map_err(|e| SingletonError::DatabaseError(e.to_string()))?;
@@ -138,7 +135,7 @@ impl SingletonService {
         let mut file_map = serde_json::Map::new();
 
         if !file_ids.is_empty() {
-            if let Ok(file_items) = self.repository.file.get_by_ids(site_id, &file_ids).await {
+            if let Ok(file_items) = self.file_repo.get_by_ids(site_id, &file_ids).await {
                 for f in file_items {
                     let url = match f.storage_provider.as_str() {
                         "s3" => self

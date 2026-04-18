@@ -5,7 +5,6 @@ use axum::http::{HeaderValue, StatusCode};
 use axum::response::{IntoResponse, Response};
 use axum_extra::extract::cookie::Cookie;
 use bcrypt::{DEFAULT_COST, hash, verify};
-use regex::Regex;
 use serde_json::json;
 use thiserror::Error;
 use time::Duration;
@@ -13,15 +12,15 @@ use uuid::Uuid;
 
 use crate::middleware::auth::create_token;
 use crate::models::user::{AuthResponse, UserPublic};
-use crate::repository::Repository;
 use crate::repository::error::RepositoryError;
+use crate::repository::traits::UserRepository;
 
-static EMAIL_RE: std::sync::LazyLock<Regex> =
-    std::sync::LazyLock::new(|| Regex::new(r"^[^@\s]+@[^@\s]+\.[^@\s]+$").unwrap());
+static EMAIL_RE: std::sync::LazyLock<regex::Regex> =
+    std::sync::LazyLock::new(|| regex::Regex::new(r"^[^@\s]+@[^@\s]+\.[^@\s]+$").unwrap());
 
 #[derive(Clone)]
 pub struct AuthService {
-    repository: Arc<Repository>,
+    user_repo: Arc<dyn UserRepository>,
     jwt_secret: String,
     cookie_secure: bool,
 }
@@ -72,9 +71,9 @@ impl AuthError {
 }
 
 impl AuthService {
-    pub fn new(repository: Arc<Repository>, jwt_secret: String, cookie_secure: bool) -> Self {
+    pub fn new(user_repo: Arc<dyn UserRepository>, jwt_secret: String, cookie_secure: bool) -> Self {
         Self {
-            repository,
+            user_repo,
             jwt_secret,
             cookie_secure,
         }
@@ -113,8 +112,7 @@ impl AuthService {
 
         let id = Uuid::now_v7().to_string();
 
-        self.repository
-            .user
+        self.user_repo
             .create(&id, username, email, &password_hash)
             .await
             .map_err(|e| match e {
@@ -131,8 +129,7 @@ impl AuthService {
 
     pub async fn login(&self, username: &str, password: &str) -> Result<(UserPublic, String), AuthError> {
         let user = self
-            .repository
-            .user
+            .user_repo
             .find_by_username(username)
             .await
             .map_err(|e| AuthError::DatabaseError(e.to_string()))?
@@ -157,8 +154,7 @@ impl AuthService {
     }
 
     pub async fn get_user(&self, user_id: &str) -> Result<Option<UserPublic>, AuthError> {
-        self.repository
-            .user
+        self.user_repo
             .find_by_id(user_id)
             .await
             .map_err(|e| AuthError::DatabaseError(e.to_string()))

@@ -8,11 +8,11 @@ use uuid::Uuid;
 
 use crate::middleware::auth::{compute_key_hmac, default_instance_scopes, default_site_scopes, scopes_to_string};
 use crate::models::access_token::{AccessToken, AccessTokenKind, AccessTokenResponse};
-use crate::repository::Repository;
+use crate::repository::traits::AccessTokenRepository;
 
 #[derive(Clone)]
 pub struct AccessTokenService {
-    repository: Arc<Repository>,
+    access_token_repo: Arc<dyn AccessTokenRepository>,
     hmac_secret: String,
 }
 
@@ -49,9 +49,9 @@ impl TokenError {
 }
 
 impl AccessTokenService {
-    pub fn new(repository: Arc<Repository>, hmac_secret: String) -> Self {
+    pub fn new(access_token_repo: Arc<dyn AccessTokenRepository>, hmac_secret: String) -> Self {
         Self {
-            repository,
+            access_token_repo,
             hmac_secret,
         }
     }
@@ -103,8 +103,7 @@ impl AccessTokenService {
         let scope_refs = scopes.iter().map(String::as_str).collect::<Vec<_>>();
         let scopes_string = scopes_to_string(&scope_refs);
 
-        self.repository
-            .access_token
+        self.access_token_repo
             .create(
                 &id,
                 kind.clone(),
@@ -132,8 +131,7 @@ impl AccessTokenService {
     }
 
     pub async fn list_site_tokens(&self, site_id: &str) -> Result<Vec<AccessToken>, TokenError> {
-        self.repository
-            .access_token
+        self.access_token_repo
             .list(AccessTokenKind::Site, Some(site_id))
             .await
             .map_err(|e| TokenError::DatabaseError(e.to_string()))
@@ -152,16 +150,14 @@ impl AccessTokenService {
     }
 
     pub async fn delete_site_token(&self, token_id: &str, site_id: &str) -> Result<u64, TokenError> {
-        self.repository
-            .access_token
+        self.access_token_repo
             .delete(token_id, AccessTokenKind::Site, Some(site_id))
             .await
             .map_err(|e| TokenError::DatabaseError(e.to_string()))
     }
 
     pub async fn list_instance_tokens(&self) -> Result<Vec<AccessToken>, TokenError> {
-        self.repository
-            .access_token
+        self.access_token_repo
             .list(AccessTokenKind::Instance, None)
             .await
             .map_err(|e| TokenError::DatabaseError(e.to_string()))
@@ -178,8 +174,7 @@ impl AccessTokenService {
     }
 
     pub async fn delete_instance_token(&self, token_id: &str) -> Result<u64, TokenError> {
-        self.repository
-            .access_token
+        self.access_token_repo
             .delete(token_id, AccessTokenKind::Instance, None)
             .await
             .map_err(|e| TokenError::DatabaseError(e.to_string()))

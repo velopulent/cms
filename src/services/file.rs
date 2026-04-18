@@ -10,12 +10,11 @@ use uuid::Uuid;
 use crate::config::Config;
 use crate::handlers::file_handler::StorageManager;
 use crate::models::file::{File, FileReference, FileWithUrl};
-use crate::repository::Repository;
-use crate::repository::traits::{FileListResult, ListFilesParams};
+use crate::repository::traits::{FileListResult, FileRepository, ListFilesParams};
 
 #[derive(Clone)]
 pub struct FileService {
-    repository: Arc<Repository>,
+    file_repo: Arc<dyn FileRepository>,
     storage: StorageManager,
     config: Arc<Config>,
 }
@@ -69,33 +68,30 @@ impl FileError {
 }
 
 impl FileService {
-    pub fn new(repository: Arc<Repository>, storage: StorageManager, config: Arc<Config>) -> Self {
+    pub fn new(file_repo: Arc<dyn FileRepository>, storage: StorageManager, config: Arc<Config>) -> Self {
         Self {
-            repository,
+            file_repo,
             storage,
             config,
         }
     }
 
     pub async fn list_files(&self, params: ListFilesParams<'_>) -> Result<FileListResult, FileError> {
-        self.repository
-            .file
+        self.file_repo
             .list(params)
             .await
             .map_err(|e| FileError::DatabaseError(e.to_string()))
     }
 
     pub async fn get_file(&self, id: &str, site_id: &str) -> Result<Option<File>, FileError> {
-        self.repository
-            .file
+        self.file_repo
             .get_by_id(id, site_id)
             .await
             .map_err(|e| FileError::DatabaseError(e.to_string()))
     }
 
     pub async fn get_file_any(&self, id: &str) -> Result<Option<File>, FileError> {
-        self.repository
-            .file
+        self.file_repo
             .get_by_id_any(id)
             .await
             .map_err(|e| FileError::DatabaseError(e.to_string()))
@@ -203,8 +199,7 @@ impl FileService {
         let thumb_key_str = thumbnail_key.as_deref();
 
         let file = self
-            .repository
-            .file
+            .file_repo
             .create(
                 &file_id,
                 site_id,
@@ -226,32 +221,28 @@ impl FileService {
     }
 
     pub async fn soft_delete(&self, id: &str, site_id: &str) -> Result<u64, FileError> {
-        self.repository
-            .file
+        self.file_repo
             .soft_delete(id, site_id)
             .await
             .map_err(|e| FileError::DatabaseError(e.to_string()))
     }
 
     pub async fn restore(&self, id: &str, site_id: &str) -> Result<u64, FileError> {
-        self.repository
-            .file
+        self.file_repo
             .restore(id, site_id)
             .await
             .map_err(|e| FileError::DatabaseError(e.to_string()))
     }
 
     pub async fn batch_soft_delete(&self, site_id: &str, ids: &[String]) -> Result<u64, FileError> {
-        self.repository
-            .file
+        self.file_repo
             .batch_soft_delete(site_id, ids)
             .await
             .map_err(|e| FileError::DatabaseError(e.to_string()))
     }
 
     pub async fn batch_restore(&self, site_id: &str, ids: &[String]) -> Result<u64, FileError> {
-        self.repository
-            .file
+        self.file_repo
             .batch_restore(site_id, ids)
             .await
             .map_err(|e| FileError::DatabaseError(e.to_string()))
@@ -259,8 +250,7 @@ impl FileService {
 
     pub async fn batch_permanent_delete(&self, site_id: &str, ids: &[String]) -> Result<u64, FileError> {
         let files = self
-            .repository
-            .file
+            .file_repo
             .get_deleted_by_ids(site_id, ids)
             .await
             .map_err(|e| FileError::DatabaseError(e.to_string()))?;
@@ -274,24 +264,21 @@ impl FileService {
             }
         }
 
-        self.repository
-            .file
+        self.file_repo
             .batch_permanent_delete(site_id, ids)
             .await
             .map_err(|e| FileError::DatabaseError(e.to_string()))
     }
 
     pub async fn get_file_references(&self, file_id: &str, site_id: &str) -> Result<Vec<FileReference>, FileError> {
-        self.repository
-            .file
+        self.file_repo
             .get_references_for_site(file_id, site_id)
             .await
             .map_err(|e| FileError::DatabaseError(e.to_string()))
     }
 
     pub async fn get_storage_provider(&self, site_id: &str) -> Result<String, FileError> {
-        self.repository
-            .file
+        self.file_repo
             .get_storage_provider(site_id)
             .await
             .map_err(|e| FileError::DatabaseError(e.to_string()))
@@ -299,8 +286,7 @@ impl FileService {
 
     pub async fn serve_file(&self, id: &str, use_thumbnail: bool) -> Result<(Bytes, String, String), FileError> {
         let file = self
-            .repository
-            .file
+            .file_repo
             .get_by_id_any(id)
             .await
             .map_err(|e| FileError::DatabaseError(e.to_string()))?

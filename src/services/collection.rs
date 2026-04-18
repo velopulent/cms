@@ -7,12 +7,12 @@ use thiserror::Error;
 use uuid::Uuid;
 
 use crate::models::collection::Collection;
-use crate::repository::Repository;
 use crate::repository::error::RepositoryError;
+use crate::repository::traits::CollectionRepository;
 
 #[derive(Clone)]
 pub struct CollectionService {
-    repository: Arc<Repository>,
+    collection_repo: Arc<dyn CollectionRepository>,
 }
 
 #[derive(Error, Debug)]
@@ -42,37 +42,33 @@ impl CollectionError {
 }
 
 impl CollectionService {
-    pub fn new(repository: Arc<Repository>) -> Self {
-        Self { repository }
+    pub fn new(collection_repo: Arc<dyn CollectionRepository>) -> Self {
+        Self { collection_repo }
     }
 
     pub async fn list_collections(&self, site_id: &str) -> Result<Vec<Collection>, CollectionError> {
-        self.repository
-            .collection
+        self.collection_repo
             .list(site_id)
             .await
             .map_err(|e| CollectionError::DatabaseError(e.to_string()))
     }
 
     pub async fn list_singletons_only(&self, site_id: &str) -> Result<Vec<Collection>, CollectionError> {
-        self.repository
-            .collection
+        self.collection_repo
             .list_singletons_only(site_id)
             .await
             .map_err(|e| CollectionError::DatabaseError(e.to_string()))
     }
 
     pub async fn get_collection(&self, site_id: &str, slug: &str) -> Result<Option<Collection>, CollectionError> {
-        self.repository
-            .collection
+        self.collection_repo
             .get_by_slug(site_id, slug)
             .await
             .map_err(|e| CollectionError::DatabaseError(e.to_string()))
     }
 
     pub async fn get_by_id(&self, id: &str) -> Result<Option<Collection>, CollectionError> {
-        self.repository
-            .collection
+        self.collection_repo
             .get_by_id(id)
             .await
             .map_err(|e| CollectionError::DatabaseError(e.to_string()))
@@ -88,8 +84,7 @@ impl CollectionService {
     ) -> Result<Collection, CollectionError> {
         let id = Uuid::now_v7().to_string();
 
-        self.repository
-            .collection
+        self.collection_repo
             .create(&id, site_id, name, slug, definition, is_singleton)
             .await
             .map_err(|e| match e {
@@ -107,8 +102,7 @@ impl CollectionService {
         definition: Option<&str>,
     ) -> Result<Collection, CollectionError> {
         let existing = self
-            .repository
-            .collection
+            .collection_repo
             .get_by_slug(site_id, slug)
             .await
             .map_err(|e| CollectionError::DatabaseError(e.to_string()))?
@@ -130,14 +124,12 @@ impl CollectionService {
                 if !rename_map.is_empty() {
                     if existing.is_singleton {
                         let _ = self
-                            .repository
-                            .collection
+                            .collection_repo
                             .migrate_singleton_field_renames(&existing, &rename_map)
                             .await;
-                    } else if let Ok(items) = self.repository.collection.get_content_for_migration(&existing.id).await {
+                    } else if let Ok(items) = self.collection_repo.get_content_for_migration(&existing.id).await {
                         let _ = self
-                            .repository
-                            .collection
+                            .collection_repo
                             .migrate_content_field_renames(&items, &rename_map)
                             .await;
                     }
@@ -145,24 +137,21 @@ impl CollectionService {
             }
         }
 
-        self.repository
-            .collection
+        self.collection_repo
             .update(&existing.id, name, &new_slug, &definition_str)
             .await
             .map_err(|e| CollectionError::DatabaseError(e.to_string()))
     }
 
     pub async fn delete_collection(&self, site_id: &str, slug: &str) -> Result<u64, CollectionError> {
-        self.repository
-            .collection
+        self.collection_repo
             .delete(site_id, slug)
             .await
             .map_err(|e| CollectionError::DatabaseError(e.to_string()))
     }
 
     pub async fn update_singleton_data(&self, id: &str, data: &str) -> Result<Collection, CollectionError> {
-        self.repository
-            .collection
+        self.collection_repo
             .update_singleton_data(id, data)
             .await
             .map_err(|e| CollectionError::DatabaseError(e.to_string()))

@@ -25,28 +25,40 @@ pub struct Services {
 
 impl Services {
     pub fn new(repository: Repository, config: &Config, storage: StorageManager) -> Self {
-        let repository = Arc::new(repository);
         let config = Arc::new(config.clone());
 
         Self {
             auth: Arc::new(auth::AuthService::new(
-                repository.clone(),
+                repository.user.clone(),
                 config.jwt_secret.clone(),
                 config.cookie_secure,
             )),
-            site: Arc::new(site::SiteService::new(repository.clone())),
+            site: Arc::new(site::SiteService::new(
+                repository.site.clone(),
+                repository.user.clone(),
+            )),
             access_token: Arc::new(access_token::AccessTokenService::new(
-                repository.clone(),
+                repository.access_token.clone(),
                 config.hmac_secret.clone(),
             )),
-            collection: Arc::new(collection::CollectionService::new(repository.clone())),
-            entry: Arc::new(entry::EntryService::new(repository.clone(), storage.clone())),
+            collection: Arc::new(collection::CollectionService::new(
+                repository.collection.clone(),
+            )),
+            entry: Arc::new(entry::EntryService::new(
+                repository.entry.clone(),
+                repository.file.clone(),
+                storage.clone(),
+            )),
             file: Arc::new(file::FileService::new(
-                repository.clone(),
+                repository.file.clone(),
                 storage.clone(),
                 config.clone(),
             )),
-            singleton: Arc::new(singleton::SingletonService::new(repository.clone(), storage)),
+            singleton: Arc::new(singleton::SingletonService::new(
+                repository.collection.clone(),
+                repository.file.clone(),
+                storage,
+            )),
         }
     }
 }

@@ -8,13 +8,13 @@ use uuid::Uuid;
 
 use crate::handlers::file_handler::StorageManager;
 use crate::models::entry::Entry;
-use crate::repository::Repository;
 use crate::repository::error::RepositoryError;
-use crate::repository::traits::{EntriesListResult, ListEntriesParams};
+use crate::repository::traits::{EntriesListResult, EntryRepository, FileRepository, ListEntriesParams};
 
 #[derive(Clone)]
 pub struct EntryService {
-    repository: Arc<Repository>,
+    entry_repo: Arc<dyn EntryRepository>,
+    file_repo: Arc<dyn FileRepository>,
     storage: StorageManager,
 }
 
@@ -45,21 +45,19 @@ impl EntryError {
 }
 
 impl EntryService {
-    pub fn new(repository: Arc<Repository>, storage: StorageManager) -> Self {
-        Self { repository, storage }
+    pub fn new(entry_repo: Arc<dyn EntryRepository>, file_repo: Arc<dyn FileRepository>, storage: StorageManager) -> Self {
+        Self { entry_repo, file_repo, storage }
     }
 
     pub async fn list_entries(&self, params: ListEntriesParams<'_>) -> Result<EntriesListResult, EntryError> {
-        self.repository
-            .entry
+        self.entry_repo
             .list(params)
             .await
             .map_err(|e| EntryError::DatabaseError(e.to_string()))
     }
 
     pub async fn get_entry(&self, id: &str, site_id: &str, published_only: bool) -> Result<Option<Entry>, EntryError> {
-        self.repository
-            .entry
+        self.entry_repo
             .get_by_id(id, site_id, published_only)
             .await
             .map_err(|e| EntryError::DatabaseError(e.to_string()))
@@ -75,8 +73,7 @@ impl EntryService {
         let id = Uuid::now_v7().to_string();
         let data_str = data.to_string();
 
-        self.repository
-            .entry
+        self.entry_repo
             .create(&id, site_id, collection_id, &data_str, slug)
             .await
             .map_err(|e| match e {
@@ -84,10 +81,9 @@ impl EntryService {
                 _ => EntryError::DatabaseError(e.to_string()),
             })?;
 
-        let _ = self.repository.entry.sync_file_references(&id, site_id, data).await;
+        let _ = self.entry_repo.sync_file_references(&id, site_id, data).await;
 
-        self.repository
-            .entry
+        self.entry_repo
             .get_by_id(&id, site_id, false)
             .await
             .map_err(|e| EntryError::DatabaseError(e.to_string()))?
@@ -103,8 +99,7 @@ impl EntryService {
         status: Option<&str>,
     ) -> Result<Entry, EntryError> {
         let existing = self
-            .repository
-            .entry
+            .entry_repo
             .get_by_id(id, site_id, false)
             .await
             .map_err(|e| EntryError::DatabaseError(e.to_string()))?
@@ -118,8 +113,7 @@ impl EntryService {
         let slug = slug.unwrap_or(&existing.slug);
         let status = status.unwrap_or(&existing.status);
 
-        self.repository
-            .entry
+        self.entry_repo
             .update(id, &data_str, slug, status)
             .await
             .map_err(|e| match e {
@@ -128,13 +122,11 @@ impl EntryService {
             })?;
 
         let _ = self
-            .repository
-            .entry
+            .entry_repo
             .sync_file_references(id, site_id, &resolved_data)
             .await;
 
-        self.repository
-            .entry
+        self.entry_repo
             .get_by_id(id, site_id, false)
             .await
             .map_err(|e| EntryError::DatabaseError(e.to_string()))?
@@ -142,22 +134,21 @@ impl EntryService {
     }
 
     pub async fn delete_entry(&self, id: &str, site_id: &str) -> Result<u64, EntryError> {
-        self.repository
-            .entry
+        self.entry_repo
             .delete(id, site_id)
             .await
             .map_err(|e| EntryError::DatabaseError(e.to_string()))
     }
 
     pub async fn publish_entry(&self, id: &str, site_id: &str) -> Result<Entry, EntryError> {
-        self.repository.entry.publish(id, site_id).await.map_err(|e| match e {
+        self.entry_repo.publish(id, site_id).await.map_err(|e| match e {
             RepositoryError::NotFound => EntryError::NotFound,
             _ => EntryError::DatabaseError(e.to_string()),
         })
     }
 
     pub async fn unpublish_entry(&self, id: &str, site_id: &str) -> Result<Entry, EntryError> {
-        self.repository.entry.unpublish(id, site_id).await.map_err(|e| match e {
+        self.entry_repo.unpublish(id, site_id).await.map_err(|e| match e {
             RepositoryError::NotFound => EntryError::NotFound,
             _ => EntryError::DatabaseError(e.to_string()),
         })
@@ -191,7 +182,7 @@ impl EntryService {
         let mut file_map = serde_json::Map::new();
 
         if !file_ids.is_empty() {
-            if let Ok(file_items) = self.repository.file.get_by_ids(site_id, &file_ids).await {
+            if let Ok(file_items) = self.file_repo.get_by_ids(site_id, &file_ids).await {
                 for f in file_items {
                     let url = match f.storage_provider.as_str() {
                         "s3" => self
