@@ -155,7 +155,6 @@ impl SiteService {
         &self,
         site_id: &str,
         name: Option<&str>,
-        storage_provider: Option<&str>,
     ) -> Result<Site, SiteError> {
         let existing = self
             .site_repo
@@ -165,12 +164,9 @@ impl SiteService {
             .ok_or(SiteError::NotFound)?;
 
         let name = name.unwrap_or(&existing.name);
-        let storage_provider = storage_provider
-            .filter(|v| *v == "filesystem" || *v == "s3")
-            .unwrap_or(&existing.storage_provider);
 
         self.site_repo
-            .update(site_id, name, storage_provider)
+            .update(site_id, name)
             .await
             .map_err(|e| SiteError::DatabaseError(e.to_string()))
     }

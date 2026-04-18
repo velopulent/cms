@@ -5,15 +5,14 @@ use serde_json::Value;
 use serde_json::json;
 use thiserror::Error;
 
-use crate::handlers::file_handler::StorageManager;
 use crate::models::collection::{Collection, SingletonResponse};
 use crate::repository::traits::{CollectionRepository, FileRepository};
+use crate::storage::StorageProvider;
 
 #[derive(Clone)]
 pub struct SingletonService {
     collection_repo: Arc<dyn CollectionRepository>,
     file_repo: Arc<dyn FileRepository>,
-    storage: StorageManager,
 }
 
 #[derive(Error, Debug)]
@@ -49,8 +48,8 @@ impl SingletonError {
 }
 
 impl SingletonService {
-    pub fn new(collection_repo: Arc<dyn CollectionRepository>, file_repo: Arc<dyn FileRepository>, storage: StorageManager) -> Self {
-        Self { collection_repo, file_repo, storage }
+    pub fn new(collection_repo: Arc<dyn CollectionRepository>, file_repo: Arc<dyn FileRepository>) -> Self {
+        Self { collection_repo, file_repo }
     }
 
     fn collection_to_response(c: &Collection) -> SingletonResponse {
@@ -79,7 +78,12 @@ impl SingletonService {
         Ok(items.iter().map(Self::collection_to_response).collect())
     }
 
-    pub async fn get_singleton(&self, site_id: &str, slug: &str) -> Result<SingletonResponse, SingletonError> {
+    pub async fn get_singleton(
+        &self,
+        site_id: &str,
+        slug: &str,
+        storage: Arc<dyn StorageProvider>,
+    ) -> Result<SingletonResponse, SingletonError> {
         let item = self
             .collection_repo
             .get_by_slug(site_id, slug)
@@ -94,7 +98,7 @@ impl SingletonService {
         let mut response = Self::collection_to_response(&item);
 
         if let Some(ref data) = response.data {
-            let resolved = self.resolve_files_from_value(data, &item.site_id).await;
+            let resolved = self.resolve_files_from_value(data, &item.site_id, storage).await;
             response.data = Some(resolved);
         }
 
@@ -129,7 +133,12 @@ impl SingletonService {
         Ok(Self::collection_to_response(&updated))
     }
 
-    async fn resolve_files_from_value(&self, data: &Value, site_id: &str) -> Value {
+    async fn resolve_files_from_value(
+        &self,
+        data: &Value,
+        site_id: &str,
+        storage: Arc<dyn StorageProvider>,
+    ) -> Value {
         let file_ids = self.extract_file_ids_from_value(data);
 
         let mut file_map = serde_json::Map::new();
@@ -137,15 +146,7 @@ impl SingletonService {
         if !file_ids.is_empty() {
             if let Ok(file_items) = self.file_repo.get_by_ids(site_id, &file_ids).await {
                 for f in file_items {
-                    let url = match f.storage_provider.as_str() {
-                        "s3" => self
-                            .storage
-                            .s3
-                            .as_ref()
-                            .map(|s| s.url(&f.storage_key, &f.id))
-                            .unwrap_or_else(|| format!("/api/files/{}", f.id)),
-                        _ => format!("/api/files/{}", f.id),
-                    };
+                    let url = storage.url(&f.storage_key, &f.id);
 
                     file_map.insert(
                         f.id.clone(),

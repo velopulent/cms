@@ -103,6 +103,7 @@ impl FileService {
         content_type: &str,
         created_by: Option<&str>,
         storage: Arc<dyn StorageProvider>,
+        storage_provider: &str,
     ) -> Result<FileWithUrl, FileError> {
         if data.len() as u64 > self.config.max_upload_size_bytes as u64 {
             return Err(FileError::FileTooLarge(format!(
@@ -194,7 +195,7 @@ impl FileService {
                 &original_name,
                 &mime_type,
                 file_size,
-                "filesystem",
+                storage_provider,
                 &storage_key,
                 thumb_key_str,
                 width,

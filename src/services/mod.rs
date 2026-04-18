@@ -9,7 +9,6 @@ pub mod site;
 use std::sync::Arc;
 
 use crate::config::Config;
-use crate::handlers::file_handler::StorageManager;
 use crate::repository::Repository;
 
 #[derive(Clone)]
@@ -24,7 +23,7 @@ pub struct Services {
 }
 
 impl Services {
-    pub fn new(repository: Repository, config: &Config, storage: StorageManager) -> Self {
+    pub fn new(repository: Repository, config: &Config) -> Self {
         let config = Arc::new(config.clone());
 
         Self {
@@ -47,7 +46,6 @@ impl Services {
             entry: Arc::new(entry::EntryService::new(
                 repository.entry.clone(),
                 repository.file.clone(),
-                storage.clone(),
             )),
             file: Arc::new(file::FileService::new(
                 repository.file.clone(),
@@ -56,7 +54,6 @@ impl Services {
             singleton: Arc::new(singleton::SingletonService::new(
                 repository.collection.clone(),
                 repository.file.clone(),
-                storage,
             )),
         }
     }

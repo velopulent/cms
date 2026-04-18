@@ -6,16 +6,15 @@ use serde_json::json;
 use thiserror::Error;
 use uuid::Uuid;
 
-use crate::handlers::file_handler::StorageManager;
 use crate::models::entry::Entry;
 use crate::repository::error::RepositoryError;
 use crate::repository::traits::{EntriesListResult, EntryRepository, FileRepository, ListEntriesParams};
+use crate::storage::StorageProvider;
 
 #[derive(Clone)]
 pub struct EntryService {
     entry_repo: Arc<dyn EntryRepository>,
     file_repo: Arc<dyn FileRepository>,
-    storage: StorageManager,
 }
 
 #[derive(Error, Debug)]
@@ -45,8 +44,8 @@ impl EntryError {
 }
 
 impl EntryService {
-    pub fn new(entry_repo: Arc<dyn EntryRepository>, file_repo: Arc<dyn FileRepository>, storage: StorageManager) -> Self {
-        Self { entry_repo, file_repo, storage }
+    pub fn new(entry_repo: Arc<dyn EntryRepository>, file_repo: Arc<dyn FileRepository>) -> Self {
+        Self { entry_repo, file_repo }
     }
 
     pub async fn list_entries(&self, params: ListEntriesParams<'_>) -> Result<EntriesListResult, EntryError> {
@@ -154,9 +153,13 @@ impl EntryService {
         })
     }
 
-    pub async fn resolve_entry_files(&self, entry: &Entry) -> Result<Value, EntryError> {
+    pub async fn resolve_entry_files(
+        &self,
+        entry: &Entry,
+        storage: Arc<dyn StorageProvider>,
+    ) -> Result<Value, EntryError> {
         let data: Value = serde_json::from_str(&entry.data).unwrap_or_default();
-        let resolved_data = self.resolve_files_from_value(&data, &entry.site_id).await;
+        let resolved_data = self.resolve_files_from_value(&data, &entry.site_id, storage).await;
 
         Ok(json!({
             "id": entry.id,
@@ -176,7 +179,12 @@ impl EntryService {
         items.to_vec()
     }
 
-    async fn resolve_files_from_value(&self, data: &Value, site_id: &str) -> Value {
+    async fn resolve_files_from_value(
+        &self,
+        data: &Value,
+        site_id: &str,
+        storage: Arc<dyn StorageProvider>,
+    ) -> Value {
         let file_ids = self.extract_file_ids_from_value(data);
 
         let mut file_map = serde_json::Map::new();
@@ -184,15 +192,7 @@ impl EntryService {
         if !file_ids.is_empty() {
             if let Ok(file_items) = self.file_repo.get_by_ids(site_id, &file_ids).await {
                 for f in file_items {
-                    let url = match f.storage_provider.as_str() {
-                        "s3" => self
-                            .storage
-                            .s3
-                            .as_ref()
-                            .map(|s| s.url(&f.storage_key, &f.id))
-                            .unwrap_or_else(|| format!("/api/files/{}", f.id)),
-                        _ => format!("/api/files/{}", f.id),
-                    };
+                    let url = storage.url(&f.storage_key, &f.id);
 
                     file_map.insert(
                         f.id.clone(),
