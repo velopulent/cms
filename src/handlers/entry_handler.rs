@@ -7,6 +7,7 @@ use axum::{
 };
 use serde::Deserialize;
 use serde_json::json;
+use std::sync::Arc;
 use tracing::instrument;
 
 use crate::middleware::auth::{HEADER_SITE_ID, Principal, SCOPE_CONTENT_READ, SCOPE_CONTENT_WRITE, require_site_scope};
@@ -14,6 +15,7 @@ use crate::models::entry::{CreateEntry, Entry, UpdateEntry};
 use crate::repository::Repository;
 use crate::repository::traits::ListEntriesParams;
 use crate::services::Services;
+use crate::storage::{StorageProvider, StorageRegistry};
 
 #[derive(Deserialize, utoipa::IntoParams)]
 pub struct ListParams {
@@ -26,6 +28,17 @@ pub struct ListParams {
 
 fn request_site_id(headers: &HeaderMap) -> Option<&str> {
     headers.get(HEADER_SITE_ID).and_then(|value| value.to_str().ok())
+}
+
+fn get_storage_for_site(
+    site_storage_provider: &str,
+    registry: &StorageRegistry,
+) -> Result<Arc<dyn StorageProvider>, Response> {
+    registry
+        .get(site_storage_provider)
+        .ok_or_else(|| {
+            (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": "Storage not configured"}))).into_response()
+        })
 }
 
 #[utoipa::path(
@@ -109,13 +122,14 @@ pub async fn list_entries(
     security(("bearer" = []), ("access_token" = [])),
     tag = "entries"
 )]
-#[instrument(skip(repository, services, principal))]
+#[instrument(skip(repository, services, principal, storage_registry))]
 pub async fn get_entry(
     principal: Principal,
     headers: HeaderMap,
     Path(id): Path<String>,
     Extension(repository): Extension<Repository>,
     Extension(services): Extension<Services>,
+    Extension(storage_registry): Extension<Arc<StorageRegistry>>,
 ) -> Response {
     let site = match require_site_scope(
         &principal,
@@ -134,9 +148,18 @@ pub async fn get_entry(
 
     match services.entry.get_entry(&id, &site.site_id, published_only).await {
         Ok(Some(item)) => {
+            let storage_provider = services
+                .file
+                .get_storage_provider(&site.site_id)
+                .await
+                .unwrap_or_else(|_| "filesystem".into());
+            let storage = match get_storage_for_site(&storage_provider, &storage_registry) {
+                Ok(s) => s,
+                Err(resp) => return resp,
+            };
             let resolved = services
                 .entry
-                .resolve_entry_files(&item)
+                .resolve_entry_files(&item, storage)
                 .await
                 .unwrap_or_else(|_| serde_json::from_str(&item.data).unwrap_or_default());
             (StatusCode::OK, Json(resolved)).into_response()

@@ -10,59 +10,17 @@ use bytes::Bytes;
 use serde::Deserialize;
 use serde_json::json;
 use std::sync::Arc;
-use thiserror::Error;
 use tracing::instrument;
 
 use crate::config::Config;
 use crate::middleware::auth::{
     HEADER_SITE_ID, Principal, SCOPE_ASSETS_READ, SCOPE_ASSETS_WRITE, extract_user_id, require_site_scope,
 };
-use crate::models::file::{BatchFileIds, File, FileWithUrl};
+use crate::models::file::{BatchFileIds, FileWithUrl};
 use crate::repository::Repository;
 use crate::repository::traits::ListFilesParams;
 use crate::services::Services;
-use crate::storage::{FileSystemStorage, S3Storage, StorageProvider};
-
-#[derive(Clone)]
-pub struct StorageManager {
-    pub filesystem: Option<Arc<FileSystemStorage>>,
-    pub s3: Option<Arc<S3Storage>>,
-}
-
-impl StorageManager {
-    pub fn has_s3(&self) -> bool {
-        self.s3.is_some()
-    }
-
-    pub fn has_any(&self) -> bool {
-        self.filesystem.is_some() || self.s3.is_some()
-    }
-}
-
-fn get_storage_for_provider(
-    provider: &str,
-    storage_manager: &StorageManager,
-) -> Result<Arc<dyn StorageProvider>, FileError> {
-    match provider {
-        "s3" => storage_manager
-            .s3
-            .clone()
-            .map(|s| s as Arc<dyn StorageProvider>)
-            .ok_or_else(|| FileError::NoStorageConfigured),
-        _ => storage_manager
-            .filesystem
-            .clone()
-            .map(|s| s as Arc<dyn StorageProvider>)
-            .ok_or_else(|| FileError::NoStorageConfigured),
-    }
-}
-
-fn get_storage_for_file(
-    file: &File,
-    storage_manager: &StorageManager,
-) -> Result<Arc<dyn StorageProvider>, FileError> {
-    get_storage_for_provider(&file.storage_provider, storage_manager)
-}
+use crate::storage::{StorageProvider, StorageRegistry};
 
 #[derive(Deserialize, utoipa::IntoParams)]
 pub struct FileListParams {
@@ -76,33 +34,13 @@ fn request_site_id(headers: &HeaderMap) -> Option<&str> {
     headers.get(HEADER_SITE_ID).and_then(|value| value.to_str().ok())
 }
 
-#[derive(Error, Debug)]
-pub enum FileError {
-    #[error("Not found")]
-    NotFound,
-
-    #[error("No storage configured")]
-    NoStorageConfigured,
-
-    #[error("Storage error: {0}")]
-    StorageError(String),
-}
-
-impl IntoResponse for FileError {
-    fn into_response(self) -> Response {
-        let (status, body) = match self {
-            FileError::NotFound => (StatusCode::NOT_FOUND, Json(json!({"error": "File not found"}))),
-            FileError::NoStorageConfigured => (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(json!({"error": "No storage providers configured"})),
-            ),
-            FileError::StorageError(msg) => (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(json!({"error": format!("Failed to access storage: {}", msg)})),
-            ),
-        };
-        (status, body).into_response()
-    }
+fn get_storage_for_site(
+    site_storage_provider: &str,
+    registry: &StorageRegistry,
+) -> Result<Arc<dyn StorageProvider>, StatusCode> {
+    registry
+        .get(site_storage_provider)
+        .ok_or(StatusCode::INTERNAL_SERVER_ERROR)
 }
 
 #[utoipa::path(
@@ -116,14 +54,14 @@ impl IntoResponse for FileError {
     security(("bearer" = []), ("access_token" = [])),
     tag = "files"
 )]
-#[instrument(skip(repository, services, principal, params, storage_manager))]
+#[instrument(skip(repository, services, principal, params, storage_registry))]
 pub async fn list_files(
     principal: Principal,
     headers: HeaderMap,
     Query(params): Query<FileListParams>,
     Extension(repository): Extension<Repository>,
     Extension(services): Extension<Services>,
-    Extension(storage_manager): Extension<StorageManager>,
+    Extension(storage_registry): Extension<Arc<StorageRegistry>>,
 ) -> Response {
     let site = match require_site_scope(
         &principal,
@@ -151,11 +89,17 @@ pub async fn list_files(
         per_page,
     };
 
+    let storage_provider = services
+        .file
+        .get_storage_provider(&site.site_id)
+        .await
+        .unwrap_or_else(|_| "filesystem".into());
+
     match services.file.list_files(list_params).await {
         Ok(result) => {
-            let storage = match get_storage_for_provider("filesystem", &storage_manager) {
+            let storage = match get_storage_for_site(&storage_provider, &storage_registry) {
                 Ok(s) => s,
-                Err(e) => return e.into_response(),
+                Err(status) => return (status, Json(json!({"error": "Storage not configured"}))).into_response(),
             };
             let with_urls: Vec<FileWithUrl> = result
                 .items
@@ -189,14 +133,14 @@ pub async fn list_files(
     security(("bearer" = []), ("access_token" = [])),
     tag = "files"
 )]
-#[instrument(skip(repository, services, config, principal, multipart, storage_manager))]
+#[instrument(skip(repository, services, config, principal, multipart, storage_registry))]
 pub async fn upload_file(
     principal: Principal,
     headers: HeaderMap,
     Extension(repository): Extension<Repository>,
     Extension(services): Extension<Services>,
     Extension(config): Extension<Config>,
-    Extension(storage_manager): Extension<StorageManager>,
+    Extension(storage_registry): Extension<Arc<StorageRegistry>>,
     mut multipart: Multipart,
 ) -> Response {
     let site = match require_site_scope(
@@ -211,9 +155,9 @@ pub async fn upload_file(
         Ok(site) => site,
         Err((status, err)) => return (status, err).into_response(),
     };
-    let site_id = site.site_id;
+    let site_id = site.site_id.clone();
 
-    let default_provider = services
+    let storage_provider = services
         .file
         .get_storage_provider(&site_id)
         .await
@@ -222,16 +166,11 @@ pub async fn upload_file(
     let mut file_data: Option<Bytes> = None;
     let mut file_name: Option<String> = None;
     let mut file_content_type: Option<String> = None;
-    let mut requested_storage_provider: Option<String> = None;
 
     while let Ok(Some(field)) = multipart.next_field().await {
         let name = field.name().unwrap_or("").to_string();
 
-        if name == "storage_provider" {
-            if let Ok(val) = field.text().await {
-                requested_storage_provider = Some(val);
-            }
-        } else if name == "file" {
+        if name == "file" {
             file_name = field.file_name().map(String::from);
             file_content_type = field.content_type().map(String::from);
 
@@ -273,14 +212,9 @@ pub async fn upload_file(
     let content_type = file_content_type.unwrap_or_else(|| "application/octet-stream".into());
     let created_by = extract_user_id(&principal);
 
-    let provider_to_use = requested_storage_provider
-        .as_deref()
-        .filter(|p| *p == "s3")
-        .unwrap_or(&default_provider);
-
-    let storage = match get_storage_for_provider(provider_to_use, &storage_manager) {
+    let storage = match get_storage_for_site(&storage_provider, &storage_registry) {
         Ok(s) => s,
-        Err(e) => return e.into_response(),
+        Err(status) => return (status, Json(json!({"error": "Storage not configured"}))).into_response(),
     };
 
     match services
@@ -292,6 +226,7 @@ pub async fn upload_file(
             &content_type,
             created_by,
             storage,
+            &storage_provider,
         )
         .await
     {
@@ -311,14 +246,14 @@ pub async fn upload_file(
     security(("bearer" = []), ("access_token" = [])),
     tag = "files"
 )]
-#[instrument(skip(repository, services, principal, storage_manager))]
+#[instrument(skip(repository, services, principal, storage_registry))]
 pub async fn get_file(
     principal: Principal,
     headers: HeaderMap,
     Path(id): Path<String>,
     Extension(repository): Extension<Repository>,
     Extension(services): Extension<Services>,
-    Extension(storage_manager): Extension<StorageManager>,
+    Extension(storage_registry): Extension<Arc<StorageRegistry>>,
 ) -> Response {
     let site = match require_site_scope(
         &principal,
@@ -335,9 +270,14 @@ pub async fn get_file(
 
     match services.file.get_file(&id, &site.site_id).await {
         Ok(Some(file)) => {
-            let storage = match get_storage_for_file(&file, &storage_manager) {
+            let storage_provider = services
+                .file
+                .get_storage_provider(&site.site_id)
+                .await
+                .unwrap_or_else(|_| "filesystem".into());
+            let storage = match get_storage_for_site(&storage_provider, &storage_registry) {
                 Ok(s) => s,
-                Err(e) => return e.into_response(),
+                Err(status) => return (status, Json(json!({"error": "Storage not configured"}))).into_response(),
             };
             let with_url = services.file.file_to_with_url(&file, &*storage);
             (StatusCode::OK, Json(with_url)).into_response()
@@ -561,13 +501,13 @@ pub async fn batch_restore_files(
     security(("bearer" = []), ("access_token" = [])),
     tag = "files"
 )]
-#[instrument(skip(repository, services, principal, body, storage_manager))]
+#[instrument(skip(repository, services, principal, body, storage_registry))]
 pub async fn batch_permanent_delete_files(
     principal: Principal,
     headers: HeaderMap,
     Extension(repository): Extension<Repository>,
     Extension(services): Extension<Services>,
-    Extension(storage_manager): Extension<StorageManager>,
+    Extension(storage_registry): Extension<Arc<StorageRegistry>>,
     Json(body): Json<BatchFileIds>,
 ) -> Response {
     let site = match require_site_scope(
@@ -596,11 +536,17 @@ pub async fn batch_permanent_delete_files(
             .into_response(),
     };
 
+    let storage_provider = services
+        .file
+        .get_storage_provider(&site.site_id)
+        .await
+        .unwrap_or_else(|_| "filesystem".into());
+    let storage = match get_storage_for_site(&storage_provider, &storage_registry) {
+        Ok(s) => s,
+        Err(status) => return (status, Json(json!({"error": "Storage not configured"}))).into_response(),
+    };
+
     for file in &files {
-        let storage = match get_storage_for_file(file, &storage_manager) {
-            Ok(s) => s,
-            Err(e) => return e.into_response(),
-        };
         if let Err(e) = storage.delete(&file.storage_key).await {
             tracing::warn!("Failed to delete file {} from storage: {}", file.id, e);
         }
@@ -617,43 +563,43 @@ pub async fn batch_permanent_delete_files(
     }
 }
 
-#[instrument(skip(services, storage_manager))]
+#[instrument(skip(services, storage_registry))]
 pub async fn serve_file(
     Path(id): Path<String>,
     Extension(services): Extension<Services>,
-    Extension(storage_manager): Extension<StorageManager>,
+    Extension(storage_registry): Extension<Arc<StorageRegistry>>,
 ) -> Response {
-    serve_file_by_key(&id, &services, &storage_manager, false).await
+    serve_file_by_key(&id, &services, &storage_registry, false).await
 }
 
-#[instrument(skip(services, storage_manager))]
+#[instrument(skip(services, storage_registry))]
 pub async fn serve_file_thumbnail(
     Path(id): Path<String>,
     Extension(services): Extension<Services>,
-    Extension(storage_manager): Extension<StorageManager>,
+    Extension(storage_registry): Extension<Arc<StorageRegistry>>,
 ) -> Response {
-    serve_file_by_key(&id, &services, &storage_manager, true).await
+    serve_file_by_key(&id, &services, &storage_registry, true).await
 }
 
 async fn serve_file_by_key(
     id: &str,
     services: &Services,
-    storage_manager: &StorageManager,
+    storage_registry: &StorageRegistry,
     use_thumbnail: bool,
 ) -> Response {
     let file = match services.file.get_file_any(id).await {
         Ok(Some(f)) => f,
-        Ok(None) => return FileError::NotFound.into_response(),
+        Ok(None) => return (StatusCode::NOT_FOUND, Json(json!({"error": "File not found"}))).into_response(),
         Err(e) => return e.into_response(),
     };
 
     if file.deleted_at.is_some() {
-        return FileError::NotFound.into_response();
+        return (StatusCode::NOT_FOUND, Json(json!({"error": "File not found"}))).into_response();
     }
 
-    let storage = match get_storage_for_file(&file, storage_manager) {
+    let storage = match get_storage_for_site(&file.storage_provider, storage_registry) {
         Ok(s) => s,
-        Err(e) => return e.into_response(),
+        Err(status) => return (status, Json(json!({"error": "Storage not configured"}))).into_response(),
     };
 
     match services.file.serve_file(id, use_thumbnail, storage).await {
@@ -680,20 +626,5 @@ async fn serve_file_by_key(
             (StatusCode::OK, headers, Body::from(bytes)).into_response()
         }
         Err(e) => e.into_response(),
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_storage_manager_flags_no_storage() {
-        let sm = StorageManager {
-            filesystem: None,
-            s3: None,
-        };
-        assert!(!sm.has_s3());
-        assert!(!sm.has_any());
     }
 }

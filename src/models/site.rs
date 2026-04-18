@@ -26,13 +26,12 @@ pub struct SiteWithRole {
 #[derive(Deserialize, ToSchema)]
 pub struct CreateSite {
     pub name: String,
-    pub storage_provider: Option<String>,
+    pub storage_provider: String,
 }
 
 #[derive(Deserialize, ToSchema)]
 pub struct UpdateSite {
     pub name: Option<String>,
-    pub storage_provider: Option<String>,
 }
 
 #[derive(Serialize, FromRow, ToSchema)]

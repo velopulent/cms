@@ -5,15 +5,29 @@ use axum::{
     http::StatusCode,
     response::{IntoResponse, Response},
 };
+use serde_json::json;
+use std::sync::Arc;
 use tracing::instrument;
 
 use crate::middleware::auth::{HEADER_SITE_ID, Principal, SCOPE_CONTENT_READ, SCOPE_CONTENT_WRITE, require_site_scope};
 use crate::models::collection::{SingletonResponse, UpdateSingletonData};
 use crate::repository::Repository;
 use crate::services::Services;
+use crate::storage::{StorageProvider, StorageRegistry};
 
 fn request_site_id(headers: &HeaderMap) -> Option<&str> {
     headers.get(HEADER_SITE_ID).and_then(|value| value.to_str().ok())
+}
+
+fn get_storage_for_site(
+    site_storage_provider: &str,
+    registry: &StorageRegistry,
+) -> Result<Arc<dyn StorageProvider>, Response> {
+    registry
+        .get(site_storage_provider)
+        .ok_or_else(|| {
+            (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": "Storage not configured"}))).into_response()
+        })
 }
 
 #[utoipa::path(
@@ -64,13 +78,14 @@ pub async fn list_singletons(
     security(("bearer" = []), ("access_token" = [])),
     tag = "singletons"
 )]
-#[instrument(skip(repository, services, principal))]
+#[instrument(skip(repository, services, principal, storage_registry))]
 pub async fn get_singleton(
     principal: Principal,
     headers: HeaderMap,
     Path(slug): Path<String>,
     Extension(repository): Extension<Repository>,
     Extension(services): Extension<Services>,
+    Extension(storage_registry): Extension<Arc<StorageRegistry>>,
 ) -> Response {
     let site = match require_site_scope(
         &principal,
@@ -85,7 +100,17 @@ pub async fn get_singleton(
         Err((status, err)) => return (status, err).into_response(),
     };
 
-    match services.singleton.get_singleton(&site.site_id, &slug).await {
+    let storage_provider = services
+        .file
+        .get_storage_provider(&site.site_id)
+        .await
+        .unwrap_or_else(|_| "filesystem".into());
+    let storage = match get_storage_for_site(&storage_provider, &storage_registry) {
+        Ok(s) => s,
+        Err(resp) => return resp,
+    };
+
+    match services.singleton.get_singleton(&site.site_id, &slug, storage).await {
         Ok(response) => (StatusCode::OK, Json(response)).into_response(),
         Err(e) => e.into_response(),
     }
