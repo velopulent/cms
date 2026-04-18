@@ -83,10 +83,9 @@ impl SiteRepository for PostgresSiteRepository {
         self.get_by_id(id).await?.ok_or(RepositoryError::NotFound)
     }
 
-    async fn update(&self, id: &str, name: &str, storage_provider: &str) -> Result<Site, RepositoryError> {
-        sqlx::query("UPDATE sites SET name = $1, storage_provider = $2, updated_at = NOW() WHERE id = $3")
+    async fn update(&self, id: &str, name: &str) -> Result<Site, RepositoryError> {
+        sqlx::query("UPDATE sites SET name = $1, updated_at = NOW() WHERE id = $2")
             .bind(name)
-            .bind(storage_provider)
             .bind(id)
             .execute(&self.pool)
             .await?;

@@ -89,9 +89,9 @@ async fn test_site_crud() {
     let got = repo.site.get_by_id("s1").await.unwrap().unwrap();
     assert_eq!(got.name, "My Site");
 
-    let updated = repo.site.update("s1", "Updated", "s3").await.unwrap();
+    let updated = repo.site.update("s1", "Updated").await.unwrap();
     assert_eq!(updated.name, "Updated");
-    assert_eq!(updated.storage_provider, "s3");
+    assert_eq!(updated.storage_provider, "filesystem");
 
     assert_eq!(repo.site.delete("s1").await.unwrap(), 1);
     assert!(repo.site.get_by_id("s1").await.unwrap().is_none());

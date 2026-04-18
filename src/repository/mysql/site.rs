@@ -83,10 +83,9 @@ impl SiteRepository for MysqlSiteRepository {
         self.get_by_id(id).await?.ok_or(RepositoryError::NotFound)
     }
 
-    async fn update(&self, id: &str, name: &str, storage_provider: &str) -> Result<Site, RepositoryError> {
-        sqlx::query("UPDATE sites SET name = ?, storage_provider = ?, updated_at = NOW() WHERE id = ?")
+    async fn update(&self, id: &str, name: &str) -> Result<Site, RepositoryError> {
+        sqlx::query("UPDATE sites SET name = ?, updated_at = NOW() WHERE id = ?")
             .bind(name)
-            .bind(storage_provider)
             .bind(id)
             .execute(&self.pool)
             .await?;
