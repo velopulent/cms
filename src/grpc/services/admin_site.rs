@@ -102,11 +102,7 @@ impl SiteService for SiteServiceImpl {
 
         let site = self
             .app_site_service
-            .update_site(
-                &req.site_id,
-                req.name.as_deref(),
-                req.storage_provider.as_deref(),
-            )
+            .update_site(&req.site_id, req.name.as_deref())
             .await
             .map_err(|e| Status::internal(format!("Error: {}", e)))?;
 

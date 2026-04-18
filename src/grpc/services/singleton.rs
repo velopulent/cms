@@ -6,16 +6,19 @@ use crate::grpc::cms::v1::singleton_service_server::SingletonService;
 use crate::grpc::cms::v1::{GetSingletonRequest, Singleton as ProtoSingleton, UpdateSingletonRequest};
 use crate::grpc::interceptor::get_auth_context;
 use crate::services::singleton::SingletonService as AppSingletonService;
+use crate::storage::{StorageProvider, StorageRegistry, STORAGE_KIND_FILESYSTEM};
 
 #[derive(Clone)]
 pub struct SingletonServiceImpl {
     app_singleton_service: Arc<AppSingletonService>,
+    storage_registry: Arc<StorageRegistry>,
 }
 
 impl SingletonServiceImpl {
-    pub fn new(singleton_service: Arc<AppSingletonService>) -> Self {
+    pub fn new(singleton_service: Arc<AppSingletonService>, storage_registry: Arc<StorageRegistry>) -> Self {
         Self {
             app_singleton_service: singleton_service,
+            storage_registry,
         }
     }
 }
@@ -28,9 +31,15 @@ impl SingletonService for SingletonServiceImpl {
         let site_id = auth.require_site_id()?.to_string();
         let slug = request.into_inner().slug;
 
+        let storage = self
+            .storage_registry
+            .get(STORAGE_KIND_FILESYSTEM)
+            .map(|s| s as Arc<dyn StorageProvider>)
+            .ok_or_else(|| Status::internal("Filesystem storage not configured"))?;
+
         let singleton = self
             .app_singleton_service
-            .get_singleton(&site_id, &slug)
+            .get_singleton(&site_id, &slug, storage)
             .await
             .map_err(|e| Status::internal(format!("Error: {}", e)))?;
 
