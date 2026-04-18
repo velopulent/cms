@@ -1,10 +1,9 @@
 use cms::config::Config;
 use cms::database::init_db_with_config;
 use cms::grpc::server::spawn_grpc_server;
-use cms::handlers::file_handler::StorageManager;
 use cms::repository::Repository;
 use cms::router::create_router;
-use cms::storage;
+use cms::storage::{self, StorageRegistry, STORAGE_KIND_FILESYSTEM, STORAGE_KIND_S3};
 
 use std::net::SocketAddr;
 use std::sync::Arc;
@@ -27,15 +26,12 @@ async fn main() {
 
     seed_admin(&repository).await;
 
-    let mut storage_manager = StorageManager {
-        filesystem: None,
-        s3: None,
-    };
+    let mut storage_registry = StorageRegistry::new();
 
     if let Some(ref fs_path) = config.storage_fs_path {
         match storage::FileSystemStorage::new(fs_path) {
             Ok(fs) => {
-                storage_manager.filesystem = Some(Arc::new(fs));
+                storage_registry.register(STORAGE_KIND_FILESYSTEM, Arc::new(fs));
                 info!("Filesystem storage initialized at {}", fs_path);
             }
             Err(e) => warn!("Failed to init filesystem storage: {}", e),
@@ -52,18 +48,19 @@ async fn main() {
             config.s3_public_url.as_deref(),
         ) {
             Ok(s3) => {
-                storage_manager.s3 = Some(Arc::new(s3));
+                storage_registry.register(STORAGE_KIND_S3, Arc::new(s3));
                 info!("S3 storage initialized");
             }
             Err(e) => warn!("Failed to init S3 storage: {}", e),
         }
     }
 
-    if !storage_manager.has_any() {
+    if storage_registry.get(STORAGE_KIND_FILESYSTEM).is_none() && storage_registry.get(STORAGE_KIND_S3).is_none() {
         warn!("No storage providers configured. Set STORAGE_FS_PATH or S3_* env vars.");
     }
 
-    let app = create_router(repository.clone(), config.clone(), storage_manager);
+    let storage_registry = Arc::new(storage_registry);
+    let app = create_router(repository.clone(), config.clone(), storage_registry.clone());
 
     let addr: SocketAddr = config.bind_address.parse().expect("Invalid BIND_ADDRESS");
     info!("REST API server running on {}", addr);
@@ -82,7 +79,7 @@ async fn main() {
             .expect("Server error");
     });
 
-    let grpc_handle = tokio::spawn(spawn_grpc_server(repository.clone(), config.clone(), grpc_addr));
+    let grpc_handle = tokio::spawn(spawn_grpc_server(repository.clone(), config.clone(), storage_registry, grpc_addr));
 
     select! {
         result = rest_handle => {

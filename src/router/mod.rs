@@ -10,22 +10,24 @@ mod openapi;
 mod singleton;
 mod sites;
 
+use std::sync::Arc;
+
 use axum::{Extension, Router};
 use tower_http::cors::{Any, CorsLayer};
 use tower_http::limit::RequestBodyLimitLayer;
 use tower_http::trace::TraceLayer;
 
 use crate::config::Config;
-use crate::handlers::file_handler::StorageManager;
 use crate::middleware::rate_limit::RateLimiter;
 use crate::repository::Repository;
 use crate::services::Services;
+use crate::storage::StorageRegistry;
 use crate::tracing::trace_request;
 
-pub fn create_router(repository: Repository, config: Config, storage: StorageManager) -> Router {
+pub fn create_router(repository: Repository, config: Config, storage_registry: Arc<StorageRegistry>) -> Router {
     let rate_limiter = RateLimiter::new(config.rate_limit_max_requests, config.rate_limit_window_secs);
 
-    let services = Services::new(repository.clone(), &config, storage.clone());
+    let services = Services::new(repository.clone(), &config);
 
     let cors = CorsLayer::new().allow_origin(Any).allow_methods(Any).allow_headers(Any);
 
@@ -46,7 +48,7 @@ pub fn create_router(repository: Repository, config: Config, storage: StorageMan
         .layer(RequestBodyLimitLayer::new(10 * 1024 * 1024))
         .layer(Extension(repository))
         .layer(Extension(config))
-        .layer(Extension(storage))
+        .layer(Extension(storage_registry))
         .layer(Extension(services))
         .layer(Extension(rate_limiter))
 }
