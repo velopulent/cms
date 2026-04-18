@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use axum::{Json, http::StatusCode, response::IntoResponse};
+use axum::{http::StatusCode, Json, response::IntoResponse};
 use bytes::Bytes;
 use image::{DynamicImage, ImageEncoder, ImageReader};
 use serde_json::json;
@@ -8,14 +8,13 @@ use thiserror::Error;
 use uuid::Uuid;
 
 use crate::config::Config;
-use crate::handlers::file_handler::StorageManager;
 use crate::models::file::{File, FileReference, FileWithUrl};
 use crate::repository::traits::{FileListResult, FileRepository, ListFilesParams};
+use crate::storage::StorageProvider;
 
 #[derive(Clone)]
 pub struct FileService {
     file_repo: Arc<dyn FileRepository>,
-    storage: StorageManager,
     config: Arc<Config>,
 }
 
@@ -68,10 +67,9 @@ impl FileError {
 }
 
 impl FileService {
-    pub fn new(file_repo: Arc<dyn FileRepository>, storage: StorageManager, config: Arc<Config>) -> Self {
+    pub fn new(file_repo: Arc<dyn FileRepository>, config: Arc<Config>) -> Self {
         Self {
             file_repo,
-            storage,
             config,
         }
     }
@@ -103,26 +101,14 @@ impl FileService {
         data: Bytes,
         filename: &str,
         content_type: &str,
-        storage_provider: Option<&str>,
         created_by: Option<&str>,
+        storage: Arc<dyn StorageProvider>,
     ) -> Result<FileWithUrl, FileError> {
         if data.len() as u64 > self.config.max_upload_size_bytes as u64 {
             return Err(FileError::FileTooLarge(format!(
                 "File too large. Maximum size is {}MB",
                 self.config.max_upload_size_bytes / (1024 * 1024)
             )));
-        }
-
-        let mut provider = storage_provider.unwrap_or("filesystem");
-        if provider == "s3" && !self.storage.has_s3() {
-            provider = "filesystem";
-        }
-
-        if provider == "filesystem" && self.storage.filesystem.is_none() {
-            return Err(FileError::NoStorageConfigured);
-        }
-        if provider == "s3" && self.storage.s3.is_none() {
-            return Err(FileError::NoStorageConfigured);
         }
 
         let original_name = filename.to_string();
@@ -186,13 +172,14 @@ impl FileService {
             }
         }
 
-        self.store_file(&storage_key, data.clone(), &mime_type, provider)
+        storage
+            .put(&storage_key, data.clone(), &mime_type)
             .await
             .map_err(|e| FileError::StorageError(e.to_string()))?;
 
         if let (Some((thumb_data, thumb_mime)), Some(thumb_key)) = (&thumbnail_data, &thumbnail_key) {
-            let _ = self
-                .store_file(thumb_key, Bytes::from(thumb_data.clone()), thumb_mime, provider)
+            let _ = storage
+                .put(thumb_key, Bytes::from(thumb_data.clone()), thumb_mime)
                 .await;
         }
 
@@ -207,7 +194,7 @@ impl FileService {
                 &original_name,
                 &mime_type,
                 file_size,
-                provider,
+                "filesystem",
                 &storage_key,
                 thumb_key_str,
                 width,
@@ -217,7 +204,7 @@ impl FileService {
             .await
             .map_err(|e| FileError::DatabaseError(e.to_string()))?;
 
-        Ok(self.file_to_with_url(&file))
+        Ok(self.file_to_with_url(&file, &*storage))
     }
 
     pub async fn soft_delete(&self, id: &str, site_id: &str) -> Result<u64, FileError> {
@@ -249,21 +236,6 @@ impl FileService {
     }
 
     pub async fn batch_permanent_delete(&self, site_id: &str, ids: &[String]) -> Result<u64, FileError> {
-        let files = self
-            .file_repo
-            .get_deleted_by_ids(site_id, ids)
-            .await
-            .map_err(|e| FileError::DatabaseError(e.to_string()))?;
-
-        for file in &files {
-            let _ = self
-                .remove_from_storage(&file.storage_key, &file.storage_provider)
-                .await;
-            if let Some(ref tk) = file.thumbnail_key {
-                let _ = self.remove_from_storage(tk, &file.storage_provider).await;
-            }
-        }
-
         self.file_repo
             .batch_permanent_delete(site_id, ids)
             .await
@@ -284,7 +256,12 @@ impl FileService {
             .map_err(|e| FileError::DatabaseError(e.to_string()))
     }
 
-    pub async fn serve_file(&self, id: &str, use_thumbnail: bool) -> Result<(Bytes, String, String), FileError> {
+    pub async fn serve_file(
+        &self,
+        id: &str,
+        use_thumbnail: bool,
+        storage: Arc<dyn StorageProvider>,
+    ) -> Result<(Bytes, String, String), FileError> {
         let file = self
             .file_repo
             .get_by_id_any(id)
@@ -316,24 +293,16 @@ impl FileService {
             (file.storage_key.as_str(), file.mime_type.as_str())
         };
 
-        let bytes = self
-            .read_from_storage(key, &file.storage_provider)
+        let bytes = storage
+            .get(key)
             .await
             .map_err(|e| FileError::StorageError(e.to_string()))?;
 
         Ok((bytes, content_type.to_string(), file.original_name))
     }
 
-    pub(crate) fn file_to_with_url(&self, file: &File) -> FileWithUrl {
-        let url = match file.storage_provider.as_str() {
-            "s3" => self
-                .storage
-                .s3
-                .as_ref()
-                .map(|s| s.url(&file.storage_key))
-                .unwrap_or_else(|| format!("/api/files/{}", file.id)),
-            _ => format!("/api/files/{}", file.id),
-        };
+    pub(crate) fn file_to_with_url(&self, file: &File, storage: &dyn StorageProvider) -> FileWithUrl {
+        let url = storage.url(&file.storage_key, &file.id);
 
         let thumbnail_url = file
             .thumbnail_key
@@ -372,72 +341,6 @@ impl FileService {
             "video/webm" => "webm",
             "application/pdf" => "pdf",
             _ => "bin",
-        }
-    }
-
-    async fn store_file(
-        &self,
-        key: &str,
-        data: Bytes,
-        content_type: &str,
-        provider: &str,
-    ) -> Result<(), Box<dyn std::error::Error>> {
-        match provider {
-            "filesystem" => {
-                if let Some(fs) = &self.storage.filesystem {
-                    fs.put(key, data, content_type).await
-                } else {
-                    Err("Filesystem storage not available".into())
-                }
-            }
-            "s3" => {
-                if let Some(s3) = &self.storage.s3 {
-                    s3.put(key, data, content_type).await
-                } else {
-                    Err("S3 storage not available".into())
-                }
-            }
-            _ => Err(format!("Unknown storage provider: {}", provider).into()),
-        }
-    }
-
-    async fn read_from_storage(&self, key: &str, provider: &str) -> Result<Bytes, Box<dyn std::error::Error>> {
-        match provider {
-            "filesystem" => {
-                if let Some(fs) = &self.storage.filesystem {
-                    fs.get(key).await
-                } else {
-                    Err("Filesystem storage not available".into())
-                }
-            }
-            "s3" => {
-                if let Some(s3) = &self.storage.s3 {
-                    s3.get(key).await
-                } else {
-                    Err("S3 storage not available".into())
-                }
-            }
-            _ => Err(format!("Unknown storage provider: {}", provider).into()),
-        }
-    }
-
-    async fn remove_from_storage(&self, key: &str, provider: &str) -> Result<(), Box<dyn std::error::Error>> {
-        match provider {
-            "filesystem" => {
-                if let Some(fs) = &self.storage.filesystem {
-                    fs.delete(key).await
-                } else {
-                    Err("Filesystem storage not available".into())
-                }
-            }
-            "s3" => {
-                if let Some(s3) = &self.storage.s3 {
-                    s3.delete(key).await
-                } else {
-                    Err("S3 storage not available".into())
-                }
-            }
-            _ => Err(format!("Unknown storage provider: {}", provider).into()),
         }
     }
 }
