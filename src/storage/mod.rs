@@ -3,9 +3,74 @@ pub mod s3;
 
 use async_trait::async_trait;
 use bytes::Bytes;
+use std::collections::HashMap;
+use std::sync::Arc;
 
 pub use filesystem::FileSystemStorage;
 pub use s3::S3Storage;
+
+pub const STORAGE_KIND_FILESYSTEM: &str = "filesystem";
+pub const STORAGE_KIND_S3: &str = "s3";
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum StorageKind {
+    Filesystem,
+    S3,
+}
+
+impl StorageKind {
+    pub fn from_str(s: &str) -> Option<Self> {
+        match s {
+            STORAGE_KIND_FILESYSTEM => Some(StorageKind::Filesystem),
+            STORAGE_KIND_S3 => Some(StorageKind::S3),
+            _ => None,
+        }
+    }
+
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            StorageKind::Filesystem => STORAGE_KIND_FILESYSTEM,
+            StorageKind::S3 => STORAGE_KIND_S3,
+        }
+    }
+}
+
+impl Default for StorageKind {
+    fn default() -> Self {
+        StorageKind::Filesystem
+    }
+}
+
+#[derive(Clone)]
+pub struct StorageRegistry {
+    providers: HashMap<String, Arc<dyn StorageProvider>>,
+}
+
+impl StorageRegistry {
+    pub fn new() -> Self {
+        Self {
+            providers: HashMap::new(),
+        }
+    }
+
+    pub fn register(&mut self, name: &str, provider: Arc<dyn StorageProvider>) {
+        self.providers.insert(name.to_string(), provider);
+    }
+
+    pub fn get(&self, name: &str) -> Option<Arc<dyn StorageProvider>> {
+        self.providers.get(name).cloned()
+    }
+
+    pub fn get_by_kind(&self, kind: StorageKind) -> Option<Arc<dyn StorageProvider>> {
+        self.get(kind.as_str())
+    }
+}
+
+impl Default for StorageRegistry {
+    fn default() -> Self {
+        Self::new()
+    }
+}
 
 #[async_trait]
 pub trait StorageProvider: Send + Sync {
@@ -79,5 +144,38 @@ mod tests {
     async fn test_mock_storage_url() {
         let storage = MockStorage::default();
         assert_eq!(storage.url("test.txt", "file123"), "/mock/file123");
+    }
+
+    #[test]
+    fn test_storage_kind_from_str() {
+        assert_eq!(StorageKind::from_str("filesystem"), Some(StorageKind::Filesystem));
+        assert_eq!(StorageKind::from_str("s3"), Some(StorageKind::S3));
+        assert_eq!(StorageKind::from_str("unknown"), None);
+    }
+
+    #[test]
+    fn test_storage_kind_as_str() {
+        assert_eq!(StorageKind::Filesystem.as_str(), "filesystem");
+        assert_eq!(StorageKind::S3.as_str(), "s3");
+    }
+
+    #[test]
+    fn test_storage_registry_register_and_get() {
+        let mut registry = StorageRegistry::new();
+        let storage: Arc<dyn StorageProvider> = Arc::new(MockStorage::default());
+
+        registry.register("filesystem", storage.clone());
+        assert!(registry.get("filesystem").is_some());
+        assert!(registry.get("s3").is_none());
+    }
+
+    #[test]
+    fn test_storage_registry_get_by_kind() {
+        let mut registry = StorageRegistry::new();
+        let storage: Arc<dyn StorageProvider> = Arc::new(MockStorage::default());
+
+        registry.register("filesystem", storage);
+        assert!(registry.get_by_kind(StorageKind::Filesystem).is_some());
+        assert!(registry.get_by_kind(StorageKind::S3).is_none());
     }
 }
