@@ -1,29 +1,32 @@
 use axum::{
-    Json,
     body::Body,
     extract::{Extension, Path, Query},
     http::{HeaderMap, HeaderValue, StatusCode, header},
     response::{IntoResponse, Response},
+    Json,
 };
 use axum_extra::extract::multipart::Multipart;
 use bytes::Bytes;
 use serde::Deserialize;
 use serde_json::json;
+use std::sync::Arc;
+use thiserror::Error;
 use tracing::instrument;
 
 use crate::config::Config;
 use crate::middleware::auth::{
     HEADER_SITE_ID, Principal, SCOPE_ASSETS_READ, SCOPE_ASSETS_WRITE, extract_user_id, require_site_scope,
 };
-use crate::models::file::{BatchFileIds, FileWithUrl};
+use crate::models::file::{BatchFileIds, File, FileWithUrl};
 use crate::repository::Repository;
 use crate::repository::traits::ListFilesParams;
 use crate::services::Services;
+use crate::storage::{FileSystemStorage, S3Storage, StorageProvider};
 
 #[derive(Clone)]
 pub struct StorageManager {
-    pub filesystem: Option<crate::storage::FileSystemStorage>,
-    pub s3: Option<crate::storage::S3Storage>,
+    pub filesystem: Option<Arc<FileSystemStorage>>,
+    pub s3: Option<Arc<S3Storage>>,
 }
 
 impl StorageManager {
@@ -34,6 +37,31 @@ impl StorageManager {
     pub fn has_any(&self) -> bool {
         self.filesystem.is_some() || self.s3.is_some()
     }
+}
+
+fn get_storage_for_provider(
+    provider: &str,
+    storage_manager: &StorageManager,
+) -> Result<Arc<dyn StorageProvider>, FileError> {
+    match provider {
+        "s3" => storage_manager
+            .s3
+            .clone()
+            .map(|s| s as Arc<dyn StorageProvider>)
+            .ok_or_else(|| FileError::NoStorageConfigured),
+        _ => storage_manager
+            .filesystem
+            .clone()
+            .map(|s| s as Arc<dyn StorageProvider>)
+            .ok_or_else(|| FileError::NoStorageConfigured),
+    }
+}
+
+fn get_storage_for_file(
+    file: &File,
+    storage_manager: &StorageManager,
+) -> Result<Arc<dyn StorageProvider>, FileError> {
+    get_storage_for_provider(&file.storage_provider, storage_manager)
 }
 
 #[derive(Deserialize, utoipa::IntoParams)]
@@ -48,6 +76,35 @@ fn request_site_id(headers: &HeaderMap) -> Option<&str> {
     headers.get(HEADER_SITE_ID).and_then(|value| value.to_str().ok())
 }
 
+#[derive(Error, Debug)]
+pub enum FileError {
+    #[error("Not found")]
+    NotFound,
+
+    #[error("No storage configured")]
+    NoStorageConfigured,
+
+    #[error("Storage error: {0}")]
+    StorageError(String),
+}
+
+impl IntoResponse for FileError {
+    fn into_response(self) -> Response {
+        let (status, body) = match self {
+            FileError::NotFound => (StatusCode::NOT_FOUND, Json(json!({"error": "File not found"}))),
+            FileError::NoStorageConfigured => (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({"error": "No storage providers configured"})),
+            ),
+            FileError::StorageError(msg) => (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({"error": format!("Failed to access storage: {}", msg)})),
+            ),
+        };
+        (status, body).into_response()
+    }
+}
+
 #[utoipa::path(
     get,
     path = "/api/v1/files",
@@ -59,13 +116,14 @@ fn request_site_id(headers: &HeaderMap) -> Option<&str> {
     security(("bearer" = []), ("access_token" = [])),
     tag = "files"
 )]
-#[instrument(skip(repository, services, principal, params))]
+#[instrument(skip(repository, services, principal, params, storage_manager))]
 pub async fn list_files(
     principal: Principal,
     headers: HeaderMap,
     Query(params): Query<FileListParams>,
     Extension(repository): Extension<Repository>,
     Extension(services): Extension<Services>,
+    Extension(storage_manager): Extension<StorageManager>,
 ) -> Response {
     let site = match require_site_scope(
         &principal,
@@ -95,7 +153,15 @@ pub async fn list_files(
 
     match services.file.list_files(list_params).await {
         Ok(result) => {
-            let with_urls: Vec<FileWithUrl> = result.items.iter().map(|f| services.file.file_to_with_url(f)).collect();
+            let storage = match get_storage_for_provider("filesystem", &storage_manager) {
+                Ok(s) => s,
+                Err(e) => return e.into_response(),
+            };
+            let with_urls: Vec<FileWithUrl> = result
+                .items
+                .iter()
+                .map(|f| services.file.file_to_with_url(f, &*storage))
+                .collect();
             (
                 StatusCode::OK,
                 Json(json!({
@@ -123,13 +189,14 @@ pub async fn list_files(
     security(("bearer" = []), ("access_token" = [])),
     tag = "files"
 )]
-#[instrument(skip(repository, services, config, principal, multipart))]
+#[instrument(skip(repository, services, config, principal, multipart, storage_manager))]
 pub async fn upload_file(
     principal: Principal,
     headers: HeaderMap,
     Extension(repository): Extension<Repository>,
     Extension(services): Extension<Services>,
     Extension(config): Extension<Config>,
+    Extension(storage_manager): Extension<StorageManager>,
     mut multipart: Multipart,
 ) -> Response {
     let site = match require_site_scope(
@@ -146,7 +213,7 @@ pub async fn upload_file(
     };
     let site_id = site.site_id;
 
-    let storage_provider = services
+    let default_provider = services
         .file
         .get_storage_provider(&site_id)
         .await
@@ -209,7 +276,12 @@ pub async fn upload_file(
     let provider_to_use = requested_storage_provider
         .as_deref()
         .filter(|p| *p == "s3")
-        .unwrap_or(&storage_provider);
+        .unwrap_or(&default_provider);
+
+    let storage = match get_storage_for_provider(provider_to_use, &storage_manager) {
+        Ok(s) => s,
+        Err(e) => return e.into_response(),
+    };
 
     match services
         .file
@@ -218,8 +290,8 @@ pub async fn upload_file(
             file_data,
             &file_name,
             &content_type,
-            Some(provider_to_use),
             created_by,
+            storage,
         )
         .await
     {
@@ -239,13 +311,14 @@ pub async fn upload_file(
     security(("bearer" = []), ("access_token" = [])),
     tag = "files"
 )]
-#[instrument(skip(repository, services, principal))]
+#[instrument(skip(repository, services, principal, storage_manager))]
 pub async fn get_file(
     principal: Principal,
     headers: HeaderMap,
     Path(id): Path<String>,
     Extension(repository): Extension<Repository>,
     Extension(services): Extension<Services>,
+    Extension(storage_manager): Extension<StorageManager>,
 ) -> Response {
     let site = match require_site_scope(
         &principal,
@@ -262,7 +335,11 @@ pub async fn get_file(
 
     match services.file.get_file(&id, &site.site_id).await {
         Ok(Some(file)) => {
-            let with_url = services.file.file_to_with_url(&file);
+            let storage = match get_storage_for_file(&file, &storage_manager) {
+                Ok(s) => s,
+                Err(e) => return e.into_response(),
+            };
+            let with_url = services.file.file_to_with_url(&file, &*storage);
             (StatusCode::OK, Json(with_url)).into_response()
         }
         Ok(None) => (StatusCode::NOT_FOUND, Json(json!({"error": "File not found"}))).into_response(),
@@ -484,12 +561,13 @@ pub async fn batch_restore_files(
     security(("bearer" = []), ("access_token" = [])),
     tag = "files"
 )]
-#[instrument(skip(repository, services, principal, body))]
+#[instrument(skip(repository, services, principal, body, storage_manager))]
 pub async fn batch_permanent_delete_files(
     principal: Principal,
     headers: HeaderMap,
     Extension(repository): Extension<Repository>,
     Extension(services): Extension<Services>,
+    Extension(storage_manager): Extension<StorageManager>,
     Json(body): Json<BatchFileIds>,
 ) -> Response {
     let site = match require_site_scope(
@@ -509,24 +587,76 @@ pub async fn batch_permanent_delete_files(
         return (StatusCode::BAD_REQUEST, Json(json!({"error": "No file IDs provided"}))).into_response();
     }
 
+    let files = match repository.file.get_deleted_by_ids(&site.site_id, &body.ids).await {
+        Ok(f) => f,
+        Err(e) => return (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({"error": format!("Failed to fetch files: {}", e)})),
+        )
+            .into_response(),
+    };
+
+    for file in &files {
+        let storage = match get_storage_for_file(file, &storage_manager) {
+            Ok(s) => s,
+            Err(e) => return e.into_response(),
+        };
+        if let Err(e) = storage.delete(&file.storage_key).await {
+            tracing::warn!("Failed to delete file {} from storage: {}", file.id, e);
+        }
+        if let Some(ref tk) = file.thumbnail_key {
+            if let Err(e) = storage.delete(tk).await {
+                tracing::warn!("Failed to delete thumbnail {} from storage: {}", file.id, e);
+            }
+        }
+    }
+
     match services.file.batch_permanent_delete(&site.site_id, &body.ids).await {
         Ok(count) => (StatusCode::OK, Json(json!({"deleted": count}))).into_response(),
         Err(e) => e.into_response(),
     }
 }
 
-#[instrument(skip(services))]
-pub async fn serve_file(Path(id): Path<String>, Extension(services): Extension<Services>) -> Response {
-    serve_file_by_key(&id, &services, false).await
+#[instrument(skip(services, storage_manager))]
+pub async fn serve_file(
+    Path(id): Path<String>,
+    Extension(services): Extension<Services>,
+    Extension(storage_manager): Extension<StorageManager>,
+) -> Response {
+    serve_file_by_key(&id, &services, &storage_manager, false).await
 }
 
-#[instrument(skip(services))]
-pub async fn serve_file_thumbnail(Path(id): Path<String>, Extension(services): Extension<Services>) -> Response {
-    serve_file_by_key(&id, &services, true).await
+#[instrument(skip(services, storage_manager))]
+pub async fn serve_file_thumbnail(
+    Path(id): Path<String>,
+    Extension(services): Extension<Services>,
+    Extension(storage_manager): Extension<StorageManager>,
+) -> Response {
+    serve_file_by_key(&id, &services, &storage_manager, true).await
 }
 
-async fn serve_file_by_key(id: &str, services: &Services, use_thumbnail: bool) -> Response {
-    match services.file.serve_file(id, use_thumbnail).await {
+async fn serve_file_by_key(
+    id: &str,
+    services: &Services,
+    storage_manager: &StorageManager,
+    use_thumbnail: bool,
+) -> Response {
+    let file = match services.file.get_file_any(id).await {
+        Ok(Some(f)) => f,
+        Ok(None) => return FileError::NotFound.into_response(),
+        Err(e) => return e.into_response(),
+    };
+
+    if file.deleted_at.is_some() {
+        return FileError::NotFound.into_response();
+    }
+
+    let storage = match get_storage_for_file(&file, storage_manager) {
+        Ok(s) => s,
+        Err(e) => return e.into_response(),
+    };
+
+    match services.file.serve_file(id, use_thumbnail, storage).await {
         Ok((bytes, content_type, original_name)) => {
             let mut headers = HeaderMap::new();
             headers.insert(
@@ -555,7 +685,7 @@ async fn serve_file_by_key(id: &str, services: &Services, use_thumbnail: bool) -
 
 #[cfg(test)]
 mod tests {
-    use crate::handlers::file_handler::StorageManager;
+    use super::*;
 
     #[test]
     fn test_storage_manager_flags_no_storage() {

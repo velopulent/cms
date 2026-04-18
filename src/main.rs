@@ -7,6 +7,7 @@ use cms::router::create_router;
 use cms::storage;
 
 use std::net::SocketAddr;
+use std::sync::Arc;
 use tokio::select;
 use tracing::{info, warn};
 
@@ -34,7 +35,7 @@ async fn main() {
     if let Some(ref fs_path) = config.storage_fs_path {
         match storage::FileSystemStorage::new(fs_path) {
             Ok(fs) => {
-                storage_manager.filesystem = Some(fs);
+                storage_manager.filesystem = Some(Arc::new(fs));
                 info!("Filesystem storage initialized at {}", fs_path);
             }
             Err(e) => warn!("Failed to init filesystem storage: {}", e),
@@ -51,7 +52,7 @@ async fn main() {
             config.s3_public_url.as_deref(),
         ) {
             Ok(s3) => {
-                storage_manager.s3 = Some(s3);
+                storage_manager.s3 = Some(Arc::new(s3));
                 info!("S3 storage initialized");
             }
             Err(e) => warn!("Failed to init S3 storage: {}", e),
