@@ -17,29 +17,24 @@ use crate::grpc::services::file::FileServiceImpl;
 use crate::grpc::services::singleton::SingletonServiceImpl;
 use crate::repository::Repository;
 use crate::services::Services;
+use crate::storage::StorageRegistry;
 
 pub async fn start_grpc_server(
     repository: Repository,
     config: Config,
+    storage_registry: Arc<StorageRegistry>,
     grpc_addr: SocketAddr,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let repository = Arc::new(repository);
     let config = Arc::new(config);
 
-    let services = Services::new(
-        (*repository).clone(),
-        &config,
-        crate::handlers::file_handler::StorageManager {
-            filesystem: None,
-            s3: None,
-        },
-    );
+    let services = Services::new((*repository).clone(), &config);
 
     let auth_layer = AuthLayer::new(repository.clone(), config.clone());
 
     let collection_svc = CollectionServiceImpl::new(services.collection.clone());
     let entry_svc = EntryServiceImpl::new(services.entry.clone());
-    let singleton_svc = SingletonServiceImpl::new(services.singleton.clone());
+    let singleton_svc = SingletonServiceImpl::new(services.singleton.clone(), storage_registry);
     let file_svc = FileServiceImpl::new(services.file.clone());
     let site_svc = SiteServiceImpl::new(services.site.clone());
     let membership_svc = MembershipServiceImpl::new(services.site.clone());
@@ -73,7 +68,8 @@ pub async fn start_grpc_server(
 pub fn spawn_grpc_server(
     repository: Repository,
     config: Config,
+    storage_registry: Arc<StorageRegistry>,
     grpc_addr: SocketAddr,
 ) -> Pin<Box<dyn Future<Output = Result<(), Box<dyn std::error::Error + Send + Sync>>> + Send>> {
-    Box::pin(start_grpc_server(repository, config, grpc_addr))
+    Box::pin(start_grpc_server(repository, config, storage_registry, grpc_addr))
 }

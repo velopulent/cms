@@ -347,7 +347,7 @@ export async function getSite(id: string) {
 
 export async function updateSite(
   id: string,
-  data: { name?: string; storage_provider?: string },
+  data: { name?: string },
 ) {
   return api<Site>(`/sites/${id}`, {
     method: "PUT",

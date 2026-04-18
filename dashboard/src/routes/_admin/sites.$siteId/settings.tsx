@@ -1,7 +1,7 @@
 import { useForm } from "@tanstack/react-form";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
-import { AlertTriangle, Check, Cloud, Copy, HardDrive, Key, Shield } from "lucide-react";
+import { Check, Copy, Key, Shield } from "lucide-react";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { z } from "zod";
@@ -52,7 +52,6 @@ export const Route = createFileRoute("/_admin/sites/$siteId/settings")({
 
 const siteSettingsSchema = z.object({
   name: z.string().min(1, "Site name is required"),
-  storageProvider: z.string(),
 });
 
 const apiKeySchema = z.object({
@@ -73,7 +72,6 @@ function SiteSettingsPage() {
   const form = useForm({
     defaultValues: {
       name: "",
-      storageProvider: "",
     },
     validators: {
       onSubmit: siteSettingsSchema,
@@ -84,17 +82,8 @@ function SiteSettingsPage() {
   });
 
   const updateMutation = useMutation({
-    mutationFn: ({
-      name,
-      storageProvider,
-    }: {
-      name: string;
-      storageProvider: string;
-    }) =>
-      updateSite(siteId, {
-        name,
-        storage_provider: storageProvider,
-      }),
+    mutationFn: ({ name }: { name: string }) =>
+      updateSite(siteId, { name }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["site", siteId] });
       queryClient.invalidateQueries({ queryKey: ["sites"] });
@@ -107,7 +96,6 @@ function SiteSettingsPage() {
     if (site && !initialized) {
       form.reset();
       form.setFieldValue("name", site.name);
-      form.setFieldValue("storageProvider", site.storage_provider);
       setInitialized(true);
     }
   }, [site, initialized, form]);
@@ -180,88 +168,7 @@ function SiteSettingsPage() {
           </CardContent>
         </Card>
 
-        <Card>
-          <CardHeader>
-            <CardTitle>File Storage</CardTitle>
-            <CardDescription>
-              Choose where uploaded files will be stored
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="flex flex-col gap-4">
-            <FieldGroup>
-              <form.Field
-                name="storageProvider"
-                children={(field) => {
-                  return (
-                    <Field>
-                      <FieldLabel htmlFor={field.name}>
-                        Storage Provider
-                      </FieldLabel>
-                      <Select
-                        value={field.state.value}
-                        onValueChange={(v) => v && field.handleChange(v)}
-                      >
-                        <SelectTrigger
-                          id={field.name}
-                          className="w-full max-w-md"
-                          aria-invalid={
-                            field.state.meta.isTouched &&
-                            !field.state.meta.isValid
-                          }
-                        >
-                          {field.state.value === "filesystem" ? (
-                            <div className="flex items-center gap-2">
-                              <HardDrive className="size-4" />
-                              <span>Filesystem</span>
-                            </div>
-                          ) : field.state.value === "s3" ? (
-                            <div className="flex items-center gap-2">
-                              <Cloud className="size-4" />
-                              <span>S3 / Cloud Storage</span>
-                            </div>
-                          ) : (
-                            <SelectValue placeholder="Select storage type" />
-                          )}
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="filesystem">
-                            <div className="flex items-center gap-2">
-                              <HardDrive className="size-4" />
-                              <span>Filesystem</span>
-                            </div>
-                          </SelectItem>
-                          <SelectItem value="s3">
-                            <div className="flex items-center gap-2">
-                              <Cloud className="size-4" />
-                              <span>S3 / Cloud Storage</span>
-                            </div>
-                          </SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </Field>
-                  );
-                }}
-              />
-            </FieldGroup>
-
-            {form.getFieldValue("name") !== site?.name ||
-            form.getFieldValue("storageProvider") !==
-              site?.storage_provider ? (
-              <div className="flex items-start gap-2 rounded-md border border-amber-200 bg-amber-50 p-3">
-                <AlertTriangle className="mt-0.5 size-4 text-amber-600" />
-                <div className="text-sm text-amber-800">
-                  <p className="font-medium">
-                    Changing storage will only affect new uploads.
-                  </p>
-                  <p className="text-amber-700">
-                    Existing files will stay where they are. Make sure your S3
-                    bucket is properly configured before switching.
-                  </p>
-                </div>
-              </div>
-            ) : null}
-          </CardContent>
-        </Card>
+        
 
         <Button
           type="submit"
