@@ -142,7 +142,7 @@ impl SingletonService {
                             .storage
                             .s3
                             .as_ref()
-                            .map(|s| s.url(&f.storage_key))
+                            .map(|s| s.url(&f.storage_key, &f.id))
                             .unwrap_or_else(|| format!("/api/files/{}", f.id)),
                         _ => format!("/api/files/{}", f.id),
                     };

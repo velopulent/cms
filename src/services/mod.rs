@@ -51,7 +51,6 @@ impl Services {
             )),
             file: Arc::new(file::FileService::new(
                 repository.file.clone(),
-                storage.clone(),
                 config.clone(),
             )),
             singleton: Arc::new(singleton::SingletonService::new(
