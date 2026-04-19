@@ -232,3 +232,288 @@ impl AuthService {
         response
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::models::user::User;
+    use crate::test_helpers::InMemoryUserRepository;
+
+    fn create_test_user() -> User {
+        User {
+            id: "user-123".to_string(),
+            username: "testuser".to_string(),
+            email: "test@example.com".to_string(),
+            password_hash: bcrypt::hash("password123", bcrypt::DEFAULT_COST).unwrap(),
+            created_at: "2024-01-01 00:00:00".to_string(),
+            updated_at: "2024-01-01 00:00:00".to_string(),
+        }
+    }
+
+    fn test_user_repo() -> Arc<InMemoryUserRepository> {
+        Arc::new(InMemoryUserRepository::new())
+    }
+
+    #[tokio::test]
+    async fn test_register_success() {
+        let user_repo = test_user_repo();
+        let auth = AuthService::new(user_repo, "secret".to_string(), false);
+
+        let result = auth.register("newuser", "new@example.com", "password123").await;
+        assert!(result.is_ok());
+        let user = result.unwrap();
+        assert_eq!(user.username, "newuser");
+        assert_eq!(user.email, "new@example.com");
+        assert!(!user.id.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_register_trims_whitespace() {
+        let user_repo = test_user_repo();
+        let auth = AuthService::new(user_repo, "secret".to_string(), false);
+
+        let result = auth.register("  newuser  ", "  new@example.com  ", "  password123  ").await;
+        assert!(result.is_ok());
+        let user = result.unwrap();
+        assert_eq!(user.username, "newuser");
+        assert_eq!(user.email, "new@example.com");
+    }
+
+    #[tokio::test]
+    async fn test_register_empty_username() {
+        let user_repo = test_user_repo();
+        let auth = AuthService::new(user_repo, "secret".to_string(), false);
+
+        let result = auth.register("", "test@example.com", "password123").await;
+        assert!(matches!(result, Err(AuthError::ValidationError(msg)) if msg.contains("Username is required")));
+    }
+
+    #[tokio::test]
+    async fn test_register_username_too_short() {
+        let user_repo = test_user_repo();
+        let auth = AuthService::new(user_repo, "secret".to_string(), false);
+
+        let result = auth.register("ab", "test@example.com", "password123").await;
+        assert!(matches!(result, Err(AuthError::ValidationError(msg)) if msg.contains("at least 3 characters")));
+    }
+
+    #[tokio::test]
+    async fn test_register_empty_password() {
+        let user_repo = test_user_repo();
+        let auth = AuthService::new(user_repo, "secret".to_string(), false);
+
+        let result = auth.register("validuser", "test@example.com", "").await;
+        assert!(matches!(result, Err(AuthError::ValidationError(msg)) if msg.contains("Password is required")));
+    }
+
+    #[tokio::test]
+    async fn test_register_password_too_short() {
+        let user_repo = test_user_repo();
+        let auth = AuthService::new(user_repo, "secret".to_string(), false);
+
+        let result = auth.register("validuser", "test@example.com", "short").await;
+        assert!(matches!(result, Err(AuthError::ValidationError(msg)) if msg.contains("at least 8 characters")));
+    }
+
+    #[tokio::test]
+    async fn test_register_invalid_email_no_at() {
+        let user_repo = test_user_repo();
+        let auth = AuthService::new(user_repo, "secret".to_string(), false);
+
+        let result = auth.register("validuser", "invalid-email", "password123").await;
+        assert!(matches!(result, Err(AuthError::ValidationError(msg)) if msg.contains("Invalid email")));
+    }
+
+    #[tokio::test]
+    async fn test_register_invalid_email_no_domain() {
+        let user_repo = test_user_repo();
+        let auth = AuthService::new(user_repo, "secret".to_string(), false);
+
+        let result = auth.register("validuser", "user@", "password123").await;
+        assert!(matches!(result, Err(AuthError::ValidationError(msg)) if msg.contains("Invalid email")));
+    }
+
+    #[tokio::test]
+    async fn test_register_invalid_email_no_tld() {
+        let user_repo = test_user_repo();
+        let auth = AuthService::new(user_repo, "secret".to_string(), false);
+
+        let result = auth.register("validuser", "user@example", "password123").await;
+        assert!(matches!(result, Err(AuthError::ValidationError(msg)) if msg.contains("Invalid email")));
+    }
+
+    #[tokio::test]
+    async fn test_register_invalid_email_with_spaces() {
+        let user_repo = test_user_repo();
+        let auth = AuthService::new(user_repo, "secret".to_string(), false);
+
+        let result = auth.register("validuser", "user@ example.com", "password123").await;
+        assert!(matches!(result, Err(AuthError::ValidationError(msg)) if msg.contains("Invalid email")));
+    }
+
+    #[tokio::test]
+    async fn test_register_duplicate_username() {
+        let user_repo = test_user_repo();
+        user_repo.add_user(create_test_user());
+        let auth = AuthService::new(user_repo, "secret".to_string(), false);
+
+        let result = auth.register("testuser", "other@example.com", "password123").await;
+        assert!(matches!(result, Err(AuthError::UserExists)));
+    }
+
+    #[tokio::test]
+    async fn test_login_success() {
+        let user_repo = test_user_repo();
+        user_repo.add_user(create_test_user());
+        let auth = AuthService::new(user_repo, "secret".to_string(), false);
+
+        let result = auth.login("testuser", "password123").await;
+        assert!(result.is_ok());
+        let (user, token) = result.unwrap();
+        assert_eq!(user.username, "testuser");
+        assert!(!token.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_login_wrong_password() {
+        let user_repo = test_user_repo();
+        user_repo.add_user(create_test_user());
+        let auth = AuthService::new(user_repo, "secret".to_string(), false);
+
+        let result = auth.login("testuser", "wrongpassword").await;
+        assert!(matches!(result, Err(AuthError::InvalidCredentials)));
+    }
+
+    #[tokio::test]
+    async fn test_login_user_not_found() {
+        let user_repo = test_user_repo();
+        let auth = AuthService::new(user_repo, "secret".to_string(), false);
+
+        let result = auth.login("nonexistent", "password123").await;
+        assert!(matches!(result, Err(AuthError::InvalidCredentials)));
+    }
+
+    #[tokio::test]
+    async fn test_get_user_found() {
+        let user_repo = test_user_repo();
+        user_repo.add_user(create_test_user());
+        let auth = AuthService::new(user_repo, "secret".to_string(), false);
+
+        let result = auth.get_user("user-123").await;
+        assert!(result.is_ok());
+        let user = result.unwrap();
+        assert!(user.is_some());
+        assert_eq!(user.unwrap().username, "testuser");
+    }
+
+    #[tokio::test]
+    async fn test_get_user_not_found() {
+        let user_repo = test_user_repo();
+        let auth = AuthService::new(user_repo, "secret".to_string(), false);
+
+        let result = auth.get_user("nonexistent").await;
+        assert!(result.is_ok());
+        assert!(result.unwrap().is_none());
+    }
+
+    #[test]
+    fn test_cookie_secure_getter() {
+        let user_repo = test_user_repo();
+        let auth_secure = AuthService::new(user_repo.clone(), "secret".to_string(), true);
+        let auth_insecure = AuthService::new(user_repo, "secret".to_string(), false);
+
+        assert!(auth_secure.cookie_secure());
+        assert!(!auth_insecure.cookie_secure());
+    }
+
+    #[test]
+    fn test_auth_error_into_response() {
+        assert_eq!(
+            AuthError::ValidationError("bad input".into()).into_response().status(),
+            axum::http::StatusCode::BAD_REQUEST
+        );
+        assert_eq!(
+            AuthError::UserExists.into_response().status(),
+            axum::http::StatusCode::CONFLICT
+        );
+        assert_eq!(
+            AuthError::InvalidCredentials.into_response().status(),
+            axum::http::StatusCode::UNAUTHORIZED
+        );
+        assert_eq!(
+            AuthError::NotFound.into_response().status(),
+            axum::http::StatusCode::NOT_FOUND
+        );
+        assert_eq!(
+            AuthError::TokenError("tok".into()).into_response().status(),
+            axum::http::StatusCode::INTERNAL_SERVER_ERROR
+        );
+        assert_eq!(
+            AuthError::HashError("hash".into()).into_response().status(),
+            axum::http::StatusCode::INTERNAL_SERVER_ERROR
+        );
+        assert_eq!(
+            AuthError::DatabaseError("db".into()).into_response().status(),
+            axum::http::StatusCode::INTERNAL_SERVER_ERROR
+        );
+    }
+
+    #[tokio::test]
+    async fn test_build_auth_cookies_response() {
+        let user_repo = test_user_repo();
+        let auth = AuthService::new(user_repo, "secret".to_string(), true);
+
+        let user = UserPublic {
+            id: "user-123".to_string(),
+            username: "testuser".to_string(),
+            email: "test@example.com".to_string(),
+        };
+
+        let response = auth.build_auth_cookies_response(user, "jwt-token");
+        assert_eq!(response.status(), axum::http::StatusCode::OK);
+        assert!(response.headers().contains_key(axum::http::header::SET_COOKIE));
+    }
+
+    #[tokio::test]
+    async fn test_build_logout_response() {
+        let user_repo = test_user_repo();
+        let auth = AuthService::new(user_repo, "secret".to_string(), false);
+
+        let response = auth.build_logout_response();
+        assert_eq!(response.status(), axum::http::StatusCode::OK);
+        assert!(response.headers().contains_key(axum::http::header::SET_COOKIE));
+    }
+
+    #[tokio::test]
+    async fn test_build_register_response() {
+        let user_repo = test_user_repo();
+        let auth = AuthService::new(user_repo, "secret".to_string(), false);
+
+        let user = UserPublic {
+            id: "user-123".to_string(),
+            username: "testuser".to_string(),
+            email: "test@example.com".to_string(),
+        };
+
+        let response = auth.build_register_response(user, "jwt-token");
+        assert_eq!(response.status(), axum::http::StatusCode::CREATED);
+    }
+
+    #[tokio::test]
+    async fn test_register_multiple_users() {
+        let user_repo = test_user_repo();
+        let auth = AuthService::new(user_repo.clone(), "secret".to_string(), false);
+
+        let result1 = auth.register("user1", "user1@example.com", "password123").await;
+        assert!(result1.is_ok());
+
+        let result2 = auth.register("user2", "user2@example.com", "password123").await;
+        assert!(result2.is_ok());
+
+        let result3 = auth.register("user3", "user3@example.com", "password123").await;
+        assert!(result3.is_ok());
+
+        let user1 = auth.login("user1", "password123").await;
+        assert!(user1.is_ok());
+    }
+}
