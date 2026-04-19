@@ -43,7 +43,7 @@ impl std::str::FromStr for AccessTokenKind {
     }
 }
 
-#[derive(Serialize, FromRow, ToSchema)]
+#[derive(Serialize, FromRow, ToSchema, Clone)]
 pub struct AccessToken {
     pub id: String,
     pub kind: String,

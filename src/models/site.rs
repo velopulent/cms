@@ -2,7 +2,7 @@ use serde::{Deserialize, Serialize};
 use sqlx::FromRow;
 use utoipa::ToSchema;
 
-#[derive(Serialize, FromRow, ToSchema)]
+#[derive(Serialize, FromRow, ToSchema, Clone)]
 pub struct Site {
     pub id: String,
     pub name: String,
@@ -12,7 +12,7 @@ pub struct Site {
     pub updated_at: String,
 }
 
-#[derive(Serialize, FromRow, ToSchema)]
+#[derive(Serialize, FromRow, ToSchema, Clone)]
 pub struct SiteWithRole {
     pub id: String,
     pub name: String,
@@ -34,7 +34,7 @@ pub struct UpdateSite {
     pub name: Option<String>,
 }
 
-#[derive(Serialize, FromRow, ToSchema)]
+#[derive(Serialize, FromRow, ToSchema, Clone)]
 pub struct SiteMember {
     pub id: String,
     pub site_id: String,
