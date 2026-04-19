@@ -361,3 +361,370 @@ fn generate_thumbnail(img: &DynamicImage) -> Option<(Vec<u8>, String)> {
         .ok()?;
     Some((bytes, "image/avif".into()))
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::config::Config;
+    use crate::test_helpers::InMemoryFileRepository;
+    use crate::storage::MockStorage;
+    use std::sync::Arc;
+
+    fn test_config() -> Arc<Config> {
+        Arc::new(Config {
+            max_upload_size_bytes: 50 * 1024 * 1024,
+            ..Default::default()
+        })
+    }
+
+    fn test_file_repo() -> Arc<InMemoryFileRepository> {
+        Arc::new(InMemoryFileRepository::new())
+    }
+
+    fn create_test_file() -> File {
+        File {
+            id: "file-123".to_string(),
+            site_id: "site-123".to_string(),
+            filename: "test.jpg".to_string(),
+            original_name: "test.jpg".to_string(),
+            mime_type: "image/jpeg".to_string(),
+            size: 1024,
+            storage_provider: "filesystem".to_string(),
+            storage_key: "s_site-123/f_file-123/test.jpg".to_string(),
+            thumbnail_key: Some("s_site-123/f_file-123/thumb_abc.avif".to_string()),
+            width: Some(800),
+            height: Some(600),
+            deleted_at: None,
+            created_by: Some("user-123".to_string()),
+            created_at: "2024-01-01 00:00:00".to_string(),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_list_files() {
+        let file_repo = test_file_repo();
+        let config = test_config();
+        let service = FileService::new(file_repo, config);
+
+        let params = ListFilesParams {
+            site_id: "site-123",
+            trashed: false,
+            search: None,
+            file_type: None,
+            page: 1,
+            per_page: 20,
+        };
+
+        let result = service.list_files(params).await;
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_get_file_not_found() {
+        let file_repo = test_file_repo();
+        let config = test_config();
+        let service = FileService::new(file_repo, config);
+
+        let result = service.get_file("nonexistent", "site-123").await;
+        assert!(result.is_ok());
+        assert!(result.unwrap().is_none());
+    }
+
+    #[tokio::test]
+    async fn test_get_file_any_not_found() {
+        let file_repo = test_file_repo();
+        let config = test_config();
+        let service = FileService::new(file_repo, config);
+
+        let result = service.get_file_any("nonexistent").await;
+        assert!(result.is_ok());
+        assert!(result.unwrap().is_none());
+    }
+
+    #[tokio::test]
+    async fn test_upload_file_file_too_large() {
+        let file_repo = test_file_repo();
+        let config = Arc::new(Config {
+            max_upload_size_bytes: 100,
+            ..Default::default()
+        });
+        let service = FileService::new(file_repo, config);
+
+        let storage = Arc::new(MockStorage::default());
+        let data = Bytes::from(&[0u8; 200][..]);
+
+        let result = service
+            .upload_file("site-123", data, "test.txt", "text/plain", None, storage, "filesystem")
+            .await;
+
+        assert!(matches!(result, Err(FileError::FileTooLarge(_))));
+    }
+
+    #[tokio::test]
+    async fn test_soft_delete_success() {
+        let file_repo = test_file_repo();
+        file_repo.add_file(create_test_file());
+        let config = test_config();
+        let service = FileService::new(file_repo, config);
+
+        let result = service.soft_delete("file-123", "site-123").await;
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), 1);
+    }
+
+    #[tokio::test]
+    async fn test_soft_delete_not_found() {
+        let file_repo = test_file_repo();
+        let config = test_config();
+        let service = FileService::new(file_repo, config);
+
+        let result = service.soft_delete("nonexistent", "site-123").await;
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), 0);
+    }
+
+    #[tokio::test]
+    async fn test_restore_success() {
+        let file_repo = test_file_repo();
+        let mut file = create_test_file();
+        file.deleted_at = Some("2024-01-01 00:00:00".to_string());
+        file_repo.add_file(file);
+        let config = test_config();
+        let service = FileService::new(file_repo, config);
+
+        let result = service.restore("file-123", "site-123").await;
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), 1);
+    }
+
+    #[tokio::test]
+    async fn test_restore_not_found() {
+        let file_repo = test_file_repo();
+        let config = test_config();
+        let service = FileService::new(file_repo, config);
+
+        let result = service.restore("nonexistent", "site-123").await;
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), 0);
+    }
+
+    #[tokio::test]
+    async fn test_batch_soft_delete() {
+        let file_repo = test_file_repo();
+        file_repo.add_file(create_test_file());
+        let config = test_config();
+        let service = FileService::new(file_repo, config);
+
+        let result = service
+            .batch_soft_delete("site-123", &["file-123".to_string()])
+            .await;
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), 1);
+    }
+
+    #[tokio::test]
+    async fn test_batch_restore() {
+        let file_repo = test_file_repo();
+        let mut file = create_test_file();
+        file.deleted_at = Some("2024-01-01 00:00:00".to_string());
+        file_repo.add_file(file);
+        let config = test_config();
+        let service = FileService::new(file_repo, config);
+
+        let result = service
+            .batch_restore("site-123", &["file-123".to_string()])
+            .await;
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), 1);
+    }
+
+    #[tokio::test]
+    async fn test_batch_permanent_delete() {
+        let file_repo = test_file_repo();
+        file_repo.add_file(create_test_file());
+        let config = test_config();
+        let service = FileService::new(file_repo, config);
+
+        let result = service
+            .batch_permanent_delete("site-123", &["file-123".to_string()])
+            .await;
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), 1);
+    }
+
+    #[tokio::test]
+    async fn test_get_file_references() {
+        let file_repo = test_file_repo();
+        let config = test_config();
+        let service = FileService::new(file_repo, config);
+
+        let result = service.get_file_references("file-123", "site-123").await;
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_get_storage_provider() {
+        let file_repo = test_file_repo();
+        file_repo.add_file(create_test_file());
+        let config = test_config();
+        let service = FileService::new(file_repo, config);
+
+        let result = service.get_storage_provider("site-123").await;
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_serve_file_not_found() {
+        let file_repo = test_file_repo();
+        let config = test_config();
+        let service = FileService::new(file_repo, config);
+
+        let storage = Arc::new(MockStorage::default());
+        let result = service.serve_file("nonexistent", false, storage).await;
+        assert!(matches!(result, Err(FileError::NotFound)));
+    }
+
+    #[tokio::test]
+    async fn test_serve_file_deleted() {
+        let file_repo = test_file_repo();
+        let mut file = create_test_file();
+        file.deleted_at = Some("2024-01-01 00:00:00".to_string());
+        file_repo.add_file(file);
+        let config = test_config();
+        let service = FileService::new(file_repo, config);
+
+        let storage = Arc::new(MockStorage::default());
+        let result = service.serve_file("file-123", false, storage).await;
+        assert!(matches!(result, Err(FileError::NotFound)));
+    }
+
+    #[tokio::test]
+    async fn test_serve_file_thumbnail_not_found() {
+        let file_repo = test_file_repo();
+        let mut file = create_test_file();
+        file.thumbnail_key = None;
+        file_repo.add_file(file);
+        let config = test_config();
+        let service = FileService::new(file_repo, config);
+
+        let storage = Arc::new(MockStorage::default());
+        let result = service.serve_file("file-123", true, storage).await;
+        assert!(matches!(result, Err(FileError::NotFound)));
+    }
+
+    #[test]
+    fn test_mime_to_ext_jpeg() {
+        let file_repo = test_file_repo();
+        let config = test_config();
+        let service = FileService::new(file_repo, config);
+
+        assert_eq!(service.mime_to_ext("image/jpeg"), "jpg");
+        assert_eq!(service.mime_to_ext("image/jpg"), "jpg");
+    }
+
+    #[test]
+    fn test_mime_to_ext_png() {
+        let file_repo = test_file_repo();
+        let config = test_config();
+        let service = FileService::new(file_repo, config);
+
+        assert_eq!(service.mime_to_ext("image/png"), "png");
+    }
+
+    #[test]
+    fn test_mime_to_ext_gif() {
+        let file_repo = test_file_repo();
+        let config = test_config();
+        let service = FileService::new(file_repo, config);
+
+        assert_eq!(service.mime_to_ext("image/gif"), "gif");
+    }
+
+    #[test]
+    fn test_mime_to_ext_webp() {
+        let file_repo = test_file_repo();
+        let config = test_config();
+        let service = FileService::new(file_repo, config);
+
+        assert_eq!(service.mime_to_ext("image/webp"), "webp");
+    }
+
+    #[test]
+    fn test_mime_to_ext_avif() {
+        let file_repo = test_file_repo();
+        let config = test_config();
+        let service = FileService::new(file_repo, config);
+
+        assert_eq!(service.mime_to_ext("image/avif"), "avif");
+    }
+
+    #[test]
+    fn test_mime_to_ext_svg() {
+        let file_repo = test_file_repo();
+        let config = test_config();
+        let service = FileService::new(file_repo, config);
+
+        assert_eq!(service.mime_to_ext("image/svg+xml"), "svg");
+    }
+
+    #[test]
+    fn test_mime_to_ext_video() {
+        let file_repo = test_file_repo();
+        let config = test_config();
+        let service = FileService::new(file_repo, config);
+
+        assert_eq!(service.mime_to_ext("video/mp4"), "mp4");
+        assert_eq!(service.mime_to_ext("video/webm"), "webm");
+    }
+
+    #[test]
+    fn test_mime_to_ext_pdf() {
+        let file_repo = test_file_repo();
+        let config = test_config();
+        let service = FileService::new(file_repo, config);
+
+        assert_eq!(service.mime_to_ext("application/pdf"), "pdf");
+    }
+
+    #[test]
+    fn test_mime_to_ext_unknown() {
+        let file_repo = test_file_repo();
+        let config = test_config();
+        let service = FileService::new(file_repo, config);
+
+        assert_eq!(service.mime_to_ext("application/octet-stream"), "bin");
+        assert_eq!(service.mime_to_ext("text/plain"), "bin");
+    }
+
+    #[test]
+    fn test_file_error_into_response() {
+        assert_eq!(
+            FileError::NotFound.into_response().status(),
+            axum::http::StatusCode::NOT_FOUND
+        );
+        assert_eq!(
+            FileError::NotFoundOrNotDeleted.into_response().status(),
+            axum::http::StatusCode::NOT_FOUND
+        );
+        assert_eq!(
+            FileError::NoFileProvided.into_response().status(),
+            axum::http::StatusCode::BAD_REQUEST
+        );
+        assert_eq!(
+            FileError::FileTooLarge("too large".into()).into_response().status(),
+            axum::http::StatusCode::PAYLOAD_TOO_LARGE
+        );
+        assert_eq!(
+            FileError::StorageError("fail".into()).into_response().status(),
+            axum::http::StatusCode::INTERNAL_SERVER_ERROR
+        );
+        assert_eq!(
+            FileError::NoStorageConfigured.into_response().status(),
+            axum::http::StatusCode::INTERNAL_SERVER_ERROR
+        );
+        assert_eq!(
+            FileError::DatabaseError("bad".into()).into_response().status(),
+            axum::http::StatusCode::INTERNAL_SERVER_ERROR
+        );
+    }
+}
