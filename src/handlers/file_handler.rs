@@ -1,9 +1,9 @@
 use axum::{
+    Json,
     body::Body,
     extract::{Extension, Path, Query},
     http::{HeaderMap, HeaderValue, StatusCode, header},
     response::{IntoResponse, Response},
-    Json,
 };
 use axum_extra::extract::multipart::Multipart;
 use bytes::Bytes;
@@ -529,11 +529,13 @@ pub async fn batch_permanent_delete_files(
 
     let files = match repository.file.get_deleted_by_ids(&site.site_id, &body.ids).await {
         Ok(f) => f,
-        Err(e) => return (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(json!({"error": format!("Failed to fetch files: {}", e)})),
-        )
-            .into_response(),
+        Err(e) => {
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({"error": format!("Failed to fetch files: {}", e)})),
+            )
+                .into_response();
+        }
     };
 
     let storage_provider = services

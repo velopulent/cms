@@ -136,11 +136,7 @@ pub async fn update_site(
         return (status, err).into_response();
     }
 
-    match services
-        .site
-        .update_site(&site_id, payload.name.as_deref())
-        .await
-    {
+    match services.site.update_site(&site_id, payload.name.as_deref()).await {
         Ok(site) => (StatusCode::OK, Json(site)).into_response(),
         Err(e) => e.into_response(),
     }

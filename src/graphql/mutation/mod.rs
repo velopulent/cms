@@ -14,12 +14,7 @@ pub struct MutationRoot;
 
 #[Object]
 impl MutationRoot {
-    async fn create_site(
-        &self,
-        ctx: &Context<'_>,
-        name: String,
-        storage_provider: Option<String>,
-    ) -> Result<Site> {
+    async fn create_site(&self, ctx: &Context<'_>, name: String, storage_provider: Option<String>) -> Result<Site> {
         let gql_ctx = ctx.data::<GqlContext>()?;
         gql_ctx.require_instance_scope(SCOPE_SITES_WRITE)?;
 

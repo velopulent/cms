@@ -386,7 +386,9 @@ mod tests {
         let repo = test_repo();
         let service = CollectionService::new(repo);
 
-        let result = service.update_singleton_data("nonexistent", r#"{"title": "Hello"}"#).await;
+        let result = service
+            .update_singleton_data("nonexistent", r#"{"title": "Hello"}"#)
+            .await;
         assert!(result.is_err());
     }
 

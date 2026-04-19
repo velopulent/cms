@@ -3,7 +3,7 @@ use cms::database::init_db_with_config;
 use cms::grpc::server::spawn_grpc_server;
 use cms::repository::Repository;
 use cms::router::create_router;
-use cms::storage::{self, StorageRegistry, STORAGE_KIND_FILESYSTEM, STORAGE_KIND_S3};
+use cms::storage::{self, STORAGE_KIND_FILESYSTEM, STORAGE_KIND_S3, StorageRegistry};
 
 use std::net::SocketAddr;
 use std::sync::Arc;
@@ -79,7 +79,12 @@ async fn main() {
             .expect("Server error");
     });
 
-    let grpc_handle = tokio::spawn(spawn_grpc_server(repository.clone(), config.clone(), storage_registry, grpc_addr));
+    let grpc_handle = tokio::spawn(spawn_grpc_server(
+        repository.clone(),
+        config.clone(),
+        storage_registry,
+        grpc_addr,
+    ));
 
     select! {
         result = rest_handle => {

@@ -6,7 +6,7 @@ use crate::grpc::cms::v1::singleton_service_server::SingletonService;
 use crate::grpc::cms::v1::{GetSingletonRequest, Singleton as ProtoSingleton, UpdateSingletonRequest};
 use crate::grpc::interceptor::get_auth_context;
 use crate::services::singleton::SingletonService as AppSingletonService;
-use crate::storage::{StorageProvider, StorageRegistry, STORAGE_KIND_FILESYSTEM};
+use crate::storage::{STORAGE_KIND_FILESYSTEM, StorageProvider, StorageRegistry};
 
 #[derive(Clone)]
 pub struct SingletonServiceImpl {

@@ -272,7 +272,9 @@ mod tests {
         let user_repo = test_user_repo();
         let auth = AuthService::new(user_repo, "secret".to_string(), false);
 
-        let result = auth.register("  newuser  ", "  new@example.com  ", "  password123  ").await;
+        let result = auth
+            .register("  newuser  ", "  new@example.com  ", "  password123  ")
+            .await;
         assert!(result.is_ok());
         let user = result.unwrap();
         assert_eq!(user.username, "newuser");

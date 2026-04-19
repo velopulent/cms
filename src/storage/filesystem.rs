@@ -1,8 +1,8 @@
 use async_trait::async_trait;
 use bytes::Bytes;
+use object_store::ObjectStoreExt;
 use object_store::local::LocalFileSystem;
 use object_store::path::Path as ObjectPath;
-use object_store::ObjectStoreExt;
 use std::path::Path;
 use std::sync::Arc;
 
@@ -24,7 +24,12 @@ impl FileSystemStorage {
         })
     }
 
-    pub async fn put(&self, key: &str, data: Bytes, _content_type: &str) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    pub async fn put(
+        &self,
+        key: &str,
+        data: Bytes,
+        _content_type: &str,
+    ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         let path = ObjectPath::from(key);
         let payload = object_store::PutPayload::from_bytes(data);
         self.store.put(&path, payload).await?;
@@ -56,7 +61,12 @@ impl FileSystemStorage {
 
 #[async_trait]
 impl StorageProvider for FileSystemStorage {
-    async fn put(&self, key: &str, data: Bytes, content_type: &str) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    async fn put(
+        &self,
+        key: &str,
+        data: Bytes,
+        content_type: &str,
+    ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         self.put(key, data, content_type).await
     }
 

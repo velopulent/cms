@@ -34,11 +34,13 @@ fn get_storage_for_site(
     site_storage_provider: &str,
     registry: &StorageRegistry,
 ) -> Result<Arc<dyn StorageProvider>, Response> {
-    registry
-        .get(site_storage_provider)
-        .ok_or_else(|| {
-            (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": "Storage not configured"}))).into_response()
-        })
+    registry.get(site_storage_provider).ok_or_else(|| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({"error": "Storage not configured"})),
+        )
+            .into_response()
+    })
 }
 
 #[utoipa::path(

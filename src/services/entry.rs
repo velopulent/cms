@@ -120,10 +120,7 @@ impl EntryService {
                 _ => EntryError::DatabaseError(e.to_string()),
             })?;
 
-        let _ = self
-            .entry_repo
-            .sync_file_references(id, site_id, &resolved_data)
-            .await;
+        let _ = self.entry_repo.sync_file_references(id, site_id, &resolved_data).await;
 
         self.entry_repo
             .get_by_id(id, site_id, false)
@@ -179,12 +176,7 @@ impl EntryService {
         items.to_vec()
     }
 
-    async fn resolve_files_from_value(
-        &self,
-        data: &Value,
-        site_id: &str,
-        storage: Arc<dyn StorageProvider>,
-    ) -> Value {
+    async fn resolve_files_from_value(&self, data: &Value, site_id: &str, storage: Arc<dyn StorageProvider>) -> Value {
         let file_ids = self.extract_file_ids_from_value(data);
 
         let mut file_map = serde_json::Map::new();
@@ -322,7 +314,9 @@ mod tests {
         let service = EntryService::new(entry_repo, file_repo);
 
         let new_data = json!({"title": "Updated Title"});
-        let result = service.update_entry("entry-123", "site-123", Some(&new_data), Some("updated-slug"), None).await;
+        let result = service
+            .update_entry("entry-123", "site-123", Some(&new_data), Some("updated-slug"), None)
+            .await;
         assert!(result.is_ok());
         let entry = result.unwrap();
         assert_eq!(entry.slug, "updated-slug");
@@ -334,7 +328,9 @@ mod tests {
         let file_repo = test_file_repo();
         let service = EntryService::new(entry_repo, file_repo);
 
-        let result = service.update_entry("nonexistent", "site-123", Some(&json!({})), None, None).await;
+        let result = service
+            .update_entry("nonexistent", "site-123", Some(&json!({})), None, None)
+            .await;
         assert!(matches!(result, Err(EntryError::NotFound)));
     }
 
@@ -345,7 +341,9 @@ mod tests {
         let file_repo = test_file_repo();
         let service = EntryService::new(entry_repo, file_repo);
 
-        let result = service.update_entry("entry-123", "site-123", None, None, Some("published")).await;
+        let result = service
+            .update_entry("entry-123", "site-123", None, None, Some("published"))
+            .await;
         assert!(result.is_ok());
         assert_eq!(result.unwrap().status, "published");
     }

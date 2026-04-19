@@ -4,7 +4,7 @@ use async_trait::async_trait;
 use cms::models::user::User;
 use cms::repository::error::RepositoryError;
 use cms::repository::traits::UserRepository;
-use cms::services::auth::{AuthService, AuthError};
+use cms::services::auth::{AuthError, AuthService};
 
 pub struct MockUserRepository {
     users: std::collections::HashMap<String, User>,
@@ -50,7 +50,13 @@ impl UserRepository for MockUserRepository {
         unimplemented!()
     }
 
-    async fn create(&self, _id: &str, _username: &str, _email: &str, _password_hash: &str) -> Result<(), RepositoryError> {
+    async fn create(
+        &self,
+        _id: &str,
+        _username: &str,
+        _email: &str,
+        _password_hash: &str,
+    ) -> Result<(), RepositoryError> {
         unimplemented!()
     }
 
@@ -79,11 +85,7 @@ async fn test_auth_service_login_success() {
     let mut mock_repo = MockUserRepository::new();
     mock_repo.add_user(make_test_user());
 
-    let auth_service = AuthService::new(
-        Arc::new(mock_repo),
-        "test-jwt-secret".to_string(),
-        false,
-    );
+    let auth_service = AuthService::new(Arc::new(mock_repo), "test-jwt-secret".to_string(), false);
 
     let result = auth_service.login("testuser", "password123").await;
     assert!(result.is_ok(), "Login should succeed with correct credentials");
@@ -97,11 +99,7 @@ async fn test_auth_service_login_invalid_password() {
     let mut mock_repo = MockUserRepository::new();
     mock_repo.add_user(make_test_user());
 
-    let auth_service = AuthService::new(
-        Arc::new(mock_repo),
-        "test-jwt-secret".to_string(),
-        false,
-    );
+    let auth_service = AuthService::new(Arc::new(mock_repo), "test-jwt-secret".to_string(), false);
 
     let result = auth_service.login("testuser", "wrong_password").await;
     assert!(matches!(result, Err(AuthError::InvalidCredentials)));
@@ -111,11 +109,7 @@ async fn test_auth_service_login_invalid_password() {
 async fn test_auth_service_login_user_not_found() {
     let mock_repo = MockUserRepository::new();
 
-    let auth_service = AuthService::new(
-        Arc::new(mock_repo),
-        "test-jwt-secret".to_string(),
-        false,
-    );
+    let auth_service = AuthService::new(Arc::new(mock_repo), "test-jwt-secret".to_string(), false);
 
     let result = auth_service.login("nonexistent", "password").await;
     assert!(matches!(result, Err(AuthError::InvalidCredentials)));

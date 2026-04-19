@@ -32,25 +32,17 @@ impl Services {
                 config.jwt_secret.clone(),
                 config.cookie_secure,
             )),
-            site: Arc::new(site::SiteService::new(
-                repository.site.clone(),
-                repository.user.clone(),
-            )),
+            site: Arc::new(site::SiteService::new(repository.site.clone(), repository.user.clone())),
             access_token: Arc::new(access_token::AccessTokenService::new(
                 repository.access_token.clone(),
                 config.hmac_secret.clone(),
             )),
-            collection: Arc::new(collection::CollectionService::new(
-                repository.collection.clone(),
-            )),
+            collection: Arc::new(collection::CollectionService::new(repository.collection.clone())),
             entry: Arc::new(entry::EntryService::new(
                 repository.entry.clone(),
                 repository.file.clone(),
             )),
-            file: Arc::new(file::FileService::new(
-                repository.file.clone(),
-                config.clone(),
-            )),
+            file: Arc::new(file::FileService::new(repository.file.clone(), config.clone())),
             singleton: Arc::new(singleton::SingletonService::new(
                 repository.collection.clone(),
                 repository.file.clone(),

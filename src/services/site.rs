@@ -151,11 +151,7 @@ impl SiteService {
             .map_err(|e| SiteError::DatabaseError(e.to_string()))
     }
 
-    pub async fn update_site(
-        &self,
-        site_id: &str,
-        name: Option<&str>,
-    ) -> Result<Site, SiteError> {
+    pub async fn update_site(&self, site_id: &str, name: Option<&str>) -> Result<Site, SiteError> {
         let existing = self
             .site_repo
             .get_by_id(site_id)
@@ -242,8 +238,8 @@ impl SiteService {
 mod tests {
     use super::*;
     use crate::middleware::auth::Principal;
-    use crate::test_helpers::{InMemorySiteRepository, InMemoryUserRepository};
     use crate::models::site::Site;
+    use crate::test_helpers::{InMemorySiteRepository, InMemoryUserRepository};
     use std::sync::Arc;
 
     fn test_site_repo() -> Arc<InMemorySiteRepository> {
@@ -286,7 +282,9 @@ mod tests {
         let user_repo = test_user_repo();
         let service = SiteService::new(site_repo, user_repo);
 
-        let principal = Principal::UserSession { user_id: "user-123".to_string() };
+        let principal = Principal::UserSession {
+            user_id: "user-123".to_string(),
+        };
         let result = service.list_sites_for_principal(&principal).await;
         assert!(result.is_ok());
     }
@@ -380,7 +378,9 @@ mod tests {
         let service = SiteService::new(site_repo, user_repo);
 
         let result = service.create_site("My Site", Some("invalid"), "user-123").await;
-        assert!(matches!(result, Err(SiteError::InvalidStorageProvider(msg)) if msg.contains("Invalid storage provider")));
+        assert!(
+            matches!(result, Err(SiteError::InvalidStorageProvider(msg)) if msg.contains("Invalid storage provider"))
+        );
     }
 
     #[tokio::test]

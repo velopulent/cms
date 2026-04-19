@@ -40,7 +40,12 @@ impl S3Storage {
         })
     }
 
-    pub async fn put(&self, key: &str, data: Bytes, _content_type: &str) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    pub async fn put(
+        &self,
+        key: &str,
+        data: Bytes,
+        _content_type: &str,
+    ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         let path = ObjectPath::from(key);
         let payload = object_store::PutPayload::from_bytes(data);
         self.store.put(&path, payload).await?;
@@ -70,7 +75,12 @@ impl S3Storage {
 
 #[async_trait]
 impl StorageProvider for S3Storage {
-    async fn put(&self, key: &str, data: Bytes, content_type: &str) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    async fn put(
+        &self,
+        key: &str,
+        data: Bytes,
+        content_type: &str,
+    ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         self.put(key, data, content_type).await
     }
 

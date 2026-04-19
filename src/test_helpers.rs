@@ -10,9 +10,8 @@ use crate::models::site::{Site, SiteMember, SiteWithRole};
 use crate::models::user::User;
 use crate::repository::error::RepositoryError;
 use crate::repository::traits::{
-    AccessTokenLookupRow, AccessTokenRepository, CollectionRepository, EntryRepository,
-    EntriesListResult, FileListResult, FileRepository, ListEntriesParams, ListFilesParams,
-    SiteRepository, UserRepository,
+    AccessTokenLookupRow, AccessTokenRepository, CollectionRepository, EntriesListResult, EntryRepository,
+    FileListResult, FileRepository, ListEntriesParams, ListFilesParams, SiteRepository, UserRepository,
 };
 
 pub fn now_timestamp() -> String {
@@ -71,19 +70,10 @@ impl UserRepository for InMemoryUserRepository {
 
     async fn find_id_by_username(&self, username: &str) -> Result<Option<String>, RepositoryError> {
         let users = self.users.lock().unwrap();
-        Ok(users
-            .iter()
-            .find(|u| u.username == username)
-            .map(|u| u.id.clone()))
+        Ok(users.iter().find(|u| u.username == username).map(|u| u.id.clone()))
     }
 
-    async fn create(
-        &self,
-        id: &str,
-        username: &str,
-        email: &str,
-        password_hash: &str,
-    ) -> Result<(), RepositoryError> {
+    async fn create(&self, id: &str, username: &str, email: &str, password_hash: &str) -> Result<(), RepositoryError> {
         let mut users = self.users.lock().unwrap();
         let mut by_username = self.by_username.lock().unwrap();
         let mut by_id = self.by_id.lock().unwrap();
@@ -246,7 +236,10 @@ impl SiteRepository for InMemorySiteRepository {
         role: &str,
     ) -> Result<Option<SiteMember>, RepositoryError> {
         let mut members = self.members.lock().unwrap();
-        if let Some(member) = members.iter_mut().find(|m| m.site_id == site_id && m.user_id == user_id) {
+        if let Some(member) = members
+            .iter_mut()
+            .find(|m| m.site_id == site_id && m.user_id == user_id)
+        {
             member.role = role.to_string();
             return Ok(Some(member.clone()));
         }
@@ -289,11 +282,7 @@ impl Default for InMemoryCollectionRepository {
 impl CollectionRepository for InMemoryCollectionRepository {
     async fn list(&self, site_id: &str) -> Result<Vec<Collection>, RepositoryError> {
         let collections = self.collections.lock().unwrap();
-        Ok(collections
-            .iter()
-            .filter(|c| c.site_id == site_id)
-            .cloned()
-            .collect())
+        Ok(collections.iter().filter(|c| c.site_id == site_id).cloned().collect())
     }
 
     async fn list_singletons_only(&self, site_id: &str) -> Result<Vec<Collection>, RepositoryError> {
@@ -343,13 +332,7 @@ impl CollectionRepository for InMemoryCollectionRepository {
         Ok(collection)
     }
 
-    async fn update(
-        &self,
-        id: &str,
-        name: &str,
-        slug: &str,
-        definition: &str,
-    ) -> Result<Collection, RepositoryError> {
+    async fn update(&self, id: &str, name: &str, slug: &str, definition: &str) -> Result<Collection, RepositoryError> {
         let mut collections = self.collections.lock().unwrap();
         if let Some(col) = collections.iter_mut().find(|c| c.id == id) {
             col.name = name.to_string();
@@ -432,10 +415,7 @@ impl EntryRepository for InMemoryEntryRepository {
         _published_only: bool,
     ) -> Result<Option<Entry>, RepositoryError> {
         let entries = self.entries.lock().unwrap();
-        Ok(entries
-            .iter()
-            .find(|e| e.id == id && e.site_id == site_id)
-            .cloned())
+        Ok(entries.iter().find(|e| e.id == id && e.site_id == site_id).cloned())
     }
 
     async fn get_by_id_any_site(&self, id: &str) -> Result<Option<Entry>, RepositoryError> {
@@ -448,9 +428,7 @@ impl EntryRepository for InMemoryEntryRepository {
         let filtered: Vec<Entry> = entries
             .iter()
             .filter(|e| e.site_id == params.site_id)
-            .filter(|_| params.collection_slug.is_none() || {
-                true
-            })
+            .filter(|_| params.collection_slug.is_none() || { true })
             .filter(|e| params.status.is_none() || e.status == params.status.unwrap())
             .filter(|e| {
                 if params.published_only {
@@ -511,13 +489,7 @@ impl EntryRepository for InMemoryEntryRepository {
         Ok(entry)
     }
 
-    async fn update(
-        &self,
-        id: &str,
-        data: &str,
-        slug: &str,
-        status: &str,
-    ) -> Result<Entry, RepositoryError> {
+    async fn update(&self, id: &str, data: &str, slug: &str, status: &str) -> Result<Entry, RepositoryError> {
         let mut entries = self.entries.lock().unwrap();
         if let Some(entry) = entries.iter_mut().find(|e| e.id == id) {
             entry.data = data.to_string();
@@ -612,9 +584,7 @@ impl FileRepository for InMemoryFileRepository {
             .iter()
             .filter(|f| f.site_id == params.site_id)
             .filter(|f| params.trashed == f.deleted_at.is_some())
-            .filter(|f| params.search.is_none() || {
-                f.filename.contains(params.search.unwrap())
-            })
+            .filter(|f| params.search.is_none() || { f.filename.contains(params.search.unwrap()) })
             .cloned()
             .collect();
 
@@ -778,18 +748,11 @@ impl Default for InMemoryAccessTokenRepository {
 
 #[async_trait]
 impl AccessTokenRepository for InMemoryAccessTokenRepository {
-    async fn list(
-        &self,
-        kind: AccessTokenKind,
-        site_id: Option<&str>,
-    ) -> Result<Vec<AccessToken>, RepositoryError> {
+    async fn list(&self, kind: AccessTokenKind, site_id: Option<&str>) -> Result<Vec<AccessToken>, RepositoryError> {
         let tokens = self.tokens.lock().unwrap();
         Ok(tokens
             .iter()
-            .filter(|t| {
-                t.kind == kind.as_str()
-                    && t.site_id.as_deref() == site_id
-            })
+            .filter(|t| t.kind == kind.as_str() && t.site_id.as_deref() == site_id)
             .cloned()
             .collect())
     }
@@ -825,17 +788,10 @@ impl AccessTokenRepository for InMemoryAccessTokenRepository {
         Ok(())
     }
 
-    async fn delete(
-        &self,
-        id: &str,
-        kind: AccessTokenKind,
-        site_id: Option<&str>,
-    ) -> Result<u64, RepositoryError> {
+    async fn delete(&self, id: &str, kind: AccessTokenKind, site_id: Option<&str>) -> Result<u64, RepositoryError> {
         let mut tokens = self.tokens.lock().unwrap();
         let len = tokens.len();
-        tokens.retain(|t| {
-            !(t.id == id && t.kind == kind.as_str() && t.site_id.as_deref() == site_id)
-        });
+        tokens.retain(|t| !(t.id == id && t.kind == kind.as_str() && t.site_id.as_deref() == site_id));
         Ok((len - tokens.len()) as u64)
     }
 

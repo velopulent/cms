@@ -273,7 +273,12 @@ mod tests {
         let service = test_service(repo);
 
         let result = service
-            .create_site_token("site-123", "Custom Token".to_string(), vec!["assets:read".to_string()], None)
+            .create_site_token(
+                "site-123",
+                "Custom Token".to_string(),
+                vec!["assets:read".to_string()],
+                None,
+            )
             .await;
         assert!(result.is_ok());
         assert_eq!(result.unwrap().scopes, vec!["assets:read"]);
@@ -296,7 +301,12 @@ mod tests {
         let service = test_service(repo);
 
         let result = service
-            .create_site_token("site-123", "Bad Token".to_string(), vec!["invalid_scope".to_string()], None)
+            .create_site_token(
+                "site-123",
+                "Bad Token".to_string(),
+                vec!["invalid_scope".to_string()],
+                None,
+            )
             .await;
         assert!(matches!(result, Err(TokenError::InvalidScope(_))));
     }
@@ -357,7 +367,10 @@ mod tests {
         let service = test_service(repo);
 
         let result = service
-            .create_instance_token("Scoped Token".to_string(), vec!["sites:read".to_string(), "sites:write".to_string()])
+            .create_instance_token(
+                "Scoped Token".to_string(),
+                vec!["sites:read".to_string(), "sites:write".to_string()],
+            )
             .await;
         assert!(result.is_ok());
         assert_eq!(result.unwrap().scopes.len(), 2);

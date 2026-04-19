@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use axum::{http::StatusCode, Json, response::IntoResponse};
+use axum::{Json, http::StatusCode, response::IntoResponse};
 use bytes::Bytes;
 use image::{DynamicImage, ImageEncoder, ImageReader};
 use serde_json::json;
@@ -68,10 +68,7 @@ impl FileError {
 
 impl FileService {
     pub fn new(file_repo: Arc<dyn FileRepository>, config: Arc<Config>) -> Self {
-        Self {
-            file_repo,
-            config,
-        }
+        Self { file_repo, config }
     }
 
     pub async fn list_files(&self, params: ListFilesParams<'_>) -> Result<FileListResult, FileError> {
@@ -366,8 +363,8 @@ fn generate_thumbnail(img: &DynamicImage) -> Option<(Vec<u8>, String)> {
 mod tests {
     use super::*;
     use crate::config::Config;
-    use crate::test_helpers::InMemoryFileRepository;
     use crate::storage::MockStorage;
+    use crate::test_helpers::InMemoryFileRepository;
     use std::sync::Arc;
 
     fn test_config() -> Arc<Config> {
@@ -515,9 +512,7 @@ mod tests {
         let config = test_config();
         let service = FileService::new(file_repo, config);
 
-        let result = service
-            .batch_soft_delete("site-123", &["file-123".to_string()])
-            .await;
+        let result = service.batch_soft_delete("site-123", &["file-123".to_string()]).await;
         assert!(result.is_ok());
         assert_eq!(result.unwrap(), 1);
     }
@@ -531,9 +526,7 @@ mod tests {
         let config = test_config();
         let service = FileService::new(file_repo, config);
 
-        let result = service
-            .batch_restore("site-123", &["file-123".to_string()])
-            .await;
+        let result = service.batch_restore("site-123", &["file-123".to_string()]).await;
         assert!(result.is_ok());
         assert_eq!(result.unwrap(), 1);
     }

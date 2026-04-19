@@ -74,7 +74,12 @@ impl Default for StorageRegistry {
 
 #[async_trait]
 pub trait StorageProvider: Send + Sync {
-    async fn put(&self, key: &str, data: Bytes, content_type: &str) -> Result<(), Box<dyn std::error::Error + Send + Sync>>;
+    async fn put(
+        &self,
+        key: &str,
+        data: Bytes,
+        content_type: &str,
+    ) -> Result<(), Box<dyn std::error::Error + Send + Sync>>;
     async fn get(&self, key: &str) -> Result<Bytes, Box<dyn std::error::Error + Send + Sync>>;
     async fn delete(&self, key: &str) -> Result<(), Box<dyn std::error::Error + Send + Sync>>;
     fn url(&self, key: &str, file_id: &str) -> String;
@@ -93,7 +98,9 @@ impl StorageProvider for MockStorage {
     }
 
     async fn get(&self, key: &str) -> Result<Bytes, Box<dyn std::error::Error + Send + Sync>> {
-        self.files.lock().unwrap()
+        self.files
+            .lock()
+            .unwrap()
             .get(key)
             .cloned()
             .ok_or_else(|| "MockStorage: key not found".into())

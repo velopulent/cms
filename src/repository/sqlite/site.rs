@@ -84,13 +84,11 @@ impl SiteRepository for SqliteSiteRepository {
     }
 
     async fn update(&self, id: &str, name: &str) -> Result<Site, RepositoryError> {
-        sqlx::query(
-            "UPDATE sites SET name = ?, updated_at = datetime('now') WHERE id = ?",
-        )
-        .bind(name)
-        .bind(id)
-        .execute(&self.pool)
-        .await?;
+        sqlx::query("UPDATE sites SET name = ?, updated_at = datetime('now') WHERE id = ?")
+            .bind(name)
+            .bind(id)
+            .execute(&self.pool)
+            .await?;
 
         self.get_by_id(id).await?.ok_or(RepositoryError::NotFound)
     }

@@ -49,7 +49,10 @@ impl SingletonError {
 
 impl SingletonService {
     pub fn new(collection_repo: Arc<dyn CollectionRepository>, file_repo: Arc<dyn FileRepository>) -> Self {
-        Self { collection_repo, file_repo }
+        Self {
+            collection_repo,
+            file_repo,
+        }
     }
 
     fn collection_to_response(c: &Collection) -> SingletonResponse {
@@ -133,12 +136,7 @@ impl SingletonService {
         Ok(Self::collection_to_response(&updated))
     }
 
-    async fn resolve_files_from_value(
-        &self,
-        data: &Value,
-        site_id: &str,
-        storage: Arc<dyn StorageProvider>,
-    ) -> Value {
+    async fn resolve_files_from_value(&self, data: &Value, site_id: &str, storage: Arc<dyn StorageProvider>) -> Value {
         let file_ids = self.extract_file_ids_from_value(data);
 
         let mut file_map = serde_json::Map::new();
@@ -185,8 +183,8 @@ impl SingletonService {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::test_helpers::{InMemoryCollectionRepository, InMemoryFileRepository};
     use crate::storage::MockStorage;
+    use crate::test_helpers::{InMemoryCollectionRepository, InMemoryFileRepository};
     use std::sync::Arc;
 
     fn test_collection_repo() -> Arc<InMemoryCollectionRepository> {
