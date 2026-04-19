@@ -227,3 +227,283 @@ impl EntryService {
             .collect()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::storage::MockStorage;
+    use crate::test_helpers::{InMemoryEntryRepository, InMemoryFileRepository};
+    use std::sync::Arc;
+
+    fn test_entry_repo() -> Arc<InMemoryEntryRepository> {
+        Arc::new(InMemoryEntryRepository::new())
+    }
+
+    fn test_file_repo() -> Arc<InMemoryFileRepository> {
+        Arc::new(InMemoryFileRepository::new())
+    }
+
+    fn create_test_entry() -> Entry {
+        Entry {
+            id: "entry-123".to_string(),
+            site_id: "site-123".to_string(),
+            collection_id: "col-123".to_string(),
+            data: r#"{"title": "Test Entry"}"#.to_string(),
+            slug: "test-entry".to_string(),
+            status: "draft".to_string(),
+            created_at: "2024-01-01 00:00:00".to_string(),
+            updated_at: "2024-01-01 00:00:00".to_string(),
+            published_at: None,
+        }
+    }
+
+    #[tokio::test]
+    async fn test_list_entries() {
+        let entry_repo = test_entry_repo();
+        let file_repo = test_file_repo();
+        let service = EntryService::new(entry_repo, file_repo);
+
+        let params = ListEntriesParams {
+            site_id: "site-123",
+            collection_slug: None,
+            collection_id: None,
+            status: None,
+            search: None,
+            published_only: false,
+            page: 1,
+            per_page: 20,
+        };
+
+        let result = service.list_entries(params).await;
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_get_entry_not_found() {
+        let entry_repo = test_entry_repo();
+        let file_repo = test_file_repo();
+        let service = EntryService::new(entry_repo, file_repo);
+
+        let result = service.get_entry("nonexistent", "site-123", false).await;
+        assert!(result.is_ok());
+        assert!(result.unwrap().is_none());
+    }
+
+    #[tokio::test]
+    async fn test_create_entry_success() {
+        let entry_repo = test_entry_repo();
+        let file_repo = test_file_repo();
+        let service = EntryService::new(entry_repo, file_repo);
+
+        let data = json!({"title": "New Entry"});
+        let result = service.create_entry("site-123", "col-123", &data, "new-entry").await;
+        assert!(result.is_ok());
+        let entry = result.unwrap();
+        assert_eq!(entry.slug, "new-entry");
+        assert_eq!(entry.status, "draft");
+    }
+
+    #[tokio::test]
+    async fn test_create_entry_empty_data() {
+        let entry_repo = test_entry_repo();
+        let file_repo = test_file_repo();
+        let service = EntryService::new(entry_repo, file_repo);
+
+        let data = json!({});
+        let result = service.create_entry("site-123", "col-123", &data, "empty-entry").await;
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_update_entry_success() {
+        let entry_repo = test_entry_repo();
+        entry_repo.add_entry(create_test_entry());
+        let file_repo = test_file_repo();
+        let service = EntryService::new(entry_repo, file_repo);
+
+        let new_data = json!({"title": "Updated Title"});
+        let result = service.update_entry("entry-123", "site-123", Some(&new_data), Some("updated-slug"), None).await;
+        assert!(result.is_ok());
+        let entry = result.unwrap();
+        assert_eq!(entry.slug, "updated-slug");
+    }
+
+    #[tokio::test]
+    async fn test_update_entry_not_found() {
+        let entry_repo = test_entry_repo();
+        let file_repo = test_file_repo();
+        let service = EntryService::new(entry_repo, file_repo);
+
+        let result = service.update_entry("nonexistent", "site-123", Some(&json!({})), None, None).await;
+        assert!(matches!(result, Err(EntryError::NotFound)));
+    }
+
+    #[tokio::test]
+    async fn test_update_entry_status_only() {
+        let entry_repo = test_entry_repo();
+        entry_repo.add_entry(create_test_entry());
+        let file_repo = test_file_repo();
+        let service = EntryService::new(entry_repo, file_repo);
+
+        let result = service.update_entry("entry-123", "site-123", None, None, Some("published")).await;
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap().status, "published");
+    }
+
+    #[tokio::test]
+    async fn test_delete_entry_success() {
+        let entry_repo = test_entry_repo();
+        entry_repo.add_entry(create_test_entry());
+        let file_repo = test_file_repo();
+        let service = EntryService::new(entry_repo, file_repo);
+
+        let result = service.delete_entry("entry-123", "site-123").await;
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), 1);
+    }
+
+    #[tokio::test]
+    async fn test_delete_entry_not_found() {
+        let entry_repo = test_entry_repo();
+        let file_repo = test_file_repo();
+        let service = EntryService::new(entry_repo, file_repo);
+
+        let result = service.delete_entry("nonexistent", "site-123").await;
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), 0);
+    }
+
+    #[tokio::test]
+    async fn test_publish_entry_success() {
+        let entry_repo = test_entry_repo();
+        entry_repo.add_entry(create_test_entry());
+        let file_repo = test_file_repo();
+        let service = EntryService::new(entry_repo, file_repo);
+
+        let result = service.publish_entry("entry-123", "site-123").await;
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap().status, "published");
+    }
+
+    #[tokio::test]
+    async fn test_publish_entry_not_found() {
+        let entry_repo = test_entry_repo();
+        let file_repo = test_file_repo();
+        let service = EntryService::new(entry_repo, file_repo);
+
+        let result = service.publish_entry("nonexistent", "site-123").await;
+        assert!(matches!(result, Err(EntryError::NotFound)));
+    }
+
+    #[tokio::test]
+    async fn test_unpublish_entry_success() {
+        let entry_repo = test_entry_repo();
+        let mut entry = create_test_entry();
+        entry.status = "published".to_string();
+        entry_repo.add_entry(entry);
+        let file_repo = test_file_repo();
+        let service = EntryService::new(entry_repo, file_repo);
+
+        let result = service.unpublish_entry("entry-123", "site-123").await;
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap().status, "draft");
+    }
+
+    #[tokio::test]
+    async fn test_unpublish_entry_not_found() {
+        let entry_repo = test_entry_repo();
+        let file_repo = test_file_repo();
+        let service = EntryService::new(entry_repo, file_repo);
+
+        let result = service.unpublish_entry("nonexistent", "site-123").await;
+        assert!(matches!(result, Err(EntryError::NotFound)));
+    }
+
+    #[tokio::test]
+    async fn test_resolve_entry_files_with_no_files() {
+        let entry_repo = test_entry_repo();
+        let file_repo = test_file_repo();
+        let service = EntryService::new(entry_repo, file_repo);
+
+        let entry = create_test_entry();
+        let storage = Arc::new(MockStorage::default());
+        let result = service.resolve_entry_files(&entry, storage).await;
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_resolve_entries_list_files() {
+        let entry_repo = test_entry_repo();
+        let file_repo = test_file_repo();
+        let service = EntryService::new(entry_repo, file_repo);
+
+        let entries = vec![create_test_entry()];
+        let result = service.resolve_entries_list_files(&entries).await;
+        assert_eq!(result.len(), 1);
+    }
+
+    #[test]
+    fn test_extract_file_ids_from_value() {
+        let entry_repo = test_entry_repo();
+        let file_repo = test_file_repo();
+        let service = EntryService::new(entry_repo, file_repo);
+
+        let data = json!({
+            "title": "Test",
+            "body": "/api/files/abc-123-def/image.jpg"
+        });
+        let ids = service.extract_file_ids_from_value(&data);
+        assert_eq!(ids, vec!["abc-123-def"]);
+    }
+
+    #[test]
+    fn test_extract_file_ids_multiple() {
+        let entry_repo = test_entry_repo();
+        let file_repo = test_file_repo();
+        let service = EntryService::new(entry_repo, file_repo);
+
+        let data = json!({
+            "images": ["/api/files/abc-123-def/image.png", "/api/files/456-789-abc/image.png"]
+        });
+        let ids = service.extract_file_ids_from_value(&data);
+        assert_eq!(ids, vec!["abc-123-def", "456-789-abc"]);
+    }
+
+    #[test]
+    fn test_extract_file_ids_no_matches() {
+        let entry_repo = test_entry_repo();
+        let file_repo = test_file_repo();
+        let service = EntryService::new(entry_repo, file_repo);
+
+        let data = json!({"title": "No files here"});
+        let ids = service.extract_file_ids_from_value(&data);
+        assert!(ids.is_empty());
+    }
+
+    #[test]
+    fn test_extract_file_ids_invalid_format() {
+        let entry_repo = test_entry_repo();
+        let file_repo = test_file_repo();
+        let service = EntryService::new(entry_repo, file_repo);
+
+        let data = json!({"url": "/api/files/not-a-uuid"});
+        let ids = service.extract_file_ids_from_value(&data);
+        assert!(ids.is_empty());
+    }
+
+    #[test]
+    fn test_entry_error_into_response() {
+        assert_eq!(
+            EntryError::NotFound.into_response().status(),
+            axum::http::StatusCode::NOT_FOUND
+        );
+        assert_eq!(
+            EntryError::AlreadyExists.into_response().status(),
+            axum::http::StatusCode::CONFLICT
+        );
+        assert_eq!(
+            EntryError::DatabaseError("bad".into()).into_response().status(),
+            axum::http::StatusCode::INTERNAL_SERVER_ERROR
+        );
+    }
+}
