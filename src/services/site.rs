@@ -237,3 +237,358 @@ impl SiteService {
             .map_err(|e| SiteError::DatabaseError(e.to_string()))
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::middleware::auth::Principal;
+    use crate::test_helpers::{InMemorySiteRepository, InMemoryUserRepository};
+    use crate::models::site::Site;
+    use std::sync::Arc;
+
+    fn test_site_repo() -> Arc<InMemorySiteRepository> {
+        Arc::new(InMemorySiteRepository::new())
+    }
+
+    fn test_user_repo() -> Arc<InMemoryUserRepository> {
+        Arc::new(InMemoryUserRepository::new())
+    }
+
+    fn create_test_site() -> Site {
+        Site {
+            id: "site-123".to_string(),
+            name: "Test Site".to_string(),
+            storage_provider: "filesystem".to_string(),
+            created_by: "user-123".to_string(),
+            created_at: "2024-01-01 00:00:00".to_string(),
+            updated_at: "2024-01-01 00:00:00".to_string(),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_list_sites_instance() {
+        let site_repo = test_site_repo();
+        let user_repo = test_user_repo();
+        site_repo.add_site(create_test_site());
+        let service = SiteService::new(site_repo, user_repo);
+
+        let result = service.list_sites_instance().await;
+        assert!(result.is_ok());
+        let sites = result.unwrap();
+        assert_eq!(sites.len(), 1);
+        assert_eq!(sites[0]["name"], "Test Site");
+        assert_eq!(sites[0]["role"], "instance_admin");
+    }
+
+    #[tokio::test]
+    async fn test_list_sites_for_user() {
+        let site_repo = test_site_repo();
+        let user_repo = test_user_repo();
+        let service = SiteService::new(site_repo, user_repo);
+
+        let principal = Principal::UserSession { user_id: "user-123".to_string() };
+        let result = service.list_sites_for_principal(&principal).await;
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_get_site_found() {
+        let site_repo = test_site_repo();
+        let user_repo = test_user_repo();
+        site_repo.add_site(create_test_site());
+        let service = SiteService::new(site_repo, user_repo);
+
+        let result = service.get_site("site-123").await;
+        assert!(result.is_ok());
+        let site = result.unwrap();
+        assert!(site.is_some());
+        assert_eq!(site.unwrap().name, "Test Site");
+    }
+
+    #[tokio::test]
+    async fn test_get_site_not_found() {
+        let site_repo = test_site_repo();
+        let user_repo = test_user_repo();
+        let service = SiteService::new(site_repo, user_repo);
+
+        let result = service.get_site("nonexistent").await;
+        assert!(result.is_ok());
+        assert!(result.unwrap().is_none());
+    }
+
+    #[tokio::test]
+    async fn test_create_site_success() {
+        let site_repo = test_site_repo();
+        let user_repo = test_user_repo();
+        let service = SiteService::new(site_repo, user_repo);
+
+        let result = service.create_site("My New Site", Some("filesystem"), "user-123").await;
+        assert!(result.is_ok());
+        let site = result.unwrap();
+        assert_eq!(site.name, "My New Site");
+        assert_eq!(site.storage_provider, "filesystem");
+    }
+
+    #[tokio::test]
+    async fn test_create_site_default_storage() {
+        let site_repo = test_site_repo();
+        let user_repo = test_user_repo();
+        let service = SiteService::new(site_repo, user_repo);
+
+        let result = service.create_site("My Site", None, "user-123").await;
+        assert!(result.is_ok());
+        let site = result.unwrap();
+        assert_eq!(site.storage_provider, "filesystem");
+    }
+
+    #[tokio::test]
+    async fn test_create_site_s3_provider() {
+        let site_repo = test_site_repo();
+        let user_repo = test_user_repo();
+        let service = SiteService::new(site_repo, user_repo);
+
+        let result = service.create_site("My S3 Site", Some("s3"), "user-123").await;
+        assert!(result.is_ok());
+        let site = result.unwrap();
+        assert_eq!(site.storage_provider, "s3");
+    }
+
+    #[tokio::test]
+    async fn test_create_site_empty_name() {
+        let site_repo = test_site_repo();
+        let user_repo = test_user_repo();
+        let service = SiteService::new(site_repo, user_repo);
+
+        let result = service.create_site("", Some("filesystem"), "user-123").await;
+        assert!(matches!(result, Err(SiteError::InvalidStorageProvider(msg)) if msg.contains("Name is required")));
+    }
+
+    #[tokio::test]
+    async fn test_create_site_whitespace_name() {
+        let site_repo = test_site_repo();
+        let user_repo = test_user_repo();
+        let service = SiteService::new(site_repo, user_repo);
+
+        let result = service.create_site("   ", Some("filesystem"), "user-123").await;
+        assert!(matches!(result, Err(SiteError::InvalidStorageProvider(msg)) if msg.contains("Name is required")));
+    }
+
+    #[tokio::test]
+    async fn test_create_site_invalid_provider() {
+        let site_repo = test_site_repo();
+        let user_repo = test_user_repo();
+        let service = SiteService::new(site_repo, user_repo);
+
+        let result = service.create_site("My Site", Some("invalid"), "user-123").await;
+        assert!(matches!(result, Err(SiteError::InvalidStorageProvider(msg)) if msg.contains("Invalid storage provider")));
+    }
+
+    #[tokio::test]
+    async fn test_update_site_success() {
+        let site_repo = test_site_repo();
+        let user_repo = test_user_repo();
+        site_repo.add_site(create_test_site());
+        let service = SiteService::new(site_repo, user_repo);
+
+        let result = service.update_site("site-123", Some("Updated Site")).await;
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap().name, "Updated Site");
+    }
+
+    #[tokio::test]
+    async fn test_update_site_not_found() {
+        let site_repo = test_site_repo();
+        let user_repo = test_user_repo();
+        let service = SiteService::new(site_repo, user_repo);
+
+        let result = service.update_site("nonexistent", Some("Updated")).await;
+        assert!(matches!(result, Err(SiteError::NotFound)));
+    }
+
+    #[tokio::test]
+    async fn test_update_site_no_name_provided() {
+        let site_repo = test_site_repo();
+        let user_repo = test_user_repo();
+        site_repo.add_site(create_test_site());
+        let service = SiteService::new(site_repo, user_repo);
+
+        let result = service.update_site("site-123", None).await;
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap().name, "Test Site");
+    }
+
+    #[tokio::test]
+    async fn test_delete_site_success() {
+        let site_repo = test_site_repo();
+        let user_repo = test_user_repo();
+        site_repo.add_site(create_test_site());
+        let service = SiteService::new(site_repo, user_repo);
+
+        let result = service.delete_site("site-123").await;
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), 1);
+    }
+
+    #[tokio::test]
+    async fn test_delete_site_not_found() {
+        let site_repo = test_site_repo();
+        let user_repo = test_user_repo();
+        let service = SiteService::new(site_repo, user_repo);
+
+        let result = service.delete_site("nonexistent").await;
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), 0);
+    }
+
+    #[tokio::test]
+    async fn test_list_members() {
+        let site_repo = test_site_repo();
+        let user_repo = test_user_repo();
+        let service = SiteService::new(site_repo, user_repo);
+
+        let result = service.list_members("site-123").await;
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_invite_member_invalid_role() {
+        let site_repo = test_site_repo();
+        let user_repo = test_user_repo();
+        let service = SiteService::new(site_repo, user_repo);
+
+        let result = service.invite_member("site-123", "username", "invalid_role").await;
+        assert!(matches!(result, Err(SiteError::InvalidRole(msg)) if msg.contains("owner, admin, editor, or viewer")));
+    }
+
+    #[tokio::test]
+    async fn test_invite_member_user_not_found() {
+        let site_repo = test_site_repo();
+        let user_repo = test_user_repo();
+        let service = SiteService::new(site_repo, user_repo);
+
+        let result = service.invite_member("site-123", "nonexistent_user", "viewer").await;
+        assert!(matches!(result, Err(SiteError::UserNotFound)));
+    }
+
+    #[tokio::test]
+    async fn test_invite_member_success() {
+        let site_repo = test_site_repo();
+        let user_repo = test_user_repo();
+
+        user_repo.add_user(crate::models::user::User {
+            id: "user-456".to_string(),
+            username: "newuser".to_string(),
+            email: "new@example.com".to_string(),
+            password_hash: "hash".to_string(),
+            created_at: "2024-01-01 00:00:00".to_string(),
+            updated_at: "2024-01-01 00:00:00".to_string(),
+        });
+
+        let service = SiteService::new(site_repo, user_repo.clone());
+
+        let result = service.invite_member("site-123", "newuser", "editor").await;
+        assert!(result.is_ok());
+        let member = result.unwrap();
+        assert_eq!(member.role, "editor");
+    }
+
+    #[tokio::test]
+    async fn test_invite_member_all_valid_roles() {
+        let site_repo = test_site_repo();
+        let user_repo = test_user_repo();
+
+        for role in ["owner", "admin", "editor", "viewer"] {
+            user_repo.add_user(crate::models::user::User {
+                id: format!("user-{}", role),
+                username: format!("user_{}", role),
+                email: format!("{}@example.com", role),
+                password_hash: "hash".to_string(),
+                created_at: "2024-01-01 00:00:00".to_string(),
+                updated_at: "2024-01-01 00:00:00".to_string(),
+            });
+        }
+
+        let service = SiteService::new(site_repo, user_repo.clone());
+
+        for role in ["owner", "admin", "editor", "viewer"] {
+            let result = service.invite_member("site-123", &format!("user_{}", role), role).await;
+            assert!(result.is_ok(), "Failed for role: {}", role);
+        }
+    }
+
+    #[tokio::test]
+    async fn test_update_member_role_invalid_role() {
+        let site_repo = test_site_repo();
+        let user_repo = test_user_repo();
+        let service = SiteService::new(site_repo, user_repo);
+
+        let result = service.update_member_role("site-123", "user-456", "invalid").await;
+        assert!(matches!(result, Err(SiteError::InvalidRole(msg)) if msg.contains("Invalid role")));
+    }
+
+    #[tokio::test]
+    async fn test_update_member_role_success() {
+        let site_repo = test_site_repo();
+        let user_repo = test_user_repo();
+        let service = SiteService::new(site_repo, user_repo);
+
+        let result = service.update_member_role("site-123", "user-456", "admin").await;
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_remove_member_cannot_remove_self() {
+        let site_repo = test_site_repo();
+        let user_repo = test_user_repo();
+        let service = SiteService::new(site_repo, user_repo);
+
+        let result = service.remove_member("site-123", "user-123", "user-123").await;
+        assert!(matches!(result, Err(SiteError::CannotRemoveSelf)));
+    }
+
+    #[tokio::test]
+    async fn test_remove_member_success() {
+        let site_repo = test_site_repo();
+        let user_repo = test_user_repo();
+        let service = SiteService::new(site_repo, user_repo);
+
+        let result = service.remove_member("site-123", "user-456", "user-123").await;
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_site_error_into_response() {
+        assert_eq!(
+            SiteError::NotFound.into_response().status(),
+            axum::http::StatusCode::NOT_FOUND
+        );
+        assert_eq!(
+            SiteError::InvalidStorageProvider("bad".into()).into_response().status(),
+            axum::http::StatusCode::BAD_REQUEST
+        );
+        assert_eq!(
+            SiteError::InvalidRole("bad".into()).into_response().status(),
+            axum::http::StatusCode::BAD_REQUEST
+        );
+        assert_eq!(
+            SiteError::CannotRemoveSelf.into_response().status(),
+            axum::http::StatusCode::BAD_REQUEST
+        );
+        assert_eq!(
+            SiteError::UserNotFound.into_response().status(),
+            axum::http::StatusCode::NOT_FOUND
+        );
+        assert_eq!(
+            SiteError::AlreadyMember.into_response().status(),
+            axum::http::StatusCode::CONFLICT
+        );
+        assert_eq!(
+            SiteError::MemberNotFound.into_response().status(),
+            axum::http::StatusCode::NOT_FOUND
+        );
+        assert_eq!(
+            SiteError::DatabaseError("bad".into()).into_response().status(),
+            axum::http::StatusCode::INTERNAL_SERVER_ERROR
+        );
+    }
+}
