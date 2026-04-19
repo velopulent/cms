@@ -181,3 +181,198 @@ impl SingletonService {
             .collect()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::test_helpers::{InMemoryCollectionRepository, InMemoryFileRepository};
+    use crate::storage::MockStorage;
+    use std::sync::Arc;
+
+    fn test_collection_repo() -> Arc<InMemoryCollectionRepository> {
+        Arc::new(InMemoryCollectionRepository::new())
+    }
+
+    fn test_file_repo() -> Arc<InMemoryFileRepository> {
+        Arc::new(InMemoryFileRepository::new())
+    }
+
+    fn create_test_collection() -> Collection {
+        Collection {
+            id: "col-123".to_string(),
+            site_id: "site-123".to_string(),
+            name: "Test Singleton".to_string(),
+            slug: "test-singleton".to_string(),
+            definition: r#"{"fields": [{"name": "title", "type": "text"}]}"#.to_string(),
+            is_singleton: true,
+            singleton_data: Some(r#"{"title": "Hello"}"#.to_string()),
+            created_at: "2024-01-01 00:00:00".to_string(),
+            updated_at: "2024-01-01 00:00:00".to_string(),
+        }
+    }
+
+    fn create_non_singleton_collection() -> Collection {
+        Collection {
+            id: "col-456".to_string(),
+            site_id: "site-123".to_string(),
+            name: "Regular Collection".to_string(),
+            slug: "regular".to_string(),
+            definition: r#"{"fields": []}"#.to_string(),
+            is_singleton: false,
+            singleton_data: None,
+            created_at: "2024-01-01 00:00:00".to_string(),
+            updated_at: "2024-01-01 00:00:00".to_string(),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_list_singletons() {
+        let collection_repo = test_collection_repo();
+        let file_repo = test_file_repo();
+        let service = SingletonService::new(collection_repo, file_repo);
+
+        let result = service.list_singletons("site-123").await;
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_get_singleton_not_found() {
+        let collection_repo = test_collection_repo();
+        let file_repo = test_file_repo();
+        let service = SingletonService::new(collection_repo, file_repo);
+
+        let storage = Arc::new(MockStorage::default());
+        let result = service.get_singleton("site-123", "nonexistent", storage).await;
+        assert!(matches!(result, Err(SingletonError::NotFound)));
+    }
+
+    #[tokio::test]
+    async fn test_get_singleton_not_a_singleton() {
+        let collection_repo = test_collection_repo();
+        collection_repo.add_collection(create_non_singleton_collection());
+        let file_repo = test_file_repo();
+        let service = SingletonService::new(collection_repo, file_repo);
+
+        let storage = Arc::new(MockStorage::default());
+        let result = service.get_singleton("site-123", "regular", storage).await;
+        assert!(matches!(result, Err(SingletonError::NotASingleton)));
+    }
+
+    #[tokio::test]
+    async fn test_get_singleton_success() {
+        let collection_repo = test_collection_repo();
+        collection_repo.add_collection(create_test_collection());
+        let file_repo = test_file_repo();
+        let service = SingletonService::new(collection_repo, file_repo);
+
+        let storage = Arc::new(MockStorage::default());
+        let result = service.get_singleton("site-123", "test-singleton", storage).await;
+        assert!(result.is_ok());
+        let response = result.unwrap();
+        assert_eq!(response.name, "Test Singleton");
+        assert!(response.data.is_some());
+    }
+
+    #[tokio::test]
+    async fn test_update_singleton_not_found() {
+        let collection_repo = test_collection_repo();
+        let file_repo = test_file_repo();
+        let service = SingletonService::new(collection_repo, file_repo);
+
+        let result = service
+            .update_singleton("site-123", "nonexistent", &json!({"title": "Updated"}))
+            .await;
+        assert!(matches!(result, Err(SingletonError::NotFound)));
+    }
+
+    #[tokio::test]
+    async fn test_update_singleton_not_a_singleton() {
+        let collection_repo = test_collection_repo();
+        collection_repo.add_collection(create_non_singleton_collection());
+        let file_repo = test_file_repo();
+        let service = SingletonService::new(collection_repo, file_repo);
+
+        let result = service
+            .update_singleton("site-123", "regular", &json!({"title": "Updated"}))
+            .await;
+        assert!(matches!(result, Err(SingletonError::NotASingleton)));
+    }
+
+    #[tokio::test]
+    async fn test_update_singleton_success() {
+        let collection_repo = test_collection_repo();
+        collection_repo.add_collection(create_test_collection());
+        let file_repo = test_file_repo();
+        let service = SingletonService::new(collection_repo, file_repo);
+
+        let result = service
+            .update_singleton("site-123", "test-singleton", &json!({"title": "Updated Title"}))
+            .await;
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_extract_file_ids() {
+        let collection_repo = test_collection_repo();
+        let file_repo = test_file_repo();
+        let service = SingletonService::new(collection_repo, file_repo);
+
+        let data = json!({
+            "title": "Test",
+            "image": "/api/files/abc-123-def/test.jpg"
+        });
+        let ids = service.extract_file_ids_from_value(&data);
+        assert_eq!(ids, vec!["abc-123-def"]);
+    }
+
+    #[test]
+    fn test_extract_file_ids_multiple() {
+        let collection_repo = test_collection_repo();
+        let file_repo = test_file_repo();
+        let service = SingletonService::new(collection_repo, file_repo);
+
+        let data = json!({
+            "images": ["/api/files/abc-123-def/image.png", "/api/files/456-789-abc/image.png"]
+        });
+        let ids = service.extract_file_ids_from_value(&data);
+        assert_eq!(ids, vec!["abc-123-def", "456-789-abc"]);
+    }
+
+    #[test]
+    fn test_extract_file_ids_none() {
+        let collection_repo = test_collection_repo();
+        let file_repo = test_file_repo();
+        let service = SingletonService::new(collection_repo, file_repo);
+
+        let data = json!({"title": "No files here"});
+        let ids = service.extract_file_ids_from_value(&data);
+        assert!(ids.is_empty());
+    }
+
+    #[test]
+    fn test_singleton_error_into_response() {
+        assert_eq!(
+            SingletonError::NotFound.into_response().status(),
+            axum::http::StatusCode::NOT_FOUND
+        );
+        assert_eq!(
+            SingletonError::NotASingleton.into_response().status(),
+            axum::http::StatusCode::NOT_FOUND
+        );
+        assert_eq!(
+            SingletonError::DatabaseError("bad".into()).into_response().status(),
+            axum::http::StatusCode::INTERNAL_SERVER_ERROR
+        );
+    }
+
+    #[test]
+    fn test_collection_to_response() {
+        let collection = create_test_collection();
+        let response = SingletonService::collection_to_response(&collection);
+
+        assert_eq!(response.id, "col-123");
+        assert_eq!(response.name, "Test Singleton");
+        assert_eq!(response.slug, "test-singleton");
+        assert!(response.data.is_some());
+    }
+}
