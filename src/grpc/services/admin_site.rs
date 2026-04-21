@@ -10,25 +10,28 @@ use crate::grpc::cms::v1::{
 use crate::grpc::interceptor::get_auth_context;
 use crate::middleware::auth::{SCOPE_SITES_DELETE, SCOPE_SITES_READ, SCOPE_SITES_WRITE};
 use crate::models::site::Site;
+use crate::repository::Repository;
 use crate::services::site::SiteService as AppSiteService;
 
 #[derive(Clone)]
 pub struct SiteServiceImpl {
     app_site_service: Arc<AppSiteService>,
+    repository: Arc<Repository>,
 }
 
 impl SiteServiceImpl {
-    pub fn new(site_service: Arc<AppSiteService>) -> Self {
+    pub fn new(site_service: Arc<AppSiteService>, repository: Arc<Repository>) -> Self {
         Self {
             app_site_service: site_service,
+            repository,
         }
     }
 }
 
 #[tonic::async_trait]
 impl SiteService for SiteServiceImpl {
-    async fn list_sites(&self, request: Request<ListSitesRequest>) -> Result<Response<ListSitesResponse>, Status> {
-        let auth = get_auth_context(&request)?;
+    async fn list_sites(&self, mut request: Request<ListSitesRequest>) -> Result<Response<ListSitesResponse>, Status> {
+        let auth = get_auth_context(&mut request, &self.repository).await?;
         auth.require_instance_scope(SCOPE_SITES_READ)?;
 
         let sites = self
@@ -55,8 +58,8 @@ impl SiteService for SiteServiceImpl {
         }))
     }
 
-    async fn get_site(&self, request: Request<GetSiteRequest>) -> Result<Response<ProtoSite>, Status> {
-        let auth = get_auth_context(&request)?;
+    async fn get_site(&self, mut request: Request<GetSiteRequest>) -> Result<Response<ProtoSite>, Status> {
+        let auth = get_auth_context(&mut request, &self.repository).await?;
         auth.require_instance_scope(SCOPE_SITES_READ)?;
         let site_id = request.into_inner().site_id;
 
@@ -70,8 +73,8 @@ impl SiteService for SiteServiceImpl {
         Ok(Response::new(ProtoSite::from(site)))
     }
 
-    async fn create_site(&self, request: Request<CreateSiteRequest>) -> Result<Response<ProtoSite>, Status> {
-        let auth = get_auth_context(&request)?;
+    async fn create_site(&self, mut request: Request<CreateSiteRequest>) -> Result<Response<ProtoSite>, Status> {
+        let auth = get_auth_context(&mut request, &self.repository).await?;
         auth.require_instance_scope(SCOPE_SITES_WRITE)?;
         let req = request.into_inner();
 
@@ -95,8 +98,8 @@ impl SiteService for SiteServiceImpl {
         Ok(Response::new(ProtoSite::from(site)))
     }
 
-    async fn update_site(&self, request: Request<UpdateSiteRequest>) -> Result<Response<ProtoSite>, Status> {
-        let auth = get_auth_context(&request)?;
+    async fn update_site(&self, mut request: Request<UpdateSiteRequest>) -> Result<Response<ProtoSite>, Status> {
+        let auth = get_auth_context(&mut request, &self.repository).await?;
         auth.require_instance_scope(SCOPE_SITES_WRITE)?;
         let req = request.into_inner();
 
@@ -109,8 +112,8 @@ impl SiteService for SiteServiceImpl {
         Ok(Response::new(ProtoSite::from(site)))
     }
 
-    async fn delete_site(&self, request: Request<DeleteSiteRequest>) -> Result<Response<DeleteResponse>, Status> {
-        let auth = get_auth_context(&request)?;
+    async fn delete_site(&self, mut request: Request<DeleteSiteRequest>) -> Result<Response<DeleteResponse>, Status> {
+        let auth = get_auth_context(&mut request, &self.repository).await?;
         auth.require_instance_scope(SCOPE_SITES_DELETE)?;
         let site_id = request.into_inner().site_id;
 
