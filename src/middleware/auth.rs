@@ -1,6 +1,8 @@
 use std::collections::BTreeSet;
 use std::str::FromStr;
 
+use cookie::Cookie;
+
 use axum::{
     Json,
     extract::FromRequestParts,
@@ -18,6 +20,8 @@ use crate::models::user::Claims;
 use crate::repository::Repository;
 
 type HmacSha256 = Hmac<Sha256>;
+
+const TOKEN_PREFIX_LEN: usize = 24;
 
 pub const HEADER_SITE_ID: &str = "x-cms-site-id";
 pub const SCOPE_SITES_READ: &str = "sites:read";
@@ -37,20 +41,26 @@ pub const SCOPE_ASSETS_WRITE: &str = "assets:write";
 
 fn extract_cookie_value(parts: &Parts, name: &str) -> Option<String> {
     let cookie_header = parts.headers.get("cookie")?.to_str().ok()?;
-    for pair in cookie_header.split(';') {
-        let pair = pair.trim();
-        if let Some((key, value)) = pair.split_once('=') {
-            if key == name {
-                return Some(value.to_string());
+
+    for cookie in cookie_header.split(';') {
+        if let Ok(parsed) = Cookie::parse(cookie.trim()) {
+            if parsed.name() == name {
+                return Some(parsed.value().to_string());
             }
         }
     }
+
     None
 }
 
 fn extract_bearer_token(parts: &Parts) -> Option<String> {
     let auth_header = parts.headers.get("Authorization")?.to_str().ok()?;
-    auth_header.strip_prefix("Bearer ").map(|s| s.to_string())
+
+    if let Some(token) = auth_header.strip_prefix("Bearer ") {
+        Some(token.trim().to_string())
+    } else {
+        None
+    }
 }
 
 fn extract_csrf_token(parts: &Parts) -> Option<String> {
@@ -214,11 +224,42 @@ pub fn verify_token(token: &str, jwt_secret: &str) -> Result<Claims, jsonwebtoke
     Ok(data.claims)
 }
 
+fn allowed_scopes() -> BTreeSet<&'static str> {
+    [
+        SCOPE_SITES_READ,
+        SCOPE_SITES_WRITE,
+        SCOPE_SITES_DELETE,
+        SCOPE_MEMBERS_READ,
+        SCOPE_MEMBERS_WRITE,
+        SCOPE_TOKENS_READ,
+        SCOPE_TOKENS_WRITE,
+        SCOPE_SITE_READ,
+        SCOPE_SCHEMA_READ,
+        SCOPE_SCHEMA_WRITE,
+        SCOPE_CONTENT_READ,
+        SCOPE_CONTENT_WRITE,
+        SCOPE_ASSETS_READ,
+        SCOPE_ASSETS_WRITE,
+    ]
+    .into_iter()
+    .collect()
+}
+
 pub fn parse_scopes(value: &str) -> BTreeSet<String> {
+    let allowed = allowed_scopes();
+
     value
         .split(',')
         .map(str::trim)
         .filter(|scope| !scope.is_empty())
+        .filter(|scope| {
+            if !allowed.contains(scope) {
+                tracing::warn!(scope = %scope, "Unknown scope ignored");
+                false
+            } else {
+                true
+            }
+        })
         .map(ToString::to_string)
         .collect()
 }
@@ -308,6 +349,14 @@ where
                 .get::<Config>()
                 .ok_or_else(|| AuthError::unauthorized("Internal server error"))?;
 
+            // Ensure CSRF is enforced for mutations in cookie-based sessions
+            match parts.method.as_str() {
+                "POST" | "PUT" | "PATCH" | "DELETE" => {
+                    verify_csrf(parts, config).map_err(|(_, msg)| AuthError::csrf_error(&msg))?;
+                }
+                _ => {}
+            }
+
             let claims = verify_token(&token, &config.jwt_secret)
                 .map_err(|_| AuthError::unauthorized("Invalid or expired token"))?;
 
@@ -325,7 +374,7 @@ pub(crate) async fn verify_access_token(
     repository: &Repository,
     hmac_secret: &str,
 ) -> Result<Principal, (StatusCode, Json<AuthError>)> {
-    let prefix: String = token.chars().take(24).collect();
+    let prefix: String = token.chars().take(TOKEN_PREFIX_LEN).collect();
 
     let keys = repository
         .access_token
@@ -340,20 +389,26 @@ pub(crate) async fn verify_access_token(
             if stored != &token_hmac {
                 continue;
             }
-        } else if !bcrypt::verify(token, &stored_hash).unwrap_or(false) {
-            continue;
+        } else {
+            match bcrypt::verify(token, &stored_hash) {
+                Ok(valid) => {
+                    if !valid {
+                        continue;
+                    }
+                }
+                Err(e) => {
+                    tracing::error!(error = %e, "bcrypt verification failed");
+                    continue;
+                }
+            }
         }
 
         if revoked_at.is_some() {
             return Err(AuthError::unauthorized("Access token has been revoked"));
         }
 
-        if let Some(exp) = expires_at {
-            if let Ok(expiry) = chrono::NaiveDateTime::parse_from_str(&exp, "%Y-%m-%d %H:%M:%S") {
-                if expiry < chrono::Utc::now().naive_utc() {
-                    return Err(AuthError::unauthorized("Access token has expired"));
-                }
-            }
+        if !is_token_not_expired(expires_at.as_deref()) {
+            return Err(AuthError::unauthorized("Access token has expired"));
         }
 
         let _ = repository.access_token.update_last_used(&token_id).await;
@@ -375,6 +430,7 @@ pub(crate) async fn verify_access_token(
         };
     }
 
+    tracing::warn!(prefix = %prefix, "Invalid access token attempt");
     Err(AuthError::unauthorized("Invalid access token"))
 }
 
@@ -383,16 +439,35 @@ pub fn verify_csrf(parts: &Parts, config: &Config) -> Result<(), (StatusCode, St
         return Ok(());
     }
 
-    let csrf_cookie =
-        extract_cookie_value(parts, "csrf").ok_or((StatusCode::FORBIDDEN, "Missing CSRF cookie".to_string()))?;
+    let csrf_cookie = extract_cookie_value(parts, "csrf")
+        .ok_or((StatusCode::FORBIDDEN, "Missing CSRF cookie".to_string()))?;
 
-    let csrf_header = extract_csrf_token(parts).ok_or((StatusCode::FORBIDDEN, "Missing CSRF token".to_string()))?;
+    let csrf_header = extract_csrf_token(parts)
+        .ok_or((StatusCode::FORBIDDEN, "Missing CSRF header".to_string()))?;
 
     if csrf_cookie != csrf_header {
+        tracing::warn!("CSRF mismatch detected");
         return Err((StatusCode::FORBIDDEN, "CSRF token mismatch".to_string()));
     }
 
     Ok(())
+}
+
+pub fn is_token_not_expired(expires_at: Option<&str>) -> bool {
+    let exp = match expires_at {
+        Some(v) => v,
+        None => return true,
+    };
+
+    let now = chrono::Utc::now();
+
+    match chrono::DateTime::parse_from_rfc3339(exp) {
+        Ok(dt) => dt >= now,
+        Err(e) => {
+            tracing::warn!(error = %e, expires_at = %exp, "Invalid expiry format");
+            false
+        }
+    }
 }
 
 pub async fn require_admin_scope(
@@ -550,10 +625,23 @@ mod tests {
 
     #[test]
     fn test_parse_scopes() {
-        let scopes = parse_scopes("site:read, content:write,content:write");
+        let scopes = parse_scopes("site:read, content:write, invalid:scope, content:write");
         assert!(scopes.contains("site:read"));
         assert!(scopes.contains("content:write"));
+        assert!(!scopes.contains("invalid:scope"));
         assert_eq!(scopes.len(), 2);
+    }
+
+    #[test]
+    fn test_is_token_not_expired() {
+        let now = chrono::Utc::now();
+        let future = now + chrono::Duration::hours(1);
+        let past = now - chrono::Duration::hours(1);
+
+        assert!(is_token_not_expired(None));
+        assert!(is_token_not_expired(Some(&future.to_rfc3339())));
+        assert!(!is_token_not_expired(Some(&past.to_rfc3339())));
+        assert!(!is_token_not_expired(Some("invalid-date")));
     }
 
     #[test]
