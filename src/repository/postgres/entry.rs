@@ -104,7 +104,7 @@ impl EntryRepository for PostgresEntryRepository {
             for b in &bindings {
                 q = q.bind(b);
             }
-            q.fetch_one(&self.pool).await.unwrap_or(0)
+            q.fetch_one(&self.pool).await?
         };
 
         let offset = (params.page - 1) * params.per_page;
