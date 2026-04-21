@@ -1,5 +1,6 @@
 use std::collections::BTreeSet;
 use std::str::FromStr;
+use hmac::digest::KeyInit;
 
 use cookie::Cookie;
 
