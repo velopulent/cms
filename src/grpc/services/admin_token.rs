@@ -11,17 +11,20 @@ use crate::grpc::cms::v1::{
 use crate::grpc::interceptor::get_auth_context;
 use crate::middleware::auth::{SCOPE_TOKENS_READ, SCOPE_TOKENS_WRITE};
 use crate::models::access_token::AccessToken;
+use crate::repository::Repository;
 use crate::services::access_token::AccessTokenService;
 
 #[derive(Clone)]
 pub struct AdminTokenServiceImpl {
     app_token_service: Arc<AccessTokenService>,
+    repository: Arc<Repository>,
 }
 
 impl AdminTokenServiceImpl {
-    pub fn new(token_service: Arc<AccessTokenService>) -> Self {
+    pub fn new(token_service: Arc<AccessTokenService>, repository: Arc<Repository>) -> Self {
         Self {
             app_token_service: token_service,
+            repository,
         }
     }
 }
@@ -30,9 +33,9 @@ impl AdminTokenServiceImpl {
 impl TokenService for AdminTokenServiceImpl {
     async fn list_instance_tokens(
         &self,
-        request: Request<ListInstanceTokensRequest>,
+        mut request: Request<ListInstanceTokensRequest>,
     ) -> Result<Response<ListInstanceTokensResponse>, Status> {
-        let auth = get_auth_context(&request)?;
+        let auth = get_auth_context(&mut request, &self.repository).await?;
         auth.require_scope(SCOPE_TOKENS_READ, "instance tokens")?;
 
         let tokens = self
@@ -48,9 +51,9 @@ impl TokenService for AdminTokenServiceImpl {
 
     async fn create_instance_token(
         &self,
-        request: Request<CreateInstanceTokenRequest>,
+        mut request: Request<CreateInstanceTokenRequest>,
     ) -> Result<Response<CreateTokenResponse>, Status> {
-        let auth = get_auth_context(&request)?;
+        let auth = get_auth_context(&mut request, &self.repository).await?;
         auth.require_scope(SCOPE_TOKENS_WRITE, "instance tokens")?;
         let req = request.into_inner();
 
@@ -80,9 +83,9 @@ impl TokenService for AdminTokenServiceImpl {
 
     async fn delete_instance_token(
         &self,
-        request: Request<DeleteInstanceTokenRequest>,
+        mut request: Request<DeleteInstanceTokenRequest>,
     ) -> Result<Response<DeleteResponse>, Status> {
-        let auth = get_auth_context(&request)?;
+        let auth = get_auth_context(&mut request, &self.repository).await?;
         auth.require_scope(SCOPE_TOKENS_WRITE, "instance tokens")?;
         let token_id = request.into_inner().token_id;
 
@@ -104,9 +107,9 @@ impl TokenService for AdminTokenServiceImpl {
 
     async fn list_site_tokens(
         &self,
-        request: Request<ListSiteTokensRequest>,
+        mut request: Request<ListSiteTokensRequest>,
     ) -> Result<Response<ListSiteTokensResponse>, Status> {
-        let auth = get_auth_context(&request)?;
+        let auth = get_auth_context(&mut request, &self.repository).await?;
         auth.require_scope(SCOPE_TOKENS_READ, "site tokens")?;
         let site_id = request.into_inner().site_id;
 
@@ -123,9 +126,9 @@ impl TokenService for AdminTokenServiceImpl {
 
     async fn create_site_token(
         &self,
-        request: Request<CreateSiteTokenRequest>,
+        mut request: Request<CreateSiteTokenRequest>,
     ) -> Result<Response<CreateTokenResponse>, Status> {
-        let auth = get_auth_context(&request)?;
+        let auth = get_auth_context(&mut request, &self.repository).await?;
         auth.require_scope(SCOPE_TOKENS_WRITE, "site tokens")?;
         let req = request.into_inner();
 
@@ -155,9 +158,9 @@ impl TokenService for AdminTokenServiceImpl {
 
     async fn delete_site_token(
         &self,
-        request: Request<DeleteSiteTokenRequest>,
+        mut request: Request<DeleteSiteTokenRequest>,
     ) -> Result<Response<DeleteResponse>, Status> {
-        let auth = get_auth_context(&request)?;
+        let auth = get_auth_context(&mut request, &self.repository).await?;
         auth.require_scope(SCOPE_TOKENS_WRITE, "site tokens")?;
         let req = request.into_inner();
 
