@@ -1,6 +1,6 @@
+pub mod auth;
 pub mod cms;
 pub mod interceptor;
-pub mod middleware;
 pub mod server;
 
 pub mod services {
