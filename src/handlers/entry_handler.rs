@@ -114,7 +114,7 @@ pub async fn list_entries(
 
 #[utoipa::path(
     get,
-    path = "/api/v1/site/entries/{id}",
+    path = "/api/v1/entries/{id}",
     params(("id" = String, Path, description = "Entry ID")),
     responses(
         (status = 200, description = "Entry", body = Entry),
@@ -217,7 +217,7 @@ pub async fn create_entry(
 
 #[utoipa::path(
     put,
-    path = "/api/v1/site/entries/{id}",
+    path = "/api/v1/entries/{id}",
     params(("id" = String, Path, description = "Entry ID")),
     request_body = UpdateEntry,
     responses(
@@ -268,7 +268,7 @@ pub async fn update_entry(
 
 #[utoipa::path(
     delete,
-    path = "/api/v1/site/entries/{id}",
+    path = "/api/v1/entries/{id}",
     params(("id" = String, Path, description = "Entry ID")),
     responses(
         (status = 204, description = "Entry deleted"),
@@ -307,7 +307,7 @@ pub async fn delete_entry(
 
 #[utoipa::path(
     post,
-    path = "/api/v1/site/entries/{id}/publish",
+    path = "/api/v1/entries/{id}/publish",
     params(("id" = String, Path, description = "Entry ID")),
     responses(
         (status = 200, description = "Entry published", body = Entry),
@@ -347,7 +347,7 @@ pub async fn publish_entry(
 
 #[utoipa::path(
     post,
-    path = "/api/v1/site/entries/{id}/unpublish",
+    path = "/api/v1/entries/{id}/unpublish",
     params(("id" = String, Path, description = "Entry ID")),
     responses(
         (status = 200, description = "Entry unpublished", body = Entry),

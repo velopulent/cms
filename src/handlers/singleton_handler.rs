@@ -70,7 +70,7 @@ pub async fn list_singletons(
 
 #[utoipa::path(
     get,
-    path = "/api/v1/site/singletons/{slug}",
+    path = "/api/v1/singletons/{slug}",
     params(("slug" = String, Path, description = "Singleton slug")),
     responses(
         (status = 200, description = "Singleton with data", body = SingletonResponse),
@@ -120,7 +120,7 @@ pub async fn get_singleton(
 
 #[utoipa::path(
     put,
-    path = "/api/v1/site/singletons/{slug}",
+    path = "/api/v1/singletons/{slug}",
     params(("slug" = String, Path, description = "Singleton slug")),
     request_body = UpdateSingletonData,
     responses(

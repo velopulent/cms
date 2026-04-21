@@ -237,7 +237,7 @@ pub async fn upload_file(
 
 #[utoipa::path(
     get,
-    path = "/api/v1/site/files/{id}",
+    path = "/api/v1/files/{id}",
     params(("id" = String, Path, description = "File ID")),
     responses(
         (status = 200, description = "File item", body = FileWithUrl),
@@ -289,7 +289,7 @@ pub async fn get_file(
 
 #[utoipa::path(
     delete,
-    path = "/api/v1/site/files/{id}",
+    path = "/api/v1/files/{id}",
     params(("id" = String, Path, description = "File ID")),
     responses(
         (status = 200, description = "File soft-deleted"),
@@ -328,7 +328,7 @@ pub async fn delete_file_handler(
 
 #[utoipa::path(
     get,
-    path = "/api/v1/site/files/{id}/references",
+    path = "/api/v1/files/{id}/references",
     params(("id" = String, Path, description = "File ID")),
     responses(
         (status = 200, description = "References found", body = Vec<crate::models::file::FileReference>),
@@ -365,7 +365,7 @@ pub async fn get_file_references(
 
 #[utoipa::path(
     post,
-    path = "/api/v1/site/files/{id}/restore",
+    path = "/api/v1/files/{id}/restore",
     params(("id" = String, Path, description = "File ID")),
     responses(
         (status = 200, description = "File restored"),
@@ -408,7 +408,7 @@ pub async fn restore_file(
 
 #[utoipa::path(
     post,
-    path = "/api/v1/site/files/batch-delete",
+    path = "/api/v1/files/batch-delete",
     request_body = BatchFileIds,
     responses(
         (status = 200, description = "Files soft-deleted"),
@@ -450,7 +450,7 @@ pub async fn batch_delete_files(
 
 #[utoipa::path(
     post,
-    path = "/api/v1/site/files/batch-restore",
+    path = "/api/v1/files/batch-restore",
     request_body = BatchFileIds,
     responses(
         (status = 200, description = "Files restored"),
@@ -492,7 +492,7 @@ pub async fn batch_restore_files(
 
 #[utoipa::path(
     post,
-    path = "/api/v1/site/files/batch-permanent-delete",
+    path = "/api/v1/files/batch-permanent-delete",
     request_body = BatchFileIds,
     responses(
         (status = 200, description = "Files permanently deleted"),
