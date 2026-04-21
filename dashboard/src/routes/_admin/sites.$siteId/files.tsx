@@ -436,9 +436,7 @@ function FilesPage() {
               disabled={batchDeleteMutation.isPending}
             >
               <Trash2 />
-              {batchDeleteMutation.isPending
-                ? "Deleting..."
-                : "Move to Trash"}
+              {batchDeleteMutation.isPending ? "Deleting..." : "Move to Trash"}
             </Button>
           ) : (
             <>
@@ -449,9 +447,7 @@ function FilesPage() {
                 disabled={batchRestoreMutation.isPending}
               >
                 <RotateCcw />
-                {batchRestoreMutation.isPending
-                  ? "Restoring..."
-                  : "Restore"}
+                {batchRestoreMutation.isPending ? "Restoring..." : "Restore"}
               </Button>
               <Button
                 variant="ghost"
@@ -579,9 +575,7 @@ function FilesPage() {
                     disabled={deleteMutation.isPending}
                   >
                     <Trash2 />
-                    {deleteMutation.isPending
-                      ? "Deleting..."
-                      : "Move to Trash"}
+                    {deleteMutation.isPending ? "Deleting..." : "Move to Trash"}
                   </Button>
                 )}
                 <div className="flex gap-2">
@@ -605,9 +599,7 @@ function FilesPage() {
                       <Button
                         variant="outline"
                         size="sm"
-                        onClick={() =>
-                          window.open(selectedFile.url, "_blank")
-                        }
+                        onClick={() => window.open(selectedFile.url, "_blank")}
                       >
                         <SquareArrowOutUpRight />
                         Open
@@ -689,9 +681,7 @@ function FilesPage() {
               onClick={handleBatchDelete}
               disabled={batchDeleteMutation.isPending}
             >
-              {batchDeleteMutation.isPending
-                ? "Moving..."
-                : "Move to Trash"}
+              {batchDeleteMutation.isPending ? "Moving..." : "Move to Trash"}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

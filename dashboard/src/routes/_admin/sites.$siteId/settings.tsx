@@ -5,6 +5,7 @@ import { Check, Copy, Key, Shield } from "lucide-react";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { z } from "zod";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -13,7 +14,6 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
 import {
   Dialog,
   DialogContent,
@@ -82,8 +82,7 @@ function SiteSettingsPage() {
   });
 
   const updateMutation = useMutation({
-    mutationFn: ({ name }: { name: string }) =>
-      updateSite(siteId, { name }),
+    mutationFn: ({ name }: { name: string }) => updateSite(siteId, { name }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["site", siteId] });
       queryClient.invalidateQueries({ queryKey: ["sites"] });
@@ -168,8 +167,6 @@ function SiteSettingsPage() {
           </CardContent>
         </Card>
 
-        
-
         <Button
           type="submit"
           className="w-fit"
@@ -195,8 +192,13 @@ function ApiKeysSection({ siteId }: { siteId: string }) {
   });
 
   const createMutation = useMutation({
-    mutationFn: ({ name, permissions }: { name: string; permissions: string }) =>
-      createApiKey(siteId, name, permissions),
+    mutationFn: ({
+      name,
+      permissions,
+    }: {
+      name: string;
+      permissions: string;
+    }) => createApiKey(siteId, name, permissions),
     onSuccess: (key) => {
       queryClient.invalidateQueries({ queryKey: ["api-keys", siteId] });
       setCreatedKey(key);
@@ -239,7 +241,10 @@ function ApiKeysSection({ siteId }: { siteId: string }) {
 
   return (
     <>
-      <Dialog open={!!createdKey} onOpenChange={(open) => !open && setCreatedKey(null)}>
+      <Dialog
+        open={!!createdKey}
+        onOpenChange={(open) => !open && setCreatedKey(null)}
+      >
         <DialogContent className="sm:max-w-lg">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
@@ -254,8 +259,14 @@ function ApiKeysSection({ siteId }: { siteId: string }) {
             <div className="flex flex-col gap-4">
               <div className="flex items-center gap-2">
                 <span className="text-sm font-medium">{createdKey.name}</span>
-                <Badge variant={createdKey.permissions === "write" ? "default" : "secondary"}>
-                  {createdKey.permissions === "write" ? "Read & Write" : "Read Only"}
+                <Badge
+                  variant={
+                    createdKey.permissions === "write" ? "default" : "secondary"
+                  }
+                >
+                  {createdKey.permissions === "write"
+                    ? "Read & Write"
+                    : "Read Only"}
                 </Badge>
               </div>
               <div className="relative">
@@ -276,7 +287,8 @@ function ApiKeysSection({ siteId }: { siteId: string }) {
                 </Button>
               </div>
               <p className="text-xs text-muted-foreground">
-                Prefix: <span className="font-mono">{createdKey.key_prefix}</span>
+                Prefix:{" "}
+                <span className="font-mono">{createdKey.key_prefix}</span>
               </p>
             </div>
           )}
@@ -287,8 +299,8 @@ function ApiKeysSection({ siteId }: { siteId: string }) {
         <CardHeader>
           <CardTitle>API Keys</CardTitle>
           <CardDescription>
-            API keys allow external applications to access this site's content via
-            the{" "}
+            API keys allow external applications to access this site's content
+            via the{" "}
             <a
               href="/api/v1/docs"
               target="_blank"
@@ -334,7 +346,9 @@ function ApiKeysSection({ siteId }: { siteId: string }) {
                       onChange={(e) => field.handleChange(e.target.value)}
                       aria-invalid={isInvalid}
                     />
-                    {isInvalid && <FieldError errors={field.state.meta.errors} />}
+                    {isInvalid && (
+                      <FieldError errors={field.state.meta.errors} />
+                    )}
                   </Field>
                 );
               }}
@@ -346,7 +360,9 @@ function ApiKeysSection({ siteId }: { siteId: string }) {
                   <FieldLabel htmlFor="permissions">Permissions</FieldLabel>
                   <Select
                     value={field.state.value}
-                    onValueChange={(v) => field.handleChange(v as "read" | "write")}
+                    onValueChange={(v) =>
+                      field.handleChange(v as "read" | "write")
+                    }
                   >
                     <SelectTrigger id="permissions">
                       <SelectValue />
@@ -389,7 +405,11 @@ function ApiKeysSection({ siteId }: { siteId: string }) {
                       <div className="flex items-center gap-2">
                         <span className="font-medium">{key.name}</span>
                         <Badge
-                          variant={key.permissions === "write" ? "default" : "secondary"}
+                          variant={
+                            key.permissions === "write"
+                              ? "default"
+                              : "secondary"
+                          }
                           className="text-xs"
                         >
                           {key.permissions === "write" ? "R/W" : "R"}

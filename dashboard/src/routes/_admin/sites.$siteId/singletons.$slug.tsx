@@ -36,9 +36,7 @@ function buildDataSchema(schema: SchemaDefinition) {
   return z.object(shape);
 }
 
-export const Route = createFileRoute(
-  "/_admin/sites/$siteId/singletons/$slug",
-)({
+export const Route = createFileRoute("/_admin/sites/$siteId/singletons/$slug")({
   component: SingletonEditPage,
 });
 
@@ -131,9 +129,7 @@ function SingletonEditPage() {
         </Link>
         <div>
           <h1 className="text-2xl font-semibold">{singleton.name}</h1>
-          <p className="text-sm text-muted-foreground">
-            Singleton · {slug}
-          </p>
+          <p className="text-sm text-muted-foreground">Singleton · {slug}</p>
         </div>
       </div>
 

@@ -236,7 +236,10 @@ function scopesFromPermission(permission?: string) {
 function permissionFromScopes(scopes: string[] | string) {
   const list = Array.isArray(scopes)
     ? scopes
-    : scopes.split(",").map((scope) => scope.trim()).filter(Boolean);
+    : scopes
+        .split(",")
+        .map((scope) => scope.trim())
+        .filter(Boolean);
   return list.some((scope) => scope.endsWith(":write")) ? "write" : "read";
 }
 
@@ -345,10 +348,7 @@ export async function getSite(id: string) {
   return api<Site>(`/sites/${id}`);
 }
 
-export async function updateSite(
-  id: string,
-  data: { name?: string },
-) {
+export async function updateSite(id: string, data: { name?: string }) {
   return api<Site>(`/sites/${id}`, {
     method: "PUT",
     body: JSON.stringify(data),
@@ -397,7 +397,11 @@ export async function getApiKeys(siteId: string) {
   return tokens.map(mapAccessToken);
 }
 
-export async function createApiKey(siteId: string, name: string, permissions?: string) {
+export async function createApiKey(
+  siteId: string,
+  name: string,
+  permissions?: string,
+) {
   const token = await siteApi<AccessTokenResponse>(siteId, "/site-tokens", {
     method: "POST",
     body: JSON.stringify({ name, scopes: scopesFromPermission(permissions) }),

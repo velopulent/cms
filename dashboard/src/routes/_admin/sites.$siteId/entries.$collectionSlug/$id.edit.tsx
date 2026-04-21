@@ -122,9 +122,7 @@ function EditEntryPage() {
   useEffect(() => {
     if (entry && !initialized) {
       const parsedData =
-        typeof entry.data === "string"
-          ? JSON.parse(entry.data)
-          : entry.data;
+        typeof entry.data === "string" ? JSON.parse(entry.data) : entry.data;
       form.setFieldValue("data", parsedData as Record<string, unknown>);
       form.setFieldValue("slug", entry.slug);
       setInitialized(true);

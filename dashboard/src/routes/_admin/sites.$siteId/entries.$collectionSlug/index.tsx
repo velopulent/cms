@@ -3,6 +3,7 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { Plus, Search } from "lucide-react";
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
+import { createColumns } from "@/components/entries/columns";
 import { buttonVariants } from "@/components/ui/button";
 import { DataTable } from "@/components/ui/data-table";
 import { Input } from "@/components/ui/input";
@@ -21,7 +22,6 @@ import {
   publishEntry,
   unpublishEntry,
 } from "@/lib/api";
-import { createColumns } from "@/components/entries/columns";
 
 export const Route = createFileRoute(
   "/_admin/sites/$siteId/entries/$collectionSlug/",
@@ -43,7 +43,15 @@ function EntriesListPage() {
   });
 
   const { data: entriesResponse, isLoading: itemsLoading } = useQuery({
-    queryKey: ["entries", siteId, collectionSlug, statusFilter, search, page, pageSize],
+    queryKey: [
+      "entries",
+      siteId,
+      collectionSlug,
+      statusFilter,
+      search,
+      page,
+      pageSize,
+    ],
     queryFn: () =>
       getEntries(siteId, {
         type: collectionSlug,

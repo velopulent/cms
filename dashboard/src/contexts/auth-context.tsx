@@ -1,9 +1,4 @@
-import {
-  createContext,
-  type ReactNode,
-  useContext,
-  useState,
-} from "react";
+import { createContext, type ReactNode, useContext, useState } from "react";
 import { logoutApi, type UserPublic } from "@/lib/api";
 
 interface AuthContextValue {

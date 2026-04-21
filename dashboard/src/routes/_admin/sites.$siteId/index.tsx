@@ -30,9 +30,7 @@ function DashboardPage() {
   });
 
   const collectionsArray = Array.isArray(collections) ? collections : [];
-  const regularCollections = collectionsArray.filter(
-    (c) => !c.is_singleton,
-  );
+  const regularCollections = collectionsArray.filter((c) => !c.is_singleton);
   const singletons = collectionsArray.filter((c) => c.is_singleton);
 
   const allEntriesArray = entriesResponse?.items ?? [];
