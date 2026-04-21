@@ -439,11 +439,10 @@ pub fn verify_csrf(parts: &Parts, config: &Config) -> Result<(), (StatusCode, St
         return Ok(());
     }
 
-    let csrf_cookie = extract_cookie_value(parts, "csrf")
-        .ok_or((StatusCode::FORBIDDEN, "Missing CSRF cookie".to_string()))?;
+    let csrf_cookie =
+        extract_cookie_value(parts, "csrf").ok_or((StatusCode::FORBIDDEN, "Missing CSRF cookie".to_string()))?;
 
-    let csrf_header = extract_csrf_token(parts)
-        .ok_or((StatusCode::FORBIDDEN, "Missing CSRF header".to_string()))?;
+    let csrf_header = extract_csrf_token(parts).ok_or((StatusCode::FORBIDDEN, "Missing CSRF header".to_string()))?;
 
     if csrf_cookie != csrf_header {
         tracing::warn!("CSRF mismatch detected");
