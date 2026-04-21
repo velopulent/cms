@@ -1,8 +1,15 @@
-use hmac::{Hmac, Mac};
-use sha2::Sha256;
 use std::collections::BTreeSet;
+use std::sync::Arc;
 
+use hmac::{Hmac, Mac};
+use hmac::digest::KeyInit;
+use sha2::Sha256;
+use tracing::{Span, error};
+
+use crate::config::Config;
+use crate::grpc::auth::{AuthContext, parse_token};
 use crate::models::access_token::AccessTokenKind;
+use crate::repository::Repository;
 
 /// HMAC type alias for access token validation.
 pub type HmacSha256 = Hmac<Sha256>;
@@ -31,7 +38,7 @@ pub fn compute_key_hmac(key: &str, hmac_secret: &str) -> String {
 /// Authentication context for gRPC requests.
 ///
 /// This struct is injected into request extensions by the authentication
-/// middleware and contains the authenticated site's ID, permissions, and token type.
+/// layer and contains the authenticated site's ID, permissions, and token type.
 /// Handlers can extract this context to perform authorization checks.
 #[derive(Clone, Debug)]
 pub struct GrpcAuthContext {
@@ -120,77 +127,124 @@ impl GrpcAuthContext {
     }
 }
 
-/// Legacy synchronous interceptor for simple use cases.
+/// Synchronous interceptor that parses the Bearer token and stores a
+/// lightweight `AuthContext` in request extensions.
 ///
-/// **DEPRECATED**: This interceptor uses `block_on` which can cause runtime panics
-/// when called from within an async context. Use `AuthLayer`/`AuthMiddleware` instead
-/// for production code.
-///
-/// This is kept for backward compatibility with existing code that may use
-/// `with_interceptor` directly. New code should use the Tower middleware approach.
+/// Database validation is performed asynchronously inside handlers via
+/// `get_auth_context`.
 #[derive(Clone)]
-pub struct AuthInterceptor;
-
-impl AuthInterceptor {
-    /// Creates a new auth interceptor.
-    ///
-    /// **Note**: This creates a placeholder interceptor that performs no
-    /// actual authentication. Use `AuthLayer` for real authentication.
-    pub fn new() -> Self {
-        Self
-    }
+pub struct AuthInterceptor {
+    config: Arc<Config>,
 }
 
-impl Default for AuthInterceptor {
-    fn default() -> Self {
-        Self::new()
+impl AuthInterceptor {
+    pub fn new(config: Arc<Config>) -> Self {
+        Self { config }
     }
 }
 
 impl tonic::service::Interceptor for AuthInterceptor {
-    fn call(&mut self, request: tonic::Request<()>) -> Result<tonic::Request<()>, tonic::Status> {
-        // This is a no-op interceptor kept for compatibility.
-        // Real authentication is handled by AuthMiddleware.
-        //
-        // If auth context was already injected by the middleware, pass it through.
-        // Otherwise, the request will proceed without auth (handlers should check
-        // for auth context and reject if required).
+    fn call(
+        &mut self,
+        mut request: tonic::Request<()>,
+    ) -> Result<tonic::Request<()>, tonic::Status> {
+        let token = request
+            .metadata()
+            .get("authorization")
+            .and_then(|v| v.to_str().ok())
+            .and_then(|v| v.strip_prefix("Bearer "))
+            .ok_or_else(|| tonic::Status::unauthenticated("Missing access token"))?;
+
+        let ctx = parse_token(token, &self.config)
+            .map_err(|_| tonic::Status::unauthenticated("Invalid access token"))?;
+
+        request.extensions_mut().insert(ctx);
         Ok(request)
     }
 }
 
-/// Extracts the authentication context from a tonic request.
+/// Validate the parsed `AuthContext` against the database.
 ///
-/// This function is used by gRPC service handlers to retrieve the
-/// authentication context that was injected by the middleware.
+/// This performs the heavy async work: HMAC/bcrypt verification,
+/// expiry and revocation checks, last_used update, and scope parsing.
+async fn validate_auth(
+    ctx: &AuthContext,
+    repository: &Repository,
+) -> Result<GrpcAuthContext, tonic::Status> {
+    let keys = repository
+        .access_token
+        .find_by_prefix(&ctx.prefix)
+        .await
+        .map_err(|e| {
+            error!(error = ?e, "Database error during access token lookup");
+            tonic::Status::internal("Authentication service unavailable")
+        })?;
+
+    for (key_id, kind, site_id, stored_hash, stored_hmac, expires_at, revoked_at, scopes) in keys {
+        let valid = if let Some(ref stored) = stored_hmac {
+            stored == &ctx.hmac
+        } else {
+            bcrypt::verify(&ctx.token, &stored_hash).unwrap_or(false)
+        };
+
+        if !valid {
+            continue;
+        }
+
+        if revoked_at.is_some() {
+            return Err(tonic::Status::unauthenticated("Invalid access token"));
+        }
+
+        if let Some(exp) = expires_at {
+            if let Ok(expiry) = chrono::NaiveDateTime::parse_from_str(&exp, "%Y-%m-%d %H:%M:%S") {
+                if expiry < chrono::Utc::now().naive_utc() {
+                    return Err(tonic::Status::unauthenticated("Access token has expired"));
+                }
+            }
+        }
+
+        if let Err(e) = repository.access_token.update_last_used(&key_id).await {
+            tracing::warn!(error = ?e, key_id = %key_id, "Failed to update last_used");
+        }
+
+        let parsed_kind = kind
+            .parse::<AccessTokenKind>()
+            .map_err(|_| tonic::Status::unauthenticated("Invalid access token"))?;
+
+        if let Some(ref site_id) = site_id {
+            Span::current().record("site_id", tracing::field::display(site_id));
+        }
+
+        return Ok(GrpcAuthContext {
+            site_id,
+            scopes: crate::middleware::auth::parse_scopes(&scopes),
+            token_kind: parsed_kind,
+        });
+    }
+
+    Err(tonic::Status::unauthenticated("Invalid access token"))
+}
+
+/// Extract (and validate) the authentication context from a tonic request.
 ///
-/// # Type Parameters
-/// * `T` - The request message type
-///
-/// # Arguments
-/// * `request` - The tonic request
-///
-/// # Returns
-/// * `Ok(GrpcAuthContext)` - Auth context found in request extensions
-/// * `Err(tonic::Status)` - Auth context not found (middleware not applied or auth failed)
-///
-/// # Example
-/// ```rust,ignore
-/// async fn my_handler(
-///     &self,
-///     request: tonic::Request<MyRequest>,
-/// ) -> Result<tonic::Response<MyResponse>, tonic::Status> {
-///     let auth = get_auth_context(&request)?;
-///     println!("Authenticated site: {}", auth.site_id);
-///     // ... handle request
-/// }
-/// ```
-pub fn get_auth_context<T>(request: &tonic::Request<T>) -> Result<GrpcAuthContext, tonic::Status> {
-    request
+/// Results are cached in request extensions to avoid duplicate DB round-trips
+/// when a handler checks auth multiple times.
+pub async fn get_auth_context<T>(
+    request: &mut tonic::Request<T>,
+    repository: &Repository,
+) -> Result<GrpcAuthContext, tonic::Status> {
+    if let Some(ctx) = request.extensions().get::<GrpcAuthContext>() {
+        return Ok(ctx.clone());
+    }
+
+    let auth_ctx = request
         .extensions()
-        .get::<GrpcAuthContext>()
-        .cloned()
-        .ok_or_else(|| tonic::Status::unauthenticated("Authentication required"))
+        .get::<AuthContext>()
+        .ok_or_else(|| tonic::Status::internal("Missing auth context"))?;
+
+    let validated = validate_auth(auth_ctx, repository).await?;
+    request.extensions_mut().insert(validated.clone());
+    Ok(validated)
 }
 
 #[cfg(test)]
