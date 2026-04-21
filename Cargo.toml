@@ -38,6 +38,8 @@ tracing-appender = "0.2"
 sha2 = "0.10"
 hmac = "0.12"
 hex = "0.4"
+cookie = "0.18"
+
 
 [dependencies.tonic]
 version = "0.12"
