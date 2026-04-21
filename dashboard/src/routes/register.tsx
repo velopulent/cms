@@ -19,7 +19,7 @@ import {
 } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { useAuth } from "@/contexts/auth-context";
-import { type AuthResponse, register as apiRegister } from "@/lib/api";
+import { register as apiRegister } from "@/lib/api";
 
 const registerSchema = z.object({
   username: z
@@ -48,8 +48,8 @@ function RegisterPage() {
       email: string;
       password: string;
     }) => apiRegister(username, email, password),
-    onSuccess: (data: AuthResponse) => {
-      auth.login(data.user);
+    onSuccess: () => {
+      auth.login();
       toast.success("Account created!");
       navigate({ to: "/" });
     },

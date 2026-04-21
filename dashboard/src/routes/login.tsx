@@ -19,7 +19,7 @@ import {
 } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { useAuth } from "@/contexts/auth-context";
-import { type AuthResponse, login as apiLogin } from "@/lib/api";
+import { login as apiLogin } from "@/lib/api";
 
 const loginSchema = z.object({
   username: z.string().min(1, "Username is required"),
@@ -42,8 +42,8 @@ function LoginPage() {
       username: string;
       password: string;
     }) => apiLogin(username, password),
-    onSuccess: (data: AuthResponse) => {
-      auth.login(data.user);
+    onSuccess: () => {
+      auth.login();
       toast.success("Logged in!");
       navigate({ to: "/" });
     },
