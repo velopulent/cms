@@ -10,26 +10,29 @@ use crate::grpc::cms::v1::{
 };
 use crate::grpc::interceptor::get_auth_context;
 use crate::models::file::File;
+use crate::repository::Repository;
 use crate::repository::traits::ListFilesParams;
 use crate::services::file::FileService as AppFileService;
 
 #[derive(Clone)]
 pub struct FileServiceImpl {
     app_file_service: Arc<AppFileService>,
+    repository: Arc<Repository>,
 }
 
 impl FileServiceImpl {
-    pub fn new(file_service: Arc<AppFileService>) -> Self {
+    pub fn new(file_service: Arc<AppFileService>, repository: Arc<Repository>) -> Self {
         Self {
             app_file_service: file_service,
+            repository,
         }
     }
 }
 
 #[tonic::async_trait]
 impl FileService for FileServiceImpl {
-    async fn list_files(&self, request: Request<ListFilesRequest>) -> Result<Response<ListFilesResponse>, Status> {
-        let auth = get_auth_context(&request)?;
+    async fn list_files(&self, mut request: Request<ListFilesRequest>) -> Result<Response<ListFilesResponse>, Status> {
+        let auth = get_auth_context(&mut request, &self.repository).await?;
         auth.require_site_scope(crate::middleware::auth::SCOPE_ASSETS_READ)?;
         let site_id = auth.require_site_id()?.to_string();
 
@@ -60,8 +63,8 @@ impl FileService for FileServiceImpl {
         Ok(Response::new(response))
     }
 
-    async fn get_file(&self, request: Request<GetFileRequest>) -> Result<Response<ProtoFile>, Status> {
-        let auth = get_auth_context(&request)?;
+    async fn get_file(&self, mut request: Request<GetFileRequest>) -> Result<Response<ProtoFile>, Status> {
+        let auth = get_auth_context(&mut request, &self.repository).await?;
         auth.require_site_scope(crate::middleware::auth::SCOPE_ASSETS_READ)?;
         let site_id = auth.require_site_id()?.to_string();
         let id = request.into_inner().id;
@@ -76,8 +79,8 @@ impl FileService for FileServiceImpl {
         Ok(Response::new(ProtoFile::from(file)))
     }
 
-    async fn delete_file(&self, request: Request<DeleteFileRequest>) -> Result<Response<DeleteResponse>, Status> {
-        let auth = get_auth_context(&request)?;
+    async fn delete_file(&self, mut request: Request<DeleteFileRequest>) -> Result<Response<DeleteResponse>, Status> {
+        let auth = get_auth_context(&mut request, &self.repository).await?;
         auth.require_site_scope(crate::middleware::auth::SCOPE_ASSETS_WRITE)?;
         let site_id = auth.require_site_id()?.to_string();
         let id = request.into_inner().id;
@@ -98,8 +101,8 @@ impl FileService for FileServiceImpl {
         }))
     }
 
-    async fn restore_file(&self, request: Request<RestoreFileRequest>) -> Result<Response<ProtoFile>, Status> {
-        let auth = get_auth_context(&request)?;
+    async fn restore_file(&self, mut request: Request<RestoreFileRequest>) -> Result<Response<ProtoFile>, Status> {
+        let auth = get_auth_context(&mut request, &self.repository).await?;
         auth.require_site_scope(crate::middleware::auth::SCOPE_ASSETS_WRITE)?;
         let site_id = auth.require_site_id()?.to_string();
         let id = request.into_inner().id;
@@ -126,9 +129,9 @@ impl FileService for FileServiceImpl {
 
     async fn batch_delete_files(
         &self,
-        request: Request<BatchDeleteFilesRequest>,
+        mut request: Request<BatchDeleteFilesRequest>,
     ) -> Result<Response<BatchOperationResponse>, Status> {
-        let auth = get_auth_context(&request)?;
+        let auth = get_auth_context(&mut request, &self.repository).await?;
         auth.require_site_scope(crate::middleware::auth::SCOPE_ASSETS_WRITE)?;
         let site_id = auth.require_site_id()?.to_string();
         let ids = request.into_inner().ids;
@@ -146,9 +149,9 @@ impl FileService for FileServiceImpl {
 
     async fn batch_restore_files(
         &self,
-        request: Request<BatchRestoreFilesRequest>,
+        mut request: Request<BatchRestoreFilesRequest>,
     ) -> Result<Response<BatchOperationResponse>, Status> {
-        let auth = get_auth_context(&request)?;
+        let auth = get_auth_context(&mut request, &self.repository).await?;
         auth.require_site_scope(crate::middleware::auth::SCOPE_ASSETS_WRITE)?;
         let site_id = auth.require_site_id()?.to_string();
         let ids = request.into_inner().ids;
