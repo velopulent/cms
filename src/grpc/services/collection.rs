@@ -9,17 +9,20 @@ use crate::grpc::cms::v1::{
 };
 use crate::grpc::interceptor::get_auth_context;
 use crate::models::collection::Collection;
+use crate::repository::Repository;
 use crate::services::collection::CollectionService as AppCollectionService;
 
 #[derive(Clone)]
 pub struct CollectionServiceImpl {
     app_collection_service: Arc<AppCollectionService>,
+    repository: Arc<Repository>,
 }
 
 impl CollectionServiceImpl {
-    pub fn new(collection_service: Arc<AppCollectionService>) -> Self {
+    pub fn new(collection_service: Arc<AppCollectionService>, repository: Arc<Repository>) -> Self {
         Self {
             app_collection_service: collection_service,
+            repository,
         }
     }
 }
@@ -28,9 +31,9 @@ impl CollectionServiceImpl {
 impl CollectionService for CollectionServiceImpl {
     async fn list_collections(
         &self,
-        request: Request<ListCollectionsRequest>,
+        mut request: Request<ListCollectionsRequest>,
     ) -> Result<Response<ListCollectionsResponse>, Status> {
-        let auth = get_auth_context(&request)?;
+        let auth = get_auth_context(&mut request, &self.repository).await?;
         auth.require_site_scope(crate::middleware::auth::SCOPE_SCHEMA_READ)?;
         let site_id = auth.require_site_id()?.to_string();
 
@@ -52,9 +55,9 @@ impl CollectionService for CollectionServiceImpl {
 
     async fn get_collection(
         &self,
-        request: Request<GetCollectionRequest>,
+        mut request: Request<GetCollectionRequest>,
     ) -> Result<Response<ProtoCollection>, Status> {
-        let auth = get_auth_context(&request)?;
+        let auth = get_auth_context(&mut request, &self.repository).await?;
         auth.require_site_scope(crate::middleware::auth::SCOPE_SCHEMA_READ)?;
         let site_id = auth.require_site_id()?.to_string();
         let slug = &request.into_inner().slug;
@@ -71,9 +74,9 @@ impl CollectionService for CollectionServiceImpl {
 
     async fn create_collection(
         &self,
-        request: Request<CreateCollectionRequest>,
+        mut request: Request<CreateCollectionRequest>,
     ) -> Result<Response<ProtoCollection>, Status> {
-        let auth = get_auth_context(&request)?;
+        let auth = get_auth_context(&mut request, &self.repository).await?;
         auth.require_site_scope(crate::middleware::auth::SCOPE_SCHEMA_WRITE)?;
         let site_id = auth.require_site_id()?.to_string();
 
@@ -96,9 +99,9 @@ impl CollectionService for CollectionServiceImpl {
 
     async fn update_collection(
         &self,
-        request: Request<UpdateCollectionRequest>,
+        mut request: Request<UpdateCollectionRequest>,
     ) -> Result<Response<ProtoCollection>, Status> {
-        let auth = get_auth_context(&request)?;
+        let auth = get_auth_context(&mut request, &self.repository).await?;
         auth.require_site_scope(crate::middleware::auth::SCOPE_SCHEMA_WRITE)?;
         let site_id = auth.require_site_id()?.to_string();
 
@@ -128,9 +131,9 @@ impl CollectionService for CollectionServiceImpl {
 
     async fn delete_collection(
         &self,
-        request: Request<DeleteCollectionRequest>,
+        mut request: Request<DeleteCollectionRequest>,
     ) -> Result<Response<DeleteResponse>, Status> {
-        let auth = get_auth_context(&request)?;
+        let auth = get_auth_context(&mut request, &self.repository).await?;
         auth.require_site_scope(crate::middleware::auth::SCOPE_SCHEMA_WRITE)?;
         let site_id = auth.require_site_id()?.to_string();
         let req = request.into_inner();
