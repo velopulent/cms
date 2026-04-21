@@ -9,18 +9,21 @@ use crate::grpc::cms::v1::{
 };
 use crate::grpc::interceptor::get_auth_context;
 use crate::models::entry::Entry;
+use crate::repository::Repository;
 use crate::repository::traits::ListEntriesParams;
 use crate::services::entry::EntryService as AppEntryService;
 
 #[derive(Clone)]
 pub struct EntryServiceImpl {
     app_entry_service: Arc<AppEntryService>,
+    repository: Arc<Repository>,
 }
 
 impl EntryServiceImpl {
-    pub fn new(entry_service: Arc<AppEntryService>) -> Self {
+    pub fn new(entry_service: Arc<AppEntryService>, repository: Arc<Repository>) -> Self {
         Self {
             app_entry_service: entry_service,
+            repository,
         }
     }
 }
@@ -29,9 +32,9 @@ impl EntryServiceImpl {
 impl EntryService for EntryServiceImpl {
     async fn list_entries(
         &self,
-        request: Request<ListEntriesRequest>,
+        mut request: Request<ListEntriesRequest>,
     ) -> Result<Response<ListEntriesResponse>, Status> {
-        let auth = get_auth_context(&request)?;
+        let auth = get_auth_context(&mut request, &self.repository).await?;
         auth.require_site_scope(crate::middleware::auth::SCOPE_CONTENT_READ)?;
         let site_id = auth.require_site_id()?.to_string();
 
@@ -64,8 +67,8 @@ impl EntryService for EntryServiceImpl {
         Ok(Response::new(response))
     }
 
-    async fn get_entry(&self, request: Request<GetEntryRequest>) -> Result<Response<ProtoEntry>, Status> {
-        let auth = get_auth_context(&request)?;
+    async fn get_entry(&self, mut request: Request<GetEntryRequest>) -> Result<Response<ProtoEntry>, Status> {
+        let auth = get_auth_context(&mut request, &self.repository).await?;
         auth.require_site_scope(crate::middleware::auth::SCOPE_CONTENT_READ)?;
         let site_id = auth.require_site_id()?.to_string();
         let id = request.into_inner().id;
@@ -80,8 +83,8 @@ impl EntryService for EntryServiceImpl {
         Ok(Response::new(ProtoEntry::from(entry)))
     }
 
-    async fn create_entry(&self, request: Request<CreateEntryRequest>) -> Result<Response<ProtoEntry>, Status> {
-        let auth = get_auth_context(&request)?;
+    async fn create_entry(&self, mut request: Request<CreateEntryRequest>) -> Result<Response<ProtoEntry>, Status> {
+        let auth = get_auth_context(&mut request, &self.repository).await?;
         auth.require_site_scope(crate::middleware::auth::SCOPE_CONTENT_WRITE)?;
         let site_id = auth.require_site_id()?.to_string();
 
@@ -97,8 +100,8 @@ impl EntryService for EntryServiceImpl {
         Ok(Response::new(ProtoEntry::from(entry)))
     }
 
-    async fn update_entry(&self, request: Request<UpdateEntryRequest>) -> Result<Response<ProtoEntry>, Status> {
-        let auth = get_auth_context(&request)?;
+    async fn update_entry(&self, mut request: Request<UpdateEntryRequest>) -> Result<Response<ProtoEntry>, Status> {
+        let auth = get_auth_context(&mut request, &self.repository).await?;
         auth.require_site_scope(crate::middleware::auth::SCOPE_CONTENT_WRITE)?;
         let site_id = auth.require_site_id()?.to_string();
 
@@ -120,8 +123,8 @@ impl EntryService for EntryServiceImpl {
         Ok(Response::new(ProtoEntry::from(entry)))
     }
 
-    async fn delete_entry(&self, request: Request<DeleteEntryRequest>) -> Result<Response<DeleteResponse>, Status> {
-        let auth = get_auth_context(&request)?;
+    async fn delete_entry(&self, mut request: Request<DeleteEntryRequest>) -> Result<Response<DeleteResponse>, Status> {
+        let auth = get_auth_context(&mut request, &self.repository).await?;
         auth.require_site_scope(crate::middleware::auth::SCOPE_CONTENT_WRITE)?;
         let site_id = auth.require_site_id()?.to_string();
         let id = request.into_inner().id;
@@ -142,8 +145,8 @@ impl EntryService for EntryServiceImpl {
         }))
     }
 
-    async fn publish_entry(&self, request: Request<PublishEntryRequest>) -> Result<Response<ProtoEntry>, Status> {
-        let auth = get_auth_context(&request)?;
+    async fn publish_entry(&self, mut request: Request<PublishEntryRequest>) -> Result<Response<ProtoEntry>, Status> {
+        let auth = get_auth_context(&mut request, &self.repository).await?;
         auth.require_site_scope(crate::middleware::auth::SCOPE_CONTENT_WRITE)?;
         let site_id = auth.require_site_id()?.to_string();
         let id = request.into_inner().id;
@@ -157,8 +160,8 @@ impl EntryService for EntryServiceImpl {
         Ok(Response::new(ProtoEntry::from(entry)))
     }
 
-    async fn unpublish_entry(&self, request: Request<UnpublishEntryRequest>) -> Result<Response<ProtoEntry>, Status> {
-        let auth = get_auth_context(&request)?;
+    async fn unpublish_entry(&self, mut request: Request<UnpublishEntryRequest>) -> Result<Response<ProtoEntry>, Status> {
+        let auth = get_auth_context(&mut request, &self.repository).await?;
         auth.require_site_scope(crate::middleware::auth::SCOPE_CONTENT_WRITE)?;
         let site_id = auth.require_site_id()?.to_string();
         let id = request.into_inner().id;
