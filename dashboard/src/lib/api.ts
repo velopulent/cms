@@ -2,6 +2,17 @@ const BASE_URL = "/api/v1";
 const AUTH_URL = "/api/auth";
 const SITE_HEADER = "x-cms-site-id";
 
+export class ApiError extends Error {
+  status: number;
+  body?: any;
+
+  constructor(status: number, message?: string, body?: any) {
+    super(message);
+    this.status = status;
+    this.body = body;
+  }
+}
+
 export async function api<T>(
   path: string,
   options: RequestInit = {},
@@ -17,15 +28,9 @@ export async function api<T>(
     credentials: "include",
   });
 
-  if (res.status === 401) {
-    localStorage.removeItem("cms_user");
-    window.location.href = "/login";
-    throw new Error("Unauthorized");
-  }
-
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
-    throw new Error(body.error || `Request failed: ${res.status}`);
+    throw new ApiError(res.status, body.error || "Request failed", body);
   }
 
   if (res.status === 204) {
@@ -67,7 +72,7 @@ export async function authApi<T>(
 
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
-    throw new Error(body.error || `Request failed: ${res.status}`);
+    throw new ApiError(res.status, body.error || "Request failed", body);
   }
 
   if (res.status === 204) {
@@ -566,15 +571,9 @@ export async function uploadFile(
     body: formData,
   });
 
-  if (res.status === 401) {
-    localStorage.removeItem("cms_user");
-    window.location.href = "/login";
-    throw new Error("Unauthorized");
-  }
-
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
-    throw new Error(body.error || `Upload failed: ${res.status}`);
+    throw new ApiError(res.status, body.error || "Upload failed", body);
   }
 
   return res.json();
