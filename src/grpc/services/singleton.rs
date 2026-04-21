@@ -5,6 +5,7 @@ use tonic::{Request, Response, Status};
 use crate::grpc::cms::v1::singleton_service_server::SingletonService;
 use crate::grpc::cms::v1::{GetSingletonRequest, Singleton as ProtoSingleton, UpdateSingletonRequest};
 use crate::grpc::interceptor::get_auth_context;
+use crate::repository::Repository;
 use crate::services::singleton::SingletonService as AppSingletonService;
 use crate::storage::{STORAGE_KIND_FILESYSTEM, StorageProvider, StorageRegistry};
 
@@ -12,21 +13,23 @@ use crate::storage::{STORAGE_KIND_FILESYSTEM, StorageProvider, StorageRegistry};
 pub struct SingletonServiceImpl {
     app_singleton_service: Arc<AppSingletonService>,
     storage_registry: Arc<StorageRegistry>,
+    repository: Arc<Repository>,
 }
 
 impl SingletonServiceImpl {
-    pub fn new(singleton_service: Arc<AppSingletonService>, storage_registry: Arc<StorageRegistry>) -> Self {
+    pub fn new(singleton_service: Arc<AppSingletonService>, storage_registry: Arc<StorageRegistry>, repository: Arc<Repository>) -> Self {
         Self {
             app_singleton_service: singleton_service,
             storage_registry,
+            repository,
         }
     }
 }
 
 #[tonic::async_trait]
 impl SingletonService for SingletonServiceImpl {
-    async fn get_singleton(&self, request: Request<GetSingletonRequest>) -> Result<Response<ProtoSingleton>, Status> {
-        let auth = get_auth_context(&request)?;
+    async fn get_singleton(&self, mut request: Request<GetSingletonRequest>) -> Result<Response<ProtoSingleton>, Status> {
+        let auth = get_auth_context(&mut request, &self.repository).await?;
         auth.require_site_scope(crate::middleware::auth::SCOPE_CONTENT_READ)?;
         let site_id = auth.require_site_id()?.to_string();
         let slug = request.into_inner().slug;
@@ -48,9 +51,9 @@ impl SingletonService for SingletonServiceImpl {
 
     async fn update_singleton(
         &self,
-        request: Request<UpdateSingletonRequest>,
+        mut request: Request<UpdateSingletonRequest>,
     ) -> Result<Response<ProtoSingleton>, Status> {
-        let auth = get_auth_context(&request)?;
+        let auth = get_auth_context(&mut request, &self.repository).await?;
         auth.require_site_scope(crate::middleware::auth::SCOPE_CONTENT_WRITE)?;
         let site_id = auth.require_site_id()?.to_string();
         let req = request.into_inner();
