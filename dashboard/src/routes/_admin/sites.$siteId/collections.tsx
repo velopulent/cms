@@ -235,73 +235,76 @@ function CollectionsPage() {
                           <Link
                             to="/sites/$siteId/singletons/$slug"
                             params={{ siteId, slug: c.slug }}
-                            className={buttonVariants({ variant: "ghost", size: "icon" })}
+                            className={buttonVariants({
+                              variant: "ghost",
+                              size: "icon",
+                            })}
                           >
                             <Pencil />
                           </Link>
                         ) : (
-                        <Sheet
-                          open={editCollection?.id === c.id}
-                          onOpenChange={(open) =>
-                            setEditCollection(open ? c : null)
-                          }
-                        >
-                          <SheetTrigger
-                            render={<Button variant="ghost" size="icon" />}
-                          >
-                            <Pencil />
-                          </SheetTrigger>
-                          <SheetContent
-                            className={
-                              "data-[side=right]:w-full data-[side=right]:sm:max-w-xl"
+                          <Sheet
+                            open={editCollection?.id === c.id}
+                            onOpenChange={(open) =>
+                              setEditCollection(open ? c : null)
                             }
                           >
-                            <SheetHeader>
-                              <SheetTitle>Edit Collection</SheetTitle>
-                              <SheetDescription>
-                                Update the collection definition.
-                              </SheetDescription>
-                            </SheetHeader>
-                            <div className="flex-1 overflow-y-auto px-4">
-                              <CollectionForm
-                                initialData={c}
-                                onSubmit={(data) => {
-                                  updateCollection(siteId, c.slug, {
-                                    name: data.name,
-                                    slug: data.slug,
-                                    definition: data.definition,
-                                  })
-                                    .then(() => {
-                                      queryClient.invalidateQueries({
-                                        queryKey: ["collections", siteId],
-                                      });
-                                      setEditCollection(null);
-                                      toast.success("Collection updated");
+                            <SheetTrigger
+                              render={<Button variant="ghost" size="icon" />}
+                            >
+                              <Pencil />
+                            </SheetTrigger>
+                            <SheetContent
+                              className={
+                                "data-[side=right]:w-full data-[side=right]:sm:max-w-xl"
+                              }
+                            >
+                              <SheetHeader>
+                                <SheetTitle>Edit Collection</SheetTitle>
+                                <SheetDescription>
+                                  Update the collection definition.
+                                </SheetDescription>
+                              </SheetHeader>
+                              <div className="flex-1 overflow-y-auto px-4">
+                                <CollectionForm
+                                  initialData={c}
+                                  onSubmit={(data) => {
+                                    updateCollection(siteId, c.slug, {
+                                      name: data.name,
+                                      slug: data.slug,
+                                      definition: data.definition,
                                     })
-                                    .catch((err: Error) =>
-                                      toast.error(err.message),
-                                    );
-                                }}
-                              />
-                            </div>
-                            <SheetFooter>
-                              <Button
-                                type="submit"
-                                form="collection-form-edit"
-                                disabled={false}
-                              >
-                                Update Collection
-                              </Button>
-                              <SheetClose
-                                render={
-                                  <Button type="button" variant="outline">
-                                    Cancel
-                                  </Button>
-                                }
-                              />
-                            </SheetFooter>
-                          </SheetContent>
-                        </Sheet>
+                                      .then(() => {
+                                        queryClient.invalidateQueries({
+                                          queryKey: ["collections", siteId],
+                                        });
+                                        setEditCollection(null);
+                                        toast.success("Collection updated");
+                                      })
+                                      .catch((err: Error) =>
+                                        toast.error(err.message),
+                                      );
+                                  }}
+                                />
+                              </div>
+                              <SheetFooter>
+                                <Button
+                                  type="submit"
+                                  form="collection-form-edit"
+                                  disabled={false}
+                                >
+                                  Update Collection
+                                </Button>
+                                <SheetClose
+                                  render={
+                                    <Button type="button" variant="outline">
+                                      Cancel
+                                    </Button>
+                                  }
+                                />
+                              </SheetFooter>
+                            </SheetContent>
+                          </Sheet>
                         )}
                         <Button
                           variant="ghost"
