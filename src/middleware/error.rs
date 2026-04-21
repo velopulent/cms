@@ -91,4 +91,15 @@ impl AuthError {
             }),
         )
     }
+
+    pub fn csrf_error(message: &str) -> (StatusCode, Json<AuthError>) {
+        (
+            StatusCode::FORBIDDEN,
+            Json(Self {
+                error: "csrf_error".into(),
+                message: message.into(),
+            }),
+        )
+    }
 }
+
