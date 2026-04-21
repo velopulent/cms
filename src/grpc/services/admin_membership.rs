@@ -10,17 +10,20 @@ use crate::grpc::cms::v1::{
 use crate::grpc::interceptor::get_auth_context;
 use crate::middleware::auth::{SCOPE_MEMBERS_READ, SCOPE_MEMBERS_WRITE};
 use crate::models::site::SiteMember;
+use crate::repository::Repository;
 use crate::services::site::SiteService;
 
 #[derive(Clone)]
 pub struct MembershipServiceImpl {
     app_site_service: Arc<SiteService>,
+    repository: Arc<Repository>,
 }
 
 impl MembershipServiceImpl {
-    pub fn new(site_service: Arc<SiteService>) -> Self {
+    pub fn new(site_service: Arc<SiteService>, repository: Arc<Repository>) -> Self {
         Self {
             app_site_service: site_service,
+            repository,
         }
     }
 }
@@ -29,9 +32,9 @@ impl MembershipServiceImpl {
 impl MembershipService for MembershipServiceImpl {
     async fn list_members(
         &self,
-        request: Request<ListMembersRequest>,
+        mut request: Request<ListMembersRequest>,
     ) -> Result<Response<ListMembersResponse>, Status> {
-        let auth = get_auth_context(&request)?;
+        let auth = get_auth_context(&mut request, &self.repository).await?;
         auth.require_instance_scope(SCOPE_MEMBERS_READ)?;
         let site_id = request.into_inner().site_id;
 
@@ -46,8 +49,8 @@ impl MembershipService for MembershipServiceImpl {
         }))
     }
 
-    async fn invite_member(&self, request: Request<InviteMemberRequest>) -> Result<Response<ProtoSiteMember>, Status> {
-        let auth = get_auth_context(&request)?;
+    async fn invite_member(&self, mut request: Request<InviteMemberRequest>) -> Result<Response<ProtoSiteMember>, Status> {
+        let auth = get_auth_context(&mut request, &self.repository).await?;
         auth.require_instance_scope(SCOPE_MEMBERS_WRITE)?;
         let req = request.into_inner();
 
@@ -69,9 +72,9 @@ impl MembershipService for MembershipServiceImpl {
 
     async fn update_member_role(
         &self,
-        request: Request<UpdateMemberRoleRequest>,
+        mut request: Request<UpdateMemberRoleRequest>,
     ) -> Result<Response<ProtoSiteMember>, Status> {
-        let auth = get_auth_context(&request)?;
+        let auth = get_auth_context(&mut request, &self.repository).await?;
         auth.require_instance_scope(SCOPE_MEMBERS_WRITE)?;
         let req = request.into_inner();
 
@@ -85,8 +88,8 @@ impl MembershipService for MembershipServiceImpl {
         Ok(Response::new(ProtoSiteMember::from(member)))
     }
 
-    async fn remove_member(&self, request: Request<RemoveMemberRequest>) -> Result<Response<DeleteResponse>, Status> {
-        let auth = get_auth_context(&request)?;
+    async fn remove_member(&self, mut request: Request<RemoveMemberRequest>) -> Result<Response<DeleteResponse>, Status> {
+        let auth = get_auth_context(&mut request, &self.repository).await?;
         auth.require_instance_scope(SCOPE_MEMBERS_WRITE)?;
         let req = request.into_inner();
 
