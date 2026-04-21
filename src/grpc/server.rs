@@ -7,7 +7,7 @@ use tonic::transport::Server;
 use tracing::info;
 
 use crate::config::Config;
-use crate::grpc::middleware::AuthLayer;
+use crate::grpc::interceptor::AuthInterceptor;
 use crate::grpc::services::admin_membership::MembershipServiceImpl;
 use crate::grpc::services::admin_site::SiteServiceImpl;
 use crate::grpc::services::admin_token::AdminTokenServiceImpl;
@@ -30,28 +30,48 @@ pub async fn start_grpc_server(
 
     let services = Services::new((*repository).clone(), &config);
 
-    let auth_layer = AuthLayer::new(repository.clone(), config.clone());
+    let collection_svc = CollectionServiceImpl::new(services.collection.clone(), repository.clone());
+    let entry_svc = EntryServiceImpl::new(services.entry.clone(), repository.clone());
+    let singleton_svc = SingletonServiceImpl::new(services.singleton.clone(), storage_registry, repository.clone());
+    let file_svc = FileServiceImpl::new(services.file.clone(), repository.clone());
+    let site_svc = SiteServiceImpl::new(services.site.clone(), repository.clone());
+    let membership_svc = MembershipServiceImpl::new(services.site.clone(), repository.clone());
+    let token_svc = AdminTokenServiceImpl::new(services.access_token.clone(), repository.clone());
 
-    let collection_svc = CollectionServiceImpl::new(services.collection.clone());
-    let entry_svc = EntryServiceImpl::new(services.entry.clone());
-    let singleton_svc = SingletonServiceImpl::new(services.singleton.clone(), storage_registry);
-    let file_svc = FileServiceImpl::new(services.file.clone());
-    let site_svc = SiteServiceImpl::new(services.site.clone());
-    let membership_svc = MembershipServiceImpl::new(services.site.clone());
-    let token_svc = AdminTokenServiceImpl::new(services.access_token.clone());
+    let interceptor = AuthInterceptor::new(config.clone());
 
-    let collection_svc = crate::grpc::cms::v1::collection_service_server::CollectionServiceServer::new(collection_svc);
-    let entry_svc = crate::grpc::cms::v1::entry_service_server::EntryServiceServer::new(entry_svc);
-    let singleton_svc = crate::grpc::cms::v1::singleton_service_server::SingletonServiceServer::new(singleton_svc);
-    let file_svc = crate::grpc::cms::v1::file_service_server::FileServiceServer::new(file_svc);
-    let site_svc = crate::grpc::cms::v1::site_service_server::SiteServiceServer::new(site_svc);
-    let membership_svc = crate::grpc::cms::v1::membership_service_server::MembershipServiceServer::new(membership_svc);
-    let token_svc = crate::grpc::cms::v1::token_service_server::TokenServiceServer::new(token_svc);
+    let collection_svc = crate::grpc::cms::v1::collection_service_server::CollectionServiceServer::with_interceptor(
+        collection_svc,
+        interceptor.clone(),
+    );
+    let entry_svc = crate::grpc::cms::v1::entry_service_server::EntryServiceServer::with_interceptor(
+        entry_svc,
+        interceptor.clone(),
+    );
+    let singleton_svc = crate::grpc::cms::v1::singleton_service_server::SingletonServiceServer::with_interceptor(
+        singleton_svc,
+        interceptor.clone(),
+    );
+    let file_svc = crate::grpc::cms::v1::file_service_server::FileServiceServer::with_interceptor(
+        file_svc,
+        interceptor.clone(),
+    );
+    let site_svc = crate::grpc::cms::v1::site_service_server::SiteServiceServer::with_interceptor(
+        site_svc,
+        interceptor.clone(),
+    );
+    let membership_svc = crate::grpc::cms::v1::membership_service_server::MembershipServiceServer::with_interceptor(
+        membership_svc,
+        interceptor.clone(),
+    );
+    let token_svc = crate::grpc::cms::v1::token_service_server::TokenServiceServer::with_interceptor(
+        token_svc,
+        interceptor.clone(),
+    );
 
     info!("gRPC server listening on {}", grpc_addr);
 
     Server::builder()
-        .layer(auth_layer)
         .add_service(collection_svc)
         .add_service(entry_svc)
         .add_service(singleton_svc)
