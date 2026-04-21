@@ -1,43 +1,50 @@
-import { createContext, type ReactNode, useContext, useState } from "react";
-import { logoutApi, type UserPublic } from "@/lib/api";
+import { createContext, type ReactNode, useContext } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { logoutApi, getMe, type UserPublic } from "@/lib/api";
 
 interface AuthContextValue {
   user: UserPublic | null;
-  login: (user: UserPublic) => void;
+  login: () => Promise<void>;
   logout: () => Promise<void>;
   isAuthenticated: boolean;
+  isLoading: boolean;
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const [user, setUser] = useState<UserPublic | null>(() => {
-    const stored = localStorage.getItem("cms_user");
-    return stored ? JSON.parse(stored) : null;
+  const queryClient = useQueryClient();
+
+  const { data: user, isLoading } = useQuery({
+    queryKey: ["me"],
+    queryFn: getMe,
+    retry: false,
+    staleTime: 5 * 60 * 1000, // cache for 5 mins
   });
 
-  const handleLogin = (newUser: UserPublic) => {
-    localStorage.setItem("cms_user", JSON.stringify(newUser));
-    setUser(newUser);
+  const handleLogin = async () => {
+    // After successful login API call elsewhere
+    await queryClient.invalidateQueries({ queryKey: ["me"] });
   };
 
   const handleLogout = async () => {
     try {
       await logoutApi();
     } catch {
-      // Logout endpoint may fail if cookie is already expired — that's fine
+      // ignore errors (expired session etc.)
     }
-    localStorage.removeItem("cms_user");
-    setUser(null);
+
+    queryClient.removeQueries({ queryKey: ["me"] });
   };
 
   return (
     <AuthContext.Provider
       value={{
-        user,
+        user: user ?? null,
         login: handleLogin,
         logout: handleLogout,
         isAuthenticated: !!user,
+        isLoading,
       }}
     >
       {children}
@@ -47,6 +54,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
 export function useAuth() {
   const ctx = useContext(AuthContext);
-  if (!ctx) throw new Error("useAuth must be used within AuthProvider");
+  if (!ctx) {
+    throw new Error("useAuth must be used within AuthProvider");
+  }
   return ctx;
 }
