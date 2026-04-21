@@ -21,7 +21,7 @@ fn main() {
 
     let proto_files = ["proto/cms.proto"];
     let include_dirs = ["proto"];
-    tonic_build::configure()
+    tonic_prost_build::configure()
         .build_server(true)
         .build_client(false)
         .out_dir("src/grpc/cms")
