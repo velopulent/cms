@@ -1,6 +1,9 @@
-# CMS
-
-A headless, API-first content management system built for developers.
+<p align="center">
+  <img src="assets/logo.avif" width="400" />
+    <p align="center">
+    A headless, API-first content management system built for developers.
+    </p>
+</p>
 
 ---
 
