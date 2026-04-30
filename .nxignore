@@ -1,0 +1,13 @@
+# Generated output directories
+**/dist/
+**/.tanstack/
+**/src/routeTree.gen.ts
+
+# Dependencies
+node_modules/
+
+# Nx cache
+.nx/
+
+# Rust build artifacts
+target/
