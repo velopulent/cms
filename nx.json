@@ -6,12 +6,19 @@
     "sharedGlobals": [
       "{workspaceRoot}/rust-toolchain.toml",
       "{workspaceRoot}/rustfmt.toml",
-      "{workspaceRoot}/clippy.toml"
+      "{workspaceRoot}/clippy.toml",
+      "{workspaceRoot}/Cargo.lock",
+      "{workspaceRoot}/package.json",
+      "{workspaceRoot}/bun.lock"
     ],
     "production": [
       "default",
       "!{projectRoot}/**/*.test.ts",
-      "!{projectRoot}/**/*.test.tsx"
+      "!{projectRoot}/**/*.test.tsx",
+      "!{projectRoot}/dist/**/*",
+      "!{projectRoot}/.tanstack/**/*",
+      "!{projectRoot}/src/routeTree.gen.ts",
+      "!{projectRoot}/node_modules/**/*"
     ]
   },
   "targetDefaults": {
