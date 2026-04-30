@@ -1,0 +1,8 @@
+{
+  "name": "@cms/source",
+  "private": true,
+  "workspaces": ["apps/*", "libs/*"],
+  "devDependencies": {
+    "nx": "^20.0.0"
+  }
+}

@@ -3,13 +3,19 @@ use axum::{
     http::{StatusCode, header},
     response::{IntoResponse, Response},
 };
+
+#[cfg(feature = "embed-dashboard")]
 use mime_guess::from_path;
+
+#[cfg(feature = "embed-dashboard")]
 use rust_embed::RustEmbed;
 
+#[cfg(feature = "embed-dashboard")]
 #[derive(RustEmbed)]
-#[folder = "dashboard/dist"]
+#[folder = "../dashboard/dist"]
 pub struct Assets;
 
+#[cfg(feature = "embed-dashboard")]
 pub async fn dashboard_handler(Path(path): Path<String>) -> Response {
     let requested_path = if path.is_empty() { "index.html" } else { path.as_str() };
 
@@ -27,4 +33,15 @@ pub async fn dashboard_handler(Path(path): Path<String>) -> Response {
             }
         }
     }
+}
+
+#[cfg(not(feature = "embed-dashboard"))]
+pub async fn dashboard_handler(Path(_path): Path<String>) -> Response {
+    (
+        StatusCode::SERVICE_UNAVAILABLE,
+        [(header::CONTENT_TYPE, "text/plain")],
+        "Dashboard not available in development mode. \
+         Run with the embed-dashboard feature enabled, or use the Vite dev server (nx dev dashboard).",
+    )
+        .into_response()
 }

@@ -1,8 +1,25 @@
+# Rust
 /target
+
+# Database
 cms.db
 cms.db-shm
 cms.db-wal
+
+# Env
 !.env.example
 .env*
+
+# Uploads
 /uploads
 /media
+
+# Node / Nx
+node_modules
+.nx
+dist
+
+# IDE
+.DS_Store
+.vscode
+.idea

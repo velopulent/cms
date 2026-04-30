@@ -1,0 +1,61 @@
+{
+  "name": "backend",
+  "$schema": "../../node_modules/nx/schemas/project-schema.json",
+  "sourceRoot": "apps/backend/src",
+  "projectType": "application",
+  "targets": {
+    "build": {
+      "executor": "nx:run-commands",
+      "dependsOn": ["dashboard:build"],
+      "options": {
+        "command": "cargo build --release --locked",
+        "env": { "SKIP_DASHBOARD_BUILD": "1" }
+      },
+      "outputs": ["{workspaceRoot}/target/release/cms"],
+      "cache": false
+    },
+    "build-dev": {
+      "executor": "nx:run-commands",
+      "dependsOn": ["dashboard:build"],
+      "options": {
+        "command": "cargo build --locked",
+        "env": { "SKIP_DASHBOARD_BUILD": "1" }
+      },
+      "outputs": ["{workspaceRoot}/target/debug/cms"],
+      "cache": false
+    },
+    "run": {
+      "executor": "nx:run-commands",
+      "dependsOn": ["build-dev"],
+      "options": {
+        "command": "cargo run --locked",
+        "env": { "SKIP_DASHBOARD_BUILD": "1" }
+      },
+      "cache": false
+    },
+    "run-dev": {
+      "executor": "nx:run-commands",
+      "dependsOn": [],
+      "options": {
+        "command": "cargo run --locked --no-default-features",
+        "env": { "DEV_MODE": "1" }
+      },
+      "cache": false
+    },
+    "test": {
+      "executor": "nx:run-commands",
+      "options": { "command": "cargo test --locked" },
+      "cache": false
+    },
+    "lint": {
+      "executor": "nx:run-commands",
+      "options": { "command": "cargo clippy --locked -- -D warnings" },
+      "cache": false
+    },
+    "format": {
+      "executor": "nx:run-commands",
+      "options": { "command": "cargo fmt -- --check" },
+      "cache": false
+    }
+  }
+}

@@ -1,0 +1,7 @@
+{
+  "name": "proto",
+  "$schema": "../../node_modules/nx/schemas/project-schema.json",
+  "sourceRoot": "libs/proto",
+  "projectType": "library",
+  "targets": {}
+}
