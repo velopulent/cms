@@ -21,25 +21,24 @@
 
 ## Developer Commands
 
-### Backend
-```bash
-nx run backend:run           # Runs server with embedded dashboard
-nx run backend:run-dev       # Runs server without dashboard embed (dev mode)
-nx run backend:build         # Release build
-nx run backend:test          # Run all Rust tests
-```
+All commands can be run via `bun` from the repository root:
 
-### Frontend
 ```bash
-nx run dashboard:dev         # Dev server with API proxy
-nx run dashboard:build       # Production build
-nx run dashboard:format      # Biome format
-nx run dashboard:lint        # Biome lint
-nx run dashboard:typecheck   # TypeScript type check
+bun run dev                  # Start both backend and dashboard in parallel
+bun run dev:backend          # Backend only (no dashboard embed)
+bun run dev:dashboard        # Dashboard Vite dev server only
+bun run run                  # Full backend with embedded dashboard
+bun run build                # Build all projects
+bun run build:backend        # Release build of backend
+bun run build:dashboard      # Production build of dashboard
+bun run test                 # Run all Rust tests
+bun run test:dashboard       # TypeScript type check
+bun run lint                 # Lint all projects
+bun run format               # Format all projects
 ```
 
 ### Testing
-- Rust: `nx run backend:test` (runs both `#[cfg(test)]` modules and `tests/` integration tests)
+- Rust: `bun run test` (runs both `#[cfg(test)]` modules and `tests/` integration tests)
 - Integration tests in `apps/backend/tests/` use in-memory SQLite (`sqlite::memory:`) and include schema directly
 
 ## Environment Variables
@@ -97,5 +96,5 @@ On initial startup, the server seeds a default admin user:
 
 1. Discover: Check this file, `README.md`, `Cargo.toml`, `nx.json`, and code patterns
 2. For new features: Identify handler and model boundaries; keep API stable
-3. For bugfixes: Reproduce with `nx run backend:run-dev` + `nx run dashboard:dev` or `nx run backend:test`
+3. For bugfixes: Reproduce with `bun run dev` or `bun run test`
 4. If a handler changes: Update frontend data fetching and UI integration
