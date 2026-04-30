@@ -2,6 +2,19 @@
   "name": "@cms/source",
   "private": true,
   "workspaces": ["apps/*", "libs/*"],
+  "scripts": {
+    "build": "nx run-many -t build",
+    "build:backend": "nx run backend:build",
+    "build:dashboard": "nx run dashboard:build",
+    "dev": "nx run-many -t run-dev dev --projects=backend,dashboard --parallel --output-style=stream",
+    "dev:backend": "nx run backend:run-dev",
+    "dev:dashboard": "nx run dashboard:dev",
+    "run": "nx run backend:run",
+    "test": "nx run backend:test",
+    "test:dashboard": "nx run dashboard:typecheck",
+    "lint": "nx run-many -t lint",
+    "format": "nx run-many -t format"
+  },
   "devDependencies": {
     "nx": "^20.0.0"
   }
