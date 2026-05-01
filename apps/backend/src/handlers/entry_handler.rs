@@ -16,6 +16,7 @@ use crate::repository::Repository;
 use crate::repository::traits::ListEntriesParams;
 use crate::services::Services;
 use crate::storage::{StorageProvider, StorageRegistry};
+use crate::utils::diff::compute_diff_for_revision;
 
 #[derive(Deserialize, utoipa::IntoParams)]
 pub struct ListParams {
@@ -26,8 +27,23 @@ pub struct ListParams {
     pub per_page: Option<i64>,
 }
 
+#[derive(Deserialize, utoipa::IntoParams, Debug)]
+pub struct RevisionListParams {
+    pub page: Option<i64>,
+    pub per_page: Option<i64>,
+}
+
+#[derive(Deserialize, utoipa::IntoParams, Debug)]
+pub struct DiffQuery {
+    pub diff: Option<bool>,
+}
+
 fn request_site_id(headers: &HeaderMap) -> Option<&str> {
     headers.get(HEADER_SITE_ID).and_then(|value| value.to_str().ok())
+}
+
+fn created_by_from_principal(principal: &Principal) -> Option<&str> {
+    principal.user_id()
 }
 
 fn get_storage_for_site(
@@ -205,9 +221,10 @@ pub async fn create_entry(
         Err((status, err)) => return (status, err).into_response(),
     };
 
+    let created_by = created_by_from_principal(&principal);
     match services
         .entry
-        .create_entry(&site.site_id, &payload.collection_id, &payload.data, &payload.slug)
+        .create_entry(&site.site_id, &payload.collection_id, &payload.data, &payload.slug, created_by)
         .await
     {
         Ok(item) => (StatusCode::CREATED, Json(item)).into_response(),
@@ -250,6 +267,7 @@ pub async fn update_entry(
         Err((status, err)) => return (status, err).into_response(),
     };
 
+    let created_by = created_by_from_principal(&principal);
     match services
         .entry
         .update_entry(
@@ -258,6 +276,8 @@ pub async fn update_entry(
             payload.data.as_ref(),
             payload.slug.as_deref(),
             payload.status.as_deref(),
+            created_by,
+            payload.change_summary.as_deref(),
         )
         .await
     {
@@ -380,6 +400,189 @@ pub async fn unpublish_entry(
     };
 
     match services.entry.unpublish_entry(&id, &site.site_id).await {
+        Ok(item) => (StatusCode::OK, Json(item)).into_response(),
+        Err(e) => e.into_response(),
+    }
+}
+
+#[utoipa::path(
+    get,
+    path = "/api/v1/entries/{id}/revisions",
+    params(("id" = String, Path, description = "Entry ID"), RevisionListParams),
+    responses(
+        (status = 200, description = "List of revisions"),
+        (status = 401, description = "Unauthorized"),
+        (status = 404, description = "Entry not found"),
+    ),
+    security(("bearer" = []), ("access_token" = [])),
+    tag = "entries"
+)]
+#[instrument(skip(repository, services, principal))]
+pub async fn list_entry_revisions(
+    principal: Principal,
+    headers: HeaderMap,
+    Path(id): Path<String>,
+    Query(params): Query<RevisionListParams>,
+    Extension(repository): Extension<Repository>,
+    Extension(services): Extension<Services>,
+) -> Response {
+    let site = match require_site_scope(
+        &principal,
+        &repository,
+        request_site_id(&headers),
+        SCOPE_CONTENT_READ,
+        "viewer",
+    )
+    .await
+    {
+        Ok(site) => site,
+        Err((status, err)) => return (status, err).into_response(),
+    };
+
+    // Verify entry exists and belongs to site
+    match services.entry.get_entry(&id, &site.site_id, false).await {
+        Ok(Some(_)) => {}
+        Ok(None) => return (StatusCode::NOT_FOUND, Json(json!({"error": "Entry not found"}))).into_response(),
+        Err(e) => return e.into_response(),
+    }
+
+    let page = params.page.unwrap_or(1).max(1);
+    let per_page = params.per_page.unwrap_or(50).clamp(1, 200);
+
+    match services.entry.list_revisions(&id, page, per_page).await {
+        Ok(result) => (
+            StatusCode::OK,
+            Json(json!({
+                "items": result.items,
+                "total": result.total,
+                "page": result.page,
+                "per_page": result.per_page,
+            })),
+        )
+            .into_response(),
+        Err(e) => e.into_response(),
+    }
+}
+
+#[utoipa::path(
+    get,
+    path = "/api/v1/entries/{id}/revisions/{number}",
+    params(
+        ("id" = String, Path, description = "Entry ID"),
+        ("number" = i64, Path, description = "Revision number"),
+        DiffQuery
+    ),
+    responses(
+        (status = 200, description = "Revision"),
+        (status = 401, description = "Unauthorized"),
+        (status = 404, description = "Revision not found"),
+    ),
+    security(("bearer" = []), ("access_token" = [])),
+    tag = "entries"
+)]
+#[instrument(skip(repository, services, principal))]
+pub async fn get_entry_revision(
+    principal: Principal,
+    headers: HeaderMap,
+    Path((id, number)): Path<(String, i64)>,
+    Query(query): Query<DiffQuery>,
+    Extension(repository): Extension<Repository>,
+    Extension(services): Extension<Services>,
+) -> Response {
+    let site = match require_site_scope(
+        &principal,
+        &repository,
+        request_site_id(&headers),
+        SCOPE_CONTENT_READ,
+        "viewer",
+    )
+    .await
+    {
+        Ok(site) => site,
+        Err((status, err)) => return (status, err).into_response(),
+    };
+
+    // Verify entry exists and belongs to site
+    match services.entry.get_entry(&id, &site.site_id, false).await {
+        Ok(Some(_)) => {}
+        Ok(None) => return (StatusCode::NOT_FOUND, Json(json!({"error": "Entry not found"}))).into_response(),
+        Err(e) => return e.into_response(),
+    }
+
+    match services.entry.get_revision(&id, number).await {
+        Ok(Some(revision)) => {
+            let mut response = json!({
+                "id": revision.id,
+                "entry_id": revision.entry_id,
+                "revision_number": revision.revision_number,
+                "data": revision.data.0,
+                "created_by": revision.created_by,
+                "created_at": revision.created_at,
+                "change_summary": revision.change_summary,
+            });
+
+            if query.diff.unwrap_or(false) {
+                if number > 1 {
+                    if let Ok(Some(prev)) = services.entry.get_revision(&id, number - 1).await {
+                        if let Some(diff) = compute_diff_for_revision(&revision, Some(&prev)) {
+                            response["diff_from_previous"] = diff;
+                        } else {
+                            response["diff_from_previous"] = json!(null);
+                        }
+                    } else {
+                        response["diff_from_previous"] = json!(null);
+                    }
+                } else {
+                    response["diff_from_previous"] = json!(null);
+                }
+            }
+
+            (StatusCode::OK, Json(response)).into_response()
+        }
+        Ok(None) => (StatusCode::NOT_FOUND, Json(json!({"error": "Revision not found"}))).into_response(),
+        Err(e) => e.into_response(),
+    }
+}
+
+#[utoipa::path(
+    post,
+    path = "/api/v1/entries/{id}/revisions/{number}/restore",
+    params(
+        ("id" = String, Path, description = "Entry ID"),
+        ("number" = i64, Path, description = "Revision number"),
+    ),
+    responses(
+        (status = 200, description = "Entry restored", body = Entry),
+        (status = 401, description = "Unauthorized"),
+        (status = 403, description = "Insufficient permissions"),
+        (status = 404, description = "Revision not found"),
+    ),
+    security(("bearer" = []), ("access_token" = [])),
+    tag = "entries"
+)]
+#[instrument(skip(repository, services, principal))]
+pub async fn restore_entry_revision(
+    principal: Principal,
+    headers: HeaderMap,
+    Path((id, number)): Path<(String, i64)>,
+    Extension(repository): Extension<Repository>,
+    Extension(services): Extension<Services>,
+) -> Response {
+    let site = match require_site_scope(
+        &principal,
+        &repository,
+        request_site_id(&headers),
+        SCOPE_CONTENT_WRITE,
+        "editor",
+    )
+    .await
+    {
+        Ok(site) => site,
+        Err((status, err)) => return (status, err).into_response(),
+    };
+
+    let created_by = created_by_from_principal(&principal);
+    match services.entry.restore_revision(&id, &site.site_id, number, created_by).await {
         Ok(item) => (StatusCode::OK, Json(item)).into_response(),
         Err(e) => e.into_response(),
     }
