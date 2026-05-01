@@ -20,6 +20,9 @@ service EntryService {
   rpc DeleteEntry(DeleteEntryRequest) returns (DeleteResponse);
   rpc PublishEntry(PublishEntryRequest) returns (Entry);
   rpc UnpublishEntry(UnpublishEntryRequest) returns (Entry);
+  rpc ListEntryRevisions(ListEntryRevisionsRequest) returns (ListEntryRevisionsResponse);
+  rpc GetEntryRevision(GetEntryRevisionRequest) returns (EntryRevision);
+  rpc RestoreEntryRevision(RestoreEntryRevisionRequest) returns (Entry);
 }
 
 // Singleton Service - Site-scoped operations (requires cms_sk_* token)
@@ -165,6 +168,7 @@ message UpdateEntryRequest {
   optional string data = 2;
   optional string slug = 3;
   optional string status = 4;
+  optional string change_summary = 5;
 }
 
 message DeleteEntryRequest {
@@ -177,6 +181,39 @@ message PublishEntryRequest {
 
 message UnpublishEntryRequest {
   string id = 1;
+}
+
+message EntryRevision {
+  string id = 1;
+  string entry_id = 2;
+  int64 revision_number = 3;
+  string data = 4;
+  optional string created_by = 5;
+  string created_at = 6;
+  optional string change_summary = 7;
+}
+
+message ListEntryRevisionsRequest {
+  string entry_id = 1;
+  int64 page = 2;
+  int64 per_page = 3;
+}
+
+message ListEntryRevisionsResponse {
+  repeated EntryRevision items = 1;
+  int64 total = 2;
+  int64 page = 3;
+  int64 per_page = 4;
+}
+
+message GetEntryRevisionRequest {
+  string entry_id = 1;
+  int64 revision_number = 2;
+}
+
+message RestoreEntryRevisionRequest {
+  string entry_id = 1;
+  int64 revision_number = 2;
 }
 
 // Singleton Messages

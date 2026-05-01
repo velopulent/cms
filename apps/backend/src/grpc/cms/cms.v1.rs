@@ -142,6 +142,8 @@ pub struct UpdateEntryRequest {
     pub slug: ::core::option::Option<::prost::alloc::string::String>,
     #[prost(string, optional, tag = "4")]
     pub status: ::core::option::Option<::prost::alloc::string::String>,
+    #[prost(string, optional, tag = "5")]
+    pub change_summary: ::core::option::Option<::prost::alloc::string::String>,
 }
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct DeleteEntryRequest {
@@ -157,6 +159,57 @@ pub struct PublishEntryRequest {
 pub struct UnpublishEntryRequest {
     #[prost(string, tag = "1")]
     pub id: ::prost::alloc::string::String,
+}
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct EntryRevision {
+    #[prost(string, tag = "1")]
+    pub id: ::prost::alloc::string::String,
+    #[prost(string, tag = "2")]
+    pub entry_id: ::prost::alloc::string::String,
+    #[prost(int64, tag = "3")]
+    pub revision_number: i64,
+    #[prost(string, tag = "4")]
+    pub data: ::prost::alloc::string::String,
+    #[prost(string, optional, tag = "5")]
+    pub created_by: ::core::option::Option<::prost::alloc::string::String>,
+    #[prost(string, tag = "6")]
+    pub created_at: ::prost::alloc::string::String,
+    #[prost(string, optional, tag = "7")]
+    pub change_summary: ::core::option::Option<::prost::alloc::string::String>,
+}
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct ListEntryRevisionsRequest {
+    #[prost(string, tag = "1")]
+    pub entry_id: ::prost::alloc::string::String,
+    #[prost(int64, tag = "2")]
+    pub page: i64,
+    #[prost(int64, tag = "3")]
+    pub per_page: i64,
+}
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct ListEntryRevisionsResponse {
+    #[prost(message, repeated, tag = "1")]
+    pub items: ::prost::alloc::vec::Vec<EntryRevision>,
+    #[prost(int64, tag = "2")]
+    pub total: i64,
+    #[prost(int64, tag = "3")]
+    pub page: i64,
+    #[prost(int64, tag = "4")]
+    pub per_page: i64,
+}
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct GetEntryRevisionRequest {
+    #[prost(string, tag = "1")]
+    pub entry_id: ::prost::alloc::string::String,
+    #[prost(int64, tag = "2")]
+    pub revision_number: i64,
+}
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct RestoreEntryRevisionRequest {
+    #[prost(string, tag = "1")]
+    pub entry_id: ::prost::alloc::string::String,
+    #[prost(int64, tag = "2")]
+    pub revision_number: i64,
 }
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct Singleton {
@@ -870,6 +923,21 @@ pub mod entry_service_server {
             &self,
             request: tonic::Request<super::UnpublishEntryRequest>,
         ) -> std::result::Result<tonic::Response<super::Entry>, tonic::Status>;
+        async fn list_entry_revisions(
+            &self,
+            request: tonic::Request<super::ListEntryRevisionsRequest>,
+        ) -> std::result::Result<
+            tonic::Response<super::ListEntryRevisionsResponse>,
+            tonic::Status,
+        >;
+        async fn get_entry_revision(
+            &self,
+            request: tonic::Request<super::GetEntryRevisionRequest>,
+        ) -> std::result::Result<tonic::Response<super::EntryRevision>, tonic::Status>;
+        async fn restore_entry_revision(
+            &self,
+            request: tonic::Request<super::RestoreEntryRevisionRequest>,
+        ) -> std::result::Result<tonic::Response<super::Entry>, tonic::Status>;
     }
     /// Entry Service - Site-scoped operations (requires cms_sk\_\* token)
     #[derive(Debug)]
@@ -1248,6 +1316,144 @@ pub mod entry_service_server {
                     let inner = self.inner.clone();
                     let fut = async move {
                         let method = UnpublishEntrySvc(inner);
+                        let codec = tonic_prost::ProstCodec::default();
+                        let mut grpc = tonic::server::Grpc::new(codec)
+                            .apply_compression_config(
+                                accept_compression_encodings,
+                                send_compression_encodings,
+                            )
+                            .apply_max_message_size_config(
+                                max_decoding_message_size,
+                                max_encoding_message_size,
+                            );
+                        let res = grpc.unary(method, req).await;
+                        Ok(res)
+                    };
+                    Box::pin(fut)
+                }
+                "/cms.v1.EntryService/ListEntryRevisions" => {
+                    #[allow(non_camel_case_types)]
+                    struct ListEntryRevisionsSvc<T: EntryService>(pub Arc<T>);
+                    impl<
+                        T: EntryService,
+                    > tonic::server::UnaryService<super::ListEntryRevisionsRequest>
+                    for ListEntryRevisionsSvc<T> {
+                        type Response = super::ListEntryRevisionsResponse;
+                        type Future = BoxFuture<
+                            tonic::Response<Self::Response>,
+                            tonic::Status,
+                        >;
+                        fn call(
+                            &mut self,
+                            request: tonic::Request<super::ListEntryRevisionsRequest>,
+                        ) -> Self::Future {
+                            let inner = Arc::clone(&self.0);
+                            let fut = async move {
+                                <T as EntryService>::list_entry_revisions(&inner, request)
+                                    .await
+                            };
+                            Box::pin(fut)
+                        }
+                    }
+                    let accept_compression_encodings = self.accept_compression_encodings;
+                    let send_compression_encodings = self.send_compression_encodings;
+                    let max_decoding_message_size = self.max_decoding_message_size;
+                    let max_encoding_message_size = self.max_encoding_message_size;
+                    let inner = self.inner.clone();
+                    let fut = async move {
+                        let method = ListEntryRevisionsSvc(inner);
+                        let codec = tonic_prost::ProstCodec::default();
+                        let mut grpc = tonic::server::Grpc::new(codec)
+                            .apply_compression_config(
+                                accept_compression_encodings,
+                                send_compression_encodings,
+                            )
+                            .apply_max_message_size_config(
+                                max_decoding_message_size,
+                                max_encoding_message_size,
+                            );
+                        let res = grpc.unary(method, req).await;
+                        Ok(res)
+                    };
+                    Box::pin(fut)
+                }
+                "/cms.v1.EntryService/GetEntryRevision" => {
+                    #[allow(non_camel_case_types)]
+                    struct GetEntryRevisionSvc<T: EntryService>(pub Arc<T>);
+                    impl<
+                        T: EntryService,
+                    > tonic::server::UnaryService<super::GetEntryRevisionRequest>
+                    for GetEntryRevisionSvc<T> {
+                        type Response = super::EntryRevision;
+                        type Future = BoxFuture<
+                            tonic::Response<Self::Response>,
+                            tonic::Status,
+                        >;
+                        fn call(
+                            &mut self,
+                            request: tonic::Request<super::GetEntryRevisionRequest>,
+                        ) -> Self::Future {
+                            let inner = Arc::clone(&self.0);
+                            let fut = async move {
+                                <T as EntryService>::get_entry_revision(&inner, request)
+                                    .await
+                            };
+                            Box::pin(fut)
+                        }
+                    }
+                    let accept_compression_encodings = self.accept_compression_encodings;
+                    let send_compression_encodings = self.send_compression_encodings;
+                    let max_decoding_message_size = self.max_decoding_message_size;
+                    let max_encoding_message_size = self.max_encoding_message_size;
+                    let inner = self.inner.clone();
+                    let fut = async move {
+                        let method = GetEntryRevisionSvc(inner);
+                        let codec = tonic_prost::ProstCodec::default();
+                        let mut grpc = tonic::server::Grpc::new(codec)
+                            .apply_compression_config(
+                                accept_compression_encodings,
+                                send_compression_encodings,
+                            )
+                            .apply_max_message_size_config(
+                                max_decoding_message_size,
+                                max_encoding_message_size,
+                            );
+                        let res = grpc.unary(method, req).await;
+                        Ok(res)
+                    };
+                    Box::pin(fut)
+                }
+                "/cms.v1.EntryService/RestoreEntryRevision" => {
+                    #[allow(non_camel_case_types)]
+                    struct RestoreEntryRevisionSvc<T: EntryService>(pub Arc<T>);
+                    impl<
+                        T: EntryService,
+                    > tonic::server::UnaryService<super::RestoreEntryRevisionRequest>
+                    for RestoreEntryRevisionSvc<T> {
+                        type Response = super::Entry;
+                        type Future = BoxFuture<
+                            tonic::Response<Self::Response>,
+                            tonic::Status,
+                        >;
+                        fn call(
+                            &mut self,
+                            request: tonic::Request<super::RestoreEntryRevisionRequest>,
+                        ) -> Self::Future {
+                            let inner = Arc::clone(&self.0);
+                            let fut = async move {
+                                <T as EntryService>::restore_entry_revision(&inner, request)
+                                    .await
+                            };
+                            Box::pin(fut)
+                        }
+                    }
+                    let accept_compression_encodings = self.accept_compression_encodings;
+                    let send_compression_encodings = self.send_compression_encodings;
+                    let max_decoding_message_size = self.max_decoding_message_size;
+                    let max_encoding_message_size = self.max_encoding_message_size;
+                    let inner = self.inner.clone();
+                    let fut = async move {
+                        let method = RestoreEntryRevisionSvc(inner);
                         let codec = tonic_prost::ProstCodec::default();
                         let mut grpc = tonic::server::Grpc::new(codec)
                             .apply_compression_config(
