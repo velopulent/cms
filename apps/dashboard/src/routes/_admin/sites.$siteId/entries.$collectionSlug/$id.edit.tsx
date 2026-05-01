@@ -1,11 +1,12 @@
 import { useForm } from "@tanstack/react-form";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, History } from "lucide-react";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { z } from "zod";
 import { DynamicForm } from "@/components/dynamic-form";
+import { RevisionsPanel } from "@/components/revisions-panel";
 import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -56,6 +57,8 @@ function EditEntryPage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [initialized, setInitialized] = useState(false);
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const [changeSummary, setChangeSummary] = useState("");
 
   const { data: collection, isLoading: collectionLoading } = useQuery({
     queryKey: ["collection", siteId, collectionSlug],
@@ -94,6 +97,7 @@ function EditEntryPage() {
       updateMutation.mutate({
         data: value.data,
         slug: value.slug,
+        change_summary: changeSummary.trim() || undefined,
       });
     },
   });
@@ -102,15 +106,18 @@ function EditEntryPage() {
     mutationFn: ({
       data,
       slug,
+      change_summary,
     }: {
       data: Record<string, unknown>;
       slug: string;
-    }) => updateEntry(siteId, id, { data, slug }),
+      change_summary?: string;
+    }) => updateEntry(siteId, id, { data, slug, change_summary }),
     onSuccess: () => {
       queryClient.invalidateQueries({
         queryKey: ["entry", siteId, id],
       });
       toast.success("Entry updated");
+      setChangeSummary("");
       navigate({
         to: "/sites/$siteId/entries/$collectionSlug",
         params: { siteId, collectionSlug },
@@ -158,14 +165,23 @@ function EditEntryPage() {
         >
           <ArrowLeft />
         </Link>
-        <div>
-          <div className="flex items-center gap-2">
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2 flex-wrap">
             <h1 className="text-2xl font-semibold">Edit {collection.name}</h1>
             <Badge
               variant={entry.status === "published" ? "default" : "secondary"}
             >
               {entry.status}
             </Badge>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setHistoryOpen(true)}
+              className="ml-auto sm:ml-0"
+            >
+              <History data-icon="inline-start" />
+              History
+            </Button>
           </div>
           <p className="text-sm text-muted-foreground">
             Edit {collection.name.toLowerCase()} #{entry.id.slice(0, 8)}
@@ -232,6 +248,17 @@ function EditEntryPage() {
           </CardContent>
         </Card>
 
+        <FieldGroup className="max-w-lg">
+          <Field>
+            <FieldLabel>Change summary (optional)</FieldLabel>
+            <Input
+              placeholder="What changed in this update?"
+              value={changeSummary}
+              onChange={(e) => setChangeSummary(e.target.value)}
+            />
+          </Field>
+        </FieldGroup>
+
         <div className="flex gap-2">
           <Button type="submit" disabled={updateMutation.isPending}>
             {updateMutation.isPending ? "Saving..." : "Save"}
@@ -245,6 +272,19 @@ function EditEntryPage() {
           </Link>
         </div>
       </form>
+
+      <RevisionsPanel
+        entryId={id}
+        siteId={siteId}
+        open={historyOpen}
+        onOpenChange={setHistoryOpen}
+        collectionDef={collectionDef}
+        onRestore={() => {
+          queryClient.invalidateQueries({ queryKey: ["entry", siteId, id] });
+          setInitialized(false);
+          toast.success("Entry restored to previous version");
+        }}
+      />
     </div>
   );
 }
