@@ -33,6 +33,7 @@ interface TiptapEditorProps {
   onChange: (html: string) => void;
   placeholder?: string;
   siteId?: string;
+  editable?: boolean;
 }
 
 export function TiptapEditor({
@@ -40,6 +41,7 @@ export function TiptapEditor({
   onChange,
   placeholder = "Start writing...",
   siteId,
+  editable = true,
 }: TiptapEditorProps) {
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [filePickerOpen, setFilePickerOpen] = useState(false);
@@ -54,6 +56,7 @@ export function TiptapEditor({
   }, [isFullscreen]);
 
   const editor = useEditor({
+    editable,
     extensions: [
       StarterKit,
       Placeholder.configure({ placeholder }),
@@ -121,164 +124,166 @@ export function TiptapEditor({
           : "rounded-lg border"
       }
     >
-      <div className="flex flex-wrap items-center gap-0.5 border-b p-1">
-        <Button
-          variant="ghost"
-          size="icon-sm"
-          onClick={() => editor.chain().focus().toggleBold().run()}
-          aria-expanded={editorState.isBold}
-          title="Bold"
-        >
-          <Bold />
-        </Button>
-        <Button
-          variant="ghost"
-          size="icon-sm"
-          onClick={() => editor.chain().focus().toggleItalic().run()}
-          aria-expanded={editorState.isItalic}
-          title="Italic"
-        >
-          <Italic />
-        </Button>
-        <Button
-          variant="ghost"
-          size="icon-sm"
-          onClick={() => editor.chain().focus().toggleStrike().run()}
-          aria-expanded={editorState.isStrike}
-          title="Strikethrough"
-        >
-          <Strikethrough />
-        </Button>
+      {editable && (
+        <div className="flex flex-wrap items-center gap-0.5 border-b p-1">
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            onClick={() => editor.chain().focus().toggleBold().run()}
+            aria-expanded={editorState.isBold}
+            title="Bold"
+          >
+            <Bold />
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            onClick={() => editor.chain().focus().toggleItalic().run()}
+            aria-expanded={editorState.isItalic}
+            title="Italic"
+          >
+            <Italic />
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            onClick={() => editor.chain().focus().toggleStrike().run()}
+            aria-expanded={editorState.isStrike}
+            title="Strikethrough"
+          >
+            <Strikethrough />
+          </Button>
 
-        <Separator orientation="vertical" className="mx-1 h-6" />
+          <Separator orientation="vertical" className="mx-1 h-6" />
 
-        <Button
-          variant="ghost"
-          size="icon-sm"
-          onClick={() =>
-            editor.chain().focus().toggleHeading({ level: 1 }).run()
-          }
-          aria-expanded={editorState.isH1}
-          title="Heading 1"
-        >
-          <Heading1 />
-        </Button>
-        <Button
-          variant="ghost"
-          size="icon-sm"
-          onClick={() =>
-            editor.chain().focus().toggleHeading({ level: 2 }).run()
-          }
-          aria-expanded={editorState.isH2}
-          title="Heading 2"
-        >
-          <Heading2 />
-        </Button>
-        <Button
-          variant="ghost"
-          size="icon-sm"
-          onClick={() =>
-            editor.chain().focus().toggleHeading({ level: 3 }).run()
-          }
-          aria-expanded={editorState.isH3}
-          title="Heading 3"
-        >
-          <Heading3 />
-        </Button>
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            onClick={() =>
+              editor.chain().focus().toggleHeading({ level: 1 }).run()
+            }
+            aria-expanded={editorState.isH1}
+            title="Heading 1"
+          >
+            <Heading1 />
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            onClick={() =>
+              editor.chain().focus().toggleHeading({ level: 2 }).run()
+            }
+            aria-expanded={editorState.isH2}
+            title="Heading 2"
+          >
+            <Heading2 />
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            onClick={() =>
+              editor.chain().focus().toggleHeading({ level: 3 }).run()
+            }
+            aria-expanded={editorState.isH3}
+            title="Heading 3"
+          >
+            <Heading3 />
+          </Button>
 
-        <Separator orientation="vertical" className="mx-1 h-6" />
+          <Separator orientation="vertical" className="mx-1 h-6" />
 
-        <Button
-          variant="ghost"
-          size="icon-sm"
-          onClick={() => editor.chain().focus().toggleBulletList().run()}
-          aria-expanded={editorState.isBulletList}
-          title="Bullet List"
-        >
-          <List />
-        </Button>
-        <Button
-          variant="ghost"
-          size="icon-sm"
-          onClick={() => editor.chain().focus().toggleOrderedList().run()}
-          aria-expanded={editorState.isOrderedList}
-          title="Ordered List"
-        >
-          <ListOrdered />
-        </Button>
-        <Button
-          variant="ghost"
-          size="icon-sm"
-          onClick={() => editor.chain().focus().toggleBlockquote().run()}
-          aria-expanded={editorState.isBlockquote}
-          title="Blockquote"
-        >
-          <Quote />
-        </Button>
-        <Button
-          variant="ghost"
-          size="icon-sm"
-          onClick={() => editor.chain().focus().toggleCodeBlock().run()}
-          aria-expanded={editorState.isCodeBlock}
-          title="Code Block"
-        >
-          <Code />
-        </Button>
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            onClick={() => editor.chain().focus().toggleBulletList().run()}
+            aria-expanded={editorState.isBulletList}
+            title="Bullet List"
+          >
+            <List />
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            onClick={() => editor.chain().focus().toggleOrderedList().run()}
+            aria-expanded={editorState.isOrderedList}
+            title="Ordered List"
+          >
+            <ListOrdered />
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            onClick={() => editor.chain().focus().toggleBlockquote().run()}
+            aria-expanded={editorState.isBlockquote}
+            title="Blockquote"
+          >
+            <Quote />
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            onClick={() => editor.chain().focus().toggleCodeBlock().run()}
+            aria-expanded={editorState.isCodeBlock}
+            title="Code Block"
+          >
+            <Code />
+          </Button>
 
-        <Separator orientation="vertical" className="mx-1 h-6" />
+          <Separator orientation="vertical" className="mx-1 h-6" />
 
-        <Button
-          variant="ghost"
-          size="icon-sm"
-          onClick={() => editor.chain().focus().setHorizontalRule().run()}
-          title="Horizontal Rule"
-        >
-          <Minus />
-        </Button>
-        <Button
-          variant="ghost"
-          size="icon-sm"
-          onClick={addLink}
-          aria-expanded={editorState.isLink}
-          title="Link"
-        >
-          <LinkIcon />
-        </Button>
-        <Button variant="ghost" size="icon-sm" onClick={addImage} title="Image">
-          <ImageIcon />
-        </Button>
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            onClick={() => editor.chain().focus().setHorizontalRule().run()}
+            title="Horizontal Rule"
+          >
+            <Minus />
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            onClick={addLink}
+            aria-expanded={editorState.isLink}
+            title="Link"
+          >
+            <LinkIcon />
+          </Button>
+          <Button variant="ghost" size="icon-sm" onClick={addImage} title="Image">
+            <ImageIcon />
+          </Button>
 
-        <Separator orientation="vertical" className="mx-1 h-6" />
+          <Separator orientation="vertical" className="mx-1 h-6" />
 
-        <Button
-          variant="ghost"
-          size="icon-sm"
-          onClick={() => editor.chain().focus().undo().run()}
-          disabled={!editorState.canUndo}
-          title="Undo"
-        >
-          <Undo2 />
-        </Button>
-        <Button
-          variant="ghost"
-          size="icon-sm"
-          onClick={() => editor.chain().focus().redo().run()}
-          disabled={!editorState.canRedo}
-          title="Redo"
-        >
-          <Redo2 />
-        </Button>
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            onClick={() => editor.chain().focus().undo().run()}
+            disabled={!editorState.canUndo}
+            title="Undo"
+          >
+            <Undo2 />
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            onClick={() => editor.chain().focus().redo().run()}
+            disabled={!editorState.canRedo}
+            title="Redo"
+          >
+            <Redo2 />
+          </Button>
 
-        <Button
-          variant="ghost"
-          size="icon-sm"
-          className="ml-auto"
-          onClick={() => setIsFullscreen((prev) => !prev)}
-          title={isFullscreen ? "Exit fullscreen" : "Fullscreen"}
-        >
-          {isFullscreen ? <Minimize2 /> : <Maximize2 />}
-        </Button>
-      </div>
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            className="ml-auto"
+            onClick={() => setIsFullscreen((prev) => !prev)}
+            title={isFullscreen ? "Exit fullscreen" : "Fullscreen"}
+          >
+            {isFullscreen ? <Minimize2 /> : <Maximize2 />}
+          </Button>
+        </div>
+      )}
       <EditorContent
         editor={editor}
         className={isFullscreen ? "flex-1 overflow-y-auto p-4" : "p-4"}

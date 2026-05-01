@@ -29,6 +29,7 @@ interface DynamicFormProps {
   form: any;
   prefix?: string;
   siteId?: string;
+  readOnly?: boolean;
 }
 
 export function DynamicForm({
@@ -36,6 +37,7 @@ export function DynamicForm({
   form,
   prefix = "data",
   siteId,
+  readOnly,
 }: DynamicFormProps) {
   return (
     <FieldGroup>
@@ -46,6 +48,7 @@ export function DynamicForm({
           form={form}
           prefix={prefix}
           siteId={siteId}
+          readOnly={readOnly}
         />
       ))}
     </FieldGroup>
@@ -57,11 +60,13 @@ function DynamicField({
   form,
   prefix,
   siteId,
+  readOnly,
 }: {
   field: ContentField;
   form: DynamicFormProps["form"];
   prefix: string;
   siteId?: string;
+  readOnly?: boolean;
 }) {
   const fieldName = `${prefix}.${field.name}`;
   const label = field.name
@@ -84,11 +89,12 @@ function DynamicField({
             <FieldInput
               field={field}
               value={f.state.value}
-              onChange={f.handleChange}
-              onBlur={f.handleBlur}
+              onChange={readOnly ? () => {} : f.handleChange}
+              onBlur={readOnly ? () => {} : f.handleBlur}
               isInvalid={isInvalid}
               siteId={siteId}
               fieldName={fieldName}
+              readOnly={readOnly}
             />
             {isInvalid && <FieldError errors={f.state.meta.errors} />}
           </Field>
@@ -106,6 +112,7 @@ function FieldInput({
   isInvalid,
   siteId,
   fieldName,
+  readOnly,
 }: {
   field: ContentField;
   value: unknown;
@@ -114,6 +121,7 @@ function FieldInput({
   isInvalid: boolean;
   siteId?: string;
   fieldName: string;
+  readOnly?: boolean;
 }) {
   const strValue = typeof value === "string" ? value : "";
   const numValue = typeof value === "number" ? value : 0;
@@ -128,6 +136,8 @@ function FieldInput({
           onBlur={onBlur}
           onChange={(e) => onChange(e.target.value)}
           aria-invalid={isInvalid}
+          readOnly={readOnly}
+          disabled={readOnly}
         />
       );
 
@@ -140,6 +150,8 @@ function FieldInput({
           onChange={(e) => onChange(e.target.value)}
           rows={4}
           aria-invalid={isInvalid}
+          readOnly={readOnly}
+          disabled={readOnly}
         />
       );
 
@@ -150,6 +162,7 @@ function FieldInput({
           onChange={(html) => onChange(html)}
           placeholder={`Write ${field.name}...`}
           siteId={siteId}
+          editable={!readOnly}
         />
       );
 
@@ -162,6 +175,8 @@ function FieldInput({
           onBlur={onBlur}
           onChange={(e) => onChange(Number(e.target.value) || 0)}
           aria-invalid={isInvalid}
+          readOnly={readOnly}
+          disabled={readOnly}
         />
       );
 
@@ -173,6 +188,7 @@ function FieldInput({
             checked={boolValue}
             onCheckedChange={(checked) => onChange(!!checked)}
             aria-invalid={isInvalid}
+            disabled={readOnly}
           />
           <FieldLabel htmlFor={fieldName} className="font-normal">
             Enabled
@@ -189,6 +205,8 @@ function FieldInput({
           onBlur={onBlur}
           onChange={(e) => onChange(e.target.value)}
           aria-invalid={isInvalid}
+          readOnly={readOnly}
+          disabled={readOnly}
         />
       );
 
@@ -197,6 +215,7 @@ function FieldInput({
         <Select
           value={strValue}
           onValueChange={(val) => onChange(val as string)}
+          disabled={readOnly}
         >
           <SelectTrigger
             id={fieldName}
@@ -227,6 +246,8 @@ function FieldInput({
             onBlur={onBlur}
             onChange={(e) => onChange(e.target.value)}
             aria-invalid={isInvalid}
+            readOnly={readOnly}
+            disabled={readOnly}
           />
           {strValue && (
             <img
@@ -245,6 +266,7 @@ function FieldInput({
           onChange={onChange}
           siteId={siteId}
           isInvalid={isInvalid}
+          readOnly={readOnly}
         />
       );
 
@@ -256,6 +278,8 @@ function FieldInput({
           onBlur={onBlur}
           onChange={(e) => onChange(e.target.value)}
           aria-invalid={isInvalid}
+          readOnly={readOnly}
+          disabled={readOnly}
         />
       );
   }
@@ -266,11 +290,13 @@ function FileField({
   onChange,
   siteId,
   isInvalid,
+  readOnly,
 }: {
   value: string;
   onChange: (val: unknown) => void;
   siteId?: string;
   isInvalid: boolean;
+  readOnly?: boolean;
 }) {
   const [pickerOpen, setPickerOpen] = useState(false);
   const [selectedFileInfo, setSelectedFileInfo] = useState<FileItem | null>(
@@ -321,17 +347,19 @@ function FileField({
                 </p>
               )}
             </div>
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              onClick={() => {
-                onChange("");
-                setSelectedFileInfo(null);
-              }}
-            >
-              Remove
-            </Button>
+            {!readOnly && (
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                onClick={() => {
+                  onChange("");
+                  setSelectedFileInfo(null);
+                }}
+              >
+                Remove
+              </Button>
+            )}
           </div>
           {isVideo && value && (
             <VideoPlayer
@@ -342,15 +370,17 @@ function FileField({
           )}
         </div>
       )}
-      <Button
-        type="button"
-        variant="outline"
-        onClick={() => setPickerOpen(true)}
-        disabled={!siteId}
-        aria-invalid={isInvalid}
-      >
-        {value ? "Change File" : "Select File"}
-      </Button>
+      {!readOnly && (
+        <Button
+          type="button"
+          variant="outline"
+          onClick={() => setPickerOpen(true)}
+          disabled={!siteId}
+          aria-invalid={isInvalid}
+        >
+          {value ? "Change File" : "Select File"}
+        </Button>
+      )}
       {siteId && (
         <FilePickerDialog
           open={pickerOpen}
