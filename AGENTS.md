@@ -18,19 +18,22 @@
 - `apps/backend/src/router/` - Route composition
 - `libs/proto/` - Protocol Buffer definitions (`cms.proto`)
 - `apps/dashboard/` - React frontend app
+- `apps/web/` - Landing Page and Documentation (NextJS + Fumadocs)
 
 ## Developer Commands
 
 All commands can be run via `bun` from the repository root:
 
 ```bash
-bun run dev                  # Start both backend and dashboard in parallel
+bun run dev                  # Start backend, dashboard, and web in parallel
 bun run dev:backend          # Backend only (no dashboard embed)
 bun run dev:dashboard        # Dashboard Vite dev server only
+bun run dev:web              # Web app (NextJS) dev server only
 bun run run                  # Full backend with embedded dashboard
 bun run build                # Build all projects
 bun run build:backend        # Release build of backend
 bun run build:dashboard      # Production build of dashboard
+bun run build:web            # Production build of web app
 bun run test                 # Run all Rust tests
 bun run test:dashboard       # TypeScript type check
 bun run lint                 # Lint all projects
