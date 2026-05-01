@@ -2,7 +2,7 @@ use utoipa::OpenApi;
 
 use crate::models::access_token::{AccessToken, AccessTokenResponse, CreateInstanceToken, CreateSiteToken};
 use crate::models::collection::{Collection, CreateCollection, UpdateCollection};
-use crate::models::entry::{CreateEntry, Entry, UpdateEntry};
+use crate::models::entry::{CreateEntry, Entry, EntryRevisionResponse, RevisionsListResponse, UpdateEntry};
 use crate::models::file::{BatchFileIds, File, FileReference, FileWithUrl};
 use crate::models::site::{CreateSite, InviteMember, Site, SiteMember, SiteWithRole, UpdateMemberRole, UpdateSite};
 
@@ -46,6 +46,9 @@ use crate::models::site::{CreateSite, InviteMember, Site, SiteMember, SiteWithRo
         crate::handlers::entry_handler::delete_entry,
         crate::handlers::entry_handler::publish_entry,
         crate::handlers::entry_handler::unpublish_entry,
+        crate::handlers::entry_handler::list_entry_revisions,
+        crate::handlers::entry_handler::get_entry_revision,
+        crate::handlers::entry_handler::restore_entry_revision,
         // Site-scoped: Singletons
         crate::handlers::singleton_handler::list_singletons,
         crate::handlers::singleton_handler::get_singleton,
@@ -75,7 +78,7 @@ use crate::models::site::{CreateSite, InviteMember, Site, SiteMember, SiteWithRo
         // Collection
         Collection, CreateCollection, UpdateCollection,
         // Entry
-        Entry, CreateEntry, UpdateEntry,
+        Entry, CreateEntry, UpdateEntry, EntryRevisionResponse, RevisionsListResponse,
         // File
         File, FileWithUrl, FileReference, BatchFileIds,
     )),
