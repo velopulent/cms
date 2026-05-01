@@ -1,11 +1,6 @@
 import { createFileRoute, Outlet } from "@tanstack/react-router";
 import { AppSidebar } from "@/components/sidebar/app-sidebar";
-import {
-  Breadcrumb,
-  BreadcrumbItem,
-  BreadcrumbList,
-  BreadcrumbPage,
-} from "@/components/ui/breadcrumb";
+import { AppBreadcrumb } from "@/components/app-breadcrumb";
 import { Separator } from "@/components/ui/separator";
 import {
   SidebarInset,
@@ -19,8 +14,6 @@ export const Route = createFileRoute("/_admin/sites/$siteId")({
 });
 
 function SiteLayout() {
-  const { siteId } = Route.useParams();
-
   return (
     <SidebarProvider>
       <AppSidebar />
@@ -32,13 +25,7 @@ function SiteLayout() {
               orientation="vertical"
               className="mr-2 data-vertical:h-4 data-vertical:self-auto"
             />
-            <Breadcrumb>
-              <BreadcrumbList>
-                <BreadcrumbItem>
-                  <BreadcrumbPage>{siteId.slice(0, 8)}</BreadcrumbPage>
-                </BreadcrumbItem>
-              </BreadcrumbList>
-            </Breadcrumb>
+            <AppBreadcrumb />
           </div>
           <ModeToggle />
         </header>
