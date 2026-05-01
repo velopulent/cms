@@ -4,14 +4,15 @@ use async_trait::async_trait;
 
 use crate::models::access_token::{AccessToken, AccessTokenKind};
 use crate::models::collection::Collection;
-use crate::models::entry::Entry;
+use crate::models::entry::{Entry, EntryRevision};
 use crate::models::file::{File, FileReference};
 use crate::models::site::{Site, SiteMember, SiteWithRole};
 use crate::models::user::User;
 use crate::repository::error::RepositoryError;
 use crate::repository::traits::{
     AccessTokenLookupRow, AccessTokenRepository, CollectionRepository, EntriesListResult, EntryRepository,
-    FileListResult, FileRepository, ListEntriesParams, ListFilesParams, SiteRepository, UserRepository,
+    FileListResult, FileRepository, ListEntriesParams, ListFilesParams, RevisionsListResult, SiteRepository,
+    UserRepository,
 };
 
 pub fn now_timestamp() -> String {
@@ -385,12 +386,14 @@ impl CollectionRepository for InMemoryCollectionRepository {
 #[derive(Clone)]
 pub struct InMemoryEntryRepository {
     entries: Arc<Mutex<Vec<Entry>>>,
+    revisions: Arc<Mutex<Vec<EntryRevision>>>,
 }
 
 impl InMemoryEntryRepository {
     pub fn new() -> Self {
         Self {
             entries: Arc::new(Mutex::new(Vec::new())),
+            revisions: Arc::new(Mutex::new(Vec::new())),
         }
     }
 
@@ -472,6 +475,7 @@ impl EntryRepository for InMemoryEntryRepository {
         collection_id: &str,
         data: &str,
         slug: &str,
+        created_by: Option<&str>,
     ) -> Result<Entry, RepositoryError> {
         let mut entries = self.entries.lock().unwrap();
         let entry = Entry {
@@ -486,16 +490,59 @@ impl EntryRepository for InMemoryEntryRepository {
             published_at: None,
         };
         entries.push(entry.clone());
+
+        let data_json: serde_json::Value = serde_json::from_str(data).unwrap_or(serde_json::Value::Null);
+        let revision = EntryRevision {
+            id: uuid::Uuid::now_v7().to_string(),
+            entry_id: id.to_string(),
+            revision_number: 1,
+            data: sqlx::types::Json(data_json),
+            created_by: created_by.map(|s| s.to_string()),
+            created_at: now_timestamp(),
+            change_summary: None,
+        };
+        self.revisions.lock().unwrap().push(revision);
+
         Ok(entry)
     }
 
-    async fn update(&self, id: &str, data: &str, slug: &str, status: &str) -> Result<Entry, RepositoryError> {
+    async fn update(
+        &self,
+        id: &str,
+        _site_id: &str,
+        data: &str,
+        slug: &str,
+        status: &str,
+        created_by: Option<&str>,
+        change_summary: Option<&str>,
+    ) -> Result<Entry, RepositoryError> {
         let mut entries = self.entries.lock().unwrap();
         if let Some(entry) = entries.iter_mut().find(|e| e.id == id) {
             entry.data = data.to_string();
             entry.slug = slug.to_string();
             entry.status = status.to_string();
             entry.updated_at = now_timestamp();
+
+            let data_json: serde_json::Value = serde_json::from_str(data).unwrap_or(serde_json::Value::Null);
+            let mut revisions = self.revisions.lock().unwrap();
+            let next_number = revisions
+                .iter()
+                .filter(|r| r.entry_id == id)
+                .map(|r| r.revision_number)
+                .max()
+                .unwrap_or(0)
+                + 1;
+            let revision = EntryRevision {
+                id: uuid::Uuid::now_v7().to_string(),
+                entry_id: id.to_string(),
+                revision_number: next_number,
+                data: sqlx::types::Json(data_json),
+                created_by: created_by.map(|s| s.to_string()),
+                created_at: now_timestamp(),
+                change_summary: change_summary.map(|s| s.to_string()),
+            };
+            revisions.push(revision);
+
             return Ok(entry.clone());
         }
         Err(RepositoryError::NotFound)
@@ -536,6 +583,87 @@ impl EntryRepository for InMemoryEntryRepository {
         _data: &serde_json::Value,
     ) -> Result<(), RepositoryError> {
         Ok(())
+    }
+
+    async fn list_revisions(
+        &self,
+        entry_id: &str,
+        page: i64,
+        per_page: i64,
+    ) -> Result<RevisionsListResult, RepositoryError> {
+        let revisions = self.revisions.lock().unwrap();
+        let mut filtered: Vec<EntryRevision> = revisions
+            .iter()
+            .filter(|r| r.entry_id == entry_id)
+            .cloned()
+            .collect();
+        filtered.sort_by(|a, b| b.revision_number.cmp(&a.revision_number));
+
+        let total = filtered.len() as i64;
+        let offset = ((page - 1) * per_page) as usize;
+        let items = filtered.into_iter().skip(offset).take(per_page as usize).collect();
+
+        Ok(RevisionsListResult {
+            items,
+            total,
+            page,
+            per_page,
+        })
+    }
+
+    async fn get_revision(
+        &self,
+        entry_id: &str,
+        revision_number: i64,
+    ) -> Result<Option<EntryRevision>, RepositoryError> {
+        let revisions = self.revisions.lock().unwrap();
+        Ok(revisions
+            .iter()
+            .find(|r| r.entry_id == entry_id && r.revision_number == revision_number)
+            .cloned())
+    }
+
+    async fn restore_revision(
+        &self,
+        entry_id: &str,
+        revision_number: i64,
+        created_by: Option<&str>,
+    ) -> Result<Entry, RepositoryError> {
+        let revisions = self.revisions.lock().unwrap();
+        let revision = revisions
+            .iter()
+            .find(|r| r.entry_id == entry_id && r.revision_number == revision_number)
+            .cloned()
+            .ok_or(RepositoryError::NotFound)?;
+        drop(revisions);
+
+        let mut entries = self.entries.lock().unwrap();
+        if let Some(entry) = entries.iter_mut().find(|e| e.id == entry_id) {
+            entry.data = serde_json::to_string(&revision.data.0).unwrap_or_default();
+            entry.updated_at = now_timestamp();
+
+            let mut revisions = self.revisions.lock().unwrap();
+            let next_number = revisions
+                .iter()
+                .filter(|r| r.entry_id == entry_id)
+                .map(|r| r.revision_number)
+                .max()
+                .unwrap_or(0)
+                + 1;
+            let new_revision = EntryRevision {
+                id: uuid::Uuid::now_v7().to_string(),
+                entry_id: entry_id.to_string(),
+                revision_number: next_number,
+                data: revision.data,
+                created_by: created_by.map(|s| s.to_string()),
+                created_at: now_timestamp(),
+                change_summary: Some(format!("Restored from revision {}", revision_number)),
+            };
+            revisions.push(new_revision);
+
+            return Ok(entry.clone());
+        }
+        Err(RepositoryError::NotFound)
     }
 }
 

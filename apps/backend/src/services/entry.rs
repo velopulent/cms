@@ -6,9 +6,9 @@ use serde_json::json;
 use thiserror::Error;
 use uuid::Uuid;
 
-use crate::models::entry::Entry;
+use crate::models::entry::{Entry, EntryRevision};
 use crate::repository::error::RepositoryError;
-use crate::repository::traits::{EntriesListResult, EntryRepository, FileRepository, ListEntriesParams};
+use crate::repository::traits::{EntriesListResult, EntryRepository, FileRepository, ListEntriesParams, RevisionsListResult};
 use crate::storage::StorageProvider;
 
 #[derive(Clone)]
@@ -22,6 +22,9 @@ pub enum EntryError {
     #[error("Not found")]
     NotFound,
 
+    #[error("Revision not found")]
+    RevisionNotFound,
+
     #[error("Entry with this slug already exists for this collection")]
     AlreadyExists,
 
@@ -33,6 +36,7 @@ impl EntryError {
     pub fn into_response(self) -> axum::response::Response {
         let (status, body) = match self {
             EntryError::NotFound => (StatusCode::NOT_FOUND, Json(json!({"error": "Entry not found"}))),
+            EntryError::RevisionNotFound => (StatusCode::NOT_FOUND, Json(json!({"error": "Revision not found"}))),
             EntryError::AlreadyExists => (
                 StatusCode::CONFLICT,
                 Json(json!({"error": "Entry with this slug already exists for this collection"})),
@@ -68,12 +72,13 @@ impl EntryService {
         collection_id: &str,
         data: &Value,
         slug: &str,
+        created_by: Option<&str>,
     ) -> Result<Entry, EntryError> {
         let id = Uuid::now_v7().to_string();
         let data_str = data.to_string();
 
         self.entry_repo
-            .create(&id, site_id, collection_id, &data_str, slug)
+            .create(&id, site_id, collection_id, &data_str, slug, created_by)
             .await
             .map_err(|e| match e {
                 RepositoryError::UniqueViolation(_) => EntryError::AlreadyExists,
@@ -96,6 +101,8 @@ impl EntryService {
         data: Option<&Value>,
         slug: Option<&str>,
         status: Option<&str>,
+        created_by: Option<&str>,
+        change_summary: Option<&str>,
     ) -> Result<Entry, EntryError> {
         let existing = self
             .entry_repo
@@ -113,7 +120,7 @@ impl EntryService {
         let status = status.unwrap_or(&existing.status);
 
         self.entry_repo
-            .update(id, &data_str, slug, status)
+            .update(id, site_id, &data_str, slug, status, created_by, change_summary)
             .await
             .map_err(|e| match e {
                 RepositoryError::UniqueViolation(_) => EntryError::AlreadyExists,
@@ -148,6 +155,36 @@ impl EntryService {
             RepositoryError::NotFound => EntryError::NotFound,
             _ => EntryError::DatabaseError(e.to_string()),
         })
+    }
+
+    pub async fn list_revisions(&self, entry_id: &str, page: i64, per_page: i64) -> Result<RevisionsListResult, EntryError> {
+        self.entry_repo
+            .list_revisions(entry_id, page, per_page)
+            .await
+            .map_err(|e| EntryError::DatabaseError(e.to_string()))
+    }
+
+    pub async fn get_revision(&self, entry_id: &str, revision_number: i64) -> Result<Option<EntryRevision>, EntryError> {
+        self.entry_repo
+            .get_revision(entry_id, revision_number)
+            .await
+            .map_err(|e| EntryError::DatabaseError(e.to_string()))
+    }
+
+    pub async fn restore_revision(
+        &self,
+        entry_id: &str,
+        _site_id: &str,
+        revision_number: i64,
+        created_by: Option<&str>,
+    ) -> Result<Entry, EntryError> {
+        self.entry_repo
+            .restore_revision(entry_id, revision_number, created_by)
+            .await
+            .map_err(|e| match e {
+                RepositoryError::NotFound => EntryError::RevisionNotFound,
+                _ => EntryError::DatabaseError(e.to_string()),
+            })
     }
 
     pub async fn resolve_entry_files(
@@ -288,7 +325,7 @@ mod tests {
         let service = EntryService::new(entry_repo, file_repo);
 
         let data = json!({"title": "New Entry"});
-        let result = service.create_entry("site-123", "col-123", &data, "new-entry").await;
+        let result = service.create_entry("site-123", "col-123", &data, "new-entry", None).await;
         assert!(result.is_ok());
         let entry = result.unwrap();
         assert_eq!(entry.slug, "new-entry");
@@ -302,7 +339,7 @@ mod tests {
         let service = EntryService::new(entry_repo, file_repo);
 
         let data = json!({});
-        let result = service.create_entry("site-123", "col-123", &data, "empty-entry").await;
+        let result = service.create_entry("site-123", "col-123", &data, "empty-entry", None).await;
         assert!(result.is_ok());
     }
 
@@ -315,7 +352,7 @@ mod tests {
 
         let new_data = json!({"title": "Updated Title"});
         let result = service
-            .update_entry("entry-123", "site-123", Some(&new_data), Some("updated-slug"), None)
+            .update_entry("entry-123", "site-123", Some(&new_data), Some("updated-slug"), None, None, None)
             .await;
         assert!(result.is_ok());
         let entry = result.unwrap();
@@ -329,7 +366,7 @@ mod tests {
         let service = EntryService::new(entry_repo, file_repo);
 
         let result = service
-            .update_entry("nonexistent", "site-123", Some(&json!({})), None, None)
+            .update_entry("nonexistent", "site-123", Some(&json!({})), None, None, None, None)
             .await;
         assert!(matches!(result, Err(EntryError::NotFound)));
     }
@@ -342,7 +379,7 @@ mod tests {
         let service = EntryService::new(entry_repo, file_repo);
 
         let result = service
-            .update_entry("entry-123", "site-123", None, None, Some("published"))
+            .update_entry("entry-123", "site-123", None, None, Some("published"), None, None)
             .await;
         assert!(result.is_ok());
         assert_eq!(result.unwrap().status, "published");
@@ -493,6 +530,10 @@ mod tests {
     fn test_entry_error_into_response() {
         assert_eq!(
             EntryError::NotFound.into_response().status(),
+            axum::http::StatusCode::NOT_FOUND
+        );
+        assert_eq!(
+            EntryError::RevisionNotFound.into_response().status(),
             axum::http::StatusCode::NOT_FOUND
         );
         assert_eq!(
