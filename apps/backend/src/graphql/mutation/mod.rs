@@ -113,6 +113,15 @@ impl MutationRoot {
         entry::EntryMutation.unpublish_entry(ctx, id).await
     }
 
+    async fn restore_revision(
+        &self,
+        ctx: &Context<'_>,
+        entry_id: String,
+        revision_number: i64,
+    ) -> Result<Entry> {
+        entry::EntryMutation.restore_revision(ctx, entry_id, revision_number).await
+    }
+
     async fn delete_file(&self, ctx: &Context<'_>, id: String) -> Result<bool> {
         file::FileMutation.delete_file(ctx, id).await
     }
