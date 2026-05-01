@@ -126,3 +126,20 @@ CREATE TABLE IF NOT EXISTS entry_file_references (
 );
 CREATE INDEX idx_efr_file ON entry_file_references(file_id);
 CREATE INDEX idx_efr_entry ON entry_file_references(entry_id);
+
+CREATE TABLE IF NOT EXISTS entry_revisions (
+    id VARCHAR(36) PRIMARY KEY NOT NULL,
+    entry_id VARCHAR(36) NOT NULL,
+    revision_number INTEGER NOT NULL,
+    data JSON NOT NULL,
+    created_by VARCHAR(36),
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    change_summary TEXT,
+    FOREIGN KEY (entry_id) REFERENCES entries(id) ON DELETE CASCADE,
+    FOREIGN KEY (created_by) REFERENCES users(id),
+    UNIQUE KEY unique_entry_revision (entry_id, revision_number)
+);
+
+CREATE INDEX idx_entry_revisions_entry_id ON entry_revisions(entry_id);
+CREATE INDEX idx_entry_revisions_entry_number ON entry_revisions(entry_id, revision_number);
+CREATE INDEX idx_entry_revisions_created_at ON entry_revisions(entry_id, created_at DESC);

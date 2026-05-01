@@ -109,3 +109,18 @@ CREATE TABLE IF NOT EXISTS entry_file_references (
 );
 CREATE INDEX IF NOT EXISTS idx_efr_file ON entry_file_references(file_id);
 CREATE INDEX IF NOT EXISTS idx_efr_entry ON entry_file_references(entry_id);
+
+CREATE TABLE IF NOT EXISTS entry_revisions (
+    id TEXT PRIMARY KEY NOT NULL,
+    entry_id TEXT NOT NULL REFERENCES entries(id) ON DELETE CASCADE,
+    revision_number INTEGER NOT NULL,
+    data TEXT NOT NULL,
+    created_by TEXT REFERENCES users(id),
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    change_summary TEXT,
+    UNIQUE(entry_id, revision_number)
+);
+
+CREATE INDEX IF NOT EXISTS idx_entry_revisions_entry_id ON entry_revisions(entry_id);
+CREATE INDEX IF NOT EXISTS idx_entry_revisions_entry_number ON entry_revisions(entry_id, revision_number);
+CREATE INDEX IF NOT EXISTS idx_entry_revisions_created_at ON entry_revisions(entry_id, created_at DESC);
