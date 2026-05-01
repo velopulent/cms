@@ -107,4 +107,8 @@ impl GqlContext {
             ))
         }
     }
+
+    pub fn user_id(&self) -> Option<&str> {
+        self.principal.as_ref().and_then(|p| p.user_id())
+    }
 }

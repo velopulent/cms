@@ -247,4 +247,85 @@ impl QueryRoot {
             })
             .collect())
     }
+
+    async fn entry_revisions(
+        &self,
+        ctx: &Context<'_>,
+        entry_id: String,
+        page: Option<i64>,
+        per_page: Option<i64>,
+    ) -> Result<super::types::entry::RevisionsListResult> {
+        let gql_ctx = ctx.data::<GqlContext>()?;
+        let site_id = gql_ctx.require_site()?;
+
+        // Verify entry exists and belongs to site
+        gql_ctx
+            .services
+            .entry
+            .get_entry(&entry_id, site_id, false)
+            .await
+            .map_err(|e| async_graphql::Error::new(format!("Database error: {}", e)))?
+            .ok_or_else(|| async_graphql::Error::new("Entry not found"))?;
+
+        let page_val = page.unwrap_or(1).max(1);
+        let per_page_val = per_page.unwrap_or(50).clamp(1, 200);
+
+        let result = gql_ctx
+            .services
+            .entry
+            .list_revisions(&entry_id, page_val, per_page_val)
+            .await
+            .map_err(|e| async_graphql::Error::new(format!("Database error: {}", e)))?;
+
+        Ok(super::types::entry::RevisionsListResult {
+            items: result
+                .items
+                .into_iter()
+                .map(|r| super::types::entry::db_revision_to_gql(r, None))
+                .collect(),
+            total: result.total,
+            page: result.page,
+            per_page: result.per_page,
+        })
+    }
+
+    async fn entry_revision(
+        &self,
+        ctx: &Context<'_>,
+        entry_id: String,
+        revision_number: i64,
+        diff: Option<bool>,
+    ) -> Result<super::types::entry::EntryRevision> {
+        let gql_ctx = ctx.data::<GqlContext>()?;
+        let site_id = gql_ctx.require_site()?;
+
+        // Verify entry exists and belongs to site
+        gql_ctx
+            .services
+            .entry
+            .get_entry(&entry_id, site_id, false)
+            .await
+            .map_err(|e| async_graphql::Error::new(format!("Database error: {}", e)))?
+            .ok_or_else(|| async_graphql::Error::new("Entry not found"))?;
+
+        let revision = gql_ctx
+            .services
+            .entry
+            .get_revision(&entry_id, revision_number)
+            .await
+            .map_err(|e| async_graphql::Error::new(format!("Database error: {}", e)))?
+            .ok_or_else(|| async_graphql::Error::new("Revision not found"))?;
+
+        let diff_value = if diff.unwrap_or(false) && revision_number > 1 {
+            if let Ok(Some(prev)) = gql_ctx.services.entry.get_revision(&entry_id, revision_number - 1).await {
+                crate::utils::diff::compute_diff_for_revision(&revision, Some(&prev))
+            } else {
+                None
+            }
+        } else {
+            None
+        };
+
+        Ok(super::types::entry::db_revision_to_gql(revision, diff_value))
+    }
 }
