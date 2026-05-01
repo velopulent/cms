@@ -163,8 +163,26 @@ export interface Entry {
   published_at: string | null;
 }
 
+export interface EntryRevision {
+  id: string;
+  entry_id: string;
+  revision_number: number;
+  data: string | Record<string, unknown>;
+  created_by: string | null;
+  created_at: string;
+  change_summary: string | null;
+  diff_from_previous?: Record<string, unknown> | null;
+}
+
 export interface EntryListResponse {
   items: Entry[];
+  total: number;
+  page: number;
+  per_page: number;
+}
+
+export interface RevisionsListResponse {
+  items: EntryRevision[];
   total: number;
   page: number;
   per_page: number;
@@ -509,6 +527,7 @@ export async function updateEntry(
     data?: Record<string, unknown>;
     slug?: string;
     status?: string;
+    change_summary?: string;
   },
 ) {
   return siteApi<Entry>(siteId, `/entries/${id}`, {
@@ -531,6 +550,50 @@ export async function unpublishEntry(siteId: string, id: string) {
   return siteApi<Entry>(siteId, `/entries/${id}/unpublish`, {
     method: "POST",
   });
+}
+
+export async function getEntryRevisions(
+  siteId: string,
+  entryId: string,
+  params: { page?: number; per_page?: number } = {},
+) {
+  const query = new URLSearchParams();
+  if (params.page) query.set("page", String(params.page));
+  if (params.per_page) query.set("per_page", String(params.per_page));
+  const qs = query.toString();
+  return siteApi<RevisionsListResponse>(
+    siteId,
+    `/entries/${entryId}/revisions${qs ? `?${qs}` : ""}`,
+  );
+}
+
+export async function getEntryRevision(
+  siteId: string,
+  entryId: string,
+  revisionNumber: number,
+  diff?: boolean,
+) {
+  const query = new URLSearchParams();
+  if (diff) query.set("diff", "true");
+  const qs = query.toString();
+  return siteApi<EntryRevision>(
+    siteId,
+    `/entries/${entryId}/revisions/${revisionNumber}${qs ? `?${qs}` : ""}`,
+  );
+}
+
+export async function restoreEntryRevision(
+  siteId: string,
+  entryId: string,
+  revisionNumber: number,
+) {
+  return siteApi<Entry>(
+    siteId,
+    `/entries/${entryId}/revisions/${revisionNumber}/restore`,
+    {
+      method: "POST",
+    },
+  );
 }
 
 // --- Files API (site-scoped) ---
