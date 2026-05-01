@@ -157,14 +157,26 @@ impl EntryService {
         })
     }
 
-    pub async fn list_revisions(&self, entry_id: &str, page: i64, per_page: i64) -> Result<RevisionsListResult, EntryError> {
+    pub async fn list_revisions(&self, entry_id: &str, site_id: &str, page: i64, per_page: i64) -> Result<RevisionsListResult, EntryError> {
+        self.entry_repo
+            .get_by_id(entry_id, site_id, false)
+            .await
+            .map_err(|e| EntryError::DatabaseError(e.to_string()))?
+            .ok_or(EntryError::NotFound)?;
+
         self.entry_repo
             .list_revisions(entry_id, page, per_page)
             .await
             .map_err(|e| EntryError::DatabaseError(e.to_string()))
     }
 
-    pub async fn get_revision(&self, entry_id: &str, revision_number: i64) -> Result<Option<EntryRevision>, EntryError> {
+    pub async fn get_revision(&self, entry_id: &str, site_id: &str, revision_number: i64) -> Result<Option<EntryRevision>, EntryError> {
+        self.entry_repo
+            .get_by_id(entry_id, site_id, false)
+            .await
+            .map_err(|e| EntryError::DatabaseError(e.to_string()))?
+            .ok_or(EntryError::NotFound)?;
+
         self.entry_repo
             .get_revision(entry_id, revision_number)
             .await
@@ -174,10 +186,16 @@ impl EntryService {
     pub async fn restore_revision(
         &self,
         entry_id: &str,
-        _site_id: &str,
+        site_id: &str,
         revision_number: i64,
         created_by: Option<&str>,
     ) -> Result<Entry, EntryError> {
+        self.entry_repo
+            .get_by_id(entry_id, site_id, false)
+            .await
+            .map_err(|e| EntryError::DatabaseError(e.to_string()))?
+            .ok_or(EntryError::NotFound)?;
+
         self.entry_repo
             .restore_revision(entry_id, revision_number, created_by)
             .await
