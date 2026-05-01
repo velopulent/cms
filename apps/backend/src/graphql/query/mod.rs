@@ -273,7 +273,7 @@ impl QueryRoot {
         let result = gql_ctx
             .services
             .entry
-            .list_revisions(&entry_id, page_val, per_page_val)
+            .list_revisions(&entry_id, site_id, page_val, per_page_val)
             .await
             .map_err(|e| async_graphql::Error::new(format!("Database error: {}", e)))?;
 
@@ -311,13 +311,13 @@ impl QueryRoot {
         let revision = gql_ctx
             .services
             .entry
-            .get_revision(&entry_id, revision_number)
+            .get_revision(&entry_id, site_id, revision_number)
             .await
             .map_err(|e| async_graphql::Error::new(format!("Database error: {}", e)))?
             .ok_or_else(|| async_graphql::Error::new("Revision not found"))?;
 
         let diff_value = if diff.unwrap_or(false) && revision_number > 1 {
-            if let Ok(Some(prev)) = gql_ctx.services.entry.get_revision(&entry_id, revision_number - 1).await {
+            if let Ok(Some(prev)) = gql_ctx.services.entry.get_revision(&entry_id, site_id, revision_number - 1).await {
                 crate::utils::diff::compute_diff_for_revision(&revision, Some(&prev))
             } else {
                 None
