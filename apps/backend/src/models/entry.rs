@@ -27,4 +27,16 @@ pub struct UpdateEntry {
     pub data: Option<serde_json::Value>,
     pub slug: Option<String>,
     pub status: Option<String>,
+    pub change_summary: Option<String>,
+}
+
+#[derive(Serialize, FromRow, Clone)]
+pub struct EntryRevision {
+    pub id: String,
+    pub entry_id: String,
+    pub revision_number: i64,
+    pub data: sqlx::types::Json<serde_json::Value>,
+    pub created_by: Option<String>,
+    pub created_at: String,
+    pub change_summary: Option<String>,
 }
