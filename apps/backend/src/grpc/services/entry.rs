@@ -196,9 +196,12 @@ impl EntryService for EntryServiceImpl {
             .map_err(|e| Status::internal(format!("Error: {}", e)))?
             .ok_or_else(|| Status::not_found("Entry not found"))?;
 
+        let page_val = req.page.max(1);
+        let per_page_val = if req.per_page <= 0 { 50 } else { req.per_page.clamp(1, 200) };
+
         let result = self
             .app_entry_service
-            .list_revisions(&req.entry_id, req.page, req.per_page)
+            .list_revisions(&req.entry_id, &site_id, page_val, per_page_val)
             .await
             .map_err(|e| Status::internal(format!("Error: {}", e)))?;
 
@@ -231,7 +234,7 @@ impl EntryService for EntryServiceImpl {
 
         let revision = self
             .app_entry_service
-            .get_revision(&req.entry_id, req.revision_number)
+            .get_revision(&req.entry_id, &site_id, req.revision_number)
             .await
             .map_err(|e| Status::internal(format!("Error: {}", e)))?
             .ok_or_else(|| Status::not_found("Revision not found"))?;
@@ -248,6 +251,12 @@ impl EntryService for EntryServiceImpl {
         let site_id = auth.require_site_id()?.to_string();
 
         let req = request.into_inner();
+
+        self.app_entry_service
+            .get_entry(&req.entry_id, &site_id, false)
+            .await
+            .map_err(|e| Status::internal(format!("Error: {}", e)))?
+            .ok_or_else(|| Status::not_found("Entry not found"))?;
 
         let entry = self
             .app_entry_service
