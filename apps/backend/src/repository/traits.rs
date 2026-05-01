@@ -4,7 +4,7 @@ use serde_json::Value;
 use crate::models::{
     access_token::{AccessToken, AccessTokenKind},
     collection::Collection,
-    entry::Entry,
+    entry::{Entry, EntryRevision},
     file::{File, FileReference},
     site::{Site, SiteMember, SiteWithRole},
     user::User,
@@ -101,12 +101,41 @@ pub trait EntryRepository: Send + Sync {
         collection_id: &str,
         data: &str,
         slug: &str,
+        created_by: Option<&str>,
     ) -> Result<Entry, RepositoryError>;
-    async fn update(&self, id: &str, data: &str, slug: &str, status: &str) -> Result<Entry, RepositoryError>;
+    async fn update(
+        &self,
+        id: &str,
+        site_id: &str,
+        data: &str,
+        slug: &str,
+        status: &str,
+        created_by: Option<&str>,
+        change_summary: Option<&str>,
+    ) -> Result<Entry, RepositoryError>;
     async fn delete(&self, id: &str, site_id: &str) -> Result<u64, RepositoryError>;
     async fn publish(&self, id: &str, site_id: &str) -> Result<Entry, RepositoryError>;
     async fn unpublish(&self, id: &str, site_id: &str) -> Result<Entry, RepositoryError>;
     async fn sync_file_references(&self, entry_id: &str, site_id: &str, data: &Value) -> Result<(), RepositoryError>;
+
+    // Revision methods
+    async fn list_revisions(
+        &self,
+        entry_id: &str,
+        page: i64,
+        per_page: i64,
+    ) -> Result<RevisionsListResult, RepositoryError>;
+    async fn get_revision(
+        &self,
+        entry_id: &str,
+        revision_number: i64,
+    ) -> Result<Option<EntryRevision>, RepositoryError>;
+    async fn restore_revision(
+        &self,
+        entry_id: &str,
+        revision_number: i64,
+        created_by: Option<&str>,
+    ) -> Result<Entry, RepositoryError>;
 }
 
 #[derive(Clone)]
@@ -123,6 +152,13 @@ pub struct ListEntriesParams<'a> {
 
 pub struct EntriesListResult {
     pub items: Vec<Entry>,
+    pub total: i64,
+    pub page: i64,
+    pub per_page: i64,
+}
+
+pub struct RevisionsListResult {
+    pub items: Vec<EntryRevision>,
     pub total: i64,
     pub page: i64,
     pub per_page: i64,
