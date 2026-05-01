@@ -9,6 +9,7 @@ use std::time::Duration;
 
 use crate::config::Config;
 use crate::database::backend::DatabaseBackend;
+use crate::database::{SQLITE_MIGRATOR, POSTGRES_MIGRATOR, MYSQL_MIGRATOR};
 
 #[derive(Clone)]
 pub enum DbPool {
@@ -69,20 +70,11 @@ impl DbPool {
         }
     }
 
-    pub async fn execute(&self, query: &str) -> Result<u64, Error> {
+    pub async fn run_migrations(&self) -> Result<(), sqlx::migrate::MigrateError> {
         match self {
-            DbPool::Postgres(pool) => {
-                let result = sqlx::query(query).execute(pool).await?;
-                Ok(result.rows_affected())
-            }
-            DbPool::MySql(pool) => {
-                let result = sqlx::query(query).execute(pool).await?;
-                Ok(result.rows_affected())
-            }
-            DbPool::Sqlite(pool) => {
-                let result = sqlx::query(query).execute(pool).await?;
-                Ok(result.rows_affected())
-            }
+            DbPool::Postgres(pool) => POSTGRES_MIGRATOR.run(pool).await,
+            DbPool::MySql(pool) => MYSQL_MIGRATOR.run(pool).await,
+            DbPool::Sqlite(pool) => SQLITE_MIGRATOR.run(pool).await,
         }
     }
 }

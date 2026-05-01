@@ -1,8 +1,11 @@
 pub mod backend;
 pub mod pool;
 
-use backend::DatabaseBackend;
 use pool::DbPool;
+
+static SQLITE_MIGRATOR: sqlx::migrate::Migrator = sqlx::migrate!("migrations/sqlite");
+static POSTGRES_MIGRATOR: sqlx::migrate::Migrator = sqlx::migrate!("migrations/postgres");
+static MYSQL_MIGRATOR: sqlx::migrate::Migrator = sqlx::migrate!("migrations/mysql");
 
 pub async fn init_db(database_url: &str) -> Result<DbPool, sqlx::Error> {
     let pool = DbPool::from_url_with_config(&crate::config::Config {
@@ -29,28 +32,12 @@ pub async fn init_db(database_url: &str) -> Result<DbPool, sqlx::Error> {
     })
     .await?;
 
-    let backend = pool.backend();
-    run_schema(&pool, backend).await?;
+    pool.run_migrations().await.map_err(|e| sqlx::Error::Configuration(e.into()))?;
     Ok(pool)
 }
 
 pub async fn init_db_with_config(config: &crate::config::Config) -> Result<DbPool, sqlx::Error> {
     let pool = DbPool::from_url_with_config(config).await?;
-    let backend = pool.backend();
-    run_schema(&pool, backend).await?;
+    pool.run_migrations().await.map_err(|e| sqlx::Error::Configuration(e.into()))?;
     Ok(pool)
-}
-
-async fn run_schema(pool: &DbPool, backend: DatabaseBackend) -> Result<(), sqlx::Error> {
-    let schema = match backend {
-        DatabaseBackend::Postgres => include_str!("schema/postgres.sql"),
-        DatabaseBackend::MySQL => include_str!("schema/mysql.sql"),
-        DatabaseBackend::SQLite => include_str!("schema/sqlite.sql"),
-    };
-
-    for statement in schema.split(';').filter(|s| !s.trim().is_empty()) {
-        pool.execute(statement).await?;
-    }
-
-    Ok(())
 }
