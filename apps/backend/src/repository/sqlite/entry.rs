@@ -3,10 +3,11 @@ use regex::Regex;
 use serde_json::Value;
 use sqlx::SqlitePool;
 use std::sync::LazyLock;
+use uuid::Uuid;
 
-use crate::models::entry::Entry;
+use crate::models::entry::{Entry, EntryRevision};
 use crate::repository::error::RepositoryError;
-use crate::repository::traits::{EntriesListResult, EntryRepository, ListEntriesParams};
+use crate::repository::traits::{EntriesListResult, EntryRepository, ListEntriesParams, RevisionsListResult};
 
 static FILE_URL_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"/api/files/([^/]+)(?:/thumbnail)?").unwrap());
 
@@ -166,27 +167,83 @@ impl EntryRepository for SqliteEntryRepository {
         collection_id: &str,
         data: &str,
         slug: &str,
+        created_by: Option<&str>,
     ) -> Result<Entry, RepositoryError> {
+        let mut tx = self.pool.begin().await?;
+
         sqlx::query("INSERT INTO entries (id, site_id, collection_id, data, slug) VALUES (?, ?, ?, ?, ?)")
             .bind(id)
             .bind(site_id)
             .bind(collection_id)
             .bind(data)
             .bind(slug)
-            .execute(&self.pool)
+            .execute(&mut *tx)
             .await?;
+
+        let data_json: serde_json::Value = serde_json::from_str(data).unwrap_or(Value::Null);
+        let revision_id = Uuid::now_v7().to_string();
+        sqlx::query(
+            "INSERT INTO entry_revisions (id, entry_id, revision_number, data, created_by, created_at, change_summary)
+             VALUES (?, ?, 1, ?, ?, datetime('now'), NULL)",
+        )
+        .bind(&revision_id)
+        .bind(id)
+        .bind(sqlx::types::Json(data_json))
+        .bind(created_by)
+        .execute(&mut *tx)
+        .await?;
+
+        tx.commit().await?;
 
         self.get_by_id_any_site(id).await?.ok_or(RepositoryError::NotFound)
     }
 
-    async fn update(&self, id: &str, data: &str, slug: &str, status: &str) -> Result<Entry, RepositoryError> {
-        sqlx::query("UPDATE entries SET data = ?, slug = ?, status = ?, updated_at = datetime('now') WHERE id = ?")
-            .bind(data)
-            .bind(slug)
-            .bind(status)
-            .bind(id)
-            .execute(&self.pool)
-            .await?;
+    async fn update(
+        &self,
+        id: &str,
+        site_id: &str,
+        data: &str,
+        slug: &str,
+        status: &str,
+        created_by: Option<&str>,
+        change_summary: Option<&str>,
+    ) -> Result<Entry, RepositoryError> {
+        let mut tx = self.pool.begin().await?;
+
+        let next_number: i64 = sqlx::query_scalar(
+            "SELECT COALESCE(MAX(revision_number), 0) + 1 FROM entry_revisions WHERE entry_id = ?",
+        )
+        .bind(id)
+        .fetch_one(&mut *tx)
+        .await?;
+
+        sqlx::query(
+            "UPDATE entries SET data = ?, slug = ?, status = ?, updated_at = datetime('now') WHERE id = ? AND site_id = ?",
+        )
+        .bind(data)
+        .bind(slug)
+        .bind(status)
+        .bind(id)
+        .bind(site_id)
+        .execute(&mut *tx)
+        .await?;
+
+        let data_json: serde_json::Value = serde_json::from_str(data).unwrap_or(Value::Null);
+        let revision_id = Uuid::now_v7().to_string();
+        sqlx::query(
+            "INSERT INTO entry_revisions (id, entry_id, revision_number, data, created_by, created_at, change_summary)
+             VALUES (?, ?, ?, ?, ?, datetime('now'), ?)",
+        )
+        .bind(&revision_id)
+        .bind(id)
+        .bind(next_number)
+        .bind(sqlx::types::Json(data_json))
+        .bind(created_by)
+        .bind(change_summary)
+        .execute(&mut *tx)
+        .await?;
+
+        tx.commit().await?;
 
         self.get_by_id_any_site(id).await?.ok_or(RepositoryError::NotFound)
     }
@@ -257,6 +314,106 @@ impl EntryRepository for SqliteEntryRepository {
 
         tx.commit().await?;
         Ok(())
+    }
+
+    async fn list_revisions(
+        &self,
+        entry_id: &str,
+        page: i64,
+        per_page: i64,
+    ) -> Result<RevisionsListResult, RepositoryError> {
+        let total: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM entry_revisions WHERE entry_id = ?")
+            .bind(entry_id)
+            .fetch_one(&self.pool)
+            .await?;
+
+        let offset = (page - 1) * per_page;
+        let items = sqlx::query_as::<_, EntryRevision>(
+            "SELECT id, entry_id, revision_number, data, created_by, created_at, change_summary
+             FROM entry_revisions WHERE entry_id = ? ORDER BY revision_number DESC LIMIT ? OFFSET ?",
+        )
+        .bind(entry_id)
+        .bind(per_page)
+        .bind(offset)
+        .fetch_all(&self.pool)
+        .await?;
+
+        Ok(RevisionsListResult {
+            items,
+            total,
+            page,
+            per_page,
+        })
+    }
+
+    async fn get_revision(
+        &self,
+        entry_id: &str,
+        revision_number: i64,
+    ) -> Result<Option<EntryRevision>, RepositoryError> {
+        let result = sqlx::query_as::<_, EntryRevision>(
+            "SELECT id, entry_id, revision_number, data, created_by, created_at, change_summary
+             FROM entry_revisions WHERE entry_id = ? AND revision_number = ?",
+        )
+        .bind(entry_id)
+        .bind(revision_number)
+        .fetch_optional(&self.pool)
+        .await?;
+
+        Ok(result)
+    }
+
+    async fn restore_revision(
+        &self,
+        entry_id: &str,
+        revision_number: i64,
+        created_by: Option<&str>,
+    ) -> Result<Entry, RepositoryError> {
+        let mut tx = self.pool.begin().await?;
+
+        let revision: Option<EntryRevision> = sqlx::query_as(
+            "SELECT id, entry_id, revision_number, data, created_by, created_at, change_summary
+             FROM entry_revisions WHERE entry_id = ? AND revision_number = ?",
+        )
+        .bind(entry_id)
+        .bind(revision_number)
+        .fetch_optional(&mut *tx)
+        .await?;
+
+        let revision = revision.ok_or(RepositoryError::NotFound)?;
+
+        let next_number: i64 = sqlx::query_scalar(
+            "SELECT COALESCE(MAX(revision_number), 0) + 1 FROM entry_revisions WHERE entry_id = ?",
+        )
+        .bind(entry_id)
+        .fetch_one(&mut *tx)
+        .await?;
+
+        let data_str = serde_json::to_string(&revision.data.0).unwrap_or_default();
+        sqlx::query("UPDATE entries SET data = ?, updated_at = datetime('now') WHERE id = ?")
+            .bind(&data_str)
+            .bind(entry_id)
+            .execute(&mut *tx)
+            .await?;
+
+        let new_revision_id = Uuid::now_v7().to_string();
+        let change_summary = format!("Restored from revision {}", revision_number);
+        sqlx::query(
+            "INSERT INTO entry_revisions (id, entry_id, revision_number, data, created_by, created_at, change_summary)
+             VALUES (?, ?, ?, ?, ?, datetime('now'), ?)",
+        )
+        .bind(&new_revision_id)
+        .bind(entry_id)
+        .bind(next_number)
+        .bind(revision.data)
+        .bind(created_by)
+        .bind(&change_summary)
+        .execute(&mut *tx)
+        .await?;
+
+        tx.commit().await?;
+
+        self.get_by_id_any_site(entry_id).await?.ok_or(RepositoryError::NotFound)
     }
 }
 
