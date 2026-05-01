@@ -1,4 +1,5 @@
 # Generated output directories
+**/out/
 **/dist/
 **/.tanstack/
 **/src/routeTree.gen.ts
