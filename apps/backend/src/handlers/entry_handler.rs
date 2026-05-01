@@ -11,7 +11,7 @@ use std::sync::Arc;
 use tracing::instrument;
 
 use crate::middleware::auth::{HEADER_SITE_ID, Principal, SCOPE_CONTENT_READ, SCOPE_CONTENT_WRITE, require_site_scope};
-use crate::models::entry::{CreateEntry, Entry, UpdateEntry};
+use crate::models::entry::{CreateEntry, Entry, EntryRevisionResponse, RevisionsListResponse, UpdateEntry};
 use crate::repository::Repository;
 use crate::repository::traits::ListEntriesParams;
 use crate::services::Services;
@@ -410,7 +410,7 @@ pub async fn unpublish_entry(
     path = "/api/v1/entries/{id}/revisions",
     params(("id" = String, Path, description = "Entry ID"), RevisionListParams),
     responses(
-        (status = 200, description = "List of revisions"),
+        (status = 200, description = "List of revisions", body = RevisionsListResponse),
         (status = 401, description = "Unauthorized"),
         (status = 404, description = "Entry not found"),
     ),
@@ -449,17 +449,16 @@ pub async fn list_entry_revisions(
     let page = params.page.unwrap_or(1).max(1);
     let per_page = params.per_page.unwrap_or(50).clamp(1, 200);
 
-    match services.entry.list_revisions(&id, page, per_page).await {
-        Ok(result) => (
-            StatusCode::OK,
-            Json(json!({
-                "items": result.items,
-                "total": result.total,
-                "page": result.page,
-                "per_page": result.per_page,
-            })),
-        )
-            .into_response(),
+    match services.entry.list_revisions(&id, &site.site_id, page, per_page).await {
+        Ok(result) => {
+            let response = RevisionsListResponse {
+                items: result.items.into_iter().map(EntryRevisionResponse::from).collect(),
+                total: result.total,
+                page: result.page,
+                per_page: result.per_page,
+            };
+            (StatusCode::OK, Json(response)).into_response()
+        }
         Err(e) => e.into_response(),
     }
 }
@@ -473,7 +472,7 @@ pub async fn list_entry_revisions(
         DiffQuery
     ),
     responses(
-        (status = 200, description = "Revision"),
+        (status = 200, description = "Revision", body = EntryRevisionResponse),
         (status = 401, description = "Unauthorized"),
         (status = 404, description = "Revision not found"),
     ),
@@ -509,31 +508,15 @@ pub async fn get_entry_revision(
         Err(e) => return e.into_response(),
     }
 
-    match services.entry.get_revision(&id, number).await {
+    match services.entry.get_revision(&id, &site.site_id, number).await {
         Ok(Some(revision)) => {
-            let mut response = json!({
-                "id": revision.id,
-                "entry_id": revision.entry_id,
-                "revision_number": revision.revision_number,
-                "data": revision.data.0,
-                "created_by": revision.created_by,
-                "created_at": revision.created_at,
-                "change_summary": revision.change_summary,
-            });
+            let mut response = EntryRevisionResponse::from(revision.clone());
 
-            if query.diff.unwrap_or(false) {
-                if number > 1 {
-                    if let Ok(Some(prev)) = services.entry.get_revision(&id, number - 1).await {
-                        if let Some(diff) = compute_diff_for_revision(&revision, Some(&prev)) {
-                            response["diff_from_previous"] = diff;
-                        } else {
-                            response["diff_from_previous"] = json!(null);
-                        }
-                    } else {
-                        response["diff_from_previous"] = json!(null);
+            if query.diff.unwrap_or(false) && number > 1 {
+                if let Ok(Some(prev)) = services.entry.get_revision(&id, &site.site_id, number - 1).await {
+                    if let Some(diff) = compute_diff_for_revision(&revision, Some(&prev)) {
+                        response.diff_from_previous = Some(diff);
                     }
-                } else {
-                    response["diff_from_previous"] = json!(null);
                 }
             }
 
