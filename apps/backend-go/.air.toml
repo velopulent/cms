@@ -1,0 +1,13 @@
+root = "."
+tmp_dir = "tmp"
+
+[build]
+cmd = "go build -o ./tmp/cms-go.exe ./cmd/server"
+bin = "./tmp/cms-go.exe"
+include_ext = ["go", "sql"]
+exclude_dir = ["tmp"]
+delay = 1000
+stop_on_error = true
+
+[log]
+time = true

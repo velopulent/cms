@@ -1,0 +1,88 @@
+{
+  "name": "backend-go",
+  "$schema": "../../node_modules/nx/schemas/project-schema.json",
+  "sourceRoot": "apps/backend-go",
+  "projectType": "application",
+  "targets": {
+    "dev": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "powershell -NoProfile -ExecutionPolicy Bypass -Command \"if (Test-Path ../dashboard/dist) { Copy-Item -Recurse -Force ../dashboard/dist/* internal/adapters/http/dashboard/dist/ }; go run github.com/air-verse/air@v1.63.0\"",
+        "cwd": "apps/backend-go",
+        "env": {
+          "GOTELEMETRY": "off",
+          "GOTELEMETRYDIR": "C:\\tmp\\go-telemetry",
+          "GOCACHE": "C:\\tmp\\go-cache",
+          "GOMODCACHE": "C:\\tmp\\go-mod"
+        }
+      },
+      "cache": false
+    },
+    "build": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "powershell -NoProfile -ExecutionPolicy Bypass -Command \"if (Test-Path ../dashboard/dist) { Copy-Item -Recurse -Force ../dashboard/dist/* internal/adapters/http/dashboard/dist/ }; go build -o ../../dist/backend-go/cms-go ./cmd/server\"",
+        "cwd": "apps/backend-go",
+        "env": {
+          "GOTELEMETRY": "off",
+          "GOTELEMETRYDIR": "C:\\tmp\\go-telemetry",
+          "GOCACHE": "C:\\tmp\\go-cache",
+          "GOMODCACHE": "C:\\tmp\\go-mod"
+        }
+      },
+      "outputs": ["{workspaceRoot}/dist/backend-go/cms-go"],
+      "cache": false
+    },
+    "start": {
+      "executor": "nx:run-commands",
+      "dependsOn": ["build"],
+      "options": {
+        "command": "../../dist/backend-go/cms-go",
+        "cwd": "apps/backend-go",
+        "env": {
+          "GOTELEMETRY": "off",
+          "GOTELEMETRYDIR": "C:\\tmp\\go-telemetry",
+          "GOCACHE": "C:\\tmp\\go-cache",
+          "GOMODCACHE": "C:\\tmp\\go-mod"
+        }
+      },
+      "cache": false
+    },
+    "test": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "go test ./...",
+        "cwd": "apps/backend-go",
+        "env": {
+          "GOTELEMETRY": "off",
+          "GOTELEMETRYDIR": "C:\\tmp\\go-telemetry",
+          "GOCACHE": "C:\\tmp\\go-cache",
+          "GOMODCACHE": "C:\\tmp\\go-mod"
+        }
+      },
+      "cache": false
+    },
+    "lint": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "go vet ./...",
+        "cwd": "apps/backend-go",
+        "env": {
+          "GOTELEMETRY": "off",
+          "GOTELEMETRYDIR": "C:\\tmp\\go-telemetry",
+          "GOCACHE": "C:\\tmp\\go-cache",
+          "GOMODCACHE": "C:\\tmp\\go-mod"
+        }
+      },
+      "cache": false
+    },
+    "format": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "gofmt -w .",
+        "cwd": "apps/backend-go"
+      },
+      "cache": false
+    }
+  }
+}
