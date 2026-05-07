@@ -1,104 +1,124 @@
 <p align="center">
-  <img src="assets/logo.avif" width="400" />
-    <p align="center">
-    A headless, API-first content management system built for developers.
-    </p>
+  <img src="assets/logo.avif" width="400" alt="CMS Logo" />
 </p>
+
+<h1 align="center">The CMS That Ships As a Single Binary</h1>
+
+<p align="center">
+ Open-source headless CMS focused on user experience and content flexibility.
+</p>
+
+<p align="center">
+  <a href="https://cms.velopulent.com">Website</a> •
+  <a href="#what-is-this">About</a> •
+  <a href="#features">Features</a> •
+  <a href="#getting-started">Getting Started</a> •
+  <a href="#why-this-cms">Why This?</a>
+</p>
+
+---
+
+> ⚠️ This project is still under active development.
+
+## What Is This?
+
+A modern content management system that gives you complete control over your content without forcing you into a specific frontend technology. Define your content structure, manage multiple websites, and deliver content anywhere via API.
+
+The entire system ships as a single binary. One file runs the admin dashboard, REST API, GraphQL endpoint, and gRPC services. No dependencies. No containers. No complex infrastructure.
 
 ---
 
 ## Features
 
-### Multi-Site Management
-Manage multiple websites from a single installation with role-based access control.
+### 🏗️ Content Modeling That Fits Your Data
 
-### Custom Content Types
-Define collections with your fields: text, rich text, numbers, dates, images, and more.
+Build custom content types through an intuitive interface. Whether you need blog posts, product catalogs, documentation pages, or landing pages, you define the structure and the system handles the rest.
 
-### API-First Design
-REST and GraphQL APIs out of the box with auto-generated OpenAPI documentation.
+### 🌐 One CMS, Multiple Sites
 
-### Media Management
-Upload, organize, and serve media with automatic thumbnails and S3 support.
+Manage content for multiple websites or applications from a single dashboard. Each site stays isolated with its own content, media library, and user permissions.
 
-### Developer-Friendly
-Single binary deployment. No external dependencies. JWT auth and API keys for programmatic access.
+### 🚀 API-First by Design
 
----
+Your content is instantly available via REST, GraphQL, gRPC and MCP APIs. Build websites, mobile apps, or any digital experience using the tools and frameworks you prefer.
 
-## Stack
+### 📁 Media Management Built In
 
-### Backend
+Upload, organize, and serve images and files with automatic thumbnail generation. Works with local storage or connect your own S3-compatible storage.
 
-- [Axum](https://docs.rs/axum) - HTTP server & routing
-- [SQLx](https://docs.rs/sqlx) - Async SQL toolkit
-- SQLite - Database
-- [rust-embed](https://docs.rs/rust-embed) - Static asset embedding
-- [async-graphql](https://async-graphql.github.io/async-graphql/en/) - GraphQL API
-- [utoipa](https://docs.rs/utoipa) - OpenAPI generation
+### 🔐 Secure & Scalable
 
-### Frontend
+Role-based access control, JWT authentication, and rate limiting included out of the box. Whether you're running a personal blog or a multi-tenant platform, the security model adapts to your needs.
 
-- [React](https://react.dev) - UI framework
-- [Tanstack Router](https://tanstack.com/router) - Routing
-- [Tanstack Query](https://tanstack.com/query) - Server state
-- [shadcn/ui](https://ui.shadcn.com) - UI components
-- [Tailwind CSS](https://tailwindcss.com) - Styling
-- [Tiptap](https://tiptap.dev) - Rich text editor
+### 💻 Modern Admin Dashboard
+
+A clean, fast interface for content editors and administrators. Rich text editing, media browsing, content previews, and user management—all in one place.
 
 ---
 
-## How It Works
+## Getting Started
 
-1. The React app lives inside the `dashboard/` folder.
-2. During release builds, `build.rs` runs `bun run build`.
-3. The compiled `dashboard/dist` files are embedded into the Rust binary using `rust-embed`.
-4. The `ui_handler` serves static assets and provides SPA fallback.
-5. `/api/*` routes are handled by Axum.
-
-Result: one binary that serves both API and UI.
-
----
-
-## Quick Start
+### Run It
 
 ```bash
-# Build the project
-cargo build --release
-
-# Run the server
+bun run build
 ./target/release/cms
 ```
 
-Visit `http://localhost:3000` to access the admin UI.
+Visit `http://localhost:3000` and log in with:
+- **Username:** `admin`
+- **Password:** `admin`
+
+*Change the default password after your first login.*
+
+### Access Your Content
+
+| Endpoint | What It Does |
+|----------|--------------|
+| `/api/v1/` | REST API for your content |
+| `/api/graphql` | GraphQL endpoint |
+| `/api/v1/docs` | Interactive API documentation |
+| `port 50051`   | gRPC endpoint|
+---
+
+## Why This CMS?
+
+### One File, Everything Included
+
+Most CMS platforms require databases, web servers, reverse proxies, and container orchestration just to get started. This CMS compiles to a single executable that embeds the dashboard, APIs, and documentation site. Copy one file to your server and run it.
+
+### Developer Experience First
+
+Built by developers, for developers. The API is predictable, the documentation is interactive, and the codebase is designed to be extended and customized.
+
+### Database Flexibility
+
+Use SQLite for simple deployments or connect to PostgreSQL or MySQL for production workloads. The same binary works with all three.
+
+### Built for Teams
+
+Multi-site support and role-based permissions mean your content team, developers, and stakeholders can all work in the same system without stepping on each other.
 
 ---
 
 ## Development
 
-### Backend
+Clone this repository
 
 ```bash
-cargo run
+git clone https://github.com/velopulent/cms
 ```
 
-### Frontend
-
 ```bash
-cd dashboard
+# Run development server
+cd cms
 bun run dev
 ```
 
-During development, the React dev server proxies API requests to the Rust backend.
+Visit `localhost:3000` to access the backend, `localhost:5173` to access the React Dashboard.
 
 ---
 
-## API Access
+## License
 
-| Endpoint | Description |
-|----------|-------------|
-| `/api/v1/` | REST API |
-| `/api/graphql` | GraphQL API |
-| `/api/v1/docs` | OpenAPI documentation |
-
----
+[AGPL v3](LICENSE)
