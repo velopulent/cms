@@ -323,6 +323,106 @@ export interface FileReference {
   field_name: string;
 }
 
+// --- Webhook Types ---
+
+export interface Webhook {
+  id: string;
+  site_id: string;
+  label: string;
+  url: string;
+  headers?: Record<string, string>;
+  created_by: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface WebhookDeliveryList {
+  id: string;
+  webhook_id: string;
+  status: string;
+  status_code: number | null;
+  response_body: string | null;
+  duration_ms: number | null;
+  triggered_by: string;
+  triggered_at: string;
+}
+
+export interface WebhookDeliveriesResponse {
+  items: WebhookDeliveryList[];
+  total: number;
+  page: number;
+  per_page: number;
+}
+
+// --- Webhooks API (site-scoped, path-based) ---
+
+export async function getWebhooks(siteId: string) {
+  return api<Webhook[]>(`/sites/${siteId}/webhooks`);
+}
+
+export async function getWebhook(siteId: string, webhookId: string) {
+  return api<Webhook>(`/sites/${siteId}/webhooks/${webhookId}`);
+}
+
+export async function createWebhook(
+  siteId: string,
+  data: {
+    label: string;
+    url: string;
+    headers?: Record<string, string>;
+  },
+) {
+  return api<Webhook>(`/sites/${siteId}/webhooks`, {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
+}
+
+export async function updateWebhook(
+  siteId: string,
+  webhookId: string,
+  data: {
+    label?: string;
+    url?: string;
+    headers?: Record<string, string>;
+  },
+) {
+  return api<Webhook>(`/sites/${siteId}/webhooks/${webhookId}`, {
+    method: "PUT",
+    body: JSON.stringify(data),
+  });
+}
+
+export async function deleteWebhook(siteId: string, webhookId: string) {
+  return api<void>(`/sites/${siteId}/webhooks/${webhookId}`, {
+    method: "DELETE",
+  });
+}
+
+export async function triggerWebhook(siteId: string, webhookId: string) {
+  return api<WebhookDeliveryList>(
+    `/sites/${siteId}/webhooks/${webhookId}/trigger`,
+    {
+      method: "POST",
+    },
+  );
+}
+
+export async function getWebhookDeliveries(
+  siteId: string,
+  webhookId: string,
+  page?: number,
+  perPage?: number,
+) {
+  const query = new URLSearchParams();
+  if (page) query.set("page", String(page));
+  if (perPage) query.set("per_page", String(perPage));
+  const qs = query.toString();
+  return api<WebhookDeliveriesResponse>(
+    `/sites/${siteId}/webhooks/${webhookId}/deliveries${qs ? `?${qs}` : ""}`,
+  );
+}
+
 // --- Auth API ---
 
 export async function login(username: string, password: string) {
