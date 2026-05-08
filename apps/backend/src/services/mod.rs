@@ -5,6 +5,7 @@ pub mod entry;
 pub mod file;
 pub mod singleton;
 pub mod site;
+pub mod webhook;
 
 use std::sync::Arc;
 
@@ -20,6 +21,7 @@ pub struct Services {
     pub entry: Arc<entry::EntryService>,
     pub file: Arc<file::FileService>,
     pub singleton: Arc<singleton::SingletonService>,
+    pub webhook: Arc<webhook::WebhookService>,
 }
 
 impl Services {
@@ -46,6 +48,10 @@ impl Services {
             singleton: Arc::new(singleton::SingletonService::new(
                 repository.collection.clone(),
                 repository.file.clone(),
+            )),
+            webhook: Arc::new(webhook::WebhookService::new(
+                repository.webhook.clone(),
+                &config.hmac_secret,
             )),
         }
     }
