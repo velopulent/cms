@@ -495,6 +495,130 @@ pub struct DeleteSiteTokenRequest {
     #[prost(string, tag = "2")]
     pub token_id: ::prost::alloc::string::String,
 }
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct SiteWebhook {
+    #[prost(string, tag = "1")]
+    pub id: ::prost::alloc::string::String,
+    #[prost(string, tag = "2")]
+    pub site_id: ::prost::alloc::string::String,
+    #[prost(string, tag = "3")]
+    pub label: ::prost::alloc::string::String,
+    #[prost(string, tag = "4")]
+    pub url: ::prost::alloc::string::String,
+    #[prost(map = "string, string", tag = "5")]
+    pub headers: ::std::collections::HashMap<
+        ::prost::alloc::string::String,
+        ::prost::alloc::string::String,
+    >,
+    #[prost(string, tag = "6")]
+    pub created_by: ::prost::alloc::string::String,
+    #[prost(string, tag = "7")]
+    pub created_at: ::prost::alloc::string::String,
+    #[prost(string, tag = "8")]
+    pub updated_at: ::prost::alloc::string::String,
+}
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct WebhookDelivery {
+    #[prost(string, tag = "1")]
+    pub id: ::prost::alloc::string::String,
+    #[prost(string, tag = "2")]
+    pub webhook_id: ::prost::alloc::string::String,
+    #[prost(string, tag = "3")]
+    pub status: ::prost::alloc::string::String,
+    #[prost(int32, optional, tag = "4")]
+    pub status_code: ::core::option::Option<i32>,
+    #[prost(string, optional, tag = "5")]
+    pub response_body: ::core::option::Option<::prost::alloc::string::String>,
+    #[prost(int64, optional, tag = "6")]
+    pub duration_ms: ::core::option::Option<i64>,
+    #[prost(string, tag = "7")]
+    pub triggered_by: ::prost::alloc::string::String,
+    #[prost(string, tag = "8")]
+    pub triggered_at: ::prost::alloc::string::String,
+}
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct ListWebhooksRequest {
+    #[prost(string, tag = "1")]
+    pub site_id: ::prost::alloc::string::String,
+}
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct ListWebhooksResponse {
+    #[prost(message, repeated, tag = "1")]
+    pub webhooks: ::prost::alloc::vec::Vec<SiteWebhook>,
+}
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct GetWebhookRequest {
+    #[prost(string, tag = "1")]
+    pub site_id: ::prost::alloc::string::String,
+    #[prost(string, tag = "2")]
+    pub webhook_id: ::prost::alloc::string::String,
+}
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct CreateWebhookRequest {
+    #[prost(string, tag = "1")]
+    pub site_id: ::prost::alloc::string::String,
+    #[prost(string, tag = "2")]
+    pub label: ::prost::alloc::string::String,
+    #[prost(string, tag = "3")]
+    pub url: ::prost::alloc::string::String,
+    #[prost(map = "string, string", tag = "4")]
+    pub headers: ::std::collections::HashMap<
+        ::prost::alloc::string::String,
+        ::prost::alloc::string::String,
+    >,
+}
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct UpdateWebhookRequest {
+    #[prost(string, tag = "1")]
+    pub site_id: ::prost::alloc::string::String,
+    #[prost(string, tag = "2")]
+    pub webhook_id: ::prost::alloc::string::String,
+    #[prost(string, optional, tag = "3")]
+    pub label: ::core::option::Option<::prost::alloc::string::String>,
+    #[prost(string, optional, tag = "4")]
+    pub url: ::core::option::Option<::prost::alloc::string::String>,
+    #[prost(map = "string, string", tag = "5")]
+    pub headers: ::std::collections::HashMap<
+        ::prost::alloc::string::String,
+        ::prost::alloc::string::String,
+    >,
+}
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct DeleteWebhookRequest {
+    #[prost(string, tag = "1")]
+    pub site_id: ::prost::alloc::string::String,
+    #[prost(string, tag = "2")]
+    pub webhook_id: ::prost::alloc::string::String,
+}
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct TriggerWebhookRequest {
+    #[prost(string, tag = "1")]
+    pub site_id: ::prost::alloc::string::String,
+    #[prost(string, tag = "2")]
+    pub webhook_id: ::prost::alloc::string::String,
+}
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct ListWebhookDeliveriesRequest {
+    #[prost(string, tag = "1")]
+    pub site_id: ::prost::alloc::string::String,
+    #[prost(string, tag = "2")]
+    pub webhook_id: ::prost::alloc::string::String,
+    #[prost(int64, tag = "3")]
+    pub page: i64,
+    #[prost(int64, tag = "4")]
+    pub per_page: i64,
+}
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct ListWebhookDeliveriesResponse {
+    #[prost(message, repeated, tag = "1")]
+    pub items: ::prost::alloc::vec::Vec<WebhookDelivery>,
+    #[prost(int64, tag = "2")]
+    pub total: i64,
+    #[prost(int64, tag = "3")]
+    pub page: i64,
+    #[prost(int64, tag = "4")]
+    pub per_page: i64,
+}
 /// Generated server implementations.
 pub mod collection_service_server {
     #![allow(
@@ -3333,6 +3457,491 @@ pub mod token_service_server {
     /// Generated gRPC service name
     pub const SERVICE_NAME: &str = "cms.v1.TokenService";
     impl<T> tonic::server::NamedService for TokenServiceServer<T> {
+        const NAME: &'static str = SERVICE_NAME;
+    }
+}
+/// Generated server implementations.
+pub mod webhook_service_server {
+    #![allow(
+        unused_variables,
+        dead_code,
+        missing_docs,
+        clippy::wildcard_imports,
+        clippy::let_unit_value,
+    )]
+    use tonic::codegen::*;
+    /// Generated trait containing gRPC methods that should be implemented for use with WebhookServiceServer.
+    #[async_trait]
+    pub trait WebhookService: std::marker::Send + std::marker::Sync + 'static {
+        async fn list_webhooks(
+            &self,
+            request: tonic::Request<super::ListWebhooksRequest>,
+        ) -> std::result::Result<
+            tonic::Response<super::ListWebhooksResponse>,
+            tonic::Status,
+        >;
+        async fn get_webhook(
+            &self,
+            request: tonic::Request<super::GetWebhookRequest>,
+        ) -> std::result::Result<tonic::Response<super::SiteWebhook>, tonic::Status>;
+        async fn create_webhook(
+            &self,
+            request: tonic::Request<super::CreateWebhookRequest>,
+        ) -> std::result::Result<tonic::Response<super::SiteWebhook>, tonic::Status>;
+        async fn update_webhook(
+            &self,
+            request: tonic::Request<super::UpdateWebhookRequest>,
+        ) -> std::result::Result<tonic::Response<super::SiteWebhook>, tonic::Status>;
+        async fn delete_webhook(
+            &self,
+            request: tonic::Request<super::DeleteWebhookRequest>,
+        ) -> std::result::Result<tonic::Response<super::DeleteResponse>, tonic::Status>;
+        async fn trigger_webhook(
+            &self,
+            request: tonic::Request<super::TriggerWebhookRequest>,
+        ) -> std::result::Result<tonic::Response<super::WebhookDelivery>, tonic::Status>;
+        async fn list_webhook_deliveries(
+            &self,
+            request: tonic::Request<super::ListWebhookDeliveriesRequest>,
+        ) -> std::result::Result<
+            tonic::Response<super::ListWebhookDeliveriesResponse>,
+            tonic::Status,
+        >;
+    }
+    /// Webhook Service - Instance-scoped operations (requires cms_ik\_\* token)
+    #[derive(Debug)]
+    pub struct WebhookServiceServer<T> {
+        inner: Arc<T>,
+        accept_compression_encodings: EnabledCompressionEncodings,
+        send_compression_encodings: EnabledCompressionEncodings,
+        max_decoding_message_size: Option<usize>,
+        max_encoding_message_size: Option<usize>,
+    }
+    impl<T> WebhookServiceServer<T> {
+        pub fn new(inner: T) -> Self {
+            Self::from_arc(Arc::new(inner))
+        }
+        pub fn from_arc(inner: Arc<T>) -> Self {
+            Self {
+                inner,
+                accept_compression_encodings: Default::default(),
+                send_compression_encodings: Default::default(),
+                max_decoding_message_size: None,
+                max_encoding_message_size: None,
+            }
+        }
+        pub fn with_interceptor<F>(
+            inner: T,
+            interceptor: F,
+        ) -> InterceptedService<Self, F>
+        where
+            F: tonic::service::Interceptor,
+        {
+            InterceptedService::new(Self::new(inner), interceptor)
+        }
+        /// Enable decompressing requests with the given encoding.
+        #[must_use]
+        pub fn accept_compressed(mut self, encoding: CompressionEncoding) -> Self {
+            self.accept_compression_encodings.enable(encoding);
+            self
+        }
+        /// Compress responses with the given encoding, if the client supports it.
+        #[must_use]
+        pub fn send_compressed(mut self, encoding: CompressionEncoding) -> Self {
+            self.send_compression_encodings.enable(encoding);
+            self
+        }
+        /// Limits the maximum size of a decoded message.
+        ///
+        /// Default: `4MB`
+        #[must_use]
+        pub fn max_decoding_message_size(mut self, limit: usize) -> Self {
+            self.max_decoding_message_size = Some(limit);
+            self
+        }
+        /// Limits the maximum size of an encoded message.
+        ///
+        /// Default: `usize::MAX`
+        #[must_use]
+        pub fn max_encoding_message_size(mut self, limit: usize) -> Self {
+            self.max_encoding_message_size = Some(limit);
+            self
+        }
+    }
+    impl<T, B> tonic::codegen::Service<http::Request<B>> for WebhookServiceServer<T>
+    where
+        T: WebhookService,
+        B: Body + std::marker::Send + 'static,
+        B::Error: Into<StdError> + std::marker::Send + 'static,
+    {
+        type Response = http::Response<tonic::body::Body>;
+        type Error = std::convert::Infallible;
+        type Future = BoxFuture<Self::Response, Self::Error>;
+        fn poll_ready(
+            &mut self,
+            _cx: &mut Context<'_>,
+        ) -> Poll<std::result::Result<(), Self::Error>> {
+            Poll::Ready(Ok(()))
+        }
+        fn call(&mut self, req: http::Request<B>) -> Self::Future {
+            match req.uri().path() {
+                "/cms.v1.WebhookService/ListWebhooks" => {
+                    #[allow(non_camel_case_types)]
+                    struct ListWebhooksSvc<T: WebhookService>(pub Arc<T>);
+                    impl<
+                        T: WebhookService,
+                    > tonic::server::UnaryService<super::ListWebhooksRequest>
+                    for ListWebhooksSvc<T> {
+                        type Response = super::ListWebhooksResponse;
+                        type Future = BoxFuture<
+                            tonic::Response<Self::Response>,
+                            tonic::Status,
+                        >;
+                        fn call(
+                            &mut self,
+                            request: tonic::Request<super::ListWebhooksRequest>,
+                        ) -> Self::Future {
+                            let inner = Arc::clone(&self.0);
+                            let fut = async move {
+                                <T as WebhookService>::list_webhooks(&inner, request).await
+                            };
+                            Box::pin(fut)
+                        }
+                    }
+                    let accept_compression_encodings = self.accept_compression_encodings;
+                    let send_compression_encodings = self.send_compression_encodings;
+                    let max_decoding_message_size = self.max_decoding_message_size;
+                    let max_encoding_message_size = self.max_encoding_message_size;
+                    let inner = self.inner.clone();
+                    let fut = async move {
+                        let method = ListWebhooksSvc(inner);
+                        let codec = tonic_prost::ProstCodec::default();
+                        let mut grpc = tonic::server::Grpc::new(codec)
+                            .apply_compression_config(
+                                accept_compression_encodings,
+                                send_compression_encodings,
+                            )
+                            .apply_max_message_size_config(
+                                max_decoding_message_size,
+                                max_encoding_message_size,
+                            );
+                        let res = grpc.unary(method, req).await;
+                        Ok(res)
+                    };
+                    Box::pin(fut)
+                }
+                "/cms.v1.WebhookService/GetWebhook" => {
+                    #[allow(non_camel_case_types)]
+                    struct GetWebhookSvc<T: WebhookService>(pub Arc<T>);
+                    impl<
+                        T: WebhookService,
+                    > tonic::server::UnaryService<super::GetWebhookRequest>
+                    for GetWebhookSvc<T> {
+                        type Response = super::SiteWebhook;
+                        type Future = BoxFuture<
+                            tonic::Response<Self::Response>,
+                            tonic::Status,
+                        >;
+                        fn call(
+                            &mut self,
+                            request: tonic::Request<super::GetWebhookRequest>,
+                        ) -> Self::Future {
+                            let inner = Arc::clone(&self.0);
+                            let fut = async move {
+                                <T as WebhookService>::get_webhook(&inner, request).await
+                            };
+                            Box::pin(fut)
+                        }
+                    }
+                    let accept_compression_encodings = self.accept_compression_encodings;
+                    let send_compression_encodings = self.send_compression_encodings;
+                    let max_decoding_message_size = self.max_decoding_message_size;
+                    let max_encoding_message_size = self.max_encoding_message_size;
+                    let inner = self.inner.clone();
+                    let fut = async move {
+                        let method = GetWebhookSvc(inner);
+                        let codec = tonic_prost::ProstCodec::default();
+                        let mut grpc = tonic::server::Grpc::new(codec)
+                            .apply_compression_config(
+                                accept_compression_encodings,
+                                send_compression_encodings,
+                            )
+                            .apply_max_message_size_config(
+                                max_decoding_message_size,
+                                max_encoding_message_size,
+                            );
+                        let res = grpc.unary(method, req).await;
+                        Ok(res)
+                    };
+                    Box::pin(fut)
+                }
+                "/cms.v1.WebhookService/CreateWebhook" => {
+                    #[allow(non_camel_case_types)]
+                    struct CreateWebhookSvc<T: WebhookService>(pub Arc<T>);
+                    impl<
+                        T: WebhookService,
+                    > tonic::server::UnaryService<super::CreateWebhookRequest>
+                    for CreateWebhookSvc<T> {
+                        type Response = super::SiteWebhook;
+                        type Future = BoxFuture<
+                            tonic::Response<Self::Response>,
+                            tonic::Status,
+                        >;
+                        fn call(
+                            &mut self,
+                            request: tonic::Request<super::CreateWebhookRequest>,
+                        ) -> Self::Future {
+                            let inner = Arc::clone(&self.0);
+                            let fut = async move {
+                                <T as WebhookService>::create_webhook(&inner, request).await
+                            };
+                            Box::pin(fut)
+                        }
+                    }
+                    let accept_compression_encodings = self.accept_compression_encodings;
+                    let send_compression_encodings = self.send_compression_encodings;
+                    let max_decoding_message_size = self.max_decoding_message_size;
+                    let max_encoding_message_size = self.max_encoding_message_size;
+                    let inner = self.inner.clone();
+                    let fut = async move {
+                        let method = CreateWebhookSvc(inner);
+                        let codec = tonic_prost::ProstCodec::default();
+                        let mut grpc = tonic::server::Grpc::new(codec)
+                            .apply_compression_config(
+                                accept_compression_encodings,
+                                send_compression_encodings,
+                            )
+                            .apply_max_message_size_config(
+                                max_decoding_message_size,
+                                max_encoding_message_size,
+                            );
+                        let res = grpc.unary(method, req).await;
+                        Ok(res)
+                    };
+                    Box::pin(fut)
+                }
+                "/cms.v1.WebhookService/UpdateWebhook" => {
+                    #[allow(non_camel_case_types)]
+                    struct UpdateWebhookSvc<T: WebhookService>(pub Arc<T>);
+                    impl<
+                        T: WebhookService,
+                    > tonic::server::UnaryService<super::UpdateWebhookRequest>
+                    for UpdateWebhookSvc<T> {
+                        type Response = super::SiteWebhook;
+                        type Future = BoxFuture<
+                            tonic::Response<Self::Response>,
+                            tonic::Status,
+                        >;
+                        fn call(
+                            &mut self,
+                            request: tonic::Request<super::UpdateWebhookRequest>,
+                        ) -> Self::Future {
+                            let inner = Arc::clone(&self.0);
+                            let fut = async move {
+                                <T as WebhookService>::update_webhook(&inner, request).await
+                            };
+                            Box::pin(fut)
+                        }
+                    }
+                    let accept_compression_encodings = self.accept_compression_encodings;
+                    let send_compression_encodings = self.send_compression_encodings;
+                    let max_decoding_message_size = self.max_decoding_message_size;
+                    let max_encoding_message_size = self.max_encoding_message_size;
+                    let inner = self.inner.clone();
+                    let fut = async move {
+                        let method = UpdateWebhookSvc(inner);
+                        let codec = tonic_prost::ProstCodec::default();
+                        let mut grpc = tonic::server::Grpc::new(codec)
+                            .apply_compression_config(
+                                accept_compression_encodings,
+                                send_compression_encodings,
+                            )
+                            .apply_max_message_size_config(
+                                max_decoding_message_size,
+                                max_encoding_message_size,
+                            );
+                        let res = grpc.unary(method, req).await;
+                        Ok(res)
+                    };
+                    Box::pin(fut)
+                }
+                "/cms.v1.WebhookService/DeleteWebhook" => {
+                    #[allow(non_camel_case_types)]
+                    struct DeleteWebhookSvc<T: WebhookService>(pub Arc<T>);
+                    impl<
+                        T: WebhookService,
+                    > tonic::server::UnaryService<super::DeleteWebhookRequest>
+                    for DeleteWebhookSvc<T> {
+                        type Response = super::DeleteResponse;
+                        type Future = BoxFuture<
+                            tonic::Response<Self::Response>,
+                            tonic::Status,
+                        >;
+                        fn call(
+                            &mut self,
+                            request: tonic::Request<super::DeleteWebhookRequest>,
+                        ) -> Self::Future {
+                            let inner = Arc::clone(&self.0);
+                            let fut = async move {
+                                <T as WebhookService>::delete_webhook(&inner, request).await
+                            };
+                            Box::pin(fut)
+                        }
+                    }
+                    let accept_compression_encodings = self.accept_compression_encodings;
+                    let send_compression_encodings = self.send_compression_encodings;
+                    let max_decoding_message_size = self.max_decoding_message_size;
+                    let max_encoding_message_size = self.max_encoding_message_size;
+                    let inner = self.inner.clone();
+                    let fut = async move {
+                        let method = DeleteWebhookSvc(inner);
+                        let codec = tonic_prost::ProstCodec::default();
+                        let mut grpc = tonic::server::Grpc::new(codec)
+                            .apply_compression_config(
+                                accept_compression_encodings,
+                                send_compression_encodings,
+                            )
+                            .apply_max_message_size_config(
+                                max_decoding_message_size,
+                                max_encoding_message_size,
+                            );
+                        let res = grpc.unary(method, req).await;
+                        Ok(res)
+                    };
+                    Box::pin(fut)
+                }
+                "/cms.v1.WebhookService/TriggerWebhook" => {
+                    #[allow(non_camel_case_types)]
+                    struct TriggerWebhookSvc<T: WebhookService>(pub Arc<T>);
+                    impl<
+                        T: WebhookService,
+                    > tonic::server::UnaryService<super::TriggerWebhookRequest>
+                    for TriggerWebhookSvc<T> {
+                        type Response = super::WebhookDelivery;
+                        type Future = BoxFuture<
+                            tonic::Response<Self::Response>,
+                            tonic::Status,
+                        >;
+                        fn call(
+                            &mut self,
+                            request: tonic::Request<super::TriggerWebhookRequest>,
+                        ) -> Self::Future {
+                            let inner = Arc::clone(&self.0);
+                            let fut = async move {
+                                <T as WebhookService>::trigger_webhook(&inner, request)
+                                    .await
+                            };
+                            Box::pin(fut)
+                        }
+                    }
+                    let accept_compression_encodings = self.accept_compression_encodings;
+                    let send_compression_encodings = self.send_compression_encodings;
+                    let max_decoding_message_size = self.max_decoding_message_size;
+                    let max_encoding_message_size = self.max_encoding_message_size;
+                    let inner = self.inner.clone();
+                    let fut = async move {
+                        let method = TriggerWebhookSvc(inner);
+                        let codec = tonic_prost::ProstCodec::default();
+                        let mut grpc = tonic::server::Grpc::new(codec)
+                            .apply_compression_config(
+                                accept_compression_encodings,
+                                send_compression_encodings,
+                            )
+                            .apply_max_message_size_config(
+                                max_decoding_message_size,
+                                max_encoding_message_size,
+                            );
+                        let res = grpc.unary(method, req).await;
+                        Ok(res)
+                    };
+                    Box::pin(fut)
+                }
+                "/cms.v1.WebhookService/ListWebhookDeliveries" => {
+                    #[allow(non_camel_case_types)]
+                    struct ListWebhookDeliveriesSvc<T: WebhookService>(pub Arc<T>);
+                    impl<
+                        T: WebhookService,
+                    > tonic::server::UnaryService<super::ListWebhookDeliveriesRequest>
+                    for ListWebhookDeliveriesSvc<T> {
+                        type Response = super::ListWebhookDeliveriesResponse;
+                        type Future = BoxFuture<
+                            tonic::Response<Self::Response>,
+                            tonic::Status,
+                        >;
+                        fn call(
+                            &mut self,
+                            request: tonic::Request<super::ListWebhookDeliveriesRequest>,
+                        ) -> Self::Future {
+                            let inner = Arc::clone(&self.0);
+                            let fut = async move {
+                                <T as WebhookService>::list_webhook_deliveries(
+                                        &inner,
+                                        request,
+                                    )
+                                    .await
+                            };
+                            Box::pin(fut)
+                        }
+                    }
+                    let accept_compression_encodings = self.accept_compression_encodings;
+                    let send_compression_encodings = self.send_compression_encodings;
+                    let max_decoding_message_size = self.max_decoding_message_size;
+                    let max_encoding_message_size = self.max_encoding_message_size;
+                    let inner = self.inner.clone();
+                    let fut = async move {
+                        let method = ListWebhookDeliveriesSvc(inner);
+                        let codec = tonic_prost::ProstCodec::default();
+                        let mut grpc = tonic::server::Grpc::new(codec)
+                            .apply_compression_config(
+                                accept_compression_encodings,
+                                send_compression_encodings,
+                            )
+                            .apply_max_message_size_config(
+                                max_decoding_message_size,
+                                max_encoding_message_size,
+                            );
+                        let res = grpc.unary(method, req).await;
+                        Ok(res)
+                    };
+                    Box::pin(fut)
+                }
+                _ => {
+                    Box::pin(async move {
+                        let mut response = http::Response::new(
+                            tonic::body::Body::default(),
+                        );
+                        let headers = response.headers_mut();
+                        headers
+                            .insert(
+                                tonic::Status::GRPC_STATUS,
+                                (tonic::Code::Unimplemented as i32).into(),
+                            );
+                        headers
+                            .insert(
+                                http::header::CONTENT_TYPE,
+                                tonic::metadata::GRPC_CONTENT_TYPE,
+                            );
+                        Ok(response)
+                    })
+                }
+            }
+        }
+    }
+    impl<T> Clone for WebhookServiceServer<T> {
+        fn clone(&self) -> Self {
+            let inner = self.inner.clone();
+            Self {
+                inner,
+                accept_compression_encodings: self.accept_compression_encodings,
+                send_compression_encodings: self.send_compression_encodings,
+                max_decoding_message_size: self.max_decoding_message_size,
+                max_encoding_message_size: self.max_encoding_message_size,
+            }
+        }
+    }
+    /// Generated gRPC service name
+    pub const SERVICE_NAME: &str = "cms.v1.WebhookService";
+    impl<T> tonic::server::NamedService for WebhookServiceServer<T> {
         const NAME: &'static str = SERVICE_NAME;
     }
 }
