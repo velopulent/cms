@@ -8,6 +8,7 @@ use crate::models::{
     file::{File, FileReference},
     site::{Site, SiteMember, SiteWithRole},
     user::User,
+    webhook::{SiteWebhook, WebhookDelivery},
 };
 use crate::repository::error::RepositoryError;
 
@@ -246,4 +247,43 @@ pub trait AccessTokenRepository: Send + Sync {
     async fn delete(&self, id: &str, kind: AccessTokenKind, site_id: Option<&str>) -> Result<u64, RepositoryError>;
     async fn find_by_prefix(&self, prefix: &str) -> Result<Vec<AccessTokenLookupRow>, RepositoryError>;
     async fn update_last_used(&self, id: &str) -> Result<(), RepositoryError>;
+}
+
+#[async_trait]
+pub trait WebhookRepository: Send + Sync {
+    async fn list_for_site(&self, site_id: &str) -> Result<Vec<SiteWebhook>, RepositoryError>;
+    async fn get_by_id(&self, id: &str, site_id: &str) -> Result<Option<SiteWebhook>, RepositoryError>;
+    async fn create(
+        &self,
+        id: &str,
+        site_id: &str,
+        label: &str,
+        url: &str,
+        headers_encrypted: &str,
+        created_by: &str,
+    ) -> Result<SiteWebhook, RepositoryError>;
+    async fn update(
+        &self,
+        id: &str,
+        label: Option<&str>,
+        url: Option<&str>,
+        headers_encrypted: Option<&str>,
+    ) -> Result<SiteWebhook, RepositoryError>;
+    async fn delete(&self, id: &str, site_id: &str) -> Result<u64, RepositoryError>;
+    async fn create_delivery(
+        &self,
+        id: &str,
+        webhook_id: &str,
+        status: &str,
+        status_code: Option<i32>,
+        response_body: Option<&str>,
+        duration_ms: Option<i64>,
+        triggered_by: &str,
+    ) -> Result<WebhookDelivery, RepositoryError>;
+    async fn list_deliveries(
+        &self,
+        webhook_id: &str,
+        page: i64,
+        per_page: i64,
+    ) -> Result<(Vec<WebhookDelivery>, i64), RepositoryError>;
 }
