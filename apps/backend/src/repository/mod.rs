@@ -9,6 +9,7 @@ use std::sync::Arc;
 use crate::database::pool::DbPool;
 use crate::repository::traits::{
     AccessTokenRepository, CollectionRepository, EntryRepository, FileRepository, SiteRepository, UserRepository,
+    WebhookRepository,
 };
 
 #[derive(Clone)]
@@ -19,6 +20,7 @@ pub struct Repository {
     pub collection: Arc<dyn CollectionRepository>,
     pub file: Arc<dyn FileRepository>,
     pub access_token: Arc<dyn AccessTokenRepository>,
+    pub webhook: Arc<dyn WebhookRepository>,
 }
 
 impl Repository {
@@ -31,6 +33,7 @@ impl Repository {
                 collection: Arc::new(postgres::PostgresCollectionRepository::new(pg_pool.clone())),
                 file: Arc::new(postgres::PostgresFileRepository::new(pg_pool.clone())),
                 access_token: Arc::new(postgres::PostgresAccessTokenRepository::new(pg_pool.clone())),
+                webhook: Arc::new(postgres::PostgresWebhookRepository::new(pg_pool.clone())),
             },
             DbPool::MySql(mysql_pool) => Self {
                 user: Arc::new(mysql::MysqlUserRepository::new(mysql_pool.clone())),
@@ -39,6 +42,7 @@ impl Repository {
                 collection: Arc::new(mysql::MysqlCollectionRepository::new(mysql_pool.clone())),
                 file: Arc::new(mysql::MysqlFileRepository::new(mysql_pool.clone())),
                 access_token: Arc::new(mysql::MysqlAccessTokenRepository::new(mysql_pool.clone())),
+                webhook: Arc::new(mysql::MysqlWebhookRepository::new(mysql_pool.clone())),
             },
             DbPool::Sqlite(sqlite_pool) => Self {
                 user: Arc::new(sqlite::SqliteUserRepository::new(sqlite_pool.clone())),
@@ -47,6 +51,7 @@ impl Repository {
                 collection: Arc::new(sqlite::SqliteCollectionRepository::new(sqlite_pool.clone())),
                 file: Arc::new(sqlite::SqliteFileRepository::new(sqlite_pool.clone())),
                 access_token: Arc::new(sqlite::SqliteAccessTokenRepository::new(sqlite_pool.clone())),
+                webhook: Arc::new(sqlite::SqliteWebhookRepository::new(sqlite_pool.clone())),
             },
         }
     }
