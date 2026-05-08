@@ -6,6 +6,7 @@ mod docs;
 mod entry;
 mod files;
 mod graphql;
+mod mcp;
 mod openapi;
 mod singleton;
 mod sites;
@@ -17,6 +18,9 @@ use axum::{Extension, Router};
 use tower_http::cors::{Any, CorsLayer};
 use tower_http::limit::RequestBodyLimitLayer;
 use tower_http::trace::TraceLayer;
+use tokio_util::sync::CancellationToken;
+
+use tracing::info;
 
 use crate::config::Config;
 use crate::middleware::rate_limit::RateLimiter;
@@ -25,14 +29,19 @@ use crate::services::Services;
 use crate::storage::StorageRegistry;
 use crate::tracing::trace_request;
 
-pub fn create_router(repository: Repository, config: Config, storage_registry: Arc<StorageRegistry>) -> Router {
+pub fn create_router(
+    repository: Repository,
+    config: Config,
+    storage_registry: Arc<StorageRegistry>,
+    services: Services,
+) -> Router {
     let rate_limiter = RateLimiter::new(config.rate_limit_max_requests, config.rate_limit_window_secs);
-
-    let services = Services::new(repository.clone(), &config);
 
     let cors = CorsLayer::new().allow_origin(Any).allow_methods(Any).allow_headers(Any);
 
-    Router::new()
+    let mcp_enabled = config.mcp_enabled;
+
+    let mut router = Router::new()
         .merge(auth::auth_routes())
         .merge(sites::site_routes())
         .merge(access_tokens::access_token_routes())
@@ -48,9 +57,25 @@ pub fn create_router(repository: Repository, config: Config, storage_registry: A
         .layer(TraceLayer::new_for_http())
         .layer(cors)
         .layer(RequestBodyLimitLayer::new(10 * 1024 * 1024))
-        .layer(Extension(repository))
-        .layer(Extension(config))
-        .layer(Extension(storage_registry))
-        .layer(Extension(services))
-        .layer(Extension(rate_limiter))
+        .layer(Extension(repository.clone()))
+        .layer(Extension(config.clone()))
+        .layer(Extension(storage_registry.clone()))
+        .layer(Extension(Arc::new(services)))
+        .layer(Extension(rate_limiter));
+
+    if mcp_enabled {
+        let mcp_ct = CancellationToken::new();
+        let mcp_router = mcp::mcp_routes(
+            Arc::new(repository.into()),
+            Arc::new(config),
+            storage_registry,
+            mcp_ct,
+        );
+        router = router.merge(mcp_router);
+        info!("MCP HTTP endpoint enabled at /mcp");
+    } else {
+        drop(repository);
+    }
+
+    router
 }
