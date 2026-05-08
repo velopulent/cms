@@ -9,6 +9,7 @@ mod graphql;
 mod openapi;
 mod singleton;
 mod sites;
+mod webhooks;
 
 use std::sync::Arc;
 
@@ -39,6 +40,7 @@ pub fn create_router(repository: Repository, config: Config, storage_registry: A
         .merge(entry::entry_routes())
         .merge(singleton::singleton_routes())
         .merge(files::file_routes(config.max_upload_size_bytes))
+        .merge(webhooks::webhook_routes())
         .merge(graphql::graphql_routes())
         .merge(docs::docs_routes())
         .layer(axum::middleware::from_fn_with_state((), trace_request))
