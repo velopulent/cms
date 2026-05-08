@@ -39,6 +39,9 @@ pub const SCOPE_CONTENT_READ: &str = "content:read";
 pub const SCOPE_CONTENT_WRITE: &str = "content:write";
 pub const SCOPE_ASSETS_READ: &str = "assets:read";
 pub const SCOPE_ASSETS_WRITE: &str = "assets:write";
+pub const SCOPE_WEBHOOKS_READ: &str = "webhooks:read";
+pub const SCOPE_WEBHOOKS_WRITE: &str = "webhooks:write";
+pub const SCOPE_WEBHOOKS_TRIGGER: &str = "webhooks:trigger";
 
 fn extract_cookie_value(parts: &Parts, name: &str) -> Option<String> {
     let cookie_header = parts.headers.get("cookie")?.to_str().ok()?;
@@ -241,6 +244,9 @@ fn allowed_scopes() -> BTreeSet<&'static str> {
         SCOPE_CONTENT_WRITE,
         SCOPE_ASSETS_READ,
         SCOPE_ASSETS_WRITE,
+        SCOPE_WEBHOOKS_READ,
+        SCOPE_WEBHOOKS_WRITE,
+        SCOPE_WEBHOOKS_TRIGGER,
     ]
     .into_iter()
     .collect()
@@ -278,6 +284,9 @@ pub fn default_instance_scopes() -> Vec<&'static str> {
         SCOPE_MEMBERS_WRITE,
         SCOPE_TOKENS_READ,
         SCOPE_TOKENS_WRITE,
+        SCOPE_WEBHOOKS_READ,
+        SCOPE_WEBHOOKS_WRITE,
+        SCOPE_WEBHOOKS_TRIGGER,
     ]
 }
 
@@ -292,6 +301,8 @@ pub fn default_site_scopes() -> Vec<&'static str> {
         SCOPE_ASSETS_WRITE,
         SCOPE_TOKENS_READ,
         SCOPE_TOKENS_WRITE,
+        SCOPE_WEBHOOKS_READ,
+        SCOPE_WEBHOOKS_TRIGGER,
     ]
 }
 
@@ -490,13 +501,17 @@ pub async fn require_admin_scope(
                 let site_id = site_id.ok_or_else(|| AuthError::forbidden("Site id is required"))?;
                 check_site_access_repo(repository, user_id, site_id, "owner").await
             }
-            SCOPE_MEMBERS_READ => {
+            SCOPE_MEMBERS_READ | SCOPE_WEBHOOKS_READ => {
                 let site_id = site_id.ok_or_else(|| AuthError::forbidden("Site id is required"))?;
                 check_site_access_repo(repository, user_id, site_id, "viewer").await
             }
-            SCOPE_MEMBERS_WRITE | SCOPE_TOKENS_READ | SCOPE_TOKENS_WRITE => {
+            SCOPE_MEMBERS_WRITE | SCOPE_TOKENS_READ | SCOPE_TOKENS_WRITE | SCOPE_WEBHOOKS_WRITE => {
                 let site_id = site_id.ok_or_else(|| AuthError::forbidden("Site id is required"))?;
                 check_site_access_repo(repository, user_id, site_id, "admin").await
+            }
+            SCOPE_WEBHOOKS_TRIGGER => {
+                let site_id = site_id.ok_or_else(|| AuthError::forbidden("Site id is required"))?;
+                check_site_access_repo(repository, user_id, site_id, "editor").await
             }
             _ => Err(AuthError::forbidden("Unsupported admin scope")),
         },
