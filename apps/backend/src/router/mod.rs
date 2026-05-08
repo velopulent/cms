@@ -60,7 +60,7 @@ pub fn create_router(
         .layer(Extension(repository.clone()))
         .layer(Extension(config.clone()))
         .layer(Extension(storage_registry.clone()))
-        .layer(Extension(Arc::new(services)))
+        .layer(Extension(services))
         .layer(Extension(rate_limiter));
 
     if mcp_enabled {
