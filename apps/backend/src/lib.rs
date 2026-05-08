@@ -16,6 +16,7 @@ pub mod models {
     pub mod file;
     pub mod site;
     pub mod user;
+    pub mod webhook;
 }
 pub mod handlers {
     pub mod access_token_handler;
@@ -26,6 +27,7 @@ pub mod handlers {
     pub mod file_handler;
     pub mod singleton_handler;
     pub mod site_handler;
+    pub mod webhook_handler;
 }
 pub mod grpc;
 pub mod repository;
