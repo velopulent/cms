@@ -5,6 +5,7 @@ use crate::models::collection::{Collection, CreateCollection, UpdateCollection};
 use crate::models::entry::{CreateEntry, Entry, EntryRevisionResponse, RevisionsListResponse, UpdateEntry};
 use crate::models::file::{BatchFileIds, File, FileReference, FileWithUrl};
 use crate::models::site::{CreateSite, InviteMember, Site, SiteMember, SiteWithRole, UpdateMemberRole, UpdateSite};
+use crate::models::webhook::{CreateWebhook, SiteWebhook, UpdateWebhook, WebhookDelivery};
 
 #[derive(OpenApi)]
 #[openapi(
@@ -67,6 +68,14 @@ use crate::models::site::{CreateSite, InviteMember, Site, SiteMember, SiteWithRo
         crate::handlers::access_token_handler::list_site_tokens,
         crate::handlers::access_token_handler::create_site_token,
         crate::handlers::access_token_handler::delete_site_token,
+        // Site-scoped: Webhooks
+        crate::handlers::webhook_handler::list_webhooks,
+        crate::handlers::webhook_handler::create_webhook,
+        crate::handlers::webhook_handler::get_webhook,
+        crate::handlers::webhook_handler::update_webhook,
+        crate::handlers::webhook_handler::delete_webhook,
+        crate::handlers::webhook_handler::trigger_webhook,
+        crate::handlers::webhook_handler::list_deliveries,
     ),
     components(schemas(
         // Site
@@ -81,6 +90,8 @@ use crate::models::site::{CreateSite, InviteMember, Site, SiteMember, SiteWithRo
         Entry, CreateEntry, UpdateEntry, EntryRevisionResponse, RevisionsListResponse,
         // File
         File, FileWithUrl, FileReference, BatchFileIds,
+        // Webhook
+        SiteWebhook, CreateWebhook, UpdateWebhook, WebhookDelivery,
     )),
     modifiers(&SecurityAddon),
     tags(
@@ -92,6 +103,7 @@ use crate::models::site::{CreateSite, InviteMember, Site, SiteMember, SiteWithRo
         (name = "singletons", description = "Singleton management (site-scoped)"),
         (name = "files", description = "File management (site-scoped)"),
         (name = "site-tokens", description = "Site-scoped access token management"),
+        (name = "webhooks", description = "Webhook management (site-scoped)"),
     )
 )]
 pub struct CmsApiDoc;
