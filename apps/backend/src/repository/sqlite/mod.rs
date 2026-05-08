@@ -4,6 +4,7 @@ pub mod entry;
 pub mod file;
 pub mod site;
 pub mod user;
+pub mod webhook;
 
 pub use access_token::SqliteAccessTokenRepository;
 pub use collection::SqliteCollectionRepository;
@@ -11,3 +12,4 @@ pub use entry::SqliteEntryRepository;
 pub use file::SqliteFileRepository;
 pub use site::SqliteSiteRepository;
 pub use user::SqliteUserRepository;
+pub use webhook::SqliteWebhookRepository;
