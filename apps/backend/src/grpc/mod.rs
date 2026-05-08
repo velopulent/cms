@@ -7,6 +7,7 @@ pub mod services {
     pub mod admin_membership;
     pub mod admin_site;
     pub mod admin_token;
+    pub mod admin_webhook;
     pub mod collection;
     pub mod entry;
     pub mod file;
