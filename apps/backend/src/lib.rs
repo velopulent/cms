@@ -2,6 +2,8 @@ pub mod config;
 pub mod database;
 pub mod error;
 pub mod graphql;
+pub mod mcp;
+pub mod signed_upload;
 pub mod test_helpers;
 pub mod tracing;
 pub mod middleware {
