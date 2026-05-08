@@ -29,6 +29,8 @@ pub async fn init_db(database_url: &str) -> Result<DbPool, sqlx::Error> {
         rate_limit_max_requests: 100,
         rate_limit_window_secs: 60,
         hmac_secret: String::new(),
+        mcp_enabled: true,
+        mcp_stdio: false,
     })
     .await?;
 
