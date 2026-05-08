@@ -1,14 +1,17 @@
 pub mod collection;
 pub mod entry;
 pub mod file;
+pub mod webhook;
 
 use async_graphql::{Context, Object, Result};
+use std::collections::HashMap;
 
 use crate::graphql::context::GqlContext;
 use crate::graphql::types::collection::*;
 use crate::graphql::types::entry::{CreateEntryInput, Entry, UpdateEntryInput};
 use crate::graphql::types::site::Site;
-use crate::middleware::auth::{SCOPE_SITES_DELETE, SCOPE_SITES_WRITE};
+use crate::graphql::types::webhook::{db_webhook_to_gql, db_delivery_to_gql};
+use crate::middleware::auth::{SCOPE_SITES_DELETE, SCOPE_SITES_WRITE, SCOPE_WEBHOOKS_TRIGGER, SCOPE_WEBHOOKS_WRITE};
 
 pub struct MutationRoot;
 
@@ -136,5 +139,96 @@ impl MutationRoot {
 
     async fn batch_restore_files(&self, ctx: &Context<'_>, ids: Vec<String>) -> Result<i64> {
         file::FileMutation.batch_restore_files(ctx, ids).await
+    }
+
+    async fn create_webhook(
+        &self,
+        ctx: &Context<'_>,
+        site_id: String,
+        label: String,
+        url: String,
+        headers: Option<String>,
+    ) -> Result<crate::graphql::types::webhook::SiteWebhook> {
+        let gql_ctx = ctx.data::<GqlContext>()?;
+        gql_ctx.require_instance_scope(SCOPE_WEBHOOKS_WRITE)?;
+
+        let parsed_headers: HashMap<String, String> = match headers {
+            Some(ref h) if !h.is_empty() => serde_json::from_str(h).unwrap_or_default(),
+            _ => HashMap::new(),
+        };
+
+        let webhook = gql_ctx
+            .services
+            .webhook
+            .create_webhook(&site_id, &label, &url, &parsed_headers, "system")
+            .await
+            .map_err(|e| async_graphql::Error::new(format!("Error: {}", e)))?;
+
+        let decrypted = gql_ctx.services.webhook.decrypt_webhook_headers(&webhook);
+        Ok(db_webhook_to_gql(webhook, decrypted))
+    }
+
+    async fn update_webhook(
+        &self,
+        ctx: &Context<'_>,
+        site_id: String,
+        webhook_id: String,
+        label: Option<String>,
+        url: Option<String>,
+        headers: Option<String>,
+    ) -> Result<crate::graphql::types::webhook::SiteWebhook> {
+        let gql_ctx = ctx.data::<GqlContext>()?;
+        gql_ctx.require_instance_scope(SCOPE_WEBHOOKS_WRITE)?;
+
+        let parsed_headers: Option<HashMap<String, String>> = headers.map(|h| serde_json::from_str(&h).unwrap_or_default());
+
+        let webhook = gql_ctx
+            .services
+            .webhook
+            .update_webhook(
+                &webhook_id,
+                &site_id,
+                label.as_deref(),
+                url.as_deref(),
+                parsed_headers.as_ref(),
+            )
+            .await
+            .map_err(|e| async_graphql::Error::new(format!("Error: {}", e)))?;
+
+        let decrypted = gql_ctx.services.webhook.decrypt_webhook_headers(&webhook);
+        Ok(db_webhook_to_gql(webhook, decrypted))
+    }
+
+    async fn delete_webhook(&self, ctx: &Context<'_>, site_id: String, webhook_id: String) -> Result<bool> {
+        let gql_ctx = ctx.data::<GqlContext>()?;
+        gql_ctx.require_instance_scope(SCOPE_WEBHOOKS_WRITE)?;
+
+        let deleted = gql_ctx
+            .services
+            .webhook
+            .delete_webhook(&webhook_id, &site_id)
+            .await
+            .map_err(|e| async_graphql::Error::new(format!("Error: {}", e)))?;
+
+        Ok(deleted > 0)
+    }
+
+    async fn trigger_webhook(
+        &self,
+        ctx: &Context<'_>,
+        site_id: String,
+        webhook_id: String,
+    ) -> Result<crate::graphql::types::webhook::WebhookDelivery> {
+        let gql_ctx = ctx.data::<GqlContext>()?;
+        gql_ctx.require_instance_scope(SCOPE_WEBHOOKS_TRIGGER)?;
+
+        let delivery = gql_ctx
+            .services
+            .webhook
+            .trigger_webhook(&webhook_id, &site_id, "system")
+            .await
+            .map_err(|e| async_graphql::Error::new(format!("Error: {}", e)))?;
+
+        Ok(db_delivery_to_gql(delivery))
     }
 }
