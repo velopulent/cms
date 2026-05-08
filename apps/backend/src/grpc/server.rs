@@ -11,6 +11,7 @@ use crate::grpc::interceptor::AuthInterceptor;
 use crate::grpc::services::admin_membership::MembershipServiceImpl;
 use crate::grpc::services::admin_site::SiteServiceImpl;
 use crate::grpc::services::admin_token::AdminTokenServiceImpl;
+use crate::grpc::services::admin_webhook::WebhookServiceImpl;
 use crate::grpc::services::collection::CollectionServiceImpl;
 use crate::grpc::services::entry::EntryServiceImpl;
 use crate::grpc::services::file::FileServiceImpl;
@@ -37,6 +38,7 @@ pub async fn start_grpc_server(
     let site_svc = SiteServiceImpl::new(services.site.clone(), repository.clone());
     let membership_svc = MembershipServiceImpl::new(services.site.clone(), repository.clone());
     let token_svc = AdminTokenServiceImpl::new(services.access_token.clone(), repository.clone());
+    let webhook_svc = WebhookServiceImpl::new(services.webhook.clone(), repository.clone());
 
     let interceptor = AuthInterceptor::new(config.clone());
 
@@ -68,6 +70,10 @@ pub async fn start_grpc_server(
         token_svc,
         interceptor.clone(),
     );
+    let webhook_svc = crate::grpc::cms::v1::webhook_service_server::WebhookServiceServer::with_interceptor(
+        webhook_svc,
+        interceptor,
+    );
 
     info!("gRPC server listening on {}", grpc_addr);
 
@@ -79,6 +85,7 @@ pub async fn start_grpc_server(
         .add_service(site_svc)
         .add_service(membership_svc)
         .add_service(token_svc)
+        .add_service(webhook_svc)
         .serve(grpc_addr)
         .await?;
 
