@@ -36,6 +36,10 @@ pub struct Config {
 
     // Hash secret for access token fast lookup
     pub hmac_secret: String,
+
+    // MCP configuration
+    pub mcp_enabled: bool,
+    pub mcp_stdio: bool,
 }
 
 static DEFAULT_JWT_SECRET: &str = "cms-jwt-secret-change-in-production";
@@ -101,6 +105,12 @@ impl Config {
                 eprintln!("WARNING: Using default HMAC secret. Set HMAC_SECRET environment variable in production!");
                 "cms-hmac-secret-change-in-production".to_string()
             }),
+            mcp_enabled: env::var("MCP_ENABLED")
+                .map(|v| v == "true" || v == "1")
+                .unwrap_or(true),
+            mcp_stdio: env::var("MCP_STDIO")
+                .map(|v| v == "true" || v == "1")
+                .unwrap_or(false),
         }
     }
 
@@ -136,6 +146,8 @@ mod tests {
             rate_limit_max_requests: 100,
             rate_limit_window_secs: 60,
             hmac_secret: "hmac".to_string(),
+            mcp_enabled: true,
+            mcp_stdio: false,
         };
 
         assert!(config.has_s3());
@@ -164,6 +176,8 @@ mod tests {
             rate_limit_max_requests: 100,
             rate_limit_window_secs: 60,
             hmac_secret: "hmac".to_string(),
+            mcp_enabled: true,
+            mcp_stdio: false,
         };
 
         assert!(!config.has_s3());
@@ -192,6 +206,8 @@ mod tests {
             rate_limit_max_requests: 100,
             rate_limit_window_secs: 60,
             hmac_secret: "hmac".to_string(),
+            mcp_enabled: true,
+            mcp_stdio: false,
         };
 
         assert!(!config.has_s3());
@@ -220,6 +236,8 @@ mod tests {
             rate_limit_max_requests: 100,
             rate_limit_window_secs: 60,
             hmac_secret: "hmac".to_string(),
+            mcp_enabled: true,
+            mcp_stdio: false,
         };
 
         assert!(!config.has_s3());
@@ -248,6 +266,8 @@ mod tests {
             rate_limit_max_requests: 100,
             rate_limit_window_secs: 60,
             hmac_secret: "hmac".to_string(),
+            mcp_enabled: true,
+            mcp_stdio: false,
         };
 
         assert!(!config.has_s3());
