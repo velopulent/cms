@@ -5,6 +5,7 @@ use super::types::collection::Collection;
 use super::types::entry::Entry;
 use super::types::file::File;
 use super::types::site::Site;
+use super::types::webhook::{WebhookDelivery, db_delivery_to_gql, db_webhook_to_gql};
 
 use crate::middleware::auth::SCOPE_SITES_READ;
 use crate::repository::traits::{ListEntriesParams, ListFilesParams};
@@ -327,5 +328,65 @@ impl QueryRoot {
         };
 
         Ok(super::types::entry::db_revision_to_gql(revision, diff_value))
+    }
+
+    async fn webhooks(&self, ctx: &Context<'_>, site_id: String) -> Result<Vec<super::types::webhook::SiteWebhook>> {
+        let gql_ctx = ctx.data::<GqlContext>()?;
+        gql_ctx.require_instance_scope(crate::middleware::auth::SCOPE_WEBHOOKS_READ)?;
+
+        let webhooks = gql_ctx
+            .services
+            .webhook
+            .list_webhooks(&site_id)
+            .await
+            .map_err(|e| async_graphql::Error::new(format!("Database error: {}", e)))?;
+
+        Ok(webhooks
+            .into_iter()
+            .map(|w| {
+                let headers = gql_ctx.services.webhook.decrypt_webhook_headers(&w);
+                db_webhook_to_gql(w, headers)
+            })
+            .collect())
+    }
+
+    async fn webhook(&self, ctx: &Context<'_>, site_id: String, webhook_id: String) -> Result<super::types::webhook::SiteWebhook> {
+        let gql_ctx = ctx.data::<GqlContext>()?;
+        gql_ctx.require_instance_scope(crate::middleware::auth::SCOPE_WEBHOOKS_READ)?;
+
+        let webhook = gql_ctx
+            .services
+            .webhook
+            .get_webhook(&webhook_id, &site_id)
+            .await
+            .map_err(|e| async_graphql::Error::new(format!("Database error: {}", e)))?
+            .ok_or_else(|| async_graphql::Error::new("Webhook not found"))?;
+
+        let headers = gql_ctx.services.webhook.decrypt_webhook_headers(&webhook);
+        Ok(db_webhook_to_gql(webhook, headers))
+    }
+
+    async fn webhook_deliveries(
+        &self,
+        ctx: &Context<'_>,
+        site_id: String,
+        webhook_id: String,
+        page: Option<i64>,
+        per_page: Option<i64>,
+    ) -> Result<Vec<WebhookDelivery>> {
+        let gql_ctx = ctx.data::<GqlContext>()?;
+        gql_ctx.require_instance_scope(crate::middleware::auth::SCOPE_WEBHOOKS_READ)?;
+
+        let page_val = page.unwrap_or(1).max(1);
+        let per_page_val = per_page.unwrap_or(20).clamp(1, 100);
+
+        let (deliveries, _total) = gql_ctx
+            .services
+            .webhook
+            .list_deliveries(&webhook_id, &site_id, page_val, per_page_val)
+            .await
+            .map_err(|e| async_graphql::Error::new(format!("Database error: {}", e)))?;
+
+        Ok(deliveries.into_iter().map(db_delivery_to_gql).collect())
     }
 }
