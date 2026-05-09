@@ -1,5 +1,6 @@
 use async_trait::async_trait;
 use sqlx::PgPool;
+use tracing::debug;
 
 use crate::models::user::User;
 use crate::repository::error::RepositoryError;
@@ -18,24 +19,28 @@ impl PostgresUserRepository {
 #[async_trait]
 impl UserRepository for PostgresUserRepository {
     async fn find_by_username(&self, username: &str) -> Result<Option<User>, RepositoryError> {
+        debug!("Finding user by username");
         let result = sqlx::query_as::<_, User>(
             "SELECT id, username, email, password_hash, created_at::text as created_at, updated_at::text as updated_at FROM users WHERE username = $1",
         )
         .bind(username)
         .fetch_optional(&self.pool)
         .await?;
-
+        
+        debug!("User lookup performed");
         Ok(result)
     }
 
     async fn find_by_id(&self, id: &str) -> Result<Option<User>, RepositoryError> {
+        debug!("Finding user by id");
         let result = sqlx::query_as::<_, User>(
             "SELECT id, username, email, password_hash, created_at::text as created_at, updated_at::text as updated_at FROM users WHERE id = $1",
         )
         .bind(id)
         .fetch_optional(&self.pool)
         .await?;
-
+        
+        debug!("User lookup performed");
         Ok(result)
     }
 

@@ -79,7 +79,7 @@ impl ServiceError {
             ServiceError::Internal(_) => StatusCode::INTERNAL_SERVER_ERROR,
             ServiceError::Site(e) => match e {
                 SiteError::NotFound => StatusCode::NOT_FOUND,
-                SiteError::InvalidStorageProvider(_) | SiteError::InvalidRole(_) => StatusCode::BAD_REQUEST,
+                SiteError::InvalidStorageProvider(_) | SiteError::InvalidName(_) | SiteError::InvalidRole(_) => StatusCode::BAD_REQUEST,
                 SiteError::CannotRemoveSelf => StatusCode::BAD_REQUEST,
                 SiteError::UserNotFound => StatusCode::NOT_FOUND,
                 SiteError::AlreadyMember => StatusCode::CONFLICT,

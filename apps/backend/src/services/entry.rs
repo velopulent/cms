@@ -4,6 +4,7 @@ use axum::{Json, http::StatusCode, response::IntoResponse};
 use serde_json::Value;
 use serde_json::json;
 use thiserror::Error;
+use tracing::{info, warn, error, debug};
 use uuid::Uuid;
 
 use crate::models::entry::{Entry, EntryRevision};
@@ -76,22 +77,44 @@ impl EntryService {
     ) -> Result<Entry, EntryError> {
         let id = Uuid::now_v7().to_string();
         let data_str = data.to_string();
+        
+        debug!("Creating entry: site_id={}, collection_id={}, slug={}, has_creator={}", 
+               site_id, collection_id, slug, created_by.is_some());
 
         self.entry_repo
             .create(&id, site_id, collection_id, &data_str, slug, created_by)
             .await
-            .map_err(|e| match e {
-                RepositoryError::UniqueViolation(_) => EntryError::AlreadyExists,
-                _ => EntryError::DatabaseError(e.to_string()),
+            .map_err(|e| {
+                error!("Failed to create entry in repository: site_id={}, collection_id={}, slug={}, error={}", 
+                       site_id, collection_id, slug, e);
+                match e {
+                    RepositoryError::UniqueViolation(_) => EntryError::AlreadyExists,
+                    _ => EntryError::DatabaseError(e.to_string()),
+                }
             })?;
 
-        let _ = self.entry_repo.sync_file_references(&id, site_id, data).await;
+        debug!("Entry created in repository: id={}", id);
+        
+        // Sync file references
+        if let Err(e) = self.entry_repo.sync_file_references(&id, site_id, data).await {
+            warn!("Failed to sync file references for entry {}: {}", id, e);
+            // Continue anyway as this is not critical
+        }
 
-        self.entry_repo
-            .get_by_id(&id, site_id, false)
-            .await
-            .map_err(|e| EntryError::DatabaseError(e.to_string()))?
-            .ok_or(EntryError::NotFound)
+        match self.entry_repo.get_by_id(&id, site_id, false).await {
+            Ok(Some(entry)) => {
+                info!("Entry created successfully: id={}, site_id={}, slug={}", id, site_id, slug);
+                Ok(entry)
+            }
+            Ok(None) => {
+                error!("Entry not found after creation: id={}", id);
+                Err(EntryError::NotFound)
+            }
+            Err(e) => {
+                error!("Failed to fetch entry after creation: id={}, error={}", id, e);
+                Err(EntryError::DatabaseError(e.to_string()))
+            }
+        }
     }
 
     pub async fn update_entry(
@@ -104,58 +127,104 @@ impl EntryService {
         created_by: Option<&str>,
         change_summary: Option<&str>,
     ) -> Result<Entry, EntryError> {
+        debug!("Updating entry: id={}, site_id={}", id, site_id);
+        
         let existing = self
             .entry_repo
             .get_by_id(id, site_id, false)
             .await
-            .map_err(|e| EntryError::DatabaseError(e.to_string()))?
+            .map_err(|e| {
+                error!("Failed to fetch existing entry for update: id={}, site_id={}, error={}", id, site_id, e);
+                EntryError::DatabaseError(e.to_string())
+            })?
             .ok_or(EntryError::NotFound)?;
+
+        debug!("Fetched existing entry: id={}, site_id={}", id, site_id);
 
         let resolved_data = match data {
             Some(d) => d.clone(),
             None => serde_json::from_str(&existing.data).unwrap_or(Value::Null),
         };
         let data_str = resolved_data.to_string();
-        let slug = slug.unwrap_or(&existing.slug);
-        let status = status.unwrap_or(&existing.status);
+        let final_slug = slug.unwrap_or(&existing.slug);
+        let final_status = status.unwrap_or(&existing.status);
 
-        self.entry_repo
-            .update(id, site_id, &data_str, slug, status, created_by, change_summary)
-            .await
-            .map_err(|e| match e {
-                RepositoryError::UniqueViolation(_) => EntryError::AlreadyExists,
-                _ => EntryError::DatabaseError(e.to_string()),
-            })?;
+        debug!("Updating entry fields: data_changed={}, slug_changed={}, status_changed={}", 
+               data.is_some(), slug.is_some(), status.is_some());
 
-        let _ = self.entry_repo.sync_file_references(id, site_id, &resolved_data).await;
+         self.entry_repo
+             .update(id, site_id, &data_str, final_slug, final_status, created_by, change_summary)
+             .await
+             .map_err(|e| {
+                 error!("Failed to update entry in repository: id={}, site_id={}, error={}", id, site_id, e);
+                 match e {
+                     RepositoryError::UniqueViolation(_) => EntryError::AlreadyExists,
+                     _ => EntryError::DatabaseError(e.to_string()),
+                 }
+             })?;
 
-        self.entry_repo
-            .get_by_id(id, site_id, false)
-            .await
-            .map_err(|e| EntryError::DatabaseError(e.to_string()))?
-            .ok_or(EntryError::NotFound)
+        debug!("Entry updated in repository: id={}", id);
+        
+        // Sync file references
+        if let Err(e) = self.entry_repo.sync_file_references(id, site_id, &resolved_data).await {
+            warn!("Failed to sync file references for entry {}: {}", id, e);
+            // Continue anyway as this is not critical
+        }
+
+        match self.entry_repo.get_by_id(id, site_id, false).await {
+            Ok(Some(entry)) => {
+                info!("Entry updated successfully: id={}, site_id={}", id, site_id);
+                Ok(entry)
+            }
+            Ok(None) => {
+                error!("Entry not found after update: id={}", id);
+                Err(EntryError::NotFound)
+            }
+            Err(e) => {
+                error!("Failed to fetch entry after update: id={}, error={}", id, e);
+                Err(EntryError::DatabaseError(e.to_string()))
+            }
+        }
     }
 
     pub async fn delete_entry(&self, id: &str, site_id: &str) -> Result<u64, EntryError> {
-        self.entry_repo
-            .delete(id, site_id)
-            .await
-            .map_err(|e| EntryError::DatabaseError(e.to_string()))
+        info!("Deleting entry: id={}, site_id={}", id, site_id);
+        
+        match self.entry_repo.delete(id, site_id).await {
+            Ok(deleted_count) => {
+                info!("Entry deleted successfully: id={}, deleted_count={}", id, deleted_count);
+                Ok(deleted_count)
+            }
+            Err(e) => {
+                error!("Failed to delete entry: id={}, site_id={}, error={}", id, site_id, e);
+                Err(EntryError::DatabaseError(e.to_string()))
+            }
+        }
     }
 
-    pub async fn publish_entry(&self, id: &str, site_id: &str) -> Result<Entry, EntryError> {
-        self.entry_repo.publish(id, site_id).await.map_err(|e| match e {
-            RepositoryError::NotFound => EntryError::NotFound,
-            _ => EntryError::DatabaseError(e.to_string()),
+     pub async fn publish_entry(&self, id: &str, site_id: &str) -> Result<Entry, EntryError> {
+        info!("Publishing entry");
+        
+        self.entry_repo.publish(id, site_id).await.map_err(|e| {
+            error!("Failed to publish entry: error={}", e);
+            match e {
+                RepositoryError::NotFound => EntryError::NotFound,
+                _ => EntryError::DatabaseError(e.to_string()),
+            }
         })
     }
 
-    pub async fn unpublish_entry(&self, id: &str, site_id: &str) -> Result<Entry, EntryError> {
-        self.entry_repo.unpublish(id, site_id).await.map_err(|e| match e {
-            RepositoryError::NotFound => EntryError::NotFound,
-            _ => EntryError::DatabaseError(e.to_string()),
+     pub async fn unpublish_entry(&self, id: &str, site_id: &str) -> Result<Entry, EntryError> {
+        info!("Unpublishing entry");
+        
+        self.entry_repo.unpublish(id, site_id).await.map_err(|e| {
+            error!("Failed to unpublish entry: error={}", e);
+            match e {
+                RepositoryError::NotFound => EntryError::NotFound,
+                _ => EntryError::DatabaseError(e.to_string()),
+            }
         })
-    }
+     }
 
     pub async fn list_revisions(&self, entry_id: &str, site_id: &str, page: i64, per_page: i64) -> Result<RevisionsListResult, EntryError> {
         self.entry_repo

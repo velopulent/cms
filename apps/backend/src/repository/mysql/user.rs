@@ -1,5 +1,6 @@
 use async_trait::async_trait;
 use sqlx::MySqlPool;
+use tracing::debug;
 
 use crate::models::user::User;
 use crate::repository::error::RepositoryError;
@@ -18,13 +19,15 @@ impl MysqlUserRepository {
 #[async_trait]
 impl UserRepository for MysqlUserRepository {
     async fn find_by_username(&self, username: &str) -> Result<Option<User>, RepositoryError> {
+        debug!("Finding user by username");
         let result = sqlx::query_as::<_, User>(
             "SELECT id, username, email, password_hash, created_at, updated_at FROM users WHERE username = ?",
         )
         .bind(username)
         .fetch_optional(&self.pool)
         .await?;
-
+        
+        debug!("User lookup performed");
         Ok(result)
     }
 

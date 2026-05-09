@@ -9,7 +9,7 @@ use cms::storage::{self, STORAGE_KIND_FILESYSTEM, STORAGE_KIND_S3, StorageRegist
 use std::net::SocketAddr;
 use std::sync::Arc;
 use tokio::select;
-use tracing::{info, warn};
+use tracing::{info, warn, debug};
 
 #[tokio::main]
 async fn main() {
@@ -129,7 +129,9 @@ async fn main() {
 }
 
 async fn seed_admin(repository: &Repository) {
+    debug!("Checking if admin user needs to be seeded");
     if !repository.user.exists("admin").await.unwrap_or(false) {
+        info!("Seeding default admin user");
         let id = uuid::Uuid::now_v7().to_string();
         let password_hash = bcrypt::hash("admin", bcrypt::DEFAULT_COST).expect("Failed to hash password");
         repository
@@ -139,6 +141,8 @@ async fn seed_admin(repository: &Repository) {
             .expect("Failed to seed admin user");
 
         warn!("Seeded default admin user (admin/admin) — CHANGE THE PASSWORD IMMEDIATELY!");
+    } else {
+        debug!("Admin user already exists, skipping seeding");
     }
 }
 

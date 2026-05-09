@@ -8,6 +8,7 @@ use bcrypt::{DEFAULT_COST, hash, verify};
 use serde_json::json;
 use thiserror::Error;
 use time::Duration;
+use tracing::{info, warn, error, debug};
 use uuid::Uuid;
 
 use crate::middleware::auth::create_token;
@@ -84,50 +85,75 @@ impl AuthService {
         let email = email.trim();
         let password = password.trim();
 
+        let email_display = if email.is_empty() {
+            "<empty>".to_string()
+        } else {
+            let mut chars = email.chars();
+            let first = chars.next().unwrap_or('_');
+            let last = chars.last().unwrap_or(first);
+            format!("{}***{}", first, last)
+        };
+        debug!("Attempting to register user: username={}, email={}", username, email_display);
+
         if username.is_empty() {
+            warn!("Registration failed: username is empty");
             return Err(AuthError::ValidationError("Username is required".into()));
         }
 
         if username.len() < 3 {
+            warn!("Registration failed: username too short (length={})", username.len());
             return Err(AuthError::ValidationError(
                 "Username must be at least 3 characters".into(),
             ));
         }
 
         if password.is_empty() {
+            warn!("Registration failed: password is empty");
             return Err(AuthError::ValidationError("Password is required".into()));
         }
 
         if password.len() < 8 {
+            warn!("Registration failed: password too short (length={})", password.len());
             return Err(AuthError::ValidationError(
                 "Password must be at least 8 characters".into(),
             ));
         }
 
         if !EMAIL_RE.is_match(email) {
+            warn!("Registration failed: invalid email format");
             return Err(AuthError::ValidationError("Invalid email address".into()));
         }
 
         let password_hash = hash(password, DEFAULT_COST).map_err(|e| AuthError::HashError(e.to_string()))?;
 
         let id = Uuid::now_v7().to_string();
+        info!("Creating new user: id={}, username={}", id, username);
 
-        self.user_repo
+        match self.user_repo
             .create(&id, username, email, &password_hash)
             .await
-            .map_err(|e| match e {
-                RepositoryError::UniqueViolation(_) => AuthError::UserExists,
-                _ => AuthError::DatabaseError(e.to_string()),
-            })?;
-
-        Ok(UserPublic {
-            id,
-            username: username.to_string(),
-            email: email.to_string(),
-        })
+        {
+            Ok(_) => {
+                info!("User registered successfully: id={}", id);
+                Ok(UserPublic {
+                    id,
+                    username: username.to_string(),
+                    email: email.to_string(),
+                })
+            }
+            Err(e) => {
+                error!("Failed to register user: id={}, error={}", id, e);
+                Err(match e {
+                    RepositoryError::UniqueViolation(_) => AuthError::UserExists,
+                    _ => AuthError::DatabaseError(e.to_string()),
+                })
+            }
+        }
     }
 
     pub async fn login(&self, username: &str, password: &str) -> Result<(UserPublic, String), AuthError> {
+        debug!("Attempting login for username={}", username);
+        
         let user = self
             .user_repo
             .find_by_username(username)
@@ -135,36 +161,49 @@ impl AuthService {
             .map_err(|e| AuthError::DatabaseError(e.to_string()))?
             .ok_or(AuthError::InvalidCredentials)?;
 
+        debug!("User found for username={}, verifying password", username);
+        
         match verify(password, &user.password_hash) {
-            Ok(true) => {}
-            _ => return Err(AuthError::InvalidCredentials),
+            Ok(true) => {
+                info!("Login successful for user: id={}, username={}", user.id, user.username);
+                let token =
+                    create_token(user.id.clone(), &self.jwt_secret).map_err(|e| AuthError::TokenError(e.to_string()))?;
+                Ok((
+                    UserPublic {
+                        id: user.id,
+                        username: user.username,
+                        email: user.email,
+                    },
+                    token,
+                ))
+            }
+            _ => {
+                warn!("Login failed: invalid credentials for username={}", username);
+                Err(AuthError::InvalidCredentials)
+            }
         }
-
-        let token =
-            create_token(user.id.clone(), &self.jwt_secret).map_err(|e| AuthError::TokenError(e.to_string()))?;
-
-        Ok((
-            UserPublic {
-                id: user.id,
-                username: user.username,
-                email: user.email,
-            },
-            token,
-        ))
     }
 
     pub async fn get_user(&self, user_id: &str) -> Result<Option<UserPublic>, AuthError> {
-        self.user_repo
-            .find_by_id(user_id)
-            .await
-            .map_err(|e| AuthError::DatabaseError(e.to_string()))
-            .map(|opt| {
-                opt.map(|u| UserPublic {
-                    id: u.id,
-                    username: u.username,
-                    email: u.email,
-                })
-            })
+        debug!("Fetching user by id: {}", user_id);
+        match self.user_repo.find_by_id(user_id).await {
+            Ok(Some(user)) => {
+                debug!("User found: id={}, username={}", user.id, user.username);
+                Ok(Some(UserPublic {
+                    id: user.id,
+                    username: user.username,
+                    email: user.email,
+                }))
+            }
+            Ok(None) => {
+                debug!("User not found: id={}", user_id);
+                Ok(None)
+            }
+            Err(e) => {
+                error!("Error fetching user id={}: {}", user_id, e);
+                Err(AuthError::DatabaseError(e.to_string()))
+            }
+        }
     }
 
     pub fn cookie_secure(&self) -> bool {

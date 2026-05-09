@@ -4,6 +4,7 @@ use axum::{Json, response::IntoResponse};
 use serde_json::Value;
 use serde_json::json;
 use thiserror::Error;
+use tracing::{info, warn, error, debug};
 
 use crate::models::collection::{Collection, SingletonResponse};
 use crate::repository::traits::{CollectionRepository, FileRepository};
@@ -87,24 +88,35 @@ impl SingletonService {
         slug: &str,
         storage: Arc<dyn StorageProvider>,
     ) -> Result<SingletonResponse, SingletonError> {
+        debug!("Fetching singleton: site_id={}, slug={}", site_id, slug);
+        
         let item = self
             .collection_repo
             .get_by_slug(site_id, slug)
             .await
-            .map_err(|e| SingletonError::DatabaseError(e.to_string()))?
+            .map_err(|e| {
+                error!("Failed to fetch singleton from repository: site_id={}, slug={}, error={}", site_id, slug, e);
+                SingletonError::DatabaseError(e.to_string())
+            })?
             .ok_or(SingletonError::NotFound)?;
 
+        debug!("Fetched collection item: id={}, is_singleton={}", item.id, item.is_singleton);
+
         if !item.is_singleton {
+            warn!("Collection is not a singleton: id={}, site_id={}, slug={}", item.id, site_id, slug);
             return Err(SingletonError::NotASingleton);
         }
 
+        debug!("Collection is a singleton, building response: id={}", item.id);
         let mut response = Self::collection_to_response(&item);
 
         if let Some(ref data) = response.data {
+            debug!("Resolving file references in singleton data");
             let resolved = self.resolve_files_from_value(data, &item.site_id, storage).await;
             response.data = Some(resolved);
         }
 
+        info!("Singleton retrieved successfully: id={}, site_id={}, slug={}", item.id, site_id, slug);
         Ok(response)
     }
 
@@ -114,25 +126,36 @@ impl SingletonService {
         slug: &str,
         data: &Value,
     ) -> Result<SingletonResponse, SingletonError> {
+        debug!("Updating singleton: site_id={}, slug={}", site_id, slug);
+        
         let item = self
             .collection_repo
             .get_by_slug(site_id, slug)
             .await
-            .map_err(|e| SingletonError::DatabaseError(e.to_string()))?
+            .map_err(|e| {
+                error!("Failed to fetch singleton for update: site_id={}, slug={}, error={}", site_id, slug, e);
+                SingletonError::DatabaseError(e.to_string())
+            })?
             .ok_or(SingletonError::NotFound)?;
 
         if !item.is_singleton {
+            warn!("Collection is not a singleton: id={}, site_id={}, slug={}", item.id, site_id, slug);
             return Err(SingletonError::NotASingleton);
         }
 
         let data_str = data.to_string();
+        debug!("Updating singleton data for item: id={}", item.id);
 
         let updated = self
             .collection_repo
             .update_singleton_data(&item.id, &data_str)
             .await
-            .map_err(|e| SingletonError::DatabaseError(e.to_string()))?;
+            .map_err(|e| {
+                error!("Failed to update singleton data in repository: id={}, error={}", item.id, e);
+                SingletonError::DatabaseError(e.to_string())
+            })?;
 
+        info!("Singleton updated successfully: id={}", item.id);
         Ok(Self::collection_to_response(&updated))
     }
 

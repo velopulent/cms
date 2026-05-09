@@ -5,6 +5,7 @@ use bytes::Bytes;
 use image::{DynamicImage, ImageEncoder, ImageReader};
 use serde_json::json;
 use thiserror::Error;
+use tracing::{info, warn, error, debug};
 use uuid::Uuid;
 
 use crate::config::Config;
@@ -102,7 +103,12 @@ impl FileService {
         storage: Arc<dyn StorageProvider>,
         storage_provider: &str,
     ) -> Result<FileWithUrl, FileError> {
+        info!("Uploading file: site_id={}, content_type={}, size={} bytes", 
+              site_id, content_type, data.len());
+
         if data.len() as u64 > self.config.max_upload_size_bytes as u64 {
+            warn!("File too large: site_id={}, size={} bytes, max={} bytes", 
+                  site_id, data.len(), self.config.max_upload_size_bytes);
             return Err(FileError::FileTooLarge(format!(
                 "File too large. Maximum size is {}MB",
                 self.config.max_upload_size_bytes / (1024 * 1024)
@@ -125,12 +131,16 @@ impl FileService {
         let storage_key = format!("s_{}/f_{}/{}", site_id, file_id, generated_filename);
         let mime_type = content_type.to_string();
 
+        debug!("File metadata: id={}, storage_key={}, mime_type={}, size={}", 
+               file_id, storage_key, mime_type, file_size);
+
         let mut width: Option<i32> = None;
         let mut height: Option<i32> = None;
         let mut thumbnail_data: Option<(Vec<u8>, String)> = None;
         let mut thumbnail_key: Option<String> = None;
 
         if mime_type.starts_with("image/") {
+            debug!("Processing image for thumbnail: mime_type={}", mime_type);
             let data_clone = data.clone();
             let file_id_owned = file_id.clone();
             let site_id_owned = site_id.to_string();
@@ -167,22 +177,29 @@ impl FileService {
                 height = h;
                 thumbnail_data = tdata;
                 thumbnail_key = tkey;
+                debug!("Generated thumbnail: width={:?}, height={:?}, key={:?}", width, height, thumbnail_key);
+            } else {
+                warn!("Failed to generate thumbnail for image: {}", mime_type);
             }
         }
 
-        storage
-            .put(&storage_key, data.clone(), &mime_type)
-            .await
-            .map_err(|e| FileError::StorageError(e.to_string()))?;
+        debug!("Storing file to storage: key={}", storage_key);
+        match storage.put(&storage_key, data.clone(), &mime_type).await {
+            Ok(_) => debug!("File stored successfully: key={}", storage_key),
+            Err(e) => {
+                error!("Failed to store file: key={}, error={}", storage_key, e);
+                return Err(FileError::StorageError(e.to_string()));
+            }
+        }
 
         if let (Some((thumb_data, thumb_mime)), Some(thumb_key)) = (&thumbnail_data, &thumbnail_key) {
-            let _ = storage
-                .put(thumb_key, Bytes::from(thumb_data.clone()), thumb_mime)
-                .await;
+            debug!("Storing thumbnail: key={}", thumb_key);
+            let _ = storage.put(thumb_key, Bytes::from(thumb_data.clone()), thumb_mime).await;
         }
 
         let thumb_key_str = thumbnail_key.as_deref();
 
+        debug!("Creating file record in repository: id={}", file_id);
         let file = self
             .file_repo
             .create(
@@ -200,44 +217,93 @@ impl FileService {
                 created_by,
             )
             .await
-            .map_err(|e| FileError::DatabaseError(e.to_string()))?;
+            .map_err(|e| {
+                error!("Failed to create file record in repository: id={}, error={}", file_id, e);
+                FileError::DatabaseError(e.to_string())
+            })?;
+
+        info!("File uploaded successfully: id={}, site_id={}, size={} bytes", 
+              file.id, site_id, file.size);
 
         Ok(self.file_to_with_url(&file, &*storage))
     }
 
     pub async fn soft_delete(&self, id: &str, site_id: &str) -> Result<u64, FileError> {
-        self.file_repo
-            .soft_delete(id, site_id)
-            .await
-            .map_err(|e| FileError::DatabaseError(e.to_string()))
+        info!("Soft deleting file");
+        
+        match self.file_repo.soft_delete(id, site_id).await {
+            Ok(deleted_count) => {
+                info!("File soft deleted successfully: deleted_count={}", deleted_count);
+                Ok(deleted_count)
+            }
+            Err(e) => {
+                error!("Failed to soft delete file: error={}", e);
+                Err(FileError::DatabaseError(e.to_string()))
+            }
+        }
     }
 
     pub async fn restore(&self, id: &str, site_id: &str) -> Result<u64, FileError> {
-        self.file_repo
-            .restore(id, site_id)
-            .await
-            .map_err(|e| FileError::DatabaseError(e.to_string()))
+        info!("Restoring file");
+        
+        match self.file_repo.restore(id, site_id).await {
+            Ok(restored_count) => {
+                info!("File restored successfully: restored_count={}", restored_count);
+                Ok(restored_count)
+            }
+            Err(e) => {
+                error!("Failed to restore file: error={}", e);
+                Err(FileError::DatabaseError(e.to_string()))
+            }
+        }
     }
 
     pub async fn batch_soft_delete(&self, site_id: &str, ids: &[String]) -> Result<u64, FileError> {
-        self.file_repo
-            .batch_soft_delete(site_id, ids)
-            .await
-            .map_err(|e| FileError::DatabaseError(e.to_string()))
+        info!("Batch soft deleting files: site_id={}, count={}", site_id, ids.len());
+        
+        match self.file_repo.batch_soft_delete(site_id, ids).await {
+            Ok(deleted_count) => {
+                info!("Batch soft delete completed: site_id={}, requested={}, deleted={}", 
+                      site_id, ids.len(), deleted_count);
+                Ok(deleted_count)
+            }
+            Err(e) => {
+                error!("Failed to batch soft delete files: site_id={}, error={}", site_id, e);
+                Err(FileError::DatabaseError(e.to_string()))
+            }
+        }
     }
 
     pub async fn batch_restore(&self, site_id: &str, ids: &[String]) -> Result<u64, FileError> {
-        self.file_repo
-            .batch_restore(site_id, ids)
-            .await
-            .map_err(|e| FileError::DatabaseError(e.to_string()))
+        info!("Batch restoring files: site_id={}, count={}", site_id, ids.len());
+        
+        match self.file_repo.batch_restore(site_id, ids).await {
+            Ok(restored_count) => {
+                info!("Batch restore completed: site_id={}, requested={}, restored={}", 
+                      site_id, ids.len(), restored_count);
+                Ok(restored_count)
+            }
+            Err(e) => {
+                error!("Failed to batch restore files: site_id={}, error={}", site_id, e);
+                Err(FileError::DatabaseError(e.to_string()))
+            }
+        }
     }
 
     pub async fn batch_permanent_delete(&self, site_id: &str, ids: &[String]) -> Result<u64, FileError> {
-        self.file_repo
-            .batch_permanent_delete(site_id, ids)
-            .await
-            .map_err(|e| FileError::DatabaseError(e.to_string()))
+        info!("Batch permanently deleting files: site_id={}, count={}", site_id, ids.len());
+        
+        match self.file_repo.batch_permanent_delete(site_id, ids).await {
+            Ok(deleted_count) => {
+                info!("Batch permanent delete completed: site_id={}, requested={}, deleted={}", 
+                      site_id, ids.len(), deleted_count);
+                Ok(deleted_count)
+            }
+            Err(e) => {
+                error!("Failed to batch permanently delete files: site_id={}, error={}", site_id, e);
+                Err(FileError::DatabaseError(e.to_string()))
+            }
+        }
     }
 
     pub async fn get_file_references(&self, file_id: &str, site_id: &str) -> Result<Vec<FileReference>, FileError> {
@@ -260,14 +326,20 @@ impl FileService {
         use_thumbnail: bool,
         storage: Arc<dyn StorageProvider>,
     ) -> Result<(Bytes, String, String), FileError> {
+        debug!("Serving file: id={}, use_thumbnail={}", id, use_thumbnail);
+        
         let file = self
             .file_repo
             .get_by_id_any(id)
             .await
-            .map_err(|e| FileError::DatabaseError(e.to_string()))?
+            .map_err(|e| {
+                error!("Failed to fetch file metadata: id={}, error={}", id, e);
+                FileError::DatabaseError(e.to_string())
+            })?
             .ok_or(FileError::NotFound)?;
 
         if file.deleted_at.is_some() {
+            warn!("Attempt to serve deleted file: id={}", id);
             return Err(FileError::NotFound);
         }
 
@@ -283,18 +355,32 @@ impl FileService {
                     } else {
                         "image/jpeg"
                     };
+                    debug!("Serving thumbnail: id={}, thumb_key={}, mime={}", id, tk, mime);
                     (tk.as_str(), mime)
                 }
-                None => return Err(FileError::NotFound),
+                None => {
+                    warn!("Thumbnail requested but not available: id={}", id);
+                    return Err(FileError::NotFound);
+                }
             }
         } else {
+            debug!("Serving file: id={}, storage_key={}, mime={}", 
+                   id, file.storage_key, file.mime_type);
             (file.storage_key.as_str(), file.mime_type.as_str())
         };
 
-        let bytes = storage
-            .get(key)
-            .await
-            .map_err(|e| FileError::StorageError(e.to_string()))?;
+        let bytes = match storage.get(key).await {
+            Ok(data) => {
+                debug!("File served successfully: id={}, size={} bytes, storage_key={}", 
+                       id, data.len(), key);
+                data
+            }
+            Err(e) => {
+                error!("Failed to retrieve file from storage: id={}, key={}, error={}", 
+                       id, key, e);
+                return Err(FileError::StorageError(e.to_string()));
+            }
+        };
 
         Ok((bytes, content_type.to_string(), file.original_name))
     }

@@ -4,6 +4,7 @@ use std::sync::Arc;
 use axum::{Json, http::StatusCode, response::IntoResponse};
 use serde_json::json;
 use thiserror::Error;
+use tracing::{info, error, debug};
 use uuid::Uuid;
 
 use crate::models::collection::Collection;
@@ -83,14 +84,32 @@ impl CollectionService {
         is_singleton: bool,
     ) -> Result<Collection, CollectionError> {
         let id = Uuid::now_v7().to_string();
+        debug!("Creating collection: site_id={}, name={}, slug={}, is_singleton={}", 
+               site_id, name, slug, is_singleton);
 
         self.collection_repo
             .create(&id, site_id, name, slug, definition, is_singleton)
             .await
-            .map_err(|e| match e {
-                RepositoryError::UniqueViolation(_) => CollectionError::AlreadyExists,
-                _ => CollectionError::DatabaseError(e.to_string()),
-            })
+            .map_err(|e| {
+                error!("Failed to create collection in repository: site_id={}, name={}, slug={}, error={}", 
+                       site_id, name, slug, e);
+                match e {
+                    RepositoryError::UniqueViolation(_) => CollectionError::AlreadyExists,
+                    _ => CollectionError::DatabaseError(e.to_string()),
+                }
+            })?;
+
+        info!("Collection created successfully: id={}, site_id={}, name={}, slug={}", 
+              id, site_id, name, slug);
+
+        self.collection_repo
+            .get_by_id(&id)
+            .await
+            .map_err(|e| {
+                error!("Failed to fetch created collection: id={}, error={}", id, e);
+                CollectionError::DatabaseError(e.to_string())
+            })?
+            .ok_or(CollectionError::NotFound)
     }
 
     pub async fn update_collection(
@@ -101,12 +120,20 @@ impl CollectionService {
         new_slug: Option<&str>,
         definition: Option<&str>,
     ) -> Result<Collection, CollectionError> {
+        debug!("Updating collection: site_id={}, slug={}, name={:?}, new_slug={:?}, definition_provided={}", 
+               site_id, slug, name, new_slug, definition.is_some());
+        
         let existing = self
             .collection_repo
             .get_by_slug(site_id, slug)
             .await
-            .map_err(|e| CollectionError::DatabaseError(e.to_string()))?
+            .map_err(|e| {
+                error!("Failed to fetch existing collection for update: site_id={}, slug={}, error={}", site_id, slug, e);
+                CollectionError::DatabaseError(e.to_string())
+            })?
             .ok_or(CollectionError::NotFound)?;
+
+        debug!("Fetched existing collection: id={}, name={}, slug={}", existing.id, existing.name, existing.slug);
 
         let name = name.unwrap_or(&existing.name);
         let new_slug = new_slug.unwrap_or(&existing.slug);
@@ -114,7 +141,15 @@ impl CollectionService {
             .map(|s| s.to_string())
             .unwrap_or_else(|| existing.definition.clone());
 
+        let name_changed = name != existing.name;
+        let slug_changed = new_slug != existing.slug;
+        let definition_changed = definition.is_some();
+        
+        debug!("Collection changes: name_changed={}, slug_changed={}, definition_changed={}", 
+               name_changed, slug_changed, definition_changed);
+
         if let Some(ref new_def) = definition {
+            debug!("Processing definition changes for migration");
             let old_def: Option<serde_json::Value> = serde_json::from_str(&existing.definition).ok();
             let new_def_parsed: Option<serde_json::Value> = serde_json::from_str(new_def).ok();
 
@@ -122,32 +157,69 @@ impl CollectionService {
                 let rename_map = compute_field_rename_map(&old_d, &new_d);
 
                 if !rename_map.is_empty() {
+                    info!("Field renames detected: {:?}", rename_map);
                     if existing.is_singleton {
-                        let _ = self
+                        debug!("Migrating singleton field renames");
+                        match self
                             .collection_repo
                             .migrate_singleton_field_renames(&existing, &rename_map)
-                            .await;
+                            .await
+                        {
+                            Ok(_) => debug!("Singleton field renames completed"),
+                            Err(e) => error!("Failed to migrate singleton field renames: error={}", e),
+                        }
                     } else if let Ok(items) = self.collection_repo.get_content_for_migration(&existing.id).await {
-                        let _ = self
+                        debug!("Migrating content field renames for {} items", items.len());
+                        match self
                             .collection_repo
                             .migrate_content_field_renames(&items, &rename_map)
-                            .await;
+                            .await
+                        {
+                            Ok(_) => debug!("Content field renames completed"),
+                            Err(e) => error!("Failed to migrate content field renames: error={}", e),
+                        }
                     }
+                } else {
+                    debug!("No field renames detected");
                 }
             }
         }
 
+        debug!("Updating collection in repository: id={}", existing.id);
         self.collection_repo
             .update(&existing.id, name, &new_slug, &definition_str)
             .await
-            .map_err(|e| CollectionError::DatabaseError(e.to_string()))
+            .map_err(|e| {
+                error!("Failed to update collection in repository: id={}, error={}", existing.id, e);
+                CollectionError::DatabaseError(e.to_string())
+            })?;
+
+        info!("Collection updated successfully: id={}, site_id={}, name={}, slug={}", 
+              existing.id, site_id, name, new_slug);
+
+        self.collection_repo
+            .get_by_id(&existing.id)
+            .await
+            .map_err(|e| {
+                error!("Failed to fetch updated collection: id={}, error={}", existing.id, e);
+                CollectionError::DatabaseError(e.to_string())
+            })?
+            .ok_or(CollectionError::NotFound)
     }
 
     pub async fn delete_collection(&self, site_id: &str, slug: &str) -> Result<u64, CollectionError> {
-        self.collection_repo
-            .delete(site_id, slug)
-            .await
-            .map_err(|e| CollectionError::DatabaseError(e.to_string()))
+        info!("Deleting collection: site_id={}, slug={}", site_id, slug);
+        
+        match self.collection_repo.delete(site_id, slug).await {
+            Ok(deleted_count) => {
+                info!("Collection deleted successfully: site_id={}, slug={}, deleted_count={}", site_id, slug, deleted_count);
+                Ok(deleted_count)
+            }
+            Err(e) => {
+                error!("Failed to delete collection: site_id={}, slug={}, error={}", site_id, slug, e);
+                Err(CollectionError::DatabaseError(e.to_string()))
+            }
+        }
     }
 
     pub async fn update_singleton_data(&self, id: &str, data: &str) -> Result<Collection, CollectionError> {

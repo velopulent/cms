@@ -1,5 +1,6 @@
 use async_trait::async_trait;
 use sqlx::SqlitePool;
+use tracing::{debug, error};
 
 use crate::models::user::User;
 use crate::repository::error::RepositoryError;
@@ -18,24 +19,28 @@ impl SqliteUserRepository {
 #[async_trait]
 impl UserRepository for SqliteUserRepository {
     async fn find_by_username(&self, username: &str) -> Result<Option<User>, RepositoryError> {
+        debug!("Finding user by username");
         let result = sqlx::query_as::<_, User>(
             "SELECT id, username, email, password_hash, created_at, updated_at FROM users WHERE username = ?",
         )
         .bind(username)
         .fetch_optional(&self.pool)
         .await?;
-
+        
+        debug!("User lookup performed");
         Ok(result)
     }
 
     async fn find_by_id(&self, id: &str) -> Result<Option<User>, RepositoryError> {
+        debug!("Finding user by id");
         let result = sqlx::query_as::<_, User>(
             "SELECT id, username, email, password_hash, created_at, updated_at FROM users WHERE id = ?",
         )
         .bind(id)
         .fetch_optional(&self.pool)
         .await?;
-
+        
+        debug!("User lookup performed");
         Ok(result)
     }
 
@@ -49,15 +54,33 @@ impl UserRepository for SqliteUserRepository {
     }
 
     async fn create(&self, id: &str, username: &str, email: &str, password_hash: &str) -> Result<(), RepositoryError> {
-        sqlx::query("INSERT INTO users (id, username, email, password_hash) VALUES (?, ?, ?, ?)")
+         let email_display = if email.is_empty() {
+             "<empty>".to_string()
+         } else {
+             let mut chars = email.chars();
+             let first = chars.next().unwrap_or('_');
+             let last = chars.last().unwrap_or(first);
+             format!("{}***{}", first, last)
+         };
+         debug!("Creating user: email={}", email_display);
+        
+        match sqlx::query("INSERT INTO users (id, username, email, password_hash) VALUES (?, ?, ?, ?)")
             .bind(id)
             .bind(username)
             .bind(email)
             .bind(password_hash)
             .execute(&self.pool)
-            .await?;
-
-        Ok(())
+            .await
+        {
+            Ok(_) => {
+                debug!("User created successfully: id={}", id);
+                Ok(())
+            }
+            Err(e) => {
+                error!("Failed to create user: error occurred");
+                 Err(RepositoryError::Database(e.to_string()))
+            }
+        }
     }
 
     async fn exists(&self, username: &str) -> Result<bool, RepositoryError> {

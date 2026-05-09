@@ -3,6 +3,7 @@ use std::sync::Arc;
 use axum::{Json, http::StatusCode, response::IntoResponse};
 use serde_json::json;
 use thiserror::Error;
+use tracing::{info, warn, error, debug};
 use uuid::Uuid;
 
 use crate::middleware::auth::Principal;
@@ -23,6 +24,9 @@ pub enum SiteError {
 
     #[error("Invalid storage provider: {0}")]
     InvalidStorageProvider(String),
+
+    #[error("Invalid name: {0}")]
+    InvalidName(String),
 
     #[error("Invalid role: {0}")]
     InvalidRole(String),
@@ -48,6 +52,7 @@ impl SiteError {
         let (status, body) = match self {
             SiteError::NotFound => (StatusCode::NOT_FOUND, Json(json!({"error": "Site not found"}))),
             SiteError::InvalidStorageProvider(msg) => (StatusCode::BAD_REQUEST, Json(json!({"error": msg}))),
+            SiteError::InvalidName(msg) => (StatusCode::BAD_REQUEST, Json(json!({"error": msg}))),
             SiteError::InvalidRole(msg) => (StatusCode::BAD_REQUEST, Json(json!({"error": msg}))),
             SiteError::CannotRemoveSelf => (
                 StatusCode::BAD_REQUEST,
@@ -132,46 +137,80 @@ impl SiteService {
         created_by: &str,
     ) -> Result<Site, SiteError> {
         let name = name.trim();
+        debug!("Creating site: name={}, storage_provider={:?}, created_by={}", name, storage_provider, created_by);
+
         if name.is_empty() {
-            return Err(SiteError::InvalidStorageProvider("Name is required".into()));
+            warn!("Site creation failed: name is empty");
+            return Err(SiteError::InvalidName("Name is required".into()));
         }
 
         let storage_provider = storage_provider.unwrap_or("filesystem");
         if storage_provider != "filesystem" && storage_provider != "s3" {
+            warn!("Site creation failed: invalid storage_provider={}", storage_provider);
             return Err(SiteError::InvalidStorageProvider(
                 "Invalid storage provider. Must be 'filesystem' or 's3'".into(),
             ));
         }
 
         let site_id = Uuid::now_v7().to_string();
+        info!("Creating new site: id={}, name={}, storage_provider={}, created_by={}", 
+              site_id, name, storage_provider, created_by);
 
-        self.site_repo
-            .create(&site_id, name, storage_provider, created_by)
-            .await
-            .map_err(|e| SiteError::DatabaseError(e.to_string()))
+        match self.site_repo.create(&site_id, name, storage_provider, created_by).await {
+            Ok(site) => {
+                info!("Site created successfully: id={}", site.id);
+                Ok(site)
+            }
+            Err(e) => {
+                error!("Failed to create site: id={}, error={}", site_id, e);
+                Err(SiteError::DatabaseError(e.to_string()))
+            }
+        }
     }
 
     pub async fn update_site(&self, site_id: &str, name: Option<&str>) -> Result<Site, SiteError> {
+        debug!("Updating site: id={}, name={:?}", site_id, name);
+        
         let existing = self
             .site_repo
             .get_by_id(site_id)
             .await
-            .map_err(|e| SiteError::DatabaseError(e.to_string()))?
+            .map_err(|e| {
+                error!("Failed to fetch existing site for update: id={}, error={}", site_id, e);
+                SiteError::DatabaseError(e.to_string())
+            })?
             .ok_or(SiteError::NotFound)?;
 
-        let name = name.unwrap_or(&existing.name);
+        debug!("Fetched existing site: id={}, name={}", site_id, existing.name);
 
-        self.site_repo
-            .update(site_id, name)
-            .await
-            .map_err(|e| SiteError::DatabaseError(e.to_string()))
+        let name = name.unwrap_or(&existing.name);
+        info!("Updating site name: id={}, from={} to={}", site_id, existing.name, name);
+
+        match self.site_repo.update(site_id, name).await {
+            Ok(site) => {
+                info!("Site updated successfully: id={}", site.id);
+                Ok(site)
+            }
+            Err(e) => {
+                error!("Failed to update site: id={}, error={}", site_id, e);
+                Err(SiteError::DatabaseError(e.to_string()))
+            }
+        }
     }
 
     pub async fn delete_site(&self, site_id: &str) -> Result<u64, SiteError> {
-        self.site_repo
-            .delete(site_id)
-            .await
-            .map_err(|e| SiteError::DatabaseError(e.to_string()))
+        info!("Deleting site: id={}", site_id);
+        
+        match self.site_repo.delete(site_id).await {
+            Ok(deleted_count) => {
+                info!("Site deleted successfully: id={}, deleted_count={}", site_id, deleted_count);
+                Ok(deleted_count)
+            }
+            Err(e) => {
+                error!("Failed to delete site: id={}, error={}", site_id, e);
+                Err(SiteError::DatabaseError(e.to_string()))
+            }
+        }
     }
 
     pub async fn list_members(&self, site_id: &str) -> Result<Vec<SiteMember>, SiteError> {
@@ -182,28 +221,46 @@ impl SiteService {
     }
 
     pub async fn invite_member(&self, site_id: &str, username: &str, role: &str) -> Result<SiteMember, SiteError> {
+        debug!("Inviting member to site: site_id={}, username={}, role={}", site_id, username, role);
+        
         if !VALID_ROLES.contains(&role) {
+            warn!("Invite member failed: invalid role={}", role);
             return Err(SiteError::InvalidRole(
                 "Invalid role. Must be owner, admin, editor, or viewer".into(),
             ));
         }
 
+        debug!("Looking up user by username: {}", username);
         let user_id = self
             .user_repo
             .find_id_by_username(username)
             .await
-            .map_err(|e| SiteError::DatabaseError(e.to_string()))?
+            .map_err(|e| {
+                error!("Failed to look up user by username={}: error={}", username, e);
+                SiteError::DatabaseError(e.to_string())
+            })?
             .ok_or(SiteError::UserNotFound)?;
 
+        debug!("Found user: user_id={}", user_id);
         let member_id = Uuid::now_v7().to_string();
+        debug!("Adding member to site: member_id={}, site_id={}, user_id={}, role={}", 
+               member_id, site_id, user_id, role);
 
-        self.site_repo
-            .add_member(&member_id, site_id, &user_id, role)
-            .await
-            .map_err(|e| match e {
-                RepositoryError::UniqueViolation(_) => SiteError::AlreadyMember,
-                _ => SiteError::DatabaseError(e.to_string()),
-            })
+        match self.site_repo.add_member(&member_id, site_id, &user_id, role).await {
+            Ok(member) => {
+                info!("Member invited successfully: member_id={}, site_id={}, user_id={}, role={}", 
+                      member.id, site_id, user_id, role);
+                Ok(member)
+            }
+            Err(e) => {
+                error!("Failed to invite member: site_id={}, user_id={}, role={}, error={}", 
+                       site_id, user_id, role, e);
+                Err(match e {
+                    RepositoryError::UniqueViolation(_) => SiteError::AlreadyMember,
+                    _ => SiteError::DatabaseError(e.to_string()),
+                })
+            }
+        }
     }
 
     pub async fn update_member_role(
@@ -212,25 +269,49 @@ impl SiteService {
         user_id: &str,
         role: &str,
     ) -> Result<Option<SiteMember>, SiteError> {
+        debug!("Updating member role: site_id={}, user_id={}, role={}", site_id, user_id, role);
+        
         if !VALID_ROLES.contains(&role) {
+            warn!("Update member role failed: invalid role={}", role);
             return Err(SiteError::InvalidRole("Invalid role".into()));
         }
 
-        self.site_repo
-            .update_member_role(site_id, user_id, role)
-            .await
-            .map_err(|e| SiteError::DatabaseError(e.to_string()))
+        match self.site_repo.update_member_role(site_id, user_id, role).await {
+            Ok(Some(member)) => {
+                info!("Member role updated successfully: site_id={}, user_id={}, new_role={}", 
+                      site_id, user_id, role);
+                Ok(Some(member))
+            }
+            Ok(None) => {
+                warn!("Member not found for role update: site_id={}, user_id={}", site_id, user_id);
+                Ok(None)
+            }
+            Err(e) => {
+                error!("Failed to update member role: site_id={}, user_id={}, role={}, error={}", 
+                       site_id, user_id, role, e);
+                Err(SiteError::DatabaseError(e.to_string()))
+            }
+        }
     }
 
     pub async fn remove_member(&self, site_id: &str, user_id: &str, by_user_id: &str) -> Result<u64, SiteError> {
+        debug!("Removing member from site: site_id={}, user_id={}, by_user_id={}", site_id, user_id, by_user_id);
+        
         if user_id == by_user_id {
+            warn!("Remove member failed: user cannot remove themselves: site_id={}, user_id={}", site_id, user_id);
             return Err(SiteError::CannotRemoveSelf);
         }
 
-        self.site_repo
-            .remove_member(site_id, user_id)
-            .await
-            .map_err(|e| SiteError::DatabaseError(e.to_string()))
+        match self.site_repo.remove_member(site_id, user_id).await {
+            Ok(removed_count) => {
+                info!("Member removed successfully: site_id={}, user_id={}, removed_count={}", site_id, user_id, removed_count);
+                Ok(removed_count)
+            }
+            Err(e) => {
+                error!("Failed to remove member: site_id={}, user_id={}, error={}", site_id, user_id, e);
+                Err(SiteError::DatabaseError(e.to_string()))
+            }
+        }
     }
 }
 
@@ -564,6 +645,10 @@ mod tests {
         );
         assert_eq!(
             SiteError::InvalidStorageProvider("bad".into()).into_response().status(),
+            axum::http::StatusCode::BAD_REQUEST
+        );
+        assert_eq!(
+            SiteError::InvalidName("bad".into()).into_response().status(),
             axum::http::StatusCode::BAD_REQUEST
         );
         assert_eq!(

@@ -4,6 +4,7 @@ use serde_json::Value;
 use sqlx::SqlitePool;
 use std::sync::LazyLock;
 use uuid::Uuid;
+use tracing::{error, debug};
 
 use crate::models::entry::{Entry, EntryRevision};
 use crate::repository::error::RepositoryError;
@@ -24,9 +25,11 @@ impl SqliteEntryRepository {
 #[async_trait]
 impl EntryRepository for SqliteEntryRepository {
     async fn get_by_id(&self, id: &str, site_id: &str, published_only: bool) -> Result<Option<Entry>, RepositoryError> {
+        debug!("Fetching entry: id={}, site_id={}, published_only={}", id, site_id, published_only);
+        
         let mut query = String::from(
             "SELECT id, site_id, collection_id, data, slug, status, created_at, updated_at, published_at
-             FROM entries WHERE id = ? AND site_id = ?",
+              FROM entries WHERE id = ? AND site_id = ?",
         );
 
         if published_only {
@@ -38,7 +41,8 @@ impl EntryRepository for SqliteEntryRepository {
             .bind(site_id)
             .fetch_optional(&self.pool)
             .await?;
-
+        
+        debug!("Entry fetch result for id={}, site_id={}: found={}", id, site_id, result.is_some());
         Ok(result)
     }
 
@@ -55,16 +59,19 @@ impl EntryRepository for SqliteEntryRepository {
     }
 
     async fn list(&self, params: ListEntriesParams<'_>) -> Result<EntriesListResult, RepositoryError> {
+        debug!("Listing entries: site_id={}, filters: collection_slug={:?}, collection_id={:?}, status={:?}, search={:?}, published_only={}, page={}, per_page={}", 
+               params.site_id, params.collection_slug, params.collection_id, params.status, params.search, params.published_only, params.page, params.per_page);
+        
         let mut query = String::from(
             "SELECT e.id, e.site_id, e.collection_id, e.data, e.slug, e.status, e.created_at, e.updated_at, e.published_at
-             FROM entries e
-             JOIN collections col ON e.collection_id = col.id
-             WHERE e.site_id = ?",
+              FROM entries e
+              JOIN collections col ON e.collection_id = col.id
+              WHERE e.site_id = ?",
         );
         let mut count_query = String::from(
             "SELECT COUNT(*) FROM entries e
-             JOIN collections col ON e.collection_id = col.id
-             WHERE e.site_id = ?",
+              JOIN collections col ON e.collection_id = col.id
+              WHERE e.site_id = ?",
         );
         let mut bindings: Vec<String> = vec![params.site_id.to_string()];
         let mut count_bindings: Vec<String> = vec![params.site_id.to_string()];
@@ -102,14 +109,26 @@ impl EntryRepository for SqliteEntryRepository {
             count_bindings.push(format!("%{}%", search));
         }
 
+        debug!("Executing count query for entries: site_id={}", params.site_id);
         let total: i64 = {
             let mut q = sqlx::query_scalar::<_, i64>(&count_query);
             for b in &count_bindings {
                 q = q.bind(b);
             }
-            q.fetch_one(&self.pool).await?
+            match q.fetch_one(&self.pool).await {
+                Ok(count) => {
+                    debug!("Total entries count: {}", count);
+                    count
+                }
+                Err(e) => {
+                    error!("Failed to get entries count: error={}", e);
+                     return Err(RepositoryError::Database(e.to_string()));
+                }
+            }
         };
 
+        debug!("Fetching entries page: page={}, per_page={}, offset={}", 
+               params.page, params.per_page, (params.page - 1) * params.per_page);
         let offset = (params.page - 1) * params.per_page;
         query.push_str(" ORDER BY e.updated_at DESC LIMIT ? OFFSET ?");
 
@@ -120,14 +139,21 @@ impl EntryRepository for SqliteEntryRepository {
         q = q.bind(params.per_page);
         q = q.bind(offset);
 
-        let items = q.fetch_all(&self.pool).await?;
-
-        Ok(EntriesListResult {
-            items,
-            total,
-            page: params.page,
-            per_page: params.per_page,
-        })
+        match q.fetch_all(&self.pool).await {
+            Ok(items) => {
+                debug!("Retrieved {} entries for site_id={}", items.len(), params.site_id);
+                Ok(EntriesListResult {
+                    items,
+                    total,
+                    page: params.page,
+                    per_page: params.per_page,
+                })
+            }
+            Err(e) => {
+                error!("Failed to fetch entries: error={}", e);
+                 Err(RepositoryError::Database(e.to_string()))
+            }
+        }
     }
 
     async fn get_by_collection_id(

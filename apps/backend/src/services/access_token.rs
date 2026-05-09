@@ -4,6 +4,7 @@ use axum::{Json, http::StatusCode, response::IntoResponse};
 use bcrypt::{DEFAULT_COST, hash};
 use serde_json::json;
 use thiserror::Error;
+use tracing::{info, error, debug};
 use uuid::Uuid;
 
 use crate::middleware::auth::{compute_key_hmac, default_instance_scopes, default_site_scopes, scopes_to_string};
@@ -144,16 +145,32 @@ impl AccessTokenService {
         scopes: Vec<String>,
         created_by: Option<&str>,
     ) -> Result<AccessTokenResponse, TokenError> {
+        debug!("Creating site token: site_id={}, scopes_count={}", 
+               site_id, scopes.len());
+         
         let scopes = self.validate_scopes(AccessTokenKind::Site, scopes)?;
         self.create_token_record(AccessTokenKind::Site, Some(site_id), name, scopes, created_by)
             .await
+            .map_err(|e| {
+                error!("Failed to create site token: site_id={}, error={}", 
+                       site_id, e);
+                e
+            })
     }
 
     pub async fn delete_site_token(&self, token_id: &str, site_id: &str) -> Result<u64, TokenError> {
-        self.access_token_repo
-            .delete(token_id, AccessTokenKind::Site, Some(site_id))
-            .await
-            .map_err(|e| TokenError::DatabaseError(e.to_string()))
+        info!("Deleting site token: token_id={}, site_id={}", token_id, site_id);
+        
+        match self.access_token_repo.delete(token_id, AccessTokenKind::Site, Some(site_id)).await {
+            Ok(deleted_count) => {
+                info!("Site token deleted successfully: token_id={}, deleted_count={}", token_id, deleted_count);
+                Ok(deleted_count)
+            }
+            Err(e) => {
+                error!("Failed to delete site token: token_id={}, site_id={}, error={}", token_id, site_id, e);
+                Err(TokenError::DatabaseError(e.to_string()))
+            }
+        }
     }
 
     pub async fn list_instance_tokens(&self) -> Result<Vec<AccessToken>, TokenError> {
@@ -168,9 +185,16 @@ impl AccessTokenService {
         name: String,
         scopes: Vec<String>,
     ) -> Result<AccessTokenResponse, TokenError> {
+        debug!("Creating instance token: name={}, scopes_count={}", name, scopes.len());
+        
         let scopes = self.validate_scopes(AccessTokenKind::Instance, scopes)?;
+        let name_clone = name.clone();
         self.create_token_record(AccessTokenKind::Instance, None, name, scopes, None)
             .await
+            .map_err(|e| {
+                error!("Failed to create instance token: name={}, error={}", name_clone, e);
+                e
+            })
     }
 
     pub async fn delete_instance_token(&self, token_id: &str) -> Result<u64, TokenError> {
