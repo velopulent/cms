@@ -71,22 +71,21 @@ impl WebhookRepository for PostgresWebhookRepository {
         url: Option<&str>,
         headers_encrypted: Option<&str>,
     ) -> Result<SiteWebhook, RepositoryError> {
-        let existing = self
-            .get_by_id_unscoped(id)
-            .await?
-            .ok_or(RepositoryError::NotFound)?;
+        let existing = self.get_by_id_unscoped(id).await?.ok_or(RepositoryError::NotFound)?;
 
         let label = label.unwrap_or(&existing.label);
         let url = url.unwrap_or(&existing.url);
         let headers = headers_encrypted.unwrap_or(&existing.headers_encrypted);
 
-        sqlx::query("UPDATE site_webhooks SET label = $1, url = $2, headers_encrypted = $3, updated_at = NOW() WHERE id = $4")
-            .bind(label)
-            .bind(url)
-            .bind(headers)
-            .bind(id)
-            .execute(&self.pool)
-            .await?;
+        sqlx::query(
+            "UPDATE site_webhooks SET label = $1, url = $2, headers_encrypted = $3, updated_at = NOW() WHERE id = $4",
+        )
+        .bind(label)
+        .bind(url)
+        .bind(headers)
+        .bind(id)
+        .execute(&self.pool)
+        .await?;
 
         self.get_by_id_unscoped(id).await?.ok_or(RepositoryError::NotFound)
     }
@@ -139,12 +138,10 @@ impl WebhookRepository for PostgresWebhookRepository {
         page: i64,
         per_page: i64,
     ) -> Result<(Vec<WebhookDelivery>, i64), RepositoryError> {
-        let total: (i64,) = sqlx::query_as(
-            "SELECT COUNT(*) FROM site_webhook_deliveries WHERE webhook_id = $1",
-        )
-        .bind(webhook_id)
-        .fetch_one(&self.pool)
-        .await?;
+        let total: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM site_webhook_deliveries WHERE webhook_id = $1")
+            .bind(webhook_id)
+            .fetch_one(&self.pool)
+            .await?;
 
         let offset = (page - 1) * per_page;
         let items = sqlx::query_as::<_, WebhookDelivery>(

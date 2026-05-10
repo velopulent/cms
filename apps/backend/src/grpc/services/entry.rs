@@ -5,9 +5,9 @@ use tonic::{Request, Response, Status};
 use crate::grpc::cms::v1::entry_service_server::EntryService;
 use crate::grpc::cms::v1::{
     CreateEntryRequest, DeleteEntryRequest, DeleteResponse, Entry as ProtoEntry, EntryRevision as ProtoEntryRevision,
-    GetEntryRequest, GetEntryRevisionRequest, ListEntriesRequest, ListEntriesResponse,
-    ListEntryRevisionsRequest, ListEntryRevisionsResponse, PublishEntryRequest, RestoreEntryRevisionRequest,
-    UnpublishEntryRequest, UpdateEntryRequest,
+    GetEntryRequest, GetEntryRevisionRequest, ListEntriesRequest, ListEntriesResponse, ListEntryRevisionsRequest,
+    ListEntryRevisionsResponse, PublishEntryRequest, RestoreEntryRevisionRequest, UnpublishEntryRequest,
+    UpdateEntryRequest,
 };
 use crate::grpc::interceptor::get_auth_context;
 use crate::models::entry::{Entry, EntryRevision};
@@ -164,7 +164,10 @@ impl EntryService for EntryServiceImpl {
         Ok(Response::new(ProtoEntry::from(entry)))
     }
 
-    async fn unpublish_entry(&self, mut request: Request<UnpublishEntryRequest>) -> Result<Response<ProtoEntry>, Status> {
+    async fn unpublish_entry(
+        &self,
+        mut request: Request<UnpublishEntryRequest>,
+    ) -> Result<Response<ProtoEntry>, Status> {
         let auth = get_auth_context(&mut request, &self.repository).await?;
         auth.require_site_scope(crate::middleware::auth::SCOPE_CONTENT_WRITE)?;
         let site_id = auth.require_site_id()?.to_string();
@@ -197,7 +200,11 @@ impl EntryService for EntryServiceImpl {
             .ok_or_else(|| Status::not_found("Entry not found"))?;
 
         let page_val = req.page.max(1);
-        let per_page_val = if req.per_page <= 0 { 50 } else { req.per_page.clamp(1, 200) };
+        let per_page_val = if req.per_page <= 0 {
+            50
+        } else {
+            req.per_page.clamp(1, 200)
+        };
 
         let result = self
             .app_entry_service

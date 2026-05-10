@@ -71,10 +71,7 @@ impl WebhookRepository for SqliteWebhookRepository {
         url: Option<&str>,
         headers_encrypted: Option<&str>,
     ) -> Result<SiteWebhook, RepositoryError> {
-        let existing = self
-            .get_by_id_unscoped(id)
-            .await?
-            .ok_or(RepositoryError::NotFound)?;
+        let existing = self.get_by_id_unscoped(id).await?.ok_or(RepositoryError::NotFound)?;
 
         let label = label.unwrap_or(&existing.label);
         let url = url.unwrap_or(&existing.url);
@@ -139,12 +136,10 @@ impl WebhookRepository for SqliteWebhookRepository {
         page: i64,
         per_page: i64,
     ) -> Result<(Vec<WebhookDelivery>, i64), RepositoryError> {
-        let total: (i64,) = sqlx::query_as(
-            "SELECT COUNT(*) FROM site_webhook_deliveries WHERE webhook_id = ?",
-        )
-        .bind(webhook_id)
-        .fetch_one(&self.pool)
-        .await?;
+        let total: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM site_webhook_deliveries WHERE webhook_id = ?")
+            .bind(webhook_id)
+            .fetch_one(&self.pool)
+            .await?;
 
         let offset = (page - 1) * per_page;
         let items = sqlx::query_as::<_, WebhookDelivery>(

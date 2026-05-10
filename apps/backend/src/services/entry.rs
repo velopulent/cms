@@ -4,12 +4,14 @@ use axum::{Json, http::StatusCode, response::IntoResponse};
 use serde_json::Value;
 use serde_json::json;
 use thiserror::Error;
-use tracing::{info, warn, error, debug};
+use tracing::{debug, error, info, warn};
 use uuid::Uuid;
 
 use crate::models::entry::{Entry, EntryRevision};
 use crate::repository::error::RepositoryError;
-use crate::repository::traits::{EntriesListResult, EntryRepository, FileRepository, ListEntriesParams, RevisionsListResult};
+use crate::repository::traits::{
+    EntriesListResult, EntryRepository, FileRepository, ListEntriesParams, RevisionsListResult,
+};
 use crate::storage::StorageProvider;
 
 #[derive(Clone)]
@@ -77,16 +79,23 @@ impl EntryService {
     ) -> Result<Entry, EntryError> {
         let id = Uuid::now_v7().to_string();
         let data_str = data.to_string();
-        
-        debug!("Creating entry: site_id={}, collection_id={}, slug={}, has_creator={}", 
-               site_id, collection_id, slug, created_by.is_some());
+
+        debug!(
+            "Creating entry: site_id={}, collection_id={}, slug={}, has_creator={}",
+            site_id,
+            collection_id,
+            slug,
+            created_by.is_some()
+        );
 
         self.entry_repo
             .create(&id, site_id, collection_id, &data_str, slug, created_by)
             .await
             .map_err(|e| {
-                error!("Failed to create entry in repository: site_id={}, collection_id={}, slug={}, error={}", 
-                       site_id, collection_id, slug, e);
+                error!(
+                    "Failed to create entry in repository: site_id={}, collection_id={}, slug={}, error={}",
+                    site_id, collection_id, slug, e
+                );
                 match e {
                     RepositoryError::UniqueViolation(_) => EntryError::AlreadyExists,
                     _ => EntryError::DatabaseError(e.to_string()),
@@ -94,7 +103,7 @@ impl EntryService {
             })?;
 
         debug!("Entry created in repository: id={}", id);
-        
+
         // Sync file references
         if let Err(e) = self.entry_repo.sync_file_references(&id, site_id, data).await {
             warn!("Failed to sync file references for entry {}: {}", id, e);
@@ -103,7 +112,10 @@ impl EntryService {
 
         match self.entry_repo.get_by_id(&id, site_id, false).await {
             Ok(Some(entry)) => {
-                info!("Entry created successfully: id={}, site_id={}, slug={}", id, site_id, slug);
+                info!(
+                    "Entry created successfully: id={}, site_id={}, slug={}",
+                    id, site_id, slug
+                );
                 Ok(entry)
             }
             Ok(None) => {
@@ -128,13 +140,16 @@ impl EntryService {
         change_summary: Option<&str>,
     ) -> Result<Entry, EntryError> {
         debug!("Updating entry: id={}, site_id={}", id, site_id);
-        
+
         let existing = self
             .entry_repo
             .get_by_id(id, site_id, false)
             .await
             .map_err(|e| {
-                error!("Failed to fetch existing entry for update: id={}, site_id={}, error={}", id, site_id, e);
+                error!(
+                    "Failed to fetch existing entry for update: id={}, site_id={}, error={}",
+                    id, site_id, e
+                );
                 EntryError::DatabaseError(e.to_string())
             })?
             .ok_or(EntryError::NotFound)?;
@@ -149,22 +164,37 @@ impl EntryService {
         let final_slug = slug.unwrap_or(&existing.slug);
         let final_status = status.unwrap_or(&existing.status);
 
-        debug!("Updating entry fields: data_changed={}, slug_changed={}, status_changed={}", 
-               data.is_some(), slug.is_some(), status.is_some());
+        debug!(
+            "Updating entry fields: data_changed={}, slug_changed={}, status_changed={}",
+            data.is_some(),
+            slug.is_some(),
+            status.is_some()
+        );
 
-         self.entry_repo
-             .update(id, site_id, &data_str, final_slug, final_status, created_by, change_summary)
-             .await
-             .map_err(|e| {
-                 error!("Failed to update entry in repository: id={}, site_id={}, error={}", id, site_id, e);
-                 match e {
-                     RepositoryError::UniqueViolation(_) => EntryError::AlreadyExists,
-                     _ => EntryError::DatabaseError(e.to_string()),
-                 }
-             })?;
+        self.entry_repo
+            .update(
+                id,
+                site_id,
+                &data_str,
+                final_slug,
+                final_status,
+                created_by,
+                change_summary,
+            )
+            .await
+            .map_err(|e| {
+                error!(
+                    "Failed to update entry in repository: id={}, site_id={}, error={}",
+                    id, site_id, e
+                );
+                match e {
+                    RepositoryError::UniqueViolation(_) => EntryError::AlreadyExists,
+                    _ => EntryError::DatabaseError(e.to_string()),
+                }
+            })?;
 
         debug!("Entry updated in repository: id={}", id);
-        
+
         // Sync file references
         if let Err(e) = self.entry_repo.sync_file_references(id, site_id, &resolved_data).await {
             warn!("Failed to sync file references for entry {}: {}", id, e);
@@ -189,7 +219,7 @@ impl EntryService {
 
     pub async fn delete_entry(&self, id: &str, site_id: &str) -> Result<u64, EntryError> {
         info!("Deleting entry: id={}, site_id={}", id, site_id);
-        
+
         match self.entry_repo.delete(id, site_id).await {
             Ok(deleted_count) => {
                 info!("Entry deleted successfully: id={}, deleted_count={}", id, deleted_count);
@@ -202,9 +232,9 @@ impl EntryService {
         }
     }
 
-     pub async fn publish_entry(&self, id: &str, site_id: &str) -> Result<Entry, EntryError> {
+    pub async fn publish_entry(&self, id: &str, site_id: &str) -> Result<Entry, EntryError> {
         info!("Publishing entry");
-        
+
         self.entry_repo.publish(id, site_id).await.map_err(|e| {
             error!("Failed to publish entry: error={}", e);
             match e {
@@ -214,9 +244,9 @@ impl EntryService {
         })
     }
 
-     pub async fn unpublish_entry(&self, id: &str, site_id: &str) -> Result<Entry, EntryError> {
+    pub async fn unpublish_entry(&self, id: &str, site_id: &str) -> Result<Entry, EntryError> {
         info!("Unpublishing entry");
-        
+
         self.entry_repo.unpublish(id, site_id).await.map_err(|e| {
             error!("Failed to unpublish entry: error={}", e);
             match e {
@@ -224,9 +254,15 @@ impl EntryService {
                 _ => EntryError::DatabaseError(e.to_string()),
             }
         })
-     }
+    }
 
-    pub async fn list_revisions(&self, entry_id: &str, site_id: &str, page: i64, per_page: i64) -> Result<RevisionsListResult, EntryError> {
+    pub async fn list_revisions(
+        &self,
+        entry_id: &str,
+        site_id: &str,
+        page: i64,
+        per_page: i64,
+    ) -> Result<RevisionsListResult, EntryError> {
         self.entry_repo
             .get_by_id(entry_id, site_id, false)
             .await
@@ -239,7 +275,12 @@ impl EntryService {
             .map_err(|e| EntryError::DatabaseError(e.to_string()))
     }
 
-    pub async fn get_revision(&self, entry_id: &str, site_id: &str, revision_number: i64) -> Result<Option<EntryRevision>, EntryError> {
+    pub async fn get_revision(
+        &self,
+        entry_id: &str,
+        site_id: &str,
+        revision_number: i64,
+    ) -> Result<Option<EntryRevision>, EntryError> {
         self.entry_repo
             .get_by_id(entry_id, site_id, false)
             .await
@@ -412,7 +453,9 @@ mod tests {
         let service = EntryService::new(entry_repo, file_repo);
 
         let data = json!({"title": "New Entry"});
-        let result = service.create_entry("site-123", "col-123", &data, "new-entry", None).await;
+        let result = service
+            .create_entry("site-123", "col-123", &data, "new-entry", None)
+            .await;
         assert!(result.is_ok());
         let entry = result.unwrap();
         assert_eq!(entry.slug, "new-entry");
@@ -426,7 +469,9 @@ mod tests {
         let service = EntryService::new(entry_repo, file_repo);
 
         let data = json!({});
-        let result = service.create_entry("site-123", "col-123", &data, "empty-entry", None).await;
+        let result = service
+            .create_entry("site-123", "col-123", &data, "empty-entry", None)
+            .await;
         assert!(result.is_ok());
     }
 
@@ -439,7 +484,15 @@ mod tests {
 
         let new_data = json!({"title": "Updated Title"});
         let result = service
-            .update_entry("entry-123", "site-123", Some(&new_data), Some("updated-slug"), None, None, None)
+            .update_entry(
+                "entry-123",
+                "site-123",
+                Some(&new_data),
+                Some("updated-slug"),
+                None,
+                None,
+                None,
+            )
             .await;
         assert!(result.is_ok());
         let entry = result.unwrap();

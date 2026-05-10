@@ -2,8 +2,7 @@ use std::env;
 use std::path::PathBuf;
 
 fn main() {
-    let manifest_dir = env::var("CARGO_MANIFEST_DIR")
-        .expect("CARGO_MANIFEST_DIR not set");
+    let manifest_dir = env::var("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR not set");
 
     let manifest_path = PathBuf::from(manifest_dir);
     let workspace_root = manifest_path

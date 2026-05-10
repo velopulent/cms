@@ -210,12 +210,11 @@ impl EntryRepository for MysqlEntryRepository {
         .execute(&mut *tx)
         .await?;
 
-        let next_number: i64 = sqlx::query_scalar(
-            "SELECT COALESCE(MAX(revision_number), 0) + 1 FROM entry_revisions WHERE entry_id = ?",
-        )
-        .bind(id)
-        .fetch_one(&mut *tx)
-        .await?;
+        let next_number: i64 =
+            sqlx::query_scalar("SELECT COALESCE(MAX(revision_number), 0) + 1 FROM entry_revisions WHERE entry_id = ?")
+                .bind(id)
+                .fetch_one(&mut *tx)
+                .await?;
 
         sqlx::query(
             "UPDATE entries SET data = ?, slug = ?, status = ?, updated_at = NOW() WHERE id = ? AND site_id = ?",
@@ -388,12 +387,11 @@ impl EntryRepository for MysqlEntryRepository {
 
         let revision = revision.ok_or(RepositoryError::NotFound)?;
 
-        let next_number: i64 = sqlx::query_scalar(
-            "SELECT COALESCE(MAX(revision_number), 0) + 1 FROM entry_revisions WHERE entry_id = ?",
-        )
-        .bind(entry_id)
-        .fetch_one(&mut *tx)
-        .await?;
+        let next_number: i64 =
+            sqlx::query_scalar("SELECT COALESCE(MAX(revision_number), 0) + 1 FROM entry_revisions WHERE entry_id = ?")
+                .bind(entry_id)
+                .fetch_one(&mut *tx)
+                .await?;
 
         let data_str = serde_json::to_string(&revision.data.0).unwrap_or_default();
         sqlx::query("UPDATE entries SET data = ?, updated_at = NOW() WHERE id = ?")
@@ -419,7 +417,9 @@ impl EntryRepository for MysqlEntryRepository {
 
         tx.commit().await?;
 
-        self.get_by_id_any_site(entry_id).await?.ok_or(RepositoryError::NotFound)
+        self.get_by_id_any_site(entry_id)
+            .await?
+            .ok_or(RepositoryError::NotFound)
     }
 }
 

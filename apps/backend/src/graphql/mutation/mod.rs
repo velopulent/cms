@@ -10,7 +10,7 @@ use crate::graphql::context::GqlContext;
 use crate::graphql::types::collection::*;
 use crate::graphql::types::entry::{CreateEntryInput, Entry, UpdateEntryInput};
 use crate::graphql::types::site::Site;
-use crate::graphql::types::webhook::{db_webhook_to_gql, db_delivery_to_gql};
+use crate::graphql::types::webhook::{db_delivery_to_gql, db_webhook_to_gql};
 use crate::middleware::auth::{SCOPE_SITES_DELETE, SCOPE_SITES_WRITE, SCOPE_WEBHOOKS_TRIGGER, SCOPE_WEBHOOKS_WRITE};
 
 pub struct MutationRoot;
@@ -116,13 +116,10 @@ impl MutationRoot {
         entry::EntryMutation.unpublish_entry(ctx, id).await
     }
 
-    async fn restore_revision(
-        &self,
-        ctx: &Context<'_>,
-        entry_id: String,
-        revision_number: i64,
-    ) -> Result<Entry> {
-        entry::EntryMutation.restore_revision(ctx, entry_id, revision_number).await
+    async fn restore_revision(&self, ctx: &Context<'_>, entry_id: String, revision_number: i64) -> Result<Entry> {
+        entry::EntryMutation
+            .restore_revision(ctx, entry_id, revision_number)
+            .await
     }
 
     async fn delete_file(&self, ctx: &Context<'_>, id: String) -> Result<bool> {
@@ -180,7 +177,8 @@ impl MutationRoot {
         let gql_ctx = ctx.data::<GqlContext>()?;
         gql_ctx.require_instance_scope(SCOPE_WEBHOOKS_WRITE)?;
 
-        let parsed_headers: Option<HashMap<String, String>> = headers.map(|h| serde_json::from_str(&h).unwrap_or_default());
+        let parsed_headers: Option<HashMap<String, String>> =
+            headers.map(|h| serde_json::from_str(&h).unwrap_or_default());
 
         let webhook = gql_ctx
             .services

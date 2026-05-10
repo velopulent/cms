@@ -4,7 +4,7 @@ use std::sync::Arc;
 use axum::{Json, http::StatusCode, response::IntoResponse};
 use serde_json::json;
 use thiserror::Error;
-use tracing::{info, error, debug};
+use tracing::{debug, error, info};
 use uuid::Uuid;
 
 use crate::models::collection::Collection;
@@ -84,23 +84,29 @@ impl CollectionService {
         is_singleton: bool,
     ) -> Result<Collection, CollectionError> {
         let id = Uuid::now_v7().to_string();
-        debug!("Creating collection: site_id={}, name={}, slug={}, is_singleton={}", 
-               site_id, name, slug, is_singleton);
+        debug!(
+            "Creating collection: site_id={}, name={}, slug={}, is_singleton={}",
+            site_id, name, slug, is_singleton
+        );
 
         self.collection_repo
             .create(&id, site_id, name, slug, definition, is_singleton)
             .await
             .map_err(|e| {
-                error!("Failed to create collection in repository: site_id={}, name={}, slug={}, error={}", 
-                       site_id, name, slug, e);
+                error!(
+                    "Failed to create collection in repository: site_id={}, name={}, slug={}, error={}",
+                    site_id, name, slug, e
+                );
                 match e {
                     RepositoryError::UniqueViolation(_) => CollectionError::AlreadyExists,
                     _ => CollectionError::DatabaseError(e.to_string()),
                 }
             })?;
 
-        info!("Collection created successfully: id={}, site_id={}, name={}, slug={}", 
-              id, site_id, name, slug);
+        info!(
+            "Collection created successfully: id={}, site_id={}, name={}, slug={}",
+            id, site_id, name, slug
+        );
 
         self.collection_repo
             .get_by_id(&id)
@@ -120,20 +126,32 @@ impl CollectionService {
         new_slug: Option<&str>,
         definition: Option<&str>,
     ) -> Result<Collection, CollectionError> {
-        debug!("Updating collection: site_id={}, slug={}, name={:?}, new_slug={:?}, definition_provided={}", 
-               site_id, slug, name, new_slug, definition.is_some());
-        
+        debug!(
+            "Updating collection: site_id={}, slug={}, name={:?}, new_slug={:?}, definition_provided={}",
+            site_id,
+            slug,
+            name,
+            new_slug,
+            definition.is_some()
+        );
+
         let existing = self
             .collection_repo
             .get_by_slug(site_id, slug)
             .await
             .map_err(|e| {
-                error!("Failed to fetch existing collection for update: site_id={}, slug={}, error={}", site_id, slug, e);
+                error!(
+                    "Failed to fetch existing collection for update: site_id={}, slug={}, error={}",
+                    site_id, slug, e
+                );
                 CollectionError::DatabaseError(e.to_string())
             })?
             .ok_or(CollectionError::NotFound)?;
 
-        debug!("Fetched existing collection: id={}, name={}, slug={}", existing.id, existing.name, existing.slug);
+        debug!(
+            "Fetched existing collection: id={}, name={}, slug={}",
+            existing.id, existing.name, existing.slug
+        );
 
         let name = name.unwrap_or(&existing.name);
         let new_slug = new_slug.unwrap_or(&existing.slug);
@@ -144,9 +162,11 @@ impl CollectionService {
         let name_changed = name != existing.name;
         let slug_changed = new_slug != existing.slug;
         let definition_changed = definition.is_some();
-        
-        debug!("Collection changes: name_changed={}, slug_changed={}, definition_changed={}", 
-               name_changed, slug_changed, definition_changed);
+
+        debug!(
+            "Collection changes: name_changed={}, slug_changed={}, definition_changed={}",
+            name_changed, slug_changed, definition_changed
+        );
 
         if let Some(ref new_def) = definition {
             debug!("Processing definition changes for migration");
@@ -190,12 +210,17 @@ impl CollectionService {
             .update(&existing.id, name, &new_slug, &definition_str)
             .await
             .map_err(|e| {
-                error!("Failed to update collection in repository: id={}, error={}", existing.id, e);
+                error!(
+                    "Failed to update collection in repository: id={}, error={}",
+                    existing.id, e
+                );
                 CollectionError::DatabaseError(e.to_string())
             })?;
 
-        info!("Collection updated successfully: id={}, site_id={}, name={}, slug={}", 
-              existing.id, site_id, name, new_slug);
+        info!(
+            "Collection updated successfully: id={}, site_id={}, name={}, slug={}",
+            existing.id, site_id, name, new_slug
+        );
 
         self.collection_repo
             .get_by_id(&existing.id)
@@ -209,14 +234,20 @@ impl CollectionService {
 
     pub async fn delete_collection(&self, site_id: &str, slug: &str) -> Result<u64, CollectionError> {
         info!("Deleting collection: site_id={}, slug={}", site_id, slug);
-        
+
         match self.collection_repo.delete(site_id, slug).await {
             Ok(deleted_count) => {
-                info!("Collection deleted successfully: site_id={}, slug={}, deleted_count={}", site_id, slug, deleted_count);
+                info!(
+                    "Collection deleted successfully: site_id={}, slug={}, deleted_count={}",
+                    site_id, slug, deleted_count
+                );
                 Ok(deleted_count)
             }
             Err(e) => {
-                error!("Failed to delete collection: site_id={}, slug={}, error={}", site_id, slug, e);
+                error!(
+                    "Failed to delete collection: site_id={}, slug={}, error={}",
+                    site_id, slug, e
+                );
                 Err(CollectionError::DatabaseError(e.to_string()))
             }
         }

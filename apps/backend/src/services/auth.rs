@@ -8,7 +8,7 @@ use bcrypt::{DEFAULT_COST, hash, verify};
 use serde_json::json;
 use thiserror::Error;
 use time::Duration;
-use tracing::{info, warn, error, debug};
+use tracing::{debug, error, info, warn};
 use uuid::Uuid;
 
 use crate::middleware::auth::create_token;
@@ -93,7 +93,10 @@ impl AuthService {
             let last = chars.last().unwrap_or(first);
             format!("{}***{}", first, last)
         };
-        debug!("Attempting to register user: username={}, email={}", username, email_display);
+        debug!(
+            "Attempting to register user: username={}, email={}",
+            username, email_display
+        );
 
         if username.is_empty() {
             warn!("Registration failed: username is empty");
@@ -129,10 +132,7 @@ impl AuthService {
         let id = Uuid::now_v7().to_string();
         info!("Creating new user: id={}, username={}", id, username);
 
-        match self.user_repo
-            .create(&id, username, email, &password_hash)
-            .await
-        {
+        match self.user_repo.create(&id, username, email, &password_hash).await {
             Ok(_) => {
                 info!("User registered successfully: id={}", id);
                 Ok(UserPublic {
@@ -153,7 +153,7 @@ impl AuthService {
 
     pub async fn login(&self, username: &str, password: &str) -> Result<(UserPublic, String), AuthError> {
         debug!("Attempting login for username={}", username);
-        
+
         let user = self
             .user_repo
             .find_by_username(username)
@@ -162,12 +162,12 @@ impl AuthService {
             .ok_or(AuthError::InvalidCredentials)?;
 
         debug!("User found for username={}, verifying password", username);
-        
+
         match verify(password, &user.password_hash) {
             Ok(true) => {
                 info!("Login successful for user: id={}, username={}", user.id, user.username);
-                let token =
-                    create_token(user.id.clone(), &self.jwt_secret).map_err(|e| AuthError::TokenError(e.to_string()))?;
+                let token = create_token(user.id.clone(), &self.jwt_secret)
+                    .map_err(|e| AuthError::TokenError(e.to_string()))?;
                 Ok((
                     UserPublic {
                         id: user.id,

@@ -17,7 +17,11 @@ pub struct SingletonServiceImpl {
 }
 
 impl SingletonServiceImpl {
-    pub fn new(singleton_service: Arc<AppSingletonService>, storage_registry: Arc<StorageRegistry>, repository: Arc<Repository>) -> Self {
+    pub fn new(
+        singleton_service: Arc<AppSingletonService>,
+        storage_registry: Arc<StorageRegistry>,
+        repository: Arc<Repository>,
+    ) -> Self {
         Self {
             app_singleton_service: singleton_service,
             storage_registry,
@@ -28,7 +32,10 @@ impl SingletonServiceImpl {
 
 #[tonic::async_trait]
 impl SingletonService for SingletonServiceImpl {
-    async fn get_singleton(&self, mut request: Request<GetSingletonRequest>) -> Result<Response<ProtoSingleton>, Status> {
+    async fn get_singleton(
+        &self,
+        mut request: Request<GetSingletonRequest>,
+    ) -> Result<Response<ProtoSingleton>, Status> {
         let auth = get_auth_context(&mut request, &self.repository).await?;
         auth.require_site_scope(crate::middleware::auth::SCOPE_CONTENT_READ)?;
         let site_id = auth.require_site_id()?.to_string();

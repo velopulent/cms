@@ -26,7 +26,7 @@ impl UserRepository for SqliteUserRepository {
         .bind(username)
         .fetch_optional(&self.pool)
         .await?;
-        
+
         debug!("User lookup performed");
         Ok(result)
     }
@@ -39,7 +39,7 @@ impl UserRepository for SqliteUserRepository {
         .bind(id)
         .fetch_optional(&self.pool)
         .await?;
-        
+
         debug!("User lookup performed");
         Ok(result)
     }
@@ -54,16 +54,16 @@ impl UserRepository for SqliteUserRepository {
     }
 
     async fn create(&self, id: &str, username: &str, email: &str, password_hash: &str) -> Result<(), RepositoryError> {
-         let email_display = if email.is_empty() {
-             "<empty>".to_string()
-         } else {
-             let mut chars = email.chars();
-             let first = chars.next().unwrap_or('_');
-             let last = chars.last().unwrap_or(first);
-             format!("{}***{}", first, last)
-         };
-         debug!("Creating user: email={}", email_display);
-        
+        let email_display = if email.is_empty() {
+            "<empty>".to_string()
+        } else {
+            let mut chars = email.chars();
+            let first = chars.next().unwrap_or('_');
+            let last = chars.last().unwrap_or(first);
+            format!("{}***{}", first, last)
+        };
+        debug!("Creating user: email={}", email_display);
+
         match sqlx::query("INSERT INTO users (id, username, email, password_hash) VALUES (?, ?, ?, ?)")
             .bind(id)
             .bind(username)
@@ -78,7 +78,7 @@ impl UserRepository for SqliteUserRepository {
             }
             Err(e) => {
                 error!("Failed to create user: error occurred");
-                 Err(RepositoryError::Database(e.to_string()))
+                Err(RepositoryError::Database(e.to_string()))
             }
         }
     }

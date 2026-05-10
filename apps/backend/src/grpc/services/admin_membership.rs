@@ -49,7 +49,10 @@ impl MembershipService for MembershipServiceImpl {
         }))
     }
 
-    async fn invite_member(&self, mut request: Request<InviteMemberRequest>) -> Result<Response<ProtoSiteMember>, Status> {
+    async fn invite_member(
+        &self,
+        mut request: Request<InviteMemberRequest>,
+    ) -> Result<Response<ProtoSiteMember>, Status> {
         let auth = get_auth_context(&mut request, &self.repository).await?;
         auth.require_instance_scope(SCOPE_MEMBERS_WRITE)?;
         let req = request.into_inner();
@@ -88,7 +91,10 @@ impl MembershipService for MembershipServiceImpl {
         Ok(Response::new(ProtoSiteMember::from(member)))
     }
 
-    async fn remove_member(&self, mut request: Request<RemoveMemberRequest>) -> Result<Response<DeleteResponse>, Status> {
+    async fn remove_member(
+        &self,
+        mut request: Request<RemoveMemberRequest>,
+    ) -> Result<Response<DeleteResponse>, Status> {
         let auth = get_auth_context(&mut request, &self.repository).await?;
         auth.require_instance_scope(SCOPE_MEMBERS_WRITE)?;
         let req = request.into_inner();

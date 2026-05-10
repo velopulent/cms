@@ -101,16 +101,19 @@ pub async fn create_webhook(
         .create_webhook(&site_id, &payload.label, &payload.url, &payload.headers, created_by)
         .await
     {
-        Ok(webhook) => (StatusCode::CREATED, Json(json!({
-            "id": webhook.id,
-            "site_id": webhook.site_id,
-            "label": webhook.label,
-            "url": webhook.url,
-            "created_by": webhook.created_by,
-            "created_at": webhook.created_at,
-            "updated_at": webhook.updated_at,
-        })))
-        .into_response(),
+        Ok(webhook) => (
+            StatusCode::CREATED,
+            Json(json!({
+                "id": webhook.id,
+                "site_id": webhook.site_id,
+                "label": webhook.label,
+                "url": webhook.url,
+                "created_by": webhook.created_by,
+                "created_at": webhook.created_at,
+                "updated_at": webhook.updated_at,
+            })),
+        )
+            .into_response(),
         Err(e) => e.into_response(),
     }
 }
@@ -146,17 +149,20 @@ pub async fn get_webhook(
     match services.webhook.get_webhook(&webhook_id, &site_id).await {
         Ok(Some(webhook)) => {
             let headers = services.webhook.decrypt_webhook_headers(&webhook);
-            (StatusCode::OK, Json(json!({
-                "id": webhook.id,
-                "site_id": webhook.site_id,
-                "label": webhook.label,
-                "url": webhook.url,
-                "headers": headers,
-                "created_by": webhook.created_by,
-                "created_at": webhook.created_at,
-                "updated_at": webhook.updated_at,
-            })))
-            .into_response()
+            (
+                StatusCode::OK,
+                Json(json!({
+                    "id": webhook.id,
+                    "site_id": webhook.site_id,
+                    "label": webhook.label,
+                    "url": webhook.url,
+                    "headers": headers,
+                    "created_by": webhook.created_by,
+                    "created_at": webhook.created_at,
+                    "updated_at": webhook.updated_at,
+                })),
+            )
+                .into_response()
         }
         Ok(None) => (StatusCode::NOT_FOUND, Json(json!({"error": "Webhook not found"}))).into_response(),
         Err(e) => e.into_response(),
@@ -205,16 +211,19 @@ pub async fn update_webhook(
         )
         .await
     {
-        Ok(webhook) => (StatusCode::OK, Json(json!({
-            "id": webhook.id,
-            "site_id": webhook.site_id,
-            "label": webhook.label,
-            "url": webhook.url,
-            "created_by": webhook.created_by,
-            "created_at": webhook.created_at,
-            "updated_at": webhook.updated_at,
-        })))
-        .into_response(),
+        Ok(webhook) => (
+            StatusCode::OK,
+            Json(json!({
+                "id": webhook.id,
+                "site_id": webhook.site_id,
+                "label": webhook.label,
+                "url": webhook.url,
+                "created_by": webhook.created_by,
+                "created_at": webhook.created_at,
+                "updated_at": webhook.updated_at,
+            })),
+        )
+            .into_response(),
         Err(e) => e.into_response(),
     }
 }
@@ -285,24 +294,31 @@ pub async fn trigger_webhook(
 
     let triggered_by = principal.user_id().unwrap_or("system");
 
-    match services.webhook.trigger_webhook(&webhook_id, &site_id, triggered_by).await {
+    match services
+        .webhook
+        .trigger_webhook(&webhook_id, &site_id, triggered_by)
+        .await
+    {
         Ok(delivery) => {
             let status = if delivery.status == "success" {
                 StatusCode::OK
             } else {
                 StatusCode::BAD_GATEWAY
             };
-            (status, Json(json!({
-                "id": delivery.id,
-                "webhook_id": delivery.webhook_id,
-                "status": delivery.status,
-                "status_code": delivery.status_code,
-                "response_body": delivery.response_body,
-                "duration_ms": delivery.duration_ms,
-                "triggered_by": delivery.triggered_by,
-                "triggered_at": delivery.triggered_at,
-            })))
-            .into_response()
+            (
+                status,
+                Json(json!({
+                    "id": delivery.id,
+                    "webhook_id": delivery.webhook_id,
+                    "status": delivery.status,
+                    "status_code": delivery.status_code,
+                    "response_body": delivery.response_body,
+                    "duration_ms": delivery.duration_ms,
+                    "triggered_by": delivery.triggered_by,
+                    "triggered_at": delivery.triggered_at,
+                })),
+            )
+                .into_response()
         }
         Err(e) => e.into_response(),
     }
@@ -340,7 +356,11 @@ pub async fn list_deliveries(
     let page = params.page.unwrap_or(1).max(1);
     let per_page = params.per_page.unwrap_or(20).clamp(1, 100);
 
-    match services.webhook.list_deliveries(&webhook_id, &site_id, page, per_page).await {
+    match services
+        .webhook
+        .list_deliveries(&webhook_id, &site_id, page, per_page)
+        .await
+    {
         Ok((deliveries, total)) => {
             let items: Vec<serde_json::Value> = deliveries
                 .into_iter()
@@ -357,13 +377,16 @@ pub async fn list_deliveries(
                     })
                 })
                 .collect();
-            (StatusCode::OK, Json(json!({
-                "items": items,
-                "total": total,
-                "page": page,
-                "per_page": per_page,
-            })))
-            .into_response()
+            (
+                StatusCode::OK,
+                Json(json!({
+                    "items": items,
+                    "total": total,
+                    "page": page,
+                    "per_page": per_page,
+                })),
+            )
+                .into_response()
         }
         Err(e) => e.into_response(),
     }

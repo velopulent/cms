@@ -224,7 +224,13 @@ pub async fn create_entry(
     let created_by = created_by_from_principal(&principal);
     match services
         .entry
-        .create_entry(&site.site_id, &payload.collection_id, &payload.data, &payload.slug, created_by)
+        .create_entry(
+            &site.site_id,
+            &payload.collection_id,
+            &payload.data,
+            &payload.slug,
+            created_by,
+        )
         .await
     {
         Ok(item) => (StatusCode::CREATED, Json(item)).into_response(),
@@ -565,7 +571,11 @@ pub async fn restore_entry_revision(
     };
 
     let created_by = created_by_from_principal(&principal);
-    match services.entry.restore_revision(&id, &site.site_id, number, created_by).await {
+    match services
+        .entry
+        .restore_revision(&id, &site.site_id, number, created_by)
+        .await
+    {
         Ok(item) => (StatusCode::OK, Json(item)).into_response(),
         Err(e) => e.into_response(),
     }

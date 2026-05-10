@@ -54,14 +54,10 @@ pub async fn start_grpc_server(
         singleton_svc,
         interceptor.clone(),
     );
-    let file_svc = crate::grpc::cms::v1::file_service_server::FileServiceServer::with_interceptor(
-        file_svc,
-        interceptor.clone(),
-    );
-    let site_svc = crate::grpc::cms::v1::site_service_server::SiteServiceServer::with_interceptor(
-        site_svc,
-        interceptor.clone(),
-    );
+    let file_svc =
+        crate::grpc::cms::v1::file_service_server::FileServiceServer::with_interceptor(file_svc, interceptor.clone());
+    let site_svc =
+        crate::grpc::cms::v1::site_service_server::SiteServiceServer::with_interceptor(site_svc, interceptor.clone());
     let membership_svc = crate::grpc::cms::v1::membership_service_server::MembershipServiceServer::with_interceptor(
         membership_svc,
         interceptor.clone(),
@@ -70,10 +66,8 @@ pub async fn start_grpc_server(
         token_svc,
         interceptor.clone(),
     );
-    let webhook_svc = crate::grpc::cms::v1::webhook_service_server::WebhookServiceServer::with_interceptor(
-        webhook_svc,
-        interceptor,
-    );
+    let webhook_svc =
+        crate::grpc::cms::v1::webhook_service_server::WebhookServiceServer::with_interceptor(webhook_svc, interceptor);
 
     info!("gRPC server listening on {}", grpc_addr);
 

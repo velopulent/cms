@@ -318,7 +318,12 @@ impl QueryRoot {
             .ok_or_else(|| async_graphql::Error::new("Revision not found"))?;
 
         let diff_value = if diff.unwrap_or(false) && revision_number > 1 {
-            if let Ok(Some(prev)) = gql_ctx.services.entry.get_revision(&entry_id, site_id, revision_number - 1).await {
+            if let Ok(Some(prev)) = gql_ctx
+                .services
+                .entry
+                .get_revision(&entry_id, site_id, revision_number - 1)
+                .await
+            {
                 crate::utils::diff::compute_diff_for_revision(&revision, Some(&prev))
             } else {
                 None
@@ -350,7 +355,12 @@ impl QueryRoot {
             .collect())
     }
 
-    async fn webhook(&self, ctx: &Context<'_>, site_id: String, webhook_id: String) -> Result<super::types::webhook::SiteWebhook> {
+    async fn webhook(
+        &self,
+        ctx: &Context<'_>,
+        site_id: String,
+        webhook_id: String,
+    ) -> Result<super::types::webhook::SiteWebhook> {
         let gql_ctx = ctx.data::<GqlContext>()?;
         gql_ctx.require_instance_scope(crate::middleware::auth::SCOPE_WEBHOOKS_READ)?;
 

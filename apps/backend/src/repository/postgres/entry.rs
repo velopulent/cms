@@ -219,12 +219,11 @@ impl EntryRepository for PostgresEntryRepository {
         .execute(&mut *tx)
         .await?;
 
-        let next_number: i64 = sqlx::query_scalar(
-            "SELECT COALESCE(MAX(revision_number), 0) + 1 FROM entry_revisions WHERE entry_id = $1",
-        )
-        .bind(id)
-        .fetch_one(&mut *tx)
-        .await?;
+        let next_number: i64 =
+            sqlx::query_scalar("SELECT COALESCE(MAX(revision_number), 0) + 1 FROM entry_revisions WHERE entry_id = $1")
+                .bind(id)
+                .fetch_one(&mut *tx)
+                .await?;
 
         sqlx::query(
             "UPDATE entries SET data = $1::jsonb, slug = $2, status = $3, updated_at = NOW() WHERE id = $4 AND site_id = $5",
@@ -397,12 +396,11 @@ impl EntryRepository for PostgresEntryRepository {
 
         let revision = revision.ok_or(RepositoryError::NotFound)?;
 
-        let next_number: i64 = sqlx::query_scalar(
-            "SELECT COALESCE(MAX(revision_number), 0) + 1 FROM entry_revisions WHERE entry_id = $1",
-        )
-        .bind(entry_id)
-        .fetch_one(&mut *tx)
-        .await?;
+        let next_number: i64 =
+            sqlx::query_scalar("SELECT COALESCE(MAX(revision_number), 0) + 1 FROM entry_revisions WHERE entry_id = $1")
+                .bind(entry_id)
+                .fetch_one(&mut *tx)
+                .await?;
 
         let data_json = revision.data;
         sqlx::query("UPDATE entries SET data = $1::jsonb, updated_at = NOW() WHERE id = $2")
@@ -428,7 +426,9 @@ impl EntryRepository for PostgresEntryRepository {
 
         tx.commit().await?;
 
-        self.get_by_id_any_site(entry_id).await?.ok_or(RepositoryError::NotFound)
+        self.get_by_id_any_site(entry_id)
+            .await?
+            .ok_or(RepositoryError::NotFound)
     }
 }
 

@@ -1,5 +1,5 @@
 use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
-use hmac::{Hmac, Mac, KeyInit};
+use hmac::{Hmac, KeyInit, Mac};
 use sha2::Sha256;
 use thiserror::Error;
 
@@ -34,20 +34,17 @@ pub enum SignedUploadError {
 }
 
 impl SignedUploadToken {
-    pub fn generate(
-        site_id: &str,
-        filename: &str,
-        content_type: &str,
-        hmac_secret: &str,
-    ) -> (Self, String) {
+    pub fn generate(site_id: &str, filename: &str, content_type: &str, hmac_secret: &str) -> (Self, String) {
         let file_id = uuid::Uuid::now_v7().to_string();
         let storage_provider = "filesystem".to_string();
         let expires_at = chrono::Utc::now().timestamp() + UPLOAD_TOKEN_EXPIRY_SECS;
 
-        let payload = format!("{}:{}:{}:{}:{}:{}", file_id, site_id, filename, content_type, storage_provider, expires_at);
+        let payload = format!(
+            "{}:{}:{}:{}:{}:{}",
+            file_id, site_id, filename, content_type, storage_provider, expires_at
+        );
 
-        let mut mac = HmacSha256::new_from_slice(hmac_secret.as_bytes())
-            .expect("HMAC can take key of any size");
+        let mut mac = HmacSha256::new_from_slice(hmac_secret.as_bytes()).expect("HMAC can take key of any size");
         mac.update(payload.as_bytes());
         let signature = hex::encode(mac.finalize().into_bytes());
 
@@ -75,10 +72,12 @@ impl SignedUploadToken {
         let file_id = uuid::Uuid::now_v7().to_string();
         let expires_at = chrono::Utc::now().timestamp() + UPLOAD_TOKEN_EXPIRY_SECS;
 
-        let payload = format!("{}:{}:{}:{}:{}:{}", file_id, site_id, filename, content_type, storage_provider, expires_at);
+        let payload = format!(
+            "{}:{}:{}:{}:{}:{}",
+            file_id, site_id, filename, content_type, storage_provider, expires_at
+        );
 
-        let mut mac = HmacSha256::new_from_slice(hmac_secret.as_bytes())
-            .expect("HMAC can take key of any size");
+        let mut mac = HmacSha256::new_from_slice(hmac_secret.as_bytes()).expect("HMAC can take key of any size");
         mac.update(payload.as_bytes());
         let signature = hex::encode(mac.finalize().into_bytes());
 
@@ -97,25 +96,25 @@ impl SignedUploadToken {
     }
 
     pub fn verify(token_str: &str, hmac_secret: &str) -> Result<Self, SignedUploadError> {
-        let decoded = URL_SAFE_NO_PAD.decode(token_str)
+        let decoded = URL_SAFE_NO_PAD
+            .decode(token_str)
             .map_err(|e| SignedUploadError::Base64Error(e.to_string()))?;
 
-        let json_str = String::from_utf8(decoded)
-            .map_err(|_| SignedUploadError::InvalidFormat)?;
+        let json_str = String::from_utf8(decoded).map_err(|_| SignedUploadError::InvalidFormat)?;
 
-        let token: SignedUploadTokenInternal = serde_json::from_str(&json_str)
-            .map_err(|_| SignedUploadError::InvalidFormat)?;
+        let token: SignedUploadTokenInternal =
+            serde_json::from_str(&json_str).map_err(|_| SignedUploadError::InvalidFormat)?;
 
         if token.expires_at < chrono::Utc::now().timestamp() {
             return Err(SignedUploadError::Expired);
         }
 
-        let payload = format!("{}:{}:{}:{}:{}:{}",
-            token.file_id, token.site_id, token.filename,
-            token.content_type, token.storage_provider, token.expires_at);
+        let payload = format!(
+            "{}:{}:{}:{}:{}:{}",
+            token.file_id, token.site_id, token.filename, token.content_type, token.storage_provider, token.expires_at
+        );
 
-        let mut mac = HmacSha256::new_from_slice(hmac_secret.as_bytes())
-            .expect("HMAC can take key of any size");
+        let mut mac = HmacSha256::new_from_slice(hmac_secret.as_bytes()).expect("HMAC can take key of any size");
         mac.update(payload.as_bytes());
         let expected = hex::encode(mac.finalize().into_bytes());
 
@@ -212,9 +211,8 @@ mod tests {
 
     #[test]
     fn test_generate_with_storage_provider() {
-        let (token, encoded) = SignedUploadToken::generate_with_storage_provider(
-            "site-123", "doc.pdf", "application/pdf", "s3", "secret",
-        );
+        let (token, encoded) =
+            SignedUploadToken::generate_with_storage_provider("site-123", "doc.pdf", "application/pdf", "s3", "secret");
         assert_eq!(token.storage_provider, "s3");
 
         let verified = SignedUploadToken::verify(&encoded, "secret").unwrap();

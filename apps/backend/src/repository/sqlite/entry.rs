@@ -3,8 +3,8 @@ use regex::Regex;
 use serde_json::Value;
 use sqlx::SqlitePool;
 use std::sync::LazyLock;
+use tracing::{debug, error};
 use uuid::Uuid;
-use tracing::{error, debug};
 
 use crate::models::entry::{Entry, EntryRevision};
 use crate::repository::error::RepositoryError;
@@ -25,8 +25,11 @@ impl SqliteEntryRepository {
 #[async_trait]
 impl EntryRepository for SqliteEntryRepository {
     async fn get_by_id(&self, id: &str, site_id: &str, published_only: bool) -> Result<Option<Entry>, RepositoryError> {
-        debug!("Fetching entry: id={}, site_id={}, published_only={}", id, site_id, published_only);
-        
+        debug!(
+            "Fetching entry: id={}, site_id={}, published_only={}",
+            id, site_id, published_only
+        );
+
         let mut query = String::from(
             "SELECT id, site_id, collection_id, data, slug, status, created_at, updated_at, published_at
               FROM entries WHERE id = ? AND site_id = ?",
@@ -41,8 +44,13 @@ impl EntryRepository for SqliteEntryRepository {
             .bind(site_id)
             .fetch_optional(&self.pool)
             .await?;
-        
-        debug!("Entry fetch result for id={}, site_id={}: found={}", id, site_id, result.is_some());
+
+        debug!(
+            "Entry fetch result for id={}, site_id={}: found={}",
+            id,
+            site_id,
+            result.is_some()
+        );
         Ok(result)
     }
 
@@ -59,9 +67,18 @@ impl EntryRepository for SqliteEntryRepository {
     }
 
     async fn list(&self, params: ListEntriesParams<'_>) -> Result<EntriesListResult, RepositoryError> {
-        debug!("Listing entries: site_id={}, filters: collection_slug={:?}, collection_id={:?}, status={:?}, search={:?}, published_only={}, page={}, per_page={}", 
-               params.site_id, params.collection_slug, params.collection_id, params.status, params.search, params.published_only, params.page, params.per_page);
-        
+        debug!(
+            "Listing entries: site_id={}, filters: collection_slug={:?}, collection_id={:?}, status={:?}, search={:?}, published_only={}, page={}, per_page={}",
+            params.site_id,
+            params.collection_slug,
+            params.collection_id,
+            params.status,
+            params.search,
+            params.published_only,
+            params.page,
+            params.per_page
+        );
+
         let mut query = String::from(
             "SELECT e.id, e.site_id, e.collection_id, e.data, e.slug, e.status, e.created_at, e.updated_at, e.published_at
               FROM entries e
@@ -122,13 +139,17 @@ impl EntryRepository for SqliteEntryRepository {
                 }
                 Err(e) => {
                     error!("Failed to get entries count: error={}", e);
-                     return Err(RepositoryError::Database(e.to_string()));
+                    return Err(RepositoryError::Database(e.to_string()));
                 }
             }
         };
 
-        debug!("Fetching entries page: page={}, per_page={}, offset={}", 
-               params.page, params.per_page, (params.page - 1) * params.per_page);
+        debug!(
+            "Fetching entries page: page={}, per_page={}, offset={}",
+            params.page,
+            params.per_page,
+            (params.page - 1) * params.per_page
+        );
         let offset = (params.page - 1) * params.per_page;
         query.push_str(" ORDER BY e.updated_at DESC LIMIT ? OFFSET ?");
 
@@ -151,7 +172,7 @@ impl EntryRepository for SqliteEntryRepository {
             }
             Err(e) => {
                 error!("Failed to fetch entries: error={}", e);
-                 Err(RepositoryError::Database(e.to_string()))
+                Err(RepositoryError::Database(e.to_string()))
             }
         }
     }
@@ -236,12 +257,11 @@ impl EntryRepository for SqliteEntryRepository {
     ) -> Result<Entry, RepositoryError> {
         let mut tx = self.pool.begin().await?;
 
-        let next_number: i64 = sqlx::query_scalar(
-            "SELECT COALESCE(MAX(revision_number), 0) + 1 FROM entry_revisions WHERE entry_id = ?",
-        )
-        .bind(id)
-        .fetch_one(&mut *tx)
-        .await?;
+        let next_number: i64 =
+            sqlx::query_scalar("SELECT COALESCE(MAX(revision_number), 0) + 1 FROM entry_revisions WHERE entry_id = ?")
+                .bind(id)
+                .fetch_one(&mut *tx)
+                .await?;
 
         sqlx::query(
             "UPDATE entries SET data = ?, slug = ?, status = ?, updated_at = datetime('now') WHERE id = ? AND site_id = ?",
@@ -408,12 +428,11 @@ impl EntryRepository for SqliteEntryRepository {
 
         let revision = revision.ok_or(RepositoryError::NotFound)?;
 
-        let next_number: i64 = sqlx::query_scalar(
-            "SELECT COALESCE(MAX(revision_number), 0) + 1 FROM entry_revisions WHERE entry_id = ?",
-        )
-        .bind(entry_id)
-        .fetch_one(&mut *tx)
-        .await?;
+        let next_number: i64 =
+            sqlx::query_scalar("SELECT COALESCE(MAX(revision_number), 0) + 1 FROM entry_revisions WHERE entry_id = ?")
+                .bind(entry_id)
+                .fetch_one(&mut *tx)
+                .await?;
 
         let data_str = serde_json::to_string(&revision.data.0).unwrap_or_default();
         sqlx::query("UPDATE entries SET data = ?, updated_at = datetime('now') WHERE id = ?")
@@ -439,7 +458,9 @@ impl EntryRepository for SqliteEntryRepository {
 
         tx.commit().await?;
 
-        self.get_by_id_any_site(entry_id).await?.ok_or(RepositoryError::NotFound)
+        self.get_by_id_any_site(entry_id)
+            .await?
+            .ok_or(RepositoryError::NotFound)
     }
 }
 

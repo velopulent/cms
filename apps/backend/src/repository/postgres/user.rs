@@ -26,7 +26,7 @@ impl UserRepository for PostgresUserRepository {
         .bind(username)
         .fetch_optional(&self.pool)
         .await?;
-        
+
         debug!("User lookup performed");
         Ok(result)
     }
@@ -39,7 +39,7 @@ impl UserRepository for PostgresUserRepository {
         .bind(id)
         .fetch_optional(&self.pool)
         .await?;
-        
+
         debug!("User lookup performed");
         Ok(result)
     }

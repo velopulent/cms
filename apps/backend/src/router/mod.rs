@@ -15,10 +15,10 @@ mod webhooks;
 use std::sync::Arc;
 
 use axum::{Extension, Router};
+use tokio_util::sync::CancellationToken;
 use tower_http::cors::{Any, CorsLayer};
 use tower_http::limit::RequestBodyLimitLayer;
 use tower_http::trace::TraceLayer;
-use tokio_util::sync::CancellationToken;
 
 use tracing::info;
 
@@ -65,12 +65,7 @@ pub fn create_router(
 
     if mcp_enabled {
         let mcp_ct = CancellationToken::new();
-        let mcp_router = mcp::mcp_routes(
-            Arc::new(repository.into()),
-            Arc::new(config),
-            storage_registry,
-            mcp_ct,
-        );
+        let mcp_router = mcp::mcp_routes(Arc::new(repository.into()), Arc::new(config), storage_registry, mcp_ct);
         router = router.merge(mcp_router);
         info!("MCP HTTP endpoint enabled at /mcp");
     } else {

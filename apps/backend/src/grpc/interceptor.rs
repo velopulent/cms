@@ -1,8 +1,8 @@
 use std::collections::BTreeSet;
 use std::sync::Arc;
 
-use hmac::{Hmac, Mac};
 use hmac::digest::KeyInit;
+use hmac::{Hmac, Mac};
 use sha2::Sha256;
 use tracing::{Span, error};
 
@@ -144,10 +144,7 @@ impl AuthInterceptor {
 }
 
 impl tonic::service::Interceptor for AuthInterceptor {
-    fn call(
-        &mut self,
-        mut request: tonic::Request<()>,
-    ) -> Result<tonic::Request<()>, tonic::Status> {
+    fn call(&mut self, mut request: tonic::Request<()>) -> Result<tonic::Request<()>, tonic::Status> {
         let token = request
             .metadata()
             .get("authorization")
@@ -155,8 +152,8 @@ impl tonic::service::Interceptor for AuthInterceptor {
             .and_then(|v| v.strip_prefix("Bearer "))
             .ok_or_else(|| tonic::Status::unauthenticated("Missing access token"))?;
 
-        let ctx = parse_token(token, &self.config)
-            .map_err(|_| tonic::Status::unauthenticated("Invalid access token"))?;
+        let ctx =
+            parse_token(token, &self.config).map_err(|_| tonic::Status::unauthenticated("Invalid access token"))?;
 
         request.extensions_mut().insert(ctx);
         Ok(request)
@@ -167,18 +164,11 @@ impl tonic::service::Interceptor for AuthInterceptor {
 ///
 /// This performs the heavy async work: HMAC/bcrypt verification,
 /// expiry and revocation checks, last_used update, and scope parsing.
-async fn validate_auth(
-    ctx: &AuthContext,
-    repository: &Repository,
-) -> Result<GrpcAuthContext, tonic::Status> {
-    let keys = repository
-        .access_token
-        .find_by_prefix(&ctx.prefix)
-        .await
-        .map_err(|e| {
-            error!(error = ?e, "Database error during access token lookup");
-            tonic::Status::internal("Authentication service unavailable")
-        })?;
+async fn validate_auth(ctx: &AuthContext, repository: &Repository) -> Result<GrpcAuthContext, tonic::Status> {
+    let keys = repository.access_token.find_by_prefix(&ctx.prefix).await.map_err(|e| {
+        error!(error = ?e, "Database error during access token lookup");
+        tonic::Status::internal("Authentication service unavailable")
+    })?;
 
     for (key_id, kind, site_id, stored_hash, stored_hmac, expires_at, revoked_at, scopes) in keys {
         let valid = if let Some(ref stored) = stored_hmac {

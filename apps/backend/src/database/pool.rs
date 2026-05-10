@@ -9,7 +9,7 @@ use std::time::Duration;
 
 use crate::config::Config;
 use crate::database::backend::DatabaseBackend;
-use crate::database::{SQLITE_MIGRATOR, POSTGRES_MIGRATOR, MYSQL_MIGRATOR};
+use crate::database::{MYSQL_MIGRATOR, POSTGRES_MIGRATOR, SQLITE_MIGRATOR};
 
 #[derive(Clone)]
 pub enum DbPool {

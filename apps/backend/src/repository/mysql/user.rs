@@ -26,7 +26,7 @@ impl UserRepository for MysqlUserRepository {
         .bind(username)
         .fetch_optional(&self.pool)
         .await?;
-        
+
         debug!("User lookup performed");
         Ok(result)
     }
