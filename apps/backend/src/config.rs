@@ -39,7 +39,9 @@ pub struct Config {
 
     // MCP configuration
     pub mcp_enabled: bool,
-    pub mcp_stdio: bool,
+    pub mcp_allowed_hosts: Vec<String>,
+    pub mcp_allowed_origins: Vec<String>,
+    pub public_url: Option<String>,
 }
 
 static DEFAULT_JWT_SECRET: &str = "cms-jwt-secret-change-in-production";
@@ -105,18 +107,39 @@ impl Config {
                 eprintln!("WARNING: Using default HMAC secret. Set HMAC_SECRET environment variable in production!");
                 "cms-hmac-secret-change-in-production".to_string()
             }),
-            mcp_enabled: env::var("MCP_ENABLED")
-                .map(|v| v == "true" || v == "1")
-                .unwrap_or(true),
-            mcp_stdio: env::var("MCP_STDIO")
-                .map(|v| v == "true" || v == "1")
-                .unwrap_or(false),
+            mcp_enabled: env::var("MCP_ENABLED").map(|v| v == "true" || v == "1").unwrap_or(true),
+            mcp_allowed_hosts: parse_csv_env("MCP_ALLOWED_HOSTS").unwrap_or_else(default_mcp_allowed_hosts),
+            mcp_allowed_origins: parse_csv_env("MCP_ALLOWED_ORIGINS").unwrap_or_default(),
+            public_url: env::var("PUBLIC_URL").ok().map(|v| v.trim_end_matches('/').to_string()),
         }
     }
 
     pub fn has_s3(&self) -> bool {
         self.s3_access_key_id.is_some() && self.s3_secret_access_key.is_some() && self.s3_bucket.is_some()
     }
+}
+
+fn parse_csv_env(name: &str) -> Option<Vec<String>> {
+    let values = env::var(name).ok()?;
+    Some(
+        values
+            .split(',')
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(ToString::to_string)
+            .collect(),
+    )
+}
+
+fn default_mcp_allowed_hosts() -> Vec<String> {
+    vec![
+        "localhost".to_string(),
+        "127.0.0.1".to_string(),
+        "[::1]".to_string(),
+        "localhost:3000".to_string(),
+        "127.0.0.1:3000".to_string(),
+        "[::1]:3000".to_string(),
+    ]
 }
 
 #[cfg(test)]
@@ -147,7 +170,9 @@ mod tests {
             rate_limit_window_secs: 60,
             hmac_secret: "hmac".to_string(),
             mcp_enabled: true,
-            mcp_stdio: false,
+            mcp_allowed_hosts: vec![],
+            mcp_allowed_origins: vec![],
+            public_url: None,
         };
 
         assert!(config.has_s3());
@@ -177,7 +202,9 @@ mod tests {
             rate_limit_window_secs: 60,
             hmac_secret: "hmac".to_string(),
             mcp_enabled: true,
-            mcp_stdio: false,
+            mcp_allowed_hosts: vec![],
+            mcp_allowed_origins: vec![],
+            public_url: None,
         };
 
         assert!(!config.has_s3());
@@ -207,7 +234,9 @@ mod tests {
             rate_limit_window_secs: 60,
             hmac_secret: "hmac".to_string(),
             mcp_enabled: true,
-            mcp_stdio: false,
+            mcp_allowed_hosts: vec![],
+            mcp_allowed_origins: vec![],
+            public_url: None,
         };
 
         assert!(!config.has_s3());
@@ -237,7 +266,9 @@ mod tests {
             rate_limit_window_secs: 60,
             hmac_secret: "hmac".to_string(),
             mcp_enabled: true,
-            mcp_stdio: false,
+            mcp_allowed_hosts: vec![],
+            mcp_allowed_origins: vec![],
+            public_url: None,
         };
 
         assert!(!config.has_s3());
@@ -267,7 +298,9 @@ mod tests {
             rate_limit_window_secs: 60,
             hmac_secret: "hmac".to_string(),
             mcp_enabled: true,
-            mcp_stdio: false,
+            mcp_allowed_hosts: vec![],
+            mcp_allowed_origins: vec![],
+            public_url: None,
         };
 
         assert!(!config.has_s3());

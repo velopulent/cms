@@ -30,16 +30,22 @@ pub async fn init_db(database_url: &str) -> Result<DbPool, sqlx::Error> {
         rate_limit_window_secs: 60,
         hmac_secret: String::new(),
         mcp_enabled: true,
-        mcp_stdio: false,
+        mcp_allowed_hosts: vec![],
+        mcp_allowed_origins: vec![],
+        public_url: None,
     })
     .await?;
 
-    pool.run_migrations().await.map_err(|e| sqlx::Error::Configuration(e.into()))?;
+    pool.run_migrations()
+        .await
+        .map_err(|e| sqlx::Error::Configuration(e.into()))?;
     Ok(pool)
 }
 
 pub async fn init_db_with_config(config: &crate::config::Config) -> Result<DbPool, sqlx::Error> {
     let pool = DbPool::from_url_with_config(config).await?;
-    pool.run_migrations().await.map_err(|e| sqlx::Error::Configuration(e.into()))?;
+    pool.run_migrations()
+        .await
+        .map_err(|e| sqlx::Error::Configuration(e.into()))?;
     Ok(pool)
 }
