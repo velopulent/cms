@@ -592,11 +592,7 @@ impl EntryRepository for InMemoryEntryRepository {
         per_page: i64,
     ) -> Result<RevisionsListResult, RepositoryError> {
         let revisions = self.revisions.lock().unwrap();
-        let mut filtered: Vec<EntryRevision> = revisions
-            .iter()
-            .filter(|r| r.entry_id == entry_id)
-            .cloned()
-            .collect();
+        let mut filtered: Vec<EntryRevision> = revisions.iter().filter(|r| r.entry_id == entry_id).cloned().collect();
         filtered.sort_by(|a, b| b.revision_number.cmp(&a.revision_number));
 
         let total = filtered.len() as i64;
@@ -893,7 +889,7 @@ impl AccessTokenRepository for InMemoryAccessTokenRepository {
         name: &str,
         _token_hash: &str,
         token_prefix: &str,
-        _token_hmac: &str,
+        token_hmac: &str,
         scopes: &str,
         created_by_user_id: Option<&str>,
     ) -> Result<(), RepositoryError> {
@@ -910,7 +906,7 @@ impl AccessTokenRepository for InMemoryAccessTokenRepository {
             created_at: now_timestamp(),
             expires_at: None,
             revoked_at: None,
-            token_hmac: None,
+            token_hmac: Some(token_hmac.to_string()),
         };
         tokens.push(token);
         Ok(())
@@ -931,13 +927,13 @@ impl AccessTokenRepository for InMemoryAccessTokenRepository {
             .map(|t| {
                 (
                     t.id.clone(),
-                    t.token_hmac.clone().unwrap_or_default(),
-                    t.site_id.clone(),
                     t.kind.clone(),
-                    Some(t.token_prefix.clone()),
-                    Some(t.scopes.clone()),
-                    t.created_by_user_id.clone(),
-                    t.name.clone(),
+                    t.site_id.clone(),
+                    String::new(),
+                    t.token_hmac.clone(),
+                    t.expires_at.clone(),
+                    t.revoked_at.clone(),
+                    t.scopes.clone(),
                 )
             })
             .collect())

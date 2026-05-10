@@ -1,9 +1,9 @@
 use std::sync::Arc;
 
-use rmcp::model::CallToolResult;
-use rmcp::handler::server::wrapper::Parameters;
-use rmcp::model::Content;
 use rmcp::ErrorData as McpError;
+use rmcp::handler::server::wrapper::Parameters;
+use rmcp::model::CallToolResult;
+use rmcp::model::Content;
 use schemars::JsonSchema;
 use serde::Deserialize;
 
@@ -30,7 +30,10 @@ pub async fn list_members(
     principal: &Principal,
     params: Parameters<ListMembersParams>,
 ) -> Result<CallToolResult, McpError> {
-    scope.require_admin_scope(principal, Some(&params.0.site_id), SCOPE_MEMBERS_READ).await.map_err(map_err)?;
+    scope
+        .require_admin_scope(principal, Some(&params.0.site_id), SCOPE_MEMBERS_READ)
+        .await
+        .map_err(map_err)?;
     let members = services.site.list_members(&params.0.site_id).await.map_err(map_err)?;
     ok_result(&members)
 }
@@ -48,9 +51,15 @@ pub async fn invite_member(
     principal: &Principal,
     params: Parameters<InviteMemberParams>,
 ) -> Result<CallToolResult, McpError> {
-    scope.require_admin_scope(principal, Some(&params.0.site_id), SCOPE_MEMBERS_WRITE).await.map_err(map_err)?;
-    let member = services.site.invite_member(&params.0.site_id, &params.0.username, &params.0.role)
-        .await.map_err(map_err)?;
+    scope
+        .require_admin_scope(principal, Some(&params.0.site_id), SCOPE_MEMBERS_WRITE)
+        .await
+        .map_err(map_err)?;
+    let member = services
+        .site
+        .invite_member(&params.0.site_id, &params.0.username, &params.0.role)
+        .await
+        .map_err(map_err)?;
     ok_result(&member)
 }
 
@@ -66,9 +75,15 @@ pub async fn remove_member(
     principal: &Principal,
     params: Parameters<RemoveMemberParams>,
 ) -> Result<CallToolResult, McpError> {
-    scope.require_admin_scope(principal, Some(&params.0.site_id), SCOPE_MEMBERS_WRITE).await.map_err(map_err)?;
+    scope
+        .require_admin_scope(principal, Some(&params.0.site_id), SCOPE_MEMBERS_WRITE)
+        .await
+        .map_err(map_err)?;
     let by_user_id = principal.user_id().unwrap_or("system");
-    services.site.remove_member(&params.0.site_id, &params.0.user_id, by_user_id)
-        .await.map_err(map_err)?;
+    services
+        .site
+        .remove_member(&params.0.site_id, &params.0.user_id, by_user_id)
+        .await
+        .map_err(map_err)?;
     Ok(CallToolResult::success(vec![Content::text("Member removed")]))
 }

@@ -8,8 +8,7 @@ use cms::storage::{self, STORAGE_KIND_FILESYSTEM, STORAGE_KIND_S3, StorageRegist
 
 use std::net::SocketAddr;
 use std::sync::Arc;
-use tokio::select;
-use tracing::{info, warn, debug};
+use tracing::{debug, info, warn};
 
 #[tokio::main]
 async fn main() {
@@ -62,7 +61,12 @@ async fn main() {
 
     let storage_registry = Arc::new(storage_registry);
     let services = Services::new(repository.clone(), &config);
-    let app = create_router(repository.clone(), config.clone(), storage_registry.clone(), services.clone());
+    let app = create_router(
+        repository.clone(),
+        config.clone(),
+        storage_registry.clone(),
+        services.clone(),
+    );
 
     let addr: SocketAddr = config.bind_address.parse().expect("Invalid BIND_ADDRESS");
     info!("REST API server running on {}", addr);
@@ -88,22 +92,7 @@ async fn main() {
         grpc_addr,
     ));
 
-    let mcp_stdio_handle = if config.mcp_stdio {
-        let mcp_services = Arc::new(services.clone());
-        let mcp_repo = Arc::new(repository.clone());
-        let mcp_storage = storage_registry.clone();
-        let mcp_config = Arc::new(config.clone());
-        info!("MCP stdio server enabled");
-        Some(tokio::spawn(async move {
-            cms::mcp::transports::stdio::run_stdio_server(
-                mcp_services, mcp_repo, mcp_storage, mcp_config,
-            ).await;
-        }))
-    } else {
-        None
-    };
-
-    select! {
+    tokio::select! {
         result = rest_handle => {
             if let Err(e) = result {
                 tracing::error!("REST server error: {}", e);
@@ -112,17 +101,6 @@ async fn main() {
         result = grpc_handle => {
             if let Err(e) = result {
                 tracing::error!("gRPC server error: {}", e);
-            }
-        }
-        result = async {
-            if let Some(handle) = mcp_stdio_handle {
-                handle.await
-            } else {
-                std::future::pending().await
-            }
-        } => {
-            if let Err(e) = result {
-                tracing::error!("MCP stdio server error: {}", e);
             }
         }
     }

@@ -1,82 +1,82 @@
-use std::str::FromStr;
+use axum::{
+    Json,
+    body::Body,
+    http::{Request, StatusCode},
+    middleware::Next,
+    response::{IntoResponse, Response},
+};
+use rmcp::model::{CallToolResult, Content, ErrorCode, ErrorData};
+use rmcp::service::{RequestContext, RoleServer};
+use serde_json::json;
 
 use crate::config::Config;
-use crate::middleware::auth::{Principal, verify_token, compute_key_hmac, is_token_not_expired, parse_scopes};
-use crate::models::access_token::AccessTokenKind;
+use crate::middleware::auth::{Principal, verify_access_token};
 use crate::repository::Repository;
-use rmcp::model::ErrorCode;
-use rmcp::model::ErrorData;
 
-type McpResult<T> = Result<T, ErrorData>;
-
-fn mcp_error(code: ErrorCode, message: impl Into<String>) -> ErrorData {
+pub fn mcp_error(code: ErrorCode, message: impl Into<String>) -> ErrorData {
     ErrorData::new(code, message.into(), None)
 }
 
-pub async fn resolve_principal_from_env(
-    config: &Config,
-    repository: &Repository,
-) -> McpResult<Principal> {
-    let token = std::env::var("CMS_TOKEN").unwrap_or_default();
-    if token.is_empty() {
-        return Err(mcp_error(ErrorCode::INVALID_PARAMS, "CMS_TOKEN environment variable is required for stdio MCP transport"));
-    }
-    resolve_principal_from_token(&token, config, repository).await
+pub fn ok_result(data: &impl serde::Serialize) -> Result<CallToolResult, ErrorData> {
+    let json = serde_json::to_string_pretty(data).unwrap_or_default();
+    Ok(CallToolResult::success(vec![Content::text(json)]))
 }
 
-async fn resolve_principal_from_token(
-    token: &str,
-    config: &Config,
-    repository: &Repository,
-) -> McpResult<Principal> {
-    if token.starts_with("cms_") {
-        let prefix: String = token.chars().take(24).collect();
-        let keys = repository.access_token.find_by_prefix(&prefix).await
-            .map_err(|_| mcp_error(ErrorCode::INTERNAL_ERROR, "Failed to look up access token"))?;
+pub fn text_result(message: impl Into<String>) -> CallToolResult {
+    CallToolResult::success(vec![Content::text(message.into())])
+}
 
-        let token_hmac = compute_key_hmac(token, &config.hmac_secret);
+pub fn map_err(e: impl Into<crate::services::error::ServiceError>) -> ErrorData {
+    service_error_to_mcp(e.into())
+}
 
-        for (token_id, kind, site_id, stored_hash, stored_hmac, expires_at, revoked_at, scopes) in keys {
-            if let Some(ref stored) = stored_hmac {
-                if stored != &token_hmac {
-                    continue;
-                }
-            } else {
-                match bcrypt::verify(token, &stored_hash) {
-                    Ok(true) => {}
-                    _ => continue,
-                }
-            }
+pub fn resolve_principal(ctx: &RequestContext<RoleServer>) -> Result<Principal, ErrorData> {
+    let parts = ctx
+        .extensions
+        .get::<http::request::Parts>()
+        .ok_or_else(|| mcp_error(ErrorCode::INTERNAL_ERROR, "MCP request context missing HTTP parts"))?;
 
-            if revoked_at.is_some() {
-                return Err(mcp_error(ErrorCode::INVALID_REQUEST, "Access token has been revoked"));
-            }
+    parts
+        .extensions
+        .get::<Principal>()
+        .cloned()
+        .ok_or_else(|| mcp_error(ErrorCode::INVALID_REQUEST, "Missing MCP authentication"))
+}
 
-            if !is_token_not_expired(expires_at.as_deref()) {
-                return Err(mcp_error(ErrorCode::INVALID_REQUEST, "Access token has expired"));
-            }
+pub async fn authenticate_mcp_request(mut request: Request<Body>, next: Next) -> Response {
+    let repository = match request.extensions().get::<Repository>() {
+        Some(repository) => repository.clone(),
+        None => return auth_response(StatusCode::INTERNAL_SERVER_ERROR, "MCP repository extension missing"),
+    };
 
-            let _ = repository.access_token.update_last_used(&token_id).await;
+    let config = match request.extensions().get::<Config>() {
+        Some(config) => config.clone(),
+        None => return auth_response(StatusCode::INTERNAL_SERVER_ERROR, "MCP config extension missing"),
+    };
 
-            let kind_parsed = AccessTokenKind::from_str(&kind)
-                .map_err(|e| mcp_error(ErrorCode::INTERNAL_ERROR, e))?;
-            let scopes = parse_scopes(&scopes);
+    let token = match bearer_token(&request) {
+        Some(token) if token.starts_with("cms_site_") || token.starts_with("cms_inst_") => token,
+        Some(_) => return auth_response(StatusCode::UNAUTHORIZED, "MCP requires a CMS access token"),
+        None => return auth_response(StatusCode::UNAUTHORIZED, "Missing Authorization bearer token"),
+    };
 
-            return match kind_parsed {
-                AccessTokenKind::Instance => Ok(Principal::InstanceToken { token_id, scopes }),
-                AccessTokenKind::Site => {
-                    let site_id = site_id.ok_or_else(|| mcp_error(ErrorCode::INTERNAL_ERROR, "Site token missing site binding"))?;
-                    Ok(Principal::SiteToken { token_id, site_id, scopes })
-                }
-            };
+    match verify_access_token(&token, &repository, &config.hmac_secret).await {
+        Ok(principal) => {
+            request.extensions_mut().insert(principal);
+            next.run(request).await
         }
-
-        return Err(mcp_error(ErrorCode::INVALID_REQUEST, "Invalid access token"));
+        Err((status, Json(error))) => auth_response(status, &error.message),
     }
+}
 
-    verify_token(token, &config.jwt_secret)
-        .map(|claims| Principal::UserSession { user_id: claims.sub })
-        .map_err(|_| mcp_error(ErrorCode::INVALID_REQUEST, "Invalid or expired token"))
+fn bearer_token(request: &Request<Body>) -> Option<String> {
+    let auth_header = request.headers().get("Authorization")?.to_str().ok()?;
+    let token = auth_header.strip_prefix("Bearer ")?;
+    Some(token.trim().to_string())
+}
+
+fn auth_response(status: StatusCode, message: &str) -> Response {
+    (status, Json(json!({ "error": message }))).into_response()
 }
 
 pub fn service_error_to_mcp(error: crate::services::error::ServiceError) -> ErrorData {
@@ -99,7 +99,10 @@ pub fn service_error_to_mcp(error: crate::services::error::ServiceError) -> Erro
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use crate::database::init_db;
+    use crate::middleware::auth::{Principal, create_token, is_token_not_expired, verify_access_token};
+    use crate::repository::Repository;
+    use crate::services::access_token::AccessTokenService;
 
     #[test]
     fn test_is_token_not_expired_no_expiry() {
@@ -116,5 +119,68 @@ mod tests {
     fn test_is_token_not_expired_past() {
         let past = (chrono::Utc::now() - chrono::Duration::hours(1)).to_rfc3339();
         assert!(!is_token_not_expired(Some(&past)));
+    }
+
+    #[tokio::test]
+    async fn test_verify_site_access_token() {
+        let hmac_secret = "test-hmac-secret";
+        let pool = init_db("sqlite::memory:").await.expect("db should initialize");
+        let repository = Repository::new(&pool);
+        let password_hash = bcrypt::hash("password", bcrypt::DEFAULT_COST).expect("password should hash");
+        repository
+            .user
+            .create("user-123", "mcp-user", "mcp@example.com", &password_hash)
+            .await
+            .expect("user should be created");
+        repository
+            .site
+            .create("site-123", "Test Site", "filesystem", "user-123")
+            .await
+            .expect("site should be created");
+        let service = AccessTokenService::new(repository.access_token.clone(), hmac_secret.to_string());
+        let token = service
+            .create_site_token("site-123", "MCP".to_string(), vec!["content:read".to_string()], None)
+            .await
+            .expect("token should be created");
+
+        let principal = verify_access_token(&token.token, &repository, hmac_secret)
+            .await
+            .expect("token should verify");
+
+        match principal {
+            Principal::SiteToken { site_id, scopes, .. } => {
+                assert_eq!(site_id, "site-123");
+                assert!(scopes.contains("content:read"));
+            }
+            other => panic!("expected site token, got {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_verify_instance_access_token() {
+        let hmac_secret = "test-hmac-secret";
+        let pool = init_db("sqlite::memory:").await.expect("db should initialize");
+        let repository = Repository::new(&pool);
+        let service = AccessTokenService::new(repository.access_token.clone(), hmac_secret.to_string());
+        let token = service
+            .create_instance_token("MCP".to_string(), vec!["sites:read".to_string()])
+            .await
+            .expect("token should be created");
+
+        let principal = verify_access_token(&token.token, &repository, hmac_secret)
+            .await
+            .expect("token should verify");
+
+        assert!(matches!(principal, Principal::InstanceToken { .. }));
+    }
+
+    #[tokio::test]
+    async fn test_jwt_is_not_a_valid_access_token() {
+        let hmac_secret = "test-hmac-secret";
+        let pool = init_db("sqlite::memory:").await.expect("db should initialize");
+        let repository = Repository::new(&pool);
+        let jwt = create_token("user-123".to_string(), "jwt-secret").expect("jwt should be created");
+
+        assert!(verify_access_token(&jwt, &repository, hmac_secret).await.is_err());
     }
 }

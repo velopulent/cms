@@ -1,29 +1,21 @@
 use std::sync::Arc;
 
-use rmcp::model::CallToolResult;
-use rmcp::handler::server::wrapper::Parameters;
-use rmcp::model::Content;
 use rmcp::ErrorData as McpError;
+use rmcp::handler::server::wrapper::Parameters;
+use rmcp::model::CallToolResult;
 use schemars::JsonSchema;
 use serde::Deserialize;
 
 use crate::config::Config;
+use crate::mcp::auth::{map_err, ok_result, text_result};
 use crate::middleware::auth::{Principal, SCOPE_ASSETS_READ, SCOPE_ASSETS_WRITE};
-use crate::services::{Services, error::ServiceError, scope::ScopeChecker};
+use crate::services::{Services, scope::ScopeChecker};
 use crate::signed_upload::SignedUploadToken;
-
-fn ok_result(data: &impl serde::Serialize) -> Result<CallToolResult, McpError> {
-    let json = serde_json::to_string_pretty(data).unwrap_or_default();
-    Ok(CallToolResult::success(vec![Content::text(json)]))
-}
-
-fn map_err(e: impl Into<ServiceError>) -> McpError {
-    crate::mcp::auth::service_error_to_mcp(e.into())
-}
 
 #[derive(Debug, Deserialize, JsonSchema)]
 pub struct ListFilesParams {
-    pub site_id: String,
+    #[serde(default)]
+    pub site_id: Option<String>,
     #[serde(default)]
     pub page: Option<i64>,
     #[serde(default)]
@@ -42,8 +34,10 @@ pub async fn list_files(
     principal: &Principal,
     params: Parameters<ListFilesParams>,
 ) -> Result<CallToolResult, McpError> {
-    let site = scope.require_site_scope(principal, Some(&params.0.site_id), SCOPE_ASSETS_READ, "viewer")
-        .await.map_err(map_err)?;
+    let site = scope
+        .require_site_scope(principal, params.0.site_id.as_deref(), SCOPE_ASSETS_READ, "viewer")
+        .await
+        .map_err(map_err)?;
 
     let page = params.0.page.unwrap_or(1).max(1);
     let per_page = params.0.per_page.unwrap_or(50).clamp(1, 200);
@@ -69,7 +63,8 @@ pub async fn list_files(
 
 #[derive(Debug, Deserialize, JsonSchema)]
 pub struct GetFileParams {
-    pub site_id: String,
+    #[serde(default)]
+    pub site_id: Option<String>,
     pub file_id: String,
 }
 
@@ -79,18 +74,26 @@ pub async fn get_file(
     principal: &Principal,
     params: Parameters<GetFileParams>,
 ) -> Result<CallToolResult, McpError> {
-    let site = scope.require_site_scope(principal, Some(&params.0.site_id), SCOPE_ASSETS_READ, "viewer")
-        .await.map_err(map_err)?;
+    let site = scope
+        .require_site_scope(principal, params.0.site_id.as_deref(), SCOPE_ASSETS_READ, "viewer")
+        .await
+        .map_err(map_err)?;
 
-    match services.file.get_file(&params.0.file_id, &site.site_id).await.map_err(map_err)? {
+    match services
+        .file
+        .get_file(&params.0.file_id, &site.site_id)
+        .await
+        .map_err(map_err)?
+    {
         Some(file) => ok_result(&file),
-        None => Ok(CallToolResult::success(vec![Content::text("File not found")])),
+        None => Ok(text_result("File not found")),
     }
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
 pub struct CreateUploadUrlParams {
-    pub site_id: String,
+    #[serde(default)]
+    pub site_id: Option<String>,
     pub filename: String,
     #[serde(default = "default_content_type")]
     pub content_type: String,
@@ -104,10 +107,13 @@ pub async fn create_upload_url(
     scope: &Arc<ScopeChecker>,
     config: &Arc<Config>,
     principal: &Principal,
+    public_base_url: Option<String>,
     params: Parameters<CreateUploadUrlParams>,
 ) -> Result<CallToolResult, McpError> {
-    let site = scope.require_site_scope(principal, Some(&params.0.site_id), SCOPE_ASSETS_WRITE, "editor")
-        .await.map_err(map_err)?;
+    let site = scope
+        .require_site_scope(principal, params.0.site_id.as_deref(), SCOPE_ASSETS_WRITE, "editor")
+        .await
+        .map_err(map_err)?;
 
     let (token, upload_path) = SignedUploadToken::generate(
         &site.site_id,
@@ -116,7 +122,13 @@ pub async fn create_upload_url(
         &config.hmac_secret,
     );
 
-    let base_url = format!("{}/api/v1/files/upload", config.bind_address);
+    let fallback_base_url = format!("http://{}", config.bind_address);
+    let base_url = public_base_url
+        .as_deref()
+        .or(config.public_url.as_deref())
+        .unwrap_or(fallback_base_url.as_str())
+        .trim_end_matches('/');
+    let base_url = format!("{}/api/v1/files/upload", base_url);
     let upload_url = format!("{}/{}", base_url, upload_path);
 
     ok_result(&serde_json::json!({
@@ -130,7 +142,8 @@ pub async fn create_upload_url(
 
 #[derive(Debug, Deserialize, JsonSchema)]
 pub struct DeleteFileParams {
-    pub site_id: String,
+    #[serde(default)]
+    pub site_id: Option<String>,
     pub file_id: String,
 }
 
@@ -140,9 +153,15 @@ pub async fn delete_file(
     principal: &Principal,
     params: Parameters<DeleteFileParams>,
 ) -> Result<CallToolResult, McpError> {
-    let site = scope.require_site_scope(principal, Some(&params.0.site_id), SCOPE_ASSETS_WRITE, "editor")
-        .await.map_err(map_err)?;
+    let site = scope
+        .require_site_scope(principal, params.0.site_id.as_deref(), SCOPE_ASSETS_WRITE, "editor")
+        .await
+        .map_err(map_err)?;
 
-    services.file.soft_delete(&params.0.file_id, &site.site_id).await.map_err(map_err)?;
-    Ok(CallToolResult::success(vec![Content::text("File deleted")]))
+    services
+        .file
+        .soft_delete(&params.0.file_id, &site.site_id)
+        .await
+        .map_err(map_err)?;
+    Ok(text_result("File deleted"))
 }
