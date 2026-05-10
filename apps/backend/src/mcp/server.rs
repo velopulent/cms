@@ -2,8 +2,8 @@ use std::sync::Arc;
 
 use rmcp::handler::server::wrapper::Parameters;
 use rmcp::model::{
-    CallToolResult, Implementation, ListResourcesResult, PaginatedRequestParams, ReadResourceRequestParams,
-    ReadResourceResult, ServerCapabilities, ServerInfo,
+    CallToolRequestParams, CallToolResult, Implementation, ListResourcesResult, ListToolsResult, PaginatedRequestParams,
+    ReadResourceRequestParams, ReadResourceResult, ServerCapabilities, ServerInfo,
 };
 use rmcp::service::RequestContext;
 use rmcp::service::RoleServer;
@@ -431,11 +431,44 @@ impl CmsServer {
     }
 }
 
+#[cfg(test)]
+mod tests {
+    use super::CmsServer;
+
+    #[test]
+    fn tool_router_lists_registered_tools() {
+        let tools = CmsServer::tool_router().list_all();
+        assert!(tools.iter().any(|tool| tool.name == "list_sites"));
+        assert!(tools.len() > 20);
+    }
+}
+
 #[tool_handler]
 impl ServerHandler for CmsServer {
     fn get_info(&self) -> ServerInfo {
         ServerInfo::new(ServerCapabilities::builder().enable_tools().enable_resources().build())
             .with_server_info(Implementation::new("cms", env!("CARGO_PKG_VERSION")))
+    }
+
+    async fn list_tools(
+        &self,
+        _request: Option<PaginatedRequestParams>,
+        _ctx: RequestContext<RoleServer>,
+    ) -> Result<ListToolsResult, McpError> {
+        Ok(ListToolsResult {
+            tools: Self::tool_router().list_all(),
+            meta: None,
+            next_cursor: None,
+        })
+    }
+
+    async fn call_tool(
+        &self,
+        request: CallToolRequestParams,
+        ctx: RequestContext<RoleServer>,
+    ) -> Result<CallToolResult, McpError> {
+        let tool_context = rmcp::handler::server::tool::ToolCallContext::new(self, request, ctx);
+        Self::tool_router().call(tool_context).await
     }
 
     async fn list_resources(
