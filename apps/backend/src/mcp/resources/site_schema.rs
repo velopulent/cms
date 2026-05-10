@@ -4,6 +4,8 @@ use rmcp::ErrorData as McpError;
 use rmcp::model::AnnotateAble;
 use rmcp::model::{ListResourcesResult, PaginatedRequestParams, RawResource, ReadResourceResult, ResourceContents};
 
+const JSON_MIME_TYPE: &str = "application/json";
+
 use crate::middleware::auth::{Principal, SCOPE_SCHEMA_READ, SCOPE_SITES_READ};
 use crate::services::{Services, error::ServiceError, scope::ScopeChecker};
 
@@ -38,13 +40,18 @@ pub async fn list_resources(
         let site_id = site.get("id").and_then(|v| v.as_str()).unwrap_or("");
         let site_name = site.get("name").and_then(|v| v.as_str()).unwrap_or("Site");
 
-        resources.push(RawResource::new(format!("cms://sites/{}", site_id), site_name).no_annotation());
+        resources.push(
+            RawResource::new(format!("cms://sites/{}", site_id), site_name)
+                .with_mime_type(JSON_MIME_TYPE)
+                .no_annotation(),
+        );
 
         resources.push(
             RawResource::new(
                 format!("cms://sites/{}/collections", site_id),
                 format!("Collections for {}", site_name),
             )
+            .with_mime_type(JSON_MIME_TYPE)
             .no_annotation(),
         );
     }
@@ -75,8 +82,7 @@ pub async fn read_resource(
                 {
                     return Err(crate::mcp::auth::service_error_to_mcp(e));
                 }
-                let text = serde_json::to_string_pretty(&site).unwrap_or_default();
-                return Ok(ReadResourceResult::new(vec![ResourceContents::text(text, uri)]));
+                return Ok(ReadResourceResult::new(vec![json_resource_contents(&site, uri)]));
             }
             Ok(None) => return Err(McpError::invalid_params("Site not found", None)),
             Err(e) => return Err(crate::mcp::auth::service_error_to_mcp(ServiceError::Site(e))),
@@ -92,12 +98,15 @@ pub async fn read_resource(
         }
         match services.collection.list_collections(site_id).await {
             Ok(collections) => {
-                let text = serde_json::to_string_pretty(&collections).unwrap_or_default();
-                return Ok(ReadResourceResult::new(vec![ResourceContents::text(text, uri)]));
+                return Ok(ReadResourceResult::new(vec![json_resource_contents(&collections, uri)]));
             }
             Err(e) => return Err(crate::mcp::auth::service_error_to_mcp(ServiceError::Collection(e))),
         }
     }
 
     Err(McpError::invalid_params("Unknown resource URI", None))
+}
+
+fn json_resource_contents(data: &impl serde::Serialize, uri: &str) -> ResourceContents {
+    ResourceContents::text(serde_json::to_string_pretty(data).unwrap_or_default(), uri).with_mime_type(JSON_MIME_TYPE)
 }
