@@ -2,8 +2,9 @@ use std::sync::Arc;
 
 use rmcp::handler::server::wrapper::Parameters;
 use rmcp::model::{
-    CallToolRequestParams, CallToolResult, Implementation, ListResourcesResult, ListToolsResult, PaginatedRequestParams,
-    ReadResourceRequestParams, ReadResourceResult, ServerCapabilities, ServerInfo,
+    CallToolRequestParams, CallToolResult, Implementation, InitializeRequestParams, ListResourcesResult,
+    ListToolsResult, PaginatedRequestParams, ReadResourceRequestParams, ReadResourceResult, ServerCapabilities,
+    ServerInfo,
 };
 use rmcp::service::RequestContext;
 use rmcp::service::RoleServer;
@@ -433,7 +434,10 @@ impl CmsServer {
 
 #[cfg(test)]
 mod tests {
+    use std::collections::HashSet;
+
     use super::CmsServer;
+    use crate::mcp::schema::clean_input_schema;
 
     #[test]
     fn tool_router_lists_registered_tools() {
@@ -441,7 +445,130 @@ mod tests {
         assert!(tools.iter().any(|tool| tool.name == "list_sites"));
         assert!(tools.len() > 20);
     }
+
+    fn all_tools() -> Vec<rmcp::model::Tool> {
+        CmsServer::tool_router().list_all()
+    }
+
+    #[test]
+    fn no_type_null_in_schemas() {
+        for tool in all_tools() {
+            let cleaned = clean_input_schema(tool.input_schema);
+            assert_eq!(
+                cleaned.get("type").and_then(|v| v.as_str()),
+                Some("object"),
+                "tool '{}' input_schema must have type 'object'",
+                tool.name
+            );
+        }
+    }
+
+    #[test]
+    fn no_boolean_properties_in_schemas() {
+        for tool in all_tools() {
+            let cleaned = clean_input_schema(tool.input_schema);
+            if let Some(props) = cleaned.get("properties").and_then(|v| v.as_object()) {
+                for (key, value) in props {
+                    assert!(
+                        value.is_object() || value.is_array(),
+                        "tool '{}' property '{}' must be a schema object, got {:?}",
+                        tool.name,
+                        key,
+                        value
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn all_input_schemas_are_valid_objects() {
+        for tool in all_tools() {
+            let cleaned = clean_input_schema(tool.input_schema);
+            assert!(
+                cleaned.contains_key("type"),
+                "tool '{}' input_schema missing 'type'",
+                tool.name
+            );
+            assert!(
+                cleaned.contains_key("properties"),
+                "tool '{}' input_schema missing 'properties'",
+                tool.name
+            );
+        }
+    }
+
+    #[test]
+    fn no_type_null_anywhere() {
+        for tool in all_tools() {
+            let schema_str = serde_json::to_string(&*tool.input_schema).unwrap();
+            if schema_str.contains(r#""type":"null""#) {
+                panic!(
+                    "tool '{}' still contains \"type\":\"null\"",
+                    tool.name,
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn no_boolean_schema_values() {
+        for tool in all_tools() {
+            if let Some(props) = tool.input_schema.get("properties").and_then(|v| v.as_object()) {
+                for (key, value) in props {
+                    if value.is_boolean() {
+                        panic!(
+                            "tool '{}' property '{}' is boolean {:?}",
+                            tool.name, key, value
+                        );
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn cleaned_schemas_have_no_schema_or_title() {
+        for tool in all_tools() {
+            let cleaned = clean_input_schema(tool.input_schema);
+            assert!(
+                !cleaned.contains_key("$schema"),
+                "tool '{}' still has $schema",
+                tool.name
+            );
+            assert!(
+                !cleaned.contains_key("title"),
+                "tool '{}' still has title",
+                tool.name
+            );
+        }
+    }
+
+    #[test]
+    fn required_fields_are_subset_of_properties() {
+        for tool in all_tools() {
+            let cleaned = clean_input_schema(tool.input_schema);
+            let props: HashSet<&str> = cleaned
+                .get("properties")
+                .and_then(|v| v.as_object())
+                .map(|m| m.keys().map(|k| k.as_str()).collect())
+                .unwrap_or_default();
+            if let Some(required) = cleaned.get("required").and_then(|v| v.as_array()) {
+                for req in required {
+                    let req_str = req.as_str().unwrap_or("");
+                    assert!(
+                        props.contains(req_str),
+                        "tool '{}' required field '{}' not in properties",
+                        tool.name,
+                        req_str
+                    );
+                }
+            }
+        }
+    }
 }
+
+use crate::mcp::schema::clean_input_schema;
 
 #[tool_handler]
 impl ServerHandler for CmsServer {
@@ -450,13 +577,32 @@ impl ServerHandler for CmsServer {
             .with_server_info(Implementation::new("cms", env!("CARGO_PKG_VERSION")))
     }
 
+    async fn initialize(
+        &self,
+        request: InitializeRequestParams,
+        context: RequestContext<RoleServer>,
+    ) -> Result<ServerInfo, McpError> {
+        if context.peer.peer_info().is_none() {
+            context.peer.set_peer_info(request.clone());
+        }
+        Ok(self.get_info().with_protocol_version(request.protocol_version))
+    }
+
     async fn list_tools(
         &self,
         _request: Option<PaginatedRequestParams>,
         _ctx: RequestContext<RoleServer>,
     ) -> Result<ListToolsResult, McpError> {
+        let tools = Self::tool_router()
+            .list_all()
+            .into_iter()
+            .map(|mut tool| {
+                tool.input_schema = clean_input_schema(tool.input_schema);
+                tool
+            })
+            .collect();
         Ok(ListToolsResult {
-            tools: Self::tool_router().list_all(),
+            tools,
             meta: None,
             next_cursor: None,
         })
