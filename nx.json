@@ -2,7 +2,10 @@
   "extends": "nx/presets/core.json",
   "defaultBase": "main",
   "namedInputs": {
-    "default": ["{projectRoot}/**/*", "sharedGlobals"],
+    "default": [
+      "{projectRoot}/**/*",
+      "sharedGlobals"
+    ],
     "sharedGlobals": [
       "{workspaceRoot}/rust-toolchain.toml",
       "{workspaceRoot}/rustfmt.toml",
@@ -23,8 +26,14 @@
   },
   "targetDefaults": {
     "build": {
-      "dependsOn": ["^build"],
-      "inputs": ["production", "^production"]
+      "dependsOn": [
+        "^build"
+      ],
+      "inputs": [
+        "production",
+        "^production"
+      ]
     }
-  }
+  },
+  "analytics": false
 }
