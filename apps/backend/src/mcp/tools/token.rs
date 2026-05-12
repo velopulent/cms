@@ -3,15 +3,29 @@ use std::sync::Arc;
 use rmcp::ErrorData as McpError;
 use rmcp::handler::server::wrapper::Parameters;
 use rmcp::model::CallToolResult;
-use schemars::JsonSchema;
+use schemars::{generate::SchemaGenerator, JsonSchema, Schema};
+use schemars::json_schema;
 use serde::Deserialize;
 
 use crate::mcp::auth::{map_err, ok_result, text_result};
 use crate::middleware::auth::{Principal, SCOPE_TOKENS_READ, SCOPE_TOKENS_WRITE};
 use crate::services::{Services, scope::ScopeChecker};
 
-#[derive(Debug, Deserialize, JsonSchema)]
+#[derive(Debug, Deserialize)]
 pub struct ListInstanceTokensParams;
+
+impl JsonSchema for ListInstanceTokensParams {
+    fn schema_name() -> std::borrow::Cow<'static, str> {
+        std::borrow::Cow::Borrowed("ListInstanceTokensParams")
+    }
+
+    fn json_schema(_gen: &mut SchemaGenerator) -> Schema {
+        json_schema!({
+            "type": "object",
+            "properties": {}
+        })
+    }
+}
 
 pub async fn list_instance_tokens(
     scope: &Arc<ScopeChecker>,
