@@ -7,6 +7,7 @@ use schemars::JsonSchema;
 use serde::Deserialize;
 
 use crate::mcp::auth::{map_err, ok_result};
+use crate::mcp::schema::ArbitraryJson;
 use crate::middleware::auth::{Principal, SCOPE_SCHEMA_READ, SCOPE_SCHEMA_WRITE};
 use crate::services::{Services, scope::ScopeChecker};
 use crate::storage::StorageRegistry;
@@ -76,6 +77,7 @@ pub struct UpdateSingletonParams {
     #[serde(default)]
     pub site_id: Option<String>,
     pub slug: String,
+    #[schemars(with = "ArbitraryJson")]
     pub data: serde_json::Value,
 }
 
