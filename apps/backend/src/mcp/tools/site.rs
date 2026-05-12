@@ -4,7 +4,8 @@ use rmcp::ErrorData as McpError;
 use rmcp::handler::server::wrapper::Parameters;
 use rmcp::model::CallToolResult;
 use rmcp::model::Content;
-use schemars::JsonSchema;
+use schemars::{generate::SchemaGenerator, JsonSchema, Schema};
+use schemars::json_schema;
 use serde::Deserialize;
 
 use crate::middleware::auth::{Principal, SCOPE_SITES_DELETE, SCOPE_SITES_READ, SCOPE_SITES_WRITE};
@@ -19,8 +20,21 @@ fn map_err(e: impl Into<ServiceError>) -> McpError {
     crate::mcp::auth::service_error_to_mcp(e.into())
 }
 
-#[derive(Debug, Deserialize, JsonSchema)]
+#[derive(Debug, Deserialize)]
 pub struct ListSitesParams;
+
+impl JsonSchema for ListSitesParams {
+    fn schema_name() -> std::borrow::Cow<'static, str> {
+        std::borrow::Cow::Borrowed("ListSitesParams")
+    }
+
+    fn json_schema(_gen: &mut SchemaGenerator) -> Schema {
+        json_schema!({
+            "type": "object",
+            "properties": {}
+        })
+    }
+}
 
 pub async fn list_sites(
     scope: &Arc<ScopeChecker>,
