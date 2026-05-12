@@ -11,7 +11,8 @@ use crate::middleware::auth::{Principal, SCOPE_MEMBERS_READ, SCOPE_MEMBERS_WRITE
 use crate::services::{Services, error::ServiceError, scope::ScopeChecker};
 
 fn ok_result(data: &impl serde::Serialize) -> Result<CallToolResult, McpError> {
-    let json = serde_json::to_string_pretty(data).unwrap_or_default();
+    let json = serde_json::to_string_pretty(data)
+        .map_err(|e| McpError::internal_error(format!("Serialization failed: {}", e), None))?;
     Ok(CallToolResult::success(vec![Content::text(json)]))
 }
 

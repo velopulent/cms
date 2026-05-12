@@ -12,7 +12,7 @@ use crate::middleware::auth::{Principal, SCOPE_SITES_DELETE, SCOPE_SITES_READ, S
 use crate::services::{Services, error::ServiceError, scope::ScopeChecker};
 
 fn ok_result(data: &impl serde::Serialize) -> Result<CallToolResult, McpError> {
-    let json = serde_json::to_string_pretty(data).unwrap_or_default();
+    let json = serde_json::to_string_pretty(data).map_err(|e| McpError::internal_error(format!("Failed to serialize response: {}", e), None))?;
     Ok(CallToolResult::success(vec![Content::text(json)]))
 }
 
@@ -71,7 +71,7 @@ pub async fn get_site(
         .map_err(map_err)?;
     match services.site.get_site(&params.0.site_id).await.map_err(map_err)? {
         Some(site) => ok_result(&site),
-        None => Ok(CallToolResult::success(vec![Content::text("Site not found")])),
+        None => ok_result(&serde_json::json!({"error": "Site not found"})),
     }
 }
 
