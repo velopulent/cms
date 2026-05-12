@@ -7,6 +7,7 @@ use schemars::JsonSchema;
 use serde::Deserialize;
 
 use crate::mcp::auth::{map_err, ok_result, text_result};
+use crate::mcp::schema::ArbitraryJson;
 use crate::middleware::auth::{Principal, SCOPE_CONTENT_READ, SCOPE_CONTENT_WRITE};
 use crate::repository::traits::ListEntriesParams as RepoListEntriesParams;
 use crate::services::{Services, scope::ScopeChecker};
@@ -127,6 +128,7 @@ pub struct CreateEntryParams {
     #[serde(default)]
     pub site_id: Option<String>,
     pub collection_id: String,
+    #[schemars(with = "ArbitraryJson")]
     pub data: serde_json::Value,
     #[serde(default)]
     pub slug: Option<String>,
@@ -165,6 +167,7 @@ pub struct UpdateEntryParams {
     pub site_id: Option<String>,
     pub entry_id: String,
     #[serde(default)]
+    #[schemars(with = "ArbitraryJson")]
     pub data: Option<serde_json::Value>,
     #[serde(default)]
     pub slug: Option<String>,
