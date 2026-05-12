@@ -132,17 +132,12 @@ impl EntryRepository for SqliteEntryRepository {
             for b in &count_bindings {
                 q = q.bind(b);
             }
-            match q.fetch_one(&self.pool).await {
-                Ok(count) => {
-                    debug!("Total entries count: {}", count);
-                    count
-                }
-                Err(e) => {
-                    error!("Failed to get entries count: error={}", e);
-                    return Err(RepositoryError::Database(e.to_string()));
-                }
-            }
+            q.fetch_one(&self.pool).await.map_err(|e| {
+                error!("Failed to get entries count: error={}", e);
+                e
+            })?
         };
+        debug!("Total entries count: {}", total);
 
         debug!(
             "Fetching entries page: page={}, per_page={}, offset={}",
