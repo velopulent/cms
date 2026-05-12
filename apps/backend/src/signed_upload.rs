@@ -149,7 +149,7 @@ impl SignedUploadToken {
             expires_at: token.expires_at,
             signature: token.signature.clone(),
         };
-        let json = serde_json::to_string(&internal).unwrap_or_default();
+        let json = serde_json::to_string(&internal).expect("SignedUploadToken should be serializable");
         URL_SAFE_NO_PAD.encode(json.as_bytes())
     }
 }
