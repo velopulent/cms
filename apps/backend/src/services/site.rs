@@ -180,6 +180,14 @@ impl SiteService {
     pub async fn update_site(&self, site_id: &str, name: Option<&str>) -> Result<Site, SiteError> {
         debug!("Updating site: id={}, name={:?}", site_id, name);
 
+        let name = name.map(|n| n.trim());
+        if let Some(n) = name {
+            if n.is_empty() {
+                warn!("Site update failed: name is empty");
+                return Err(SiteError::InvalidName("Name is required".into()));
+            }
+        }
+
         let existing = self
             .site_repo
             .get_by_id(site_id)
