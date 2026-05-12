@@ -161,7 +161,7 @@ impl AccessTokenService {
     }
 
     pub async fn delete_site_token(&self, token_id: &str, site_id: &str) -> Result<u64, TokenError> {
-        info!("Deleting site token: token_id={}, site_id={}", token_id, site_id);
+        debug!("Deleting site token: token_id={}, site_id={}", token_id, site_id);
 
         match self
             .access_token_repo
@@ -210,10 +210,28 @@ impl AccessTokenService {
     }
 
     pub async fn delete_instance_token(&self, token_id: &str) -> Result<u64, TokenError> {
-        self.access_token_repo
+        debug!("Deleting instance token: token_id={}", token_id);
+
+        match self
+            .access_token_repo
             .delete(token_id, AccessTokenKind::Instance, None)
             .await
-            .map_err(|e| TokenError::DatabaseError(e.to_string()))
+        {
+            Ok(deleted_count) => {
+                info!(
+                    "Instance token deleted successfully: token_id={}, deleted_count={}",
+                    token_id, deleted_count
+                );
+                Ok(deleted_count)
+            }
+            Err(e) => {
+                error!(
+                    "Failed to delete instance token: token_id={}, error={}",
+                    token_id, e
+                );
+                Err(TokenError::DatabaseError(e.to_string()))
+            }
+        }
     }
 }
 
