@@ -125,7 +125,7 @@ impl WebhookService {
         }
 
         if let Err(e) = validate_url(url) {
-            warn!("Webhook creation failed: invalid url={}, error={}", url, e);
+            warn!("Webhook creation failed: invalid url_pattern={}, error={}", sanitize_url_for_logging(url), e);
             return Err(WebhookError::InvalidUrl(format!("Invalid URL: {}", e)));
         }
 
