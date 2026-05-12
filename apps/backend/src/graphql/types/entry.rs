@@ -65,7 +65,10 @@ pub fn db_entry_to_gql(e: crate::models::entry::Entry) -> Entry {
     }
 }
 
-pub fn db_revision_to_gql(r: crate::models::entry::EntryRevision, diff: Option<serde_json::Value>) -> EntryRevision {
+pub fn db_revision_to_gql(
+    r: crate::models::entry::EntryRevision,
+    diff: Option<serde_json::Value>,
+) -> EntryRevision {
     EntryRevision {
         id: r.id,
         entry_id: r.entry_id,
