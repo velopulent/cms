@@ -54,15 +54,7 @@ impl UserRepository for SqliteUserRepository {
     }
 
     async fn create(&self, id: &str, username: &str, email: &str, password_hash: &str) -> Result<(), RepositoryError> {
-        let email_display = if email.is_empty() {
-            "<empty>".to_string()
-        } else {
-            let mut chars = email.chars();
-            let first = chars.next().unwrap_or('_');
-            let last = chars.last().unwrap_or(first);
-            format!("{}***{}", first, last)
-        };
-        debug!("Creating user: email={}", email_display);
+        debug!("Creating user");
 
         match sqlx::query("INSERT INTO users (id, username, email, password_hash) VALUES (?, ?, ?, ?)")
             .bind(id)
