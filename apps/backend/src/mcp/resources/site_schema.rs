@@ -108,5 +108,9 @@ pub async fn read_resource(
 }
 
 fn json_resource_contents(data: &impl serde::Serialize, uri: &str) -> ResourceContents {
-    ResourceContents::text(serde_json::to_string_pretty(data).unwrap_or_default(), uri).with_mime_type(JSON_MIME_TYPE)
+    let json = serde_json::to_string_pretty(data).unwrap_or_else(|e| {
+        tracing::error!("Failed to serialize resource: {}", e);
+        "{}".to_string()
+    });
+    ResourceContents::text(json, uri).with_mime_type(JSON_MIME_TYPE)
 }
