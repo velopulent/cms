@@ -137,7 +137,7 @@ impl ServiceError {
             ServiceError::SiteTokenDenied => "Site token denied".to_string(),
             ServiceError::InstanceTokenDenied => "Instance token denied".to_string(),
             ServiceError::MissingSiteContext => "Missing site context".to_string(),
-            ServiceError::Internal(msg) => msg.clone(),
+            ServiceError::Internal(_) => "Internal server error".to_string(),
             ServiceError::Site(e) => e.to_string(),
             ServiceError::Collection(e) => e.to_string(),
             ServiceError::Entry(e) => e.to_string(),
@@ -151,6 +151,10 @@ impl ServiceError {
 
 impl IntoResponse for ServiceError {
     fn into_response(self) -> axum::response::Response {
+        // Log full error details server-side
+        if matches!(self, ServiceError::Internal(_)) {
+            tracing::error!("Internal error: {}", self);
+        }
         let status = self.status_code();
         let message = self.error_message();
         (status, Json(json!({"error": message}))).into_response()
