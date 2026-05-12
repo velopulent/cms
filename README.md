@@ -40,7 +40,7 @@ Manage content for multiple websites or applications from a single dashboard. Ea
 
 ### 🚀 API-First by Design
 
-Your content is instantly available via REST, GraphQL, gRPC and MCP APIs. Build websites, mobile apps, or any digital experience using the tools and frameworks you prefer.
+Your content is instantly available via REST, GraphQL, gRPC, and MCP (Model Context Protocol) APIs. Build websites, mobile apps, or any digital experience using the tools and frameworks you prefer.
 
 ### 📁 Media Management Built In
 
@@ -78,8 +78,11 @@ Visit `http://localhost:3000` and log in with:
 | `/api/v1/` | REST API for your content |
 | `/api/graphql` | GraphQL endpoint |
 | `/api/v1/docs` | Interactive API documentation |
-| `port 50051`   | gRPC endpoint|
+| `port 50051`   | gRPC endpoint |
+| `/mcp` | MCP Streamable HTTP endpoint |
 ---
+
+
 
 ## Why This CMS?
 
