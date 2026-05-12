@@ -85,18 +85,7 @@ impl AuthService {
         let email = email.trim();
         let password = password.trim();
 
-        let email_display = if email.is_empty() {
-            "<empty>".to_string()
-        } else {
-            let mut chars = email.chars();
-            let first = chars.next().unwrap_or('_');
-            let last = chars.last().unwrap_or(first);
-            format!("{}***{}", first, last)
-        };
-        debug!(
-            "Attempting to register user: username={}, email={}",
-            username, email_display
-        );
+        debug!("Attempting to register user");
 
         if username.is_empty() {
             warn!("Registration failed: username is empty");
@@ -130,7 +119,7 @@ impl AuthService {
         let password_hash = hash(password, DEFAULT_COST).map_err(|e| AuthError::HashError(e.to_string()))?;
 
         let id = Uuid::now_v7().to_string();
-        info!("Creating new user: id={}, username={}", id, username);
+        info!("Creating new user: id={}", id);
 
         match self.user_repo.create(&id, username, email, &password_hash).await {
             Ok(_) => {
