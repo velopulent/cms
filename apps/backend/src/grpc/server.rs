@@ -29,7 +29,7 @@ pub async fn start_grpc_server(
     let repository = Arc::new(repository);
     let config = Arc::new(config);
 
-    let services = Services::new((*repository).clone(), &config);
+    let services = Services::new(repository.clone(), &config);
 
     let collection_svc = CollectionServiceImpl::new(services.collection.clone(), repository.clone());
     let entry_svc = EntryServiceImpl::new(services.entry.clone(), repository.clone());

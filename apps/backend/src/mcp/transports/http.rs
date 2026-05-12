@@ -45,6 +45,6 @@ pub fn mcp_router(
     Router::new()
         .nest_service("/mcp", mcp_service)
         .layer(middleware::from_fn(crate::mcp::auth::authenticate_mcp_request))
-        .layer(Extension((*repository).clone()))
-        .layer(Extension((*config).clone()))
+        .layer(Extension(repository.clone()))
+        .layer(Extension(config.clone()))
 }

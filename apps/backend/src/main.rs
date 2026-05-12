@@ -60,7 +60,7 @@ async fn main() {
     }
 
     let storage_registry = Arc::new(storage_registry);
-    let services = Services::new(repository.clone(), &config);
+    let services = Services::new(Arc::new(repository.clone()), &config);
     let app = create_router(
         repository.clone(),
         config.clone(),

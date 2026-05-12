@@ -27,7 +27,7 @@ pub struct Services {
 }
 
 impl Services {
-    pub fn new(repository: Repository, config: &Config) -> Self {
+    pub fn new(repository: Arc<Repository>, config: &Config) -> Self {
         let config = Arc::new(config.clone());
 
         Self {

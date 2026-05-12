@@ -12,7 +12,7 @@ pub fn mcp_routes(
     storage_registry: Arc<StorageRegistry>,
     cancellation_token: CancellationToken,
 ) -> Router {
-    let services = Arc::new(crate::services::Services::new((*repository).clone(), &config));
+    let services = Arc::new(crate::services::Services::new(repository.clone(), &config));
 
     crate::mcp::transports::http::mcp_router(services, repository, storage_registry, config, cancellation_token)
 }
