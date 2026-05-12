@@ -18,7 +18,12 @@ pub fn mcp_error(code: ErrorCode, message: impl Into<String>) -> ErrorData {
 }
 
 pub fn ok_result(data: &impl serde::Serialize) -> Result<CallToolResult, ErrorData> {
-    let json = serde_json::to_string_pretty(data).unwrap_or_default();
+    let json = serde_json::to_string_pretty(data).map_err(|e| {
+        mcp_error(
+            ErrorCode::INTERNAL_ERROR,
+            format!("Failed to serialize response: {}", e),
+        )
+    })?;
     Ok(CallToolResult::success(vec![Content::text(json)]))
 }
 
