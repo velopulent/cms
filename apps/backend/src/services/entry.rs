@@ -233,7 +233,7 @@ impl EntryService {
     }
 
     pub async fn publish_entry(&self, id: &str, site_id: &str) -> Result<Entry, EntryError> {
-        info!("Publishing entry");
+        info!("Publishing entry: id={}, site_id={}", id, site_id);
 
         self.entry_repo.publish(id, site_id).await.map_err(|e| {
             error!("Failed to publish entry: error={}", e);
@@ -245,7 +245,7 @@ impl EntryService {
     }
 
     pub async fn unpublish_entry(&self, id: &str, site_id: &str) -> Result<Entry, EntryError> {
-        info!("Unpublishing entry");
+        info!("Unpublishing entry: id={}, site_id={}", id, site_id);
 
         self.entry_repo.unpublish(id, site_id).await.map_err(|e| {
             error!("Failed to unpublish entry: error={}", e);
