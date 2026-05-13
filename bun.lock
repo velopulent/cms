@@ -5,7 +5,7 @@
     "": {
       "name": "@cms/source",
       "devDependencies": {
-        "nx": "latest",
+        "nx": "^22.7.1",
       },
     },
     "apps/dashboard": {
