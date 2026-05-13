@@ -9,6 +9,8 @@ use rmcp::model::{CallToolResult, Content, ErrorCode, ErrorData};
 use rmcp::service::{RequestContext, RoleServer};
 use serde_json::json;
 
+use std::sync::Arc;
+
 use crate::config::Config;
 use crate::middleware::auth::{Principal, verify_access_token};
 use crate::repository::Repository;
@@ -49,12 +51,12 @@ pub fn resolve_principal(ctx: &RequestContext<RoleServer>) -> Result<Principal, 
 }
 
 pub async fn authenticate_mcp_request(mut request: Request<Body>, next: Next) -> Response {
-    let repository = match request.extensions().get::<Repository>() {
+    let repository = match request.extensions().get::<Arc<Repository>>() {
         Some(repository) => repository.clone(),
         None => return auth_response(StatusCode::INTERNAL_SERVER_ERROR, "MCP repository extension missing"),
     };
 
-    let config = match request.extensions().get::<Config>() {
+    let config = match request.extensions().get::<Arc<Config>>() {
         Some(config) => config.clone(),
         None => return auth_response(StatusCode::INTERNAL_SERVER_ERROR, "MCP config extension missing"),
     };
