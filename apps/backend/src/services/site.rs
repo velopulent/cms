@@ -490,7 +490,7 @@ mod tests {
         let service = SiteService::new(site_repo, user_repo);
 
         let result = service.create_site("", Some("filesystem"), "user-123").await;
-        assert!(matches!(result, Err(SiteError::InvalidStorageProvider(msg)) if msg.contains("Name is required")));
+        assert!(matches!(result, Err(SiteError::InvalidName(msg)) if msg.contains("Name is required")));
     }
 
     #[tokio::test]
@@ -500,7 +500,7 @@ mod tests {
         let service = SiteService::new(site_repo, user_repo);
 
         let result = service.create_site("   ", Some("filesystem"), "user-123").await;
-        assert!(matches!(result, Err(SiteError::InvalidStorageProvider(msg)) if msg.contains("Name is required")));
+        assert!(matches!(result, Err(SiteError::InvalidName(msg)) if msg.contains("Name is required")));
     }
 
     #[tokio::test]
