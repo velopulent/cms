@@ -3,7 +3,7 @@ use std::net::SocketAddr;
 use std::pin::Pin;
 use std::sync::Arc;
 
-use tonic::transport::Server;
+use tonic::transport::{Identity, Server, ServerTlsConfig};
 use tracing::info;
 
 use crate::config::Config;
@@ -25,6 +25,8 @@ pub async fn start_grpc_server(
     config: Config,
     storage_registry: Arc<StorageRegistry>,
     grpc_addr: SocketAddr,
+    tls_identity: Option<Identity>,
+    mut shutdown_rx: tokio::sync::watch::Receiver<bool>,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let repository = Arc::new(repository);
     let config = Arc::new(config);
@@ -69,9 +71,19 @@ pub async fn start_grpc_server(
     let webhook_svc =
         crate::grpc::cms::v1::webhook_service_server::WebhookServiceServer::with_interceptor(webhook_svc, interceptor);
 
-    info!("gRPC server listening on {}", grpc_addr);
+    let mut builder = Server::builder();
 
-    Server::builder()
+    if let Some(identity) = tls_identity {
+        let tls = ServerTlsConfig::new().identity(identity);
+        builder = builder.tls_config(tls)?;
+        info!("gRPC TLS server listening on {}", grpc_addr);
+    } else {
+        info!("gRPC server listening on {}", grpc_addr);
+    }
+
+    let signal = async move { shutdown_rx.changed().await.ok(); };
+
+    builder
         .add_service(collection_svc)
         .add_service(entry_svc)
         .add_service(singleton_svc)
@@ -80,7 +92,7 @@ pub async fn start_grpc_server(
         .add_service(membership_svc)
         .add_service(token_svc)
         .add_service(webhook_svc)
-        .serve(grpc_addr)
+        .serve_with_shutdown(grpc_addr, signal)
         .await?;
 
     Ok(())
@@ -91,6 +103,14 @@ pub fn spawn_grpc_server(
     config: Config,
     storage_registry: Arc<StorageRegistry>,
     grpc_addr: SocketAddr,
+    shutdown_rx: tokio::sync::watch::Receiver<bool>,
 ) -> Pin<Box<dyn Future<Output = Result<(), Box<dyn std::error::Error + Send + Sync>>> + Send>> {
-    Box::pin(start_grpc_server(repository, config, storage_registry, grpc_addr))
+    Box::pin(async move {
+        let tls_identity = if config.tls_enabled {
+            Some(crate::tls::load_tonic_identity(&config).await?)
+        } else {
+            None
+        };
+        start_grpc_server(repository, config, storage_registry, grpc_addr, tls_identity, shutdown_rx).await
+    })
 }
