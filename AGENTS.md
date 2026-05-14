@@ -67,7 +67,12 @@ bun run format               # Format all projects
 | `DB_MIN_CONNECTIONS` | `2` | Min DB connections |
 | `RATE_LIMIT_MAX_REQUESTS` | `100` | Rate limit per window |
 | `RATE_LIMIT_WINDOW_SECS` | `60` | Rate limit window |
-
+| `TLS_ENABLED` | `false` | Enable TLS/HTTPS for REST API and gRPC |
+| `TLS_CERT_PATH` | - | Path to PEM-encoded certificate file |
+| `TLS_KEY_PATH` | - | Path to PEM-encoded private key file |
+| `TLS_BIND_ADDRESS` | - | HTTPS listen address (e.g. `0.0.0.0:443`) |
+| `HTTP_DISABLED` | `false` | Disable HTTP listener entirely |
+| `HTTP_REDIRECT_TO_HTTPS` | `false` | Redirect HTTP traffic to HTTPS |
 **Warning**: Default `JWT_SECRET` and `HMAC_SECRET` print warnings on startup—set these in production.
 
 ## Proto Compilation
