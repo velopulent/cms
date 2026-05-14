@@ -5,6 +5,7 @@ pub mod graphql;
 pub mod mcp;
 pub mod signed_upload;
 pub mod test_helpers;
+pub mod tls;
 pub mod tracing;
 pub mod middleware {
     pub mod auth;
