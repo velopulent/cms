@@ -8,6 +8,9 @@ use cms::storage::{self, STORAGE_KIND_FILESYSTEM, STORAGE_KIND_S3, StorageRegist
 
 use std::net::SocketAddr;
 use std::sync::Arc;
+use axum::response::Redirect;
+use axum::Router;
+use tokio::task::JoinSet;
 use tracing::{debug, info, warn};
 
 #[tokio::main]
@@ -15,6 +18,12 @@ async fn main() {
     dotenvy::dotenv().ok();
 
     let _guard = cms::tracing::init_tracing();
+
+    // Install the default rustls crypto provider (aws-lc-rs).
+    // Required when both aws-lc-rs and ring features are enabled transitively.
+    rustls::crypto::aws_lc_rs::default_provider()
+        .install_default()
+        .expect("Failed to install rustls crypto provider — check dependency features");
 
     let config = Config::from_env();
 
@@ -68,42 +77,147 @@ async fn main() {
         services.clone(),
     );
 
-    let addr: SocketAddr = config.bind_address.parse().expect("Invalid BIND_ADDRESS");
-    info!("REST API server running on {}", addr);
-
-    let grpc_addr: SocketAddr = config.grpc_bind_address.parse().expect("Invalid GRPC_BIND_ADDRESS");
-    info!("gRPC server running on {}", grpc_addr);
-
-    let rest_handle = tokio::spawn(async move {
-        let listener = tokio::net::TcpListener::bind(addr)
-            .await
-            .expect("Failed to bind address");
-
-        axum::serve(listener, app)
-            .with_graceful_shutdown(shutdown_signal())
-            .await
-            .expect("Server error");
+    // Shared graceful shutdown channel
+    let (shutdown_tx, shutdown_rx) = tokio::sync::watch::channel(false);
+    tokio::spawn(async move {
+        shutdown_signal().await;
+        info!("Shutdown signal received, stopping all listeners...");
+        let _ = shutdown_tx.send(true);
     });
 
-    let grpc_handle = tokio::spawn(spawn_grpc_server(
-        repository.clone(),
-        config.clone(),
-        storage_registry.clone(),
-        grpc_addr,
-    ));
+    let mut set = JoinSet::new();
 
-    tokio::select! {
-        result = rest_handle => {
-            if let Err(e) = result {
-                tracing::error!("REST server error: {}", e);
-            }
+    // HTTP listener
+    let http_addr: SocketAddr = config.bind_address.parse().expect("Invalid BIND_ADDRESS");
+
+    if config.http_disabled {
+        info!("HTTP listener disabled by HTTP_DISABLED=true");
+    } else if config.http_redirect_to_https {
+        info!("HTTP redirect to HTTPS enabled on http://{}", http_addr);
+        set.spawn(serve_http_redirect(http_addr, shutdown_rx.clone()));
+    } else {
+        info!("REST API server running on http://{}", http_addr);
+        set.spawn(serve_http(app.clone(), http_addr, shutdown_rx.clone()));
+    }
+
+    // HTTPS listener
+    if config.tls_enabled {
+        if let Some(ref tls_bind) = config.tls_bind_address {
+            let tls_addr: SocketAddr = tls_bind.parse().expect("Invalid TLS_BIND_ADDRESS");
+            info!("HTTPS server running on https://{}", tls_addr);
+
+            set.spawn(serve_https(app.clone(), tls_addr, config.clone(), shutdown_rx.clone()));
+        } else {
+            warn!("TLS enabled but TLS_BIND_ADDRESS not set — skipping HTTPS listener");
         }
-        result = grpc_handle => {
+    }
+
+    // gRPC listener
+    let grpc_addr: SocketAddr = config.grpc_bind_address.parse().expect("Invalid GRPC_BIND_ADDRESS");
+    {
+        let repository = repository.clone();
+        let config = config.clone();
+        let storage_registry = storage_registry.clone();
+
+        if config.tls_enabled {
+            info!("gRPC TLS server listening on {}", grpc_addr);
+        } else {
+            info!("gRPC server listening on {}", grpc_addr);
+        }
+
+        set.spawn(async move {
+            let result = spawn_grpc_server(repository, config, storage_registry, grpc_addr, shutdown_rx.clone()).await;
             if let Err(e) = result {
                 tracing::error!("gRPC server error: {}", e);
             }
+        });
+    }
+
+    if set.is_empty() {
+        warn!("No listeners configured! Set BIND_ADDRESS or enable TLS with TLS_BIND_ADDRESS.");
+        return;
+    }
+
+    // Wait for any listener to finish (panic or graceful shutdown)
+    while let Some(result) = set.join_next().await {
+        match result {
+            Ok(()) => info!("A server finished normally"),
+            Err(e) if e.is_panic() => {
+                tracing::error!("A server panicked: {}", e);
+                std::process::abort();
+            }
+            Err(_) => {} // cancelled (JoinSet shutdown) — normal exit
         }
     }
+
+    info!("All servers stopped, exiting.");
+}
+
+async fn serve_http(app: Router, addr: SocketAddr, mut shutdown_rx: tokio::sync::watch::Receiver<bool>) {
+    let listener = tokio::net::TcpListener::bind(addr)
+        .await
+        .expect("Failed to bind HTTP address");
+
+    axum::serve(listener, app)
+        .with_graceful_shutdown(async move {
+            shutdown_rx.changed().await.ok();
+        })
+        .await
+        .expect("HTTP server error");
+}
+
+async fn serve_https(
+    app: Router,
+    addr: SocketAddr,
+    config: Config,
+    mut shutdown_rx: tokio::sync::watch::Receiver<bool>,
+) {
+    let tls_config = cms::tls::load_axum_tls_config(&config)
+        .await
+        .expect("Failed to load TLS configuration");
+
+    let handle = axum_server::Handle::new();
+    let shutdown_handle = handle.clone();
+
+    tokio::spawn(async move {
+        shutdown_rx.changed().await.ok();
+        tracing::info!("HTTPS server graceful shutdown initiated...");
+        shutdown_handle.graceful_shutdown(Some(std::time::Duration::from_secs(30)));
+    });
+
+    axum_server::bind_rustls(addr, tls_config)
+        .handle(handle)
+        .serve(app.into_make_service())
+        .await
+        .expect("HTTPS server error");
+}
+
+async fn serve_http_redirect(addr: SocketAddr, mut shutdown_rx: tokio::sync::watch::Receiver<bool>) {
+    let redirect_app = Router::new().fallback(redirect_to_https);
+    let listener = tokio::net::TcpListener::bind(addr)
+        .await
+        .expect("Failed to bind HTTP redirect address");
+
+    axum::serve(listener, redirect_app.into_make_service())
+        .with_graceful_shutdown(async move {
+            shutdown_rx.changed().await.ok();
+        })
+        .await
+        .expect("HTTP redirect server error");
+}
+
+async fn redirect_to_https(req: http::Request<axum::body::Body>) -> Redirect {
+    let host = req
+        .headers()
+        .get("host")
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("localhost");
+    let path = req
+        .uri()
+        .path_and_query()
+        .map(|pq| pq.as_str())
+        .unwrap_or("/");
+    Redirect::permanent(&format!("https://{}{}", host, path))
 }
 
 async fn seed_admin(repository: &Repository) {
