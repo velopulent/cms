@@ -6,10 +6,10 @@ use cms::router::create_router;
 use cms::services::Services;
 use cms::storage::{self, STORAGE_KIND_FILESYSTEM, STORAGE_KIND_S3, StorageRegistry};
 
+use axum::Router;
+use axum::response::Redirect;
 use std::net::SocketAddr;
 use std::sync::Arc;
-use axum::response::Redirect;
-use axum::Router;
 use tokio::task::JoinSet;
 use tracing::{debug, info, warn};
 
@@ -212,11 +212,7 @@ async fn redirect_to_https(req: http::Request<axum::body::Body>) -> Redirect {
         .get("host")
         .and_then(|v| v.to_str().ok())
         .unwrap_or("localhost");
-    let path = req
-        .uri()
-        .path_and_query()
-        .map(|pq| pq.as_str())
-        .unwrap_or("/");
+    let path = req.uri().path_and_query().map(|pq| pq.as_str()).unwrap_or("/");
     Redirect::permanent(&format!("https://{}{}", host, path))
 }
 

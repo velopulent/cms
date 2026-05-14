@@ -503,10 +503,7 @@ mod tests {
         for tool in all_tools() {
             let schema_str = serde_json::to_string(&*tool.input_schema).unwrap();
             if schema_str.contains(r#""type":"null""#) {
-                panic!(
-                    "tool '{}' still contains \"type\":\"null\"",
-                    tool.name,
-                );
+                panic!("tool '{}' still contains \"type\":\"null\"", tool.name,);
             }
         }
     }
@@ -517,10 +514,7 @@ mod tests {
             if let Some(props) = tool.input_schema.get("properties").and_then(|v| v.as_object()) {
                 for (key, value) in props {
                     if value.is_boolean() {
-                        panic!(
-                            "tool '{}' property '{}' is boolean {:?}",
-                            tool.name, key, value
-                        );
+                        panic!("tool '{}' property '{}' is boolean {:?}", tool.name, key, value);
                     }
                 }
             }
@@ -536,11 +530,7 @@ mod tests {
                 "tool '{}' still has $schema",
                 tool.name
             );
-            assert!(
-                !cleaned.contains_key("title"),
-                "tool '{}' still has title",
-                tool.name
-            );
+            assert!(!cleaned.contains_key("title"), "tool '{}' still has title", tool.name);
         }
     }
 

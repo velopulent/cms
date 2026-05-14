@@ -225,10 +225,7 @@ impl AccessTokenService {
                 Ok(deleted_count)
             }
             Err(e) => {
-                error!(
-                    "Failed to delete instance token: token_id={}, error={}",
-                    token_id, e
-                );
+                error!("Failed to delete instance token: token_id={}, error={}", token_id, e);
                 Err(TokenError::DatabaseError(e.to_string()))
             }
         }

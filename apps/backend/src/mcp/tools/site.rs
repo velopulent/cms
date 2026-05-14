@@ -4,15 +4,16 @@ use rmcp::ErrorData as McpError;
 use rmcp::handler::server::wrapper::Parameters;
 use rmcp::model::CallToolResult;
 use rmcp::model::Content;
-use schemars::{generate::SchemaGenerator, JsonSchema, Schema};
 use schemars::json_schema;
+use schemars::{JsonSchema, Schema, generate::SchemaGenerator};
 use serde::Deserialize;
 
 use crate::middleware::auth::{Principal, SCOPE_SITES_DELETE, SCOPE_SITES_READ, SCOPE_SITES_WRITE};
 use crate::services::{Services, error::ServiceError, scope::ScopeChecker};
 
 fn ok_result(data: &impl serde::Serialize) -> Result<CallToolResult, McpError> {
-    let json = serde_json::to_string_pretty(data).map_err(|e| McpError::internal_error(format!("Failed to serialize response: {}", e), None))?;
+    let json = serde_json::to_string_pretty(data)
+        .map_err(|e| McpError::internal_error(format!("Failed to serialize response: {}", e), None))?;
     Ok(CallToolResult::success(vec![Content::text(json)]))
 }
 

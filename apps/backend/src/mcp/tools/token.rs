@@ -3,8 +3,8 @@ use std::sync::Arc;
 use rmcp::ErrorData as McpError;
 use rmcp::handler::server::wrapper::Parameters;
 use rmcp::model::CallToolResult;
-use schemars::{generate::SchemaGenerator, JsonSchema, Schema};
 use schemars::json_schema;
+use schemars::{JsonSchema, Schema, generate::SchemaGenerator};
 use serde::Deserialize;
 
 use crate::mcp::auth::{map_err, ok_result, text_result};

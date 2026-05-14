@@ -17,7 +17,6 @@ pub enum TlsError {
 
     #[error("Failed to load TLS configuration: {0}")]
     ConfigError(String),
-
 }
 
 /// Load axum-server TLS config from cert/key PEM files.
@@ -62,5 +61,3 @@ pub async fn load_tonic_identity(config: &Config) -> Result<tonic::transport::Id
 
     Ok(tonic::transport::Identity::from_pem(cert_pem, key_pem))
 }
-
-

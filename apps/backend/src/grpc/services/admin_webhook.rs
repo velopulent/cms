@@ -51,10 +51,7 @@ impl WebhookService for WebhookServiceImpl {
         }))
     }
 
-    async fn get_webhook(
-        &self,
-        mut request: Request<GetWebhookRequest>,
-    ) -> Result<Response<ProtoSiteWebhook>, Status> {
+    async fn get_webhook(&self, mut request: Request<GetWebhookRequest>) -> Result<Response<ProtoSiteWebhook>, Status> {
         let auth = get_auth_context(&mut request, &self.repository).await?;
         auth.require_instance_scope(SCOPE_WEBHOOKS_READ)?;
         let req = request.into_inner();

@@ -115,6 +115,14 @@ pub fn spawn_grpc_server(
         } else {
             None
         };
-        start_grpc_server(repository, config, storage_registry, grpc_addr, tls_identity, shutdown_rx).await
+        start_grpc_server(
+            repository,
+            config,
+            storage_registry,
+            grpc_addr,
+            tls_identity,
+            shutdown_rx,
+        )
+        .await
     })
 }

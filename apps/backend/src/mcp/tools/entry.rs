@@ -117,11 +117,10 @@ pub async fn get_entry(
                 .resolve_entry_files(&entry, storage)
                 .await
                 .unwrap_or_else(|_| {
-                    serde_json::from_str(&entry.data)
-                        .unwrap_or_else(|e| {
-                            tracing::warn!("Failed to parse entry.data as JSON: {}", e);
-                            serde_json::Value::Object(Default::default())
-                        })
+                    serde_json::from_str(&entry.data).unwrap_or_else(|e| {
+                        tracing::warn!("Failed to parse entry.data as JSON: {}", e);
+                        serde_json::Value::Object(Default::default())
+                    })
                 });
             ok_result(&resolved)
         }
