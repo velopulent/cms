@@ -33,6 +33,12 @@ pub async fn init_db(database_url: &str) -> Result<DbPool, sqlx::Error> {
         mcp_allowed_hosts: vec![],
         mcp_allowed_origins: vec![],
         public_url: None,
+        tls_enabled: false,
+        tls_cert_path: None,
+        tls_key_path: None,
+        tls_bind_address: None,
+        http_disabled: false,
+        http_redirect_to_https: false,
     })
     .await?;
 

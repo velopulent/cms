@@ -7,6 +7,14 @@ pub struct Config {
     pub bind_address: String,
     pub grpc_bind_address: String,
 
+    // TLS/HTTPS
+    pub tls_enabled: bool,
+    pub tls_cert_path: Option<String>,
+    pub tls_key_path: Option<String>,
+    pub tls_bind_address: Option<String>,
+    pub http_disabled: bool,
+    pub http_redirect_to_https: bool,
+
     // Filesystem storage
     pub storage_fs_path: Option<String>,
 
@@ -95,6 +103,18 @@ impl Config {
                 .ok()
                 .and_then(|v| v.parse().ok())
                 .unwrap_or(600),
+            tls_enabled: env::var("TLS_ENABLED")
+                .map(|v| v == "true" || v == "1")
+                .unwrap_or(false),
+            tls_cert_path: env::var("TLS_CERT_PATH").ok(),
+            tls_key_path: env::var("TLS_KEY_PATH").ok(),
+            tls_bind_address: env::var("TLS_BIND_ADDRESS").ok(),
+            http_disabled: env::var("HTTP_DISABLED")
+                .map(|v| v == "true" || v == "1")
+                .unwrap_or(false),
+            http_redirect_to_https: env::var("HTTP_REDIRECT_TO_HTTPS")
+                .map(|v| v == "true" || v == "1")
+                .unwrap_or(false),
             rate_limit_max_requests: env::var("RATE_LIMIT_MAX_REQUESTS")
                 .ok()
                 .and_then(|v| v.parse().ok())
@@ -173,6 +193,12 @@ mod tests {
             mcp_allowed_hosts: vec![],
             mcp_allowed_origins: vec![],
             public_url: None,
+            tls_enabled: false,
+            tls_cert_path: None,
+            tls_key_path: None,
+            tls_bind_address: None,
+            http_disabled: false,
+            http_redirect_to_https: false,
         };
 
         assert!(config.has_s3());
@@ -205,6 +231,12 @@ mod tests {
             mcp_allowed_hosts: vec![],
             mcp_allowed_origins: vec![],
             public_url: None,
+            tls_enabled: false,
+            tls_cert_path: None,
+            tls_key_path: None,
+            tls_bind_address: None,
+            http_disabled: false,
+            http_redirect_to_https: false,
         };
 
         assert!(!config.has_s3());
@@ -237,6 +269,12 @@ mod tests {
             mcp_allowed_hosts: vec![],
             mcp_allowed_origins: vec![],
             public_url: None,
+            tls_enabled: false,
+            tls_cert_path: None,
+            tls_key_path: None,
+            tls_bind_address: None,
+            http_disabled: false,
+            http_redirect_to_https: false,
         };
 
         assert!(!config.has_s3());
@@ -269,6 +307,12 @@ mod tests {
             mcp_allowed_hosts: vec![],
             mcp_allowed_origins: vec![],
             public_url: None,
+            tls_enabled: false,
+            tls_cert_path: None,
+            tls_key_path: None,
+            tls_bind_address: None,
+            http_disabled: false,
+            http_redirect_to_https: false,
         };
 
         assert!(!config.has_s3());
@@ -301,6 +345,12 @@ mod tests {
             mcp_allowed_hosts: vec![],
             mcp_allowed_origins: vec![],
             public_url: None,
+            tls_enabled: false,
+            tls_cert_path: None,
+            tls_key_path: None,
+            tls_bind_address: None,
+            http_disabled: false,
+            http_redirect_to_https: false,
         };
 
         assert!(!config.has_s3());
