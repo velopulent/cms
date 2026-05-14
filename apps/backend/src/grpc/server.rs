@@ -81,7 +81,11 @@ pub async fn start_grpc_server(
         info!("gRPC server listening on {}", grpc_addr);
     }
 
-    let signal = async move { shutdown_rx.changed().await.ok(); };
+    let signal = async move {
+        if !*shutdown_rx.borrow() {
+            let _ = shutdown_rx.changed().await;
+        }
+    };
 
     builder
         .add_service(collection_svc)
