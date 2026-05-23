@@ -2,17 +2,17 @@
 
 import { useEffect, useState, useRef } from "react";
 
-const words = ["website", "app", "business", "platform"];
+const words = ["website", "blog", "app", "business", "portfolio", "platform"];
 
 function BlurWord({ word, trigger }: { word: string; trigger: number }) {
   const letters = word.split("");
-  const STAGGER = 45;      // ms between each letter
-  const DURATION = 500;    // blur+opacity fade duration per letter
+  const STAGGER = 45; // ms between each letter
+  const DURATION = 500; // blur+opacity fade duration per letter
   const GRADIENT_HOLD = STAGGER * letters.length + DURATION + 200;
 
-  const [letterStates, setLetterStates] = useState<{ opacity: number; blur: number }[]>(
-    letters.map(() => ({ opacity: 0, blur: 20 }))
-  );
+  const [letterStates, setLetterStates] = useState<
+    { opacity: number; blur: number }[]
+  >(letters.map(() => ({ opacity: 0, blur: 20 })));
   const [showGradient, setShowGradient] = useState(true);
   const framesRef = useRef<number[]>([]);
   const timersRef = useRef<ReturnType<typeof setTimeout>[]>([]);
@@ -34,7 +34,7 @@ function BlurWord({ word, trigger }: { word: string; trigger: number }) {
         const tick = (now: number) => {
           const progress = Math.min((now - start) / DURATION, 1);
           const eased = 1 - Math.pow(1 - progress, 3);
-          setLetterStates(prev => {
+          setLetterStates((prev) => {
             const next = [...prev];
             next[i] = { opacity: eased, blur: 20 * (1 - eased) };
             return next;
@@ -58,16 +58,23 @@ function BlurWord({ word, trigger }: { word: string; trigger: number }) {
       framesRef.current.forEach(cancelAnimationFrame);
       timersRef.current.forEach(clearTimeout);
     };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [trigger]);
 
   // gradient colours cycling across letter positions
-  const gradientColors = ["#eca8d6", "#a78bfa", "#67e8f9", "#fbbf24", "#eca8d6"];
+  const gradientColors = [
+    "#eca8d6",
+    "#a78bfa",
+    "#67e8f9",
+    "#fbbf24",
+    "#eca8d6",
+  ];
 
   return (
     <>
       {letters.map((char, i) => {
-        const colorIndex = (i / Math.max(letters.length - 1, 1)) * (gradientColors.length - 1);
+        const colorIndex =
+          (i / Math.max(letters.length - 1, 1)) * (gradientColors.length - 1);
         const lower = Math.floor(colorIndex);
         const upper = Math.min(lower + 1, gradientColors.length - 1);
         const t = colorIndex - lower;
@@ -163,42 +170,48 @@ export function HeroSection() {
           />
         ))}
       </div>
-      
+
       <div className="relative z-10 w-full max-w-350 mx-auto px-6 lg:px-12 py-32 lg:py-40">
         <div className="lg:max-w-[55%]">
-        {/* Eyebrow */}
-        <div 
-          className={`mb-8 transition-all duration-700 ${
-            isVisible ? "opacity-100 translate-y-0" : "opacity-0 translate-y-4"
-          }`}
-        >
-          <span className="inline-flex items-center gap-3 text-sm font-mono text-white/60">
-            <span className="w-8 h-px bg-white/30" />
-            Open-source headless CMS built with Rust
-          </span>
-        </div>
-        
-        {/* Main headline */}
-        <div className="mb-12">
-          <h1 
-            className={`text-left text-[clamp(2rem,6vw,7rem)] font-display leading-[0.92] tracking-tight text-white transition-all duration-1000 ${
-              isVisible ? "opacity-100 translate-y-0" : "opacity-0 translate-y-8"
+          {/* Eyebrow */}
+          <div
+            className={`mb-8 transition-all duration-700 ${
+              isVisible
+                ? "opacity-100 translate-y-0"
+                : "opacity-0 translate-y-4"
             }`}
           >
-            <span className="block whitespace-nowrap">Manage your content.</span>
-            <span className="block whitespace-nowrap">
-              Build your{" "}
-              <span className="relative inline-block">
-                <BlurWord word={words[wordIndex]} trigger={wordIndex} />
-              </span>
+            <span className="inline-flex items-center gap-3 text-sm font-mono text-white/60">
+              <span className="w-8 h-px bg-white/30" />
+              Open-source headless CMS built with Rust
             </span>
-          </h1>
-        </div>
+          </div>
+
+          {/* Main headline */}
+          <div className="mb-12">
+            <h1
+              className={`text-left text-[clamp(2rem,6vw,7rem)] font-display leading-[0.92] tracking-tight text-white transition-all duration-1000 ${
+                isVisible
+                  ? "opacity-100 translate-y-0"
+                  : "opacity-0 translate-y-8"
+              }`}
+            >
+              <span className="block whitespace-nowrap">
+                Manage your content.
+              </span>
+              <span className="block whitespace-nowrap">
+                Build your{" "}
+                <span className="relative inline-block">
+                  <BlurWord word={words[wordIndex]} trigger={wordIndex} />
+                </span>
+              </span>
+            </h1>
+          </div>
         </div>
       </div>
-      
+
       {/* Stats — 3 metrics static, no auto-scroll */}
-      <div 
+      <div
         className={`absolute bottom-12 left-0 right-0 px-6 lg:px-12 transition-all duration-700 delay-500 ${
           isVisible ? "opacity-100" : "opacity-0"
         }`}
@@ -210,7 +223,9 @@ export function HeroSection() {
             { value: "<15MB", label: "memory footprint" },
           ].map((stat) => (
             <div key={stat.label} className="flex flex-col gap-2">
-              <span className="text-3xl lg:text-4xl font-display text-white">{stat.value}</span>
+              <span className="text-3xl lg:text-4xl font-display text-white">
+                {stat.value}
+              </span>
               <span className="text-xs text-white/50 leading-tight">
                 {stat.label}
               </span>
@@ -220,7 +235,6 @@ export function HeroSection() {
       </div>
 
       {/* Scroll indicator */}
-
     </section>
   );
 }
