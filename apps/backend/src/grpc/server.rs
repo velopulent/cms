@@ -8,9 +8,7 @@ use tracing::info;
 
 use crate::config::Config;
 use crate::grpc::interceptor::AuthInterceptor;
-use crate::grpc::services::admin_membership::MembershipServiceImpl;
 use crate::grpc::services::admin_site::SiteServiceImpl;
-use crate::grpc::services::admin_token::AdminTokenServiceImpl;
 use crate::grpc::services::admin_webhook::WebhookServiceImpl;
 use crate::grpc::services::collection::CollectionServiceImpl;
 use crate::grpc::services::entry::EntryServiceImpl;
@@ -36,8 +34,6 @@ pub async fn start_grpc_server(
     let singleton_svc = SingletonServiceImpl::new(services.singleton.clone(), storage_registry, repository.clone());
     let file_svc = FileServiceImpl::new(services.file.clone(), repository.clone());
     let site_svc = SiteServiceImpl::new(services.site.clone(), repository.clone());
-    let membership_svc = MembershipServiceImpl::new(services.site.clone(), repository.clone());
-    let token_svc = AdminTokenServiceImpl::new(services.access_token.clone(), repository.clone());
     let webhook_svc = WebhookServiceImpl::new(services.webhook.clone(), repository.clone());
 
     let interceptor = AuthInterceptor::new(config.clone());
@@ -58,14 +54,6 @@ pub async fn start_grpc_server(
         crate::grpc::cms::v1::file_service_server::FileServiceServer::with_interceptor(file_svc, interceptor.clone());
     let site_svc =
         crate::grpc::cms::v1::site_service_server::SiteServiceServer::with_interceptor(site_svc, interceptor.clone());
-    let membership_svc = crate::grpc::cms::v1::membership_service_server::MembershipServiceServer::with_interceptor(
-        membership_svc,
-        interceptor.clone(),
-    );
-    let token_svc = crate::grpc::cms::v1::token_service_server::TokenServiceServer::with_interceptor(
-        token_svc,
-        interceptor.clone(),
-    );
     let webhook_svc =
         crate::grpc::cms::v1::webhook_service_server::WebhookServiceServer::with_interceptor(webhook_svc, interceptor);
 
@@ -77,8 +65,6 @@ pub async fn start_grpc_server(
         .add_service(singleton_svc)
         .add_service(file_svc)
         .add_service(site_svc)
-        .add_service(membership_svc)
-        .add_service(token_svc)
         .add_service(webhook_svc)
         .serve(grpc_addr)
         .await?;

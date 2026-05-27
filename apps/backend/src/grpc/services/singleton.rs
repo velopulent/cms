@@ -37,7 +37,7 @@ impl SingletonService for SingletonServiceImpl {
         mut request: Request<GetSingletonRequest>,
     ) -> Result<Response<ProtoSingleton>, Status> {
         let auth = get_auth_context(&mut request, &self.repository).await?;
-        auth.require_site_scope(crate::middleware::auth::SCOPE_CONTENT_READ)?;
+        auth.require_site_scope("content:read")?;
         let site_id = auth.require_site_id()?.to_string();
         let slug = request.into_inner().slug;
 
@@ -61,7 +61,7 @@ impl SingletonService for SingletonServiceImpl {
         mut request: Request<UpdateSingletonRequest>,
     ) -> Result<Response<ProtoSingleton>, Status> {
         let auth = get_auth_context(&mut request, &self.repository).await?;
-        auth.require_site_scope(crate::middleware::auth::SCOPE_CONTENT_WRITE)?;
+        auth.require_site_scope("content:write")?;
         let site_id = auth.require_site_id()?.to_string();
         let req = request.into_inner();
 

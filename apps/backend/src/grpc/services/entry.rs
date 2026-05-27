@@ -37,7 +37,7 @@ impl EntryService for EntryServiceImpl {
         mut request: Request<ListEntriesRequest>,
     ) -> Result<Response<ListEntriesResponse>, Status> {
         let auth = get_auth_context(&mut request, &self.repository).await?;
-        auth.require_site_scope(crate::middleware::auth::SCOPE_CONTENT_READ)?;
+        auth.require_site_scope("content:read")?;
         let site_id = auth.require_site_id()?.to_string();
 
         let req = request.into_inner();
@@ -71,7 +71,7 @@ impl EntryService for EntryServiceImpl {
 
     async fn get_entry(&self, mut request: Request<GetEntryRequest>) -> Result<Response<ProtoEntry>, Status> {
         let auth = get_auth_context(&mut request, &self.repository).await?;
-        auth.require_site_scope(crate::middleware::auth::SCOPE_CONTENT_READ)?;
+        auth.require_site_scope("content:read")?;
         let site_id = auth.require_site_id()?.to_string();
         let id = request.into_inner().id;
 
@@ -87,7 +87,7 @@ impl EntryService for EntryServiceImpl {
 
     async fn create_entry(&self, mut request: Request<CreateEntryRequest>) -> Result<Response<ProtoEntry>, Status> {
         let auth = get_auth_context(&mut request, &self.repository).await?;
-        auth.require_site_scope(crate::middleware::auth::SCOPE_CONTENT_WRITE)?;
+        auth.require_site_scope("content:write")?;
         let site_id = auth.require_site_id()?.to_string();
 
         let req = request.into_inner();
@@ -104,7 +104,7 @@ impl EntryService for EntryServiceImpl {
 
     async fn update_entry(&self, mut request: Request<UpdateEntryRequest>) -> Result<Response<ProtoEntry>, Status> {
         let auth = get_auth_context(&mut request, &self.repository).await?;
-        auth.require_site_scope(crate::middleware::auth::SCOPE_CONTENT_WRITE)?;
+        auth.require_site_scope("content:write")?;
         let site_id = auth.require_site_id()?.to_string();
 
         let req = request.into_inner();
@@ -129,7 +129,7 @@ impl EntryService for EntryServiceImpl {
 
     async fn delete_entry(&self, mut request: Request<DeleteEntryRequest>) -> Result<Response<DeleteResponse>, Status> {
         let auth = get_auth_context(&mut request, &self.repository).await?;
-        auth.require_site_scope(crate::middleware::auth::SCOPE_CONTENT_WRITE)?;
+        auth.require_site_scope("content:write")?;
         let site_id = auth.require_site_id()?.to_string();
         let id = request.into_inner().id;
 
@@ -151,7 +151,7 @@ impl EntryService for EntryServiceImpl {
 
     async fn publish_entry(&self, mut request: Request<PublishEntryRequest>) -> Result<Response<ProtoEntry>, Status> {
         let auth = get_auth_context(&mut request, &self.repository).await?;
-        auth.require_site_scope(crate::middleware::auth::SCOPE_CONTENT_WRITE)?;
+        auth.require_site_scope("content:write")?;
         let site_id = auth.require_site_id()?.to_string();
         let id = request.into_inner().id;
 
@@ -169,7 +169,7 @@ impl EntryService for EntryServiceImpl {
         mut request: Request<UnpublishEntryRequest>,
     ) -> Result<Response<ProtoEntry>, Status> {
         let auth = get_auth_context(&mut request, &self.repository).await?;
-        auth.require_site_scope(crate::middleware::auth::SCOPE_CONTENT_WRITE)?;
+        auth.require_site_scope("content:write")?;
         let site_id = auth.require_site_id()?.to_string();
         let id = request.into_inner().id;
 
@@ -187,7 +187,7 @@ impl EntryService for EntryServiceImpl {
         mut request: Request<ListEntryRevisionsRequest>,
     ) -> Result<Response<ListEntryRevisionsResponse>, Status> {
         let auth = get_auth_context(&mut request, &self.repository).await?;
-        auth.require_site_scope(crate::middleware::auth::SCOPE_CONTENT_READ)?;
+        auth.require_site_scope("content:read")?;
         let site_id = auth.require_site_id()?.to_string();
 
         let req = request.into_inner();
@@ -227,7 +227,7 @@ impl EntryService for EntryServiceImpl {
         mut request: Request<GetEntryRevisionRequest>,
     ) -> Result<Response<ProtoEntryRevision>, Status> {
         let auth = get_auth_context(&mut request, &self.repository).await?;
-        auth.require_site_scope(crate::middleware::auth::SCOPE_CONTENT_READ)?;
+        auth.require_site_scope("content:read")?;
         let site_id = auth.require_site_id()?.to_string();
 
         let req = request.into_inner();
@@ -254,7 +254,7 @@ impl EntryService for EntryServiceImpl {
         mut request: Request<RestoreEntryRevisionRequest>,
     ) -> Result<Response<ProtoEntry>, Status> {
         let auth = get_auth_context(&mut request, &self.repository).await?;
-        auth.require_site_scope(crate::middleware::auth::SCOPE_CONTENT_WRITE)?;
+        auth.require_site_scope("content:write")?;
         let site_id = auth.require_site_id()?.to_string();
 
         let req = request.into_inner();

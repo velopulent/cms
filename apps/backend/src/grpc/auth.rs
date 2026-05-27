@@ -14,7 +14,7 @@ pub struct AuthContext {
 ///
 /// Returns an `AuthContext` on success, or `()` on any validation failure.
 pub fn parse_token(token: &str, config: &Config) -> Result<AuthContext, ()> {
-    if !token.starts_with("cms_") {
+    if !token.starts_with("cms_site_") {
         return Err(());
     }
 
@@ -38,10 +38,10 @@ mod tests {
             hmac_secret: "secret".to_string(),
             ..Default::default()
         };
-        let token = "cms_sk_abc1234567890123456";
+        let token = "cms_site_abc1234567890123456";
         let ctx = parse_token(token, &config).unwrap();
         assert_eq!(ctx.token, token);
-        assert_eq!(ctx.prefix, "cms_sk_abc12345678901234");
+        assert_eq!(ctx.prefix, token.chars().take(24).collect::<String>());
         assert_eq!(ctx.hmac.len(), 64);
     }
 

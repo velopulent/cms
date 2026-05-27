@@ -34,7 +34,7 @@ impl CollectionService for CollectionServiceImpl {
         mut request: Request<ListCollectionsRequest>,
     ) -> Result<Response<ListCollectionsResponse>, Status> {
         let auth = get_auth_context(&mut request, &self.repository).await?;
-        auth.require_site_scope(crate::middleware::auth::SCOPE_SCHEMA_READ)?;
+        auth.require_site_scope("schema:read")?;
         let site_id = auth.require_site_id()?.to_string();
 
         let collections = self
@@ -58,7 +58,7 @@ impl CollectionService for CollectionServiceImpl {
         mut request: Request<GetCollectionRequest>,
     ) -> Result<Response<ProtoCollection>, Status> {
         let auth = get_auth_context(&mut request, &self.repository).await?;
-        auth.require_site_scope(crate::middleware::auth::SCOPE_SCHEMA_READ)?;
+        auth.require_site_scope("schema:read")?;
         let site_id = auth.require_site_id()?.to_string();
         let slug = &request.into_inner().slug;
 
@@ -77,7 +77,7 @@ impl CollectionService for CollectionServiceImpl {
         mut request: Request<CreateCollectionRequest>,
     ) -> Result<Response<ProtoCollection>, Status> {
         let auth = get_auth_context(&mut request, &self.repository).await?;
-        auth.require_site_scope(crate::middleware::auth::SCOPE_SCHEMA_WRITE)?;
+        auth.require_site_scope("schema:write")?;
         let site_id = auth.require_site_id()?.to_string();
 
         let req = request.into_inner();
@@ -102,7 +102,7 @@ impl CollectionService for CollectionServiceImpl {
         mut request: Request<UpdateCollectionRequest>,
     ) -> Result<Response<ProtoCollection>, Status> {
         let auth = get_auth_context(&mut request, &self.repository).await?;
-        auth.require_site_scope(crate::middleware::auth::SCOPE_SCHEMA_WRITE)?;
+        auth.require_site_scope("schema:write")?;
         let site_id = auth.require_site_id()?.to_string();
 
         let req = request.into_inner();
@@ -134,7 +134,7 @@ impl CollectionService for CollectionServiceImpl {
         mut request: Request<DeleteCollectionRequest>,
     ) -> Result<Response<DeleteResponse>, Status> {
         let auth = get_auth_context(&mut request, &self.repository).await?;
-        auth.require_site_scope(crate::middleware::auth::SCOPE_SCHEMA_WRITE)?;
+        auth.require_site_scope("schema:write")?;
         let site_id = auth.require_site_id()?.to_string();
         let req = request.into_inner();
 
