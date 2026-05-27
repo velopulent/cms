@@ -10,25 +10,47 @@ use crate::handlers::file_handler::{
     get_file_references, list_files, restore_file, serve_file, serve_file_thumbnail, upload_file,
 };
 
-pub fn file_routes(max_upload_bytes: usize) -> Router {
+/// Public API CRUD routes (mounted at /api/v1)
+pub fn public_routes(max_upload_bytes: usize) -> Router {
     Router::new()
-        .route("/api/v1/files", get(list_files))
+        .route("/files", get(list_files))
         .merge(
             Router::new()
-                .route("/api/v1/files", post(upload_file))
+                .route("/files", post(upload_file))
                 .layer(DefaultBodyLimit::disable())
                 .layer(RequestBodyLimitLayer::new(max_upload_bytes)),
         )
-        .route("/api/v1/files/batch-delete", post(batch_delete_files))
-        .route("/api/v1/files/batch-restore", post(batch_restore_files))
-        .route(
-            "/api/v1/files/batch-permanent-delete",
-            post(batch_permanent_delete_files),
-        )
-        .route("/api/v1/files/{id}", get(get_file))
-        .route("/api/v1/files/{id}", delete(delete_file_handler))
-        .route("/api/v1/files/{id}/references", get(get_file_references))
-        .route("/api/v1/files/{id}/restore", post(restore_file))
+        .route("/files/batch-delete", post(batch_delete_files))
+        .route("/files/batch-restore", post(batch_restore_files))
+        .route("/files/batch-permanent-delete", post(batch_permanent_delete_files))
+        .route("/files/{id}", get(get_file))
+        .route("/files/{id}", delete(delete_file_handler))
+        .route("/files/{id}/references", get(get_file_references))
+        .route("/files/{id}/restore", post(restore_file))
+}
+
+/// File content serving — standalone, no auth middleware
+pub fn file_serve_routes() -> Router {
+    Router::new()
         .route("/api/files/{id}", get(serve_file))
         .route("/api/files/{id}/thumbnail", get(serve_file_thumbnail))
+}
+
+/// Dashboard routes (mounted under /api/dashboard/sites/{site_id})
+pub fn dashboard_routes(max_upload_bytes: usize) -> Router {
+    Router::new()
+        .route("/files", get(list_files))
+        .merge(
+            Router::new()
+                .route("/files", post(upload_file))
+                .layer(DefaultBodyLimit::disable())
+                .layer(RequestBodyLimitLayer::new(max_upload_bytes)),
+        )
+        .route("/files/batch-delete", post(batch_delete_files))
+        .route("/files/batch-restore", post(batch_restore_files))
+        .route("/files/batch-permanent-delete", post(batch_permanent_delete_files))
+        .route("/files/{id}", get(get_file))
+        .route("/files/{id}", delete(delete_file_handler))
+        .route("/files/{id}/references", get(get_file_references))
+        .route("/files/{id}/restore", post(restore_file))
 }
