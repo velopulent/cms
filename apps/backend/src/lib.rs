@@ -1,3 +1,5 @@
+#![deny(dead_code, unused_imports, unused_variables, unused_mut)]
+
 pub mod config;
 pub mod database;
 pub mod error;
@@ -7,9 +9,13 @@ pub mod signed_upload;
 pub mod test_helpers;
 pub mod tracing;
 pub mod middleware {
+    pub mod api_auth;
     pub mod auth;
+    pub mod authz;
+    pub mod dashboard_auth;
     pub mod error;
     pub mod rate_limit;
+    pub mod site_resolver;
 }
 pub mod models {
     pub mod access_token;
