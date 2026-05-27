@@ -9,76 +9,12 @@ use std::collections::HashMap;
 use crate::graphql::context::GqlContext;
 use crate::graphql::types::collection::*;
 use crate::graphql::types::entry::{CreateEntryInput, Entry, UpdateEntryInput};
-use crate::graphql::types::site::Site;
 use crate::graphql::types::webhook::{db_delivery_to_gql, db_webhook_to_gql};
-use crate::middleware::auth::{SCOPE_SITES_DELETE, SCOPE_SITES_WRITE, SCOPE_WEBHOOKS_TRIGGER, SCOPE_WEBHOOKS_WRITE};
 
 pub struct MutationRoot;
 
 #[Object]
 impl MutationRoot {
-    async fn create_site(&self, ctx: &Context<'_>, name: String, storage_provider: Option<String>) -> Result<Site> {
-        let gql_ctx = ctx.data::<GqlContext>()?;
-        gql_ctx.require_instance_scope(SCOPE_SITES_WRITE)?;
-
-        let site = gql_ctx
-            .services
-            .site
-            .create_site(&name, storage_provider.as_deref(), "system")
-            .await
-            .map_err(|e| async_graphql::Error::new(format!("Error: {}", e)))?;
-
-        Ok(Site {
-            id: site.id,
-            name: site.name,
-            storage_provider: site.storage_provider,
-            created_by: site.created_by,
-            created_at: site.created_at,
-            updated_at: site.updated_at,
-        })
-    }
-
-    async fn update_site(
-        &self,
-        ctx: &Context<'_>,
-        id: String,
-        name: Option<String>,
-        _storage_provider: Option<String>,
-    ) -> Result<Site> {
-        let gql_ctx = ctx.data::<GqlContext>()?;
-        gql_ctx.require_instance_scope(SCOPE_SITES_WRITE)?;
-
-        let site = gql_ctx
-            .services
-            .site
-            .update_site(&id, name.as_deref())
-            .await
-            .map_err(|e| async_graphql::Error::new(format!("Error: {}", e)))?;
-
-        Ok(Site {
-            id: site.id,
-            name: site.name,
-            storage_provider: site.storage_provider,
-            created_by: site.created_by,
-            created_at: site.created_at,
-            updated_at: site.updated_at,
-        })
-    }
-
-    async fn delete_site(&self, ctx: &Context<'_>, id: String) -> Result<bool> {
-        let gql_ctx = ctx.data::<GqlContext>()?;
-        gql_ctx.require_instance_scope(SCOPE_SITES_DELETE)?;
-
-        gql_ctx
-            .services
-            .site
-            .delete_site(&id)
-            .await
-            .map_err(|e| async_graphql::Error::new(format!("Error: {}", e)))?;
-
-        Ok(true)
-    }
-
     async fn create_collection(&self, ctx: &Context<'_>, input: CreateCollectionInput) -> Result<Collection> {
         collection::CollectionMutation.create_collection(ctx, input).await
     }
@@ -147,7 +83,8 @@ impl MutationRoot {
         headers: Option<String>,
     ) -> Result<crate::graphql::types::webhook::SiteWebhook> {
         let gql_ctx = ctx.data::<GqlContext>()?;
-        gql_ctx.require_instance_scope(SCOPE_WEBHOOKS_WRITE)?;
+        gql_ctx.require_site_match(&site_id)?;
+        gql_ctx.require_site_scope("webhooks:write")?;
 
         let parsed_headers: HashMap<String, String> = match headers {
             Some(ref h) if !h.is_empty() => serde_json::from_str(h).unwrap_or_default(),
@@ -175,7 +112,8 @@ impl MutationRoot {
         headers: Option<String>,
     ) -> Result<crate::graphql::types::webhook::SiteWebhook> {
         let gql_ctx = ctx.data::<GqlContext>()?;
-        gql_ctx.require_instance_scope(SCOPE_WEBHOOKS_WRITE)?;
+        gql_ctx.require_site_match(&site_id)?;
+        gql_ctx.require_site_scope("webhooks:write")?;
 
         let parsed_headers: Option<HashMap<String, String>> =
             headers.map(|h| serde_json::from_str(&h).unwrap_or_default());
@@ -199,7 +137,8 @@ impl MutationRoot {
 
     async fn delete_webhook(&self, ctx: &Context<'_>, site_id: String, webhook_id: String) -> Result<bool> {
         let gql_ctx = ctx.data::<GqlContext>()?;
-        gql_ctx.require_instance_scope(SCOPE_WEBHOOKS_WRITE)?;
+        gql_ctx.require_site_match(&site_id)?;
+        gql_ctx.require_site_scope("webhooks:write")?;
 
         let deleted = gql_ctx
             .services
@@ -218,7 +157,8 @@ impl MutationRoot {
         webhook_id: String,
     ) -> Result<crate::graphql::types::webhook::WebhookDelivery> {
         let gql_ctx = ctx.data::<GqlContext>()?;
-        gql_ctx.require_instance_scope(SCOPE_WEBHOOKS_TRIGGER)?;
+        gql_ctx.require_site_match(&site_id)?;
+        gql_ctx.require_site_scope("webhooks:trigger")?;
 
         let delivery = gql_ctx
             .services

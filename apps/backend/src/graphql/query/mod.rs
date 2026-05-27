@@ -7,62 +7,12 @@ use super::types::file::File;
 use super::types::site::Site;
 use super::types::webhook::{WebhookDelivery, db_delivery_to_gql, db_webhook_to_gql};
 
-use crate::middleware::auth::SCOPE_SITES_READ;
 use crate::repository::traits::{ListEntriesParams, ListFilesParams};
 
 pub struct QueryRoot;
 
 #[Object]
 impl QueryRoot {
-    async fn sites(&self, ctx: &Context<'_>) -> Result<Vec<Site>> {
-        let gql_ctx = ctx.data::<GqlContext>()?;
-        gql_ctx.require_instance_scope(SCOPE_SITES_READ)?;
-
-        let sites = gql_ctx
-            .services
-            .site
-            .list_sites_instance()
-            .await
-            .map_err(|e| async_graphql::Error::new(format!("Database error: {}", e)))?;
-
-        Ok(sites
-            .into_iter()
-            .map(|s| {
-                let obj = s.as_object().unwrap();
-                Site {
-                    id: obj["id"].as_str().unwrap_or("").to_string(),
-                    name: obj["name"].as_str().unwrap_or("").to_string(),
-                    storage_provider: obj["storage_provider"].as_str().unwrap_or("").to_string(),
-                    created_by: obj["created_by"].as_str().unwrap_or("").to_string(),
-                    created_at: obj["created_at"].as_str().unwrap_or("").to_string(),
-                    updated_at: obj["updated_at"].as_str().unwrap_or("").to_string(),
-                }
-            })
-            .collect())
-    }
-
-    async fn site(&self, ctx: &Context<'_>, id: String) -> Result<Site> {
-        let gql_ctx = ctx.data::<GqlContext>()?;
-        gql_ctx.require_instance_scope(SCOPE_SITES_READ)?;
-
-        let site = gql_ctx
-            .services
-            .site
-            .get_site(&id)
-            .await
-            .map_err(|e| async_graphql::Error::new(format!("Database error: {}", e)))?
-            .ok_or_else(|| async_graphql::Error::new("Site not found"))?;
-
-        Ok(Site {
-            id: site.id,
-            name: site.name,
-            storage_provider: site.storage_provider,
-            created_by: site.created_by,
-            created_at: site.created_at,
-            updated_at: site.updated_at,
-        })
-    }
-
     async fn current_site(&self, ctx: &Context<'_>) -> Result<Site> {
         let gql_ctx = ctx.data::<GqlContext>()?;
         let site_id = gql_ctx.require_site()?;
@@ -337,7 +287,8 @@ impl QueryRoot {
 
     async fn webhooks(&self, ctx: &Context<'_>, site_id: String) -> Result<Vec<super::types::webhook::SiteWebhook>> {
         let gql_ctx = ctx.data::<GqlContext>()?;
-        gql_ctx.require_instance_scope(crate::middleware::auth::SCOPE_WEBHOOKS_READ)?;
+        gql_ctx.require_site_match(&site_id)?;
+        gql_ctx.require_site_scope("webhooks:read")?;
 
         let webhooks = gql_ctx
             .services
@@ -362,7 +313,8 @@ impl QueryRoot {
         webhook_id: String,
     ) -> Result<super::types::webhook::SiteWebhook> {
         let gql_ctx = ctx.data::<GqlContext>()?;
-        gql_ctx.require_instance_scope(crate::middleware::auth::SCOPE_WEBHOOKS_READ)?;
+        gql_ctx.require_site_match(&site_id)?;
+        gql_ctx.require_site_scope("webhooks:read")?;
 
         let webhook = gql_ctx
             .services
@@ -385,7 +337,8 @@ impl QueryRoot {
         per_page: Option<i64>,
     ) -> Result<Vec<WebhookDelivery>> {
         let gql_ctx = ctx.data::<GqlContext>()?;
-        gql_ctx.require_instance_scope(crate::middleware::auth::SCOPE_WEBHOOKS_READ)?;
+        gql_ctx.require_site_match(&site_id)?;
+        gql_ctx.require_site_scope("webhooks:read")?;
 
         let page_val = page.unwrap_or(1).max(1);
         let per_page_val = per_page.unwrap_or(20).clamp(1, 100);
