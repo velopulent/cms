@@ -2,7 +2,7 @@ use std::sync::{Arc, Mutex};
 
 use async_trait::async_trait;
 
-use crate::models::access_token::{AccessToken, AccessTokenKind};
+use crate::models::access_token::AccessToken;
 use crate::models::collection::Collection;
 use crate::models::entry::{Entry, EntryRevision};
 use crate::models::file::{File, FileReference};
@@ -872,11 +872,11 @@ impl Default for InMemoryAccessTokenRepository {
 
 #[async_trait]
 impl AccessTokenRepository for InMemoryAccessTokenRepository {
-    async fn list(&self, kind: AccessTokenKind, site_id: Option<&str>) -> Result<Vec<AccessToken>, RepositoryError> {
+    async fn list(&self, site_id: &str) -> Result<Vec<AccessToken>, RepositoryError> {
         let tokens = self.tokens.lock().unwrap();
         Ok(tokens
             .iter()
-            .filter(|t| t.kind == kind.as_str() && t.site_id.as_deref() == site_id)
+            .filter(|t| t.site_id == site_id)
             .cloned()
             .collect())
     }
@@ -884,23 +884,21 @@ impl AccessTokenRepository for InMemoryAccessTokenRepository {
     async fn create(
         &self,
         id: &str,
-        kind: AccessTokenKind,
-        site_id: Option<&str>,
+        site_id: &str,
         name: &str,
         _token_hash: &str,
         token_prefix: &str,
         token_hmac: &str,
-        scopes: &str,
+        permission: &str,
         created_by_user_id: Option<&str>,
     ) -> Result<(), RepositoryError> {
         let mut tokens = self.tokens.lock().unwrap();
         let token = AccessToken {
             id: id.to_string(),
-            kind: kind.as_str().to_string(),
-            site_id: site_id.map(|s| s.to_string()),
+            site_id: site_id.to_string(),
             name: name.to_string(),
             token_prefix: token_prefix.to_string(),
-            scopes: scopes.to_string(),
+            permission: permission.to_string(),
             created_by_user_id: created_by_user_id.map(|s| s.to_string()),
             last_used_at: None,
             created_at: now_timestamp(),
@@ -912,10 +910,10 @@ impl AccessTokenRepository for InMemoryAccessTokenRepository {
         Ok(())
     }
 
-    async fn delete(&self, id: &str, kind: AccessTokenKind, site_id: Option<&str>) -> Result<u64, RepositoryError> {
+    async fn delete(&self, id: &str, site_id: &str) -> Result<u64, RepositoryError> {
         let mut tokens = self.tokens.lock().unwrap();
         let len = tokens.len();
-        tokens.retain(|t| !(t.id == id && t.kind == kind.as_str() && t.site_id.as_deref() == site_id));
+        tokens.retain(|t| !(t.id == id && t.site_id == site_id));
         Ok((len - tokens.len()) as u64)
     }
 
@@ -927,13 +925,12 @@ impl AccessTokenRepository for InMemoryAccessTokenRepository {
             .map(|t| {
                 (
                     t.id.clone(),
-                    t.kind.clone(),
                     t.site_id.clone(),
                     String::new(),
                     t.token_hmac.clone(),
                     t.expires_at.clone(),
                     t.revoked_at.clone(),
-                    t.scopes.clone(),
+                    t.permission.clone(),
                 )
             })
             .collect())
