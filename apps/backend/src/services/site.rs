@@ -6,7 +6,7 @@ use thiserror::Error;
 use tracing::{debug, error, info, warn};
 use uuid::Uuid;
 
-use crate::middleware::auth::Principal;
+use crate::middleware::auth::Actor;
 use crate::models::site::{Site, SiteMember};
 use crate::repository::error::RepositoryError;
 use crate::repository::traits::{SiteRepository, UserRepository};
@@ -77,37 +77,13 @@ impl SiteService {
         Self { site_repo, user_repo }
     }
 
-    pub async fn list_sites_for_principal(&self, principal: &Principal) -> Result<Vec<serde_json::Value>, SiteError> {
-        match principal {
-            Principal::InstanceToken { .. } => self.list_sites_instance().await,
-            Principal::UserSession { user_id } => self.list_sites_for_user(user_id).await,
-            Principal::SiteToken { .. } => {
-                unreachable!("SiteToken should not be used for listing sites")
+    pub async fn list_sites_for_actor(&self, actor: &Actor) -> Result<Vec<serde_json::Value>, SiteError> {
+        match actor {
+            Actor::User(user) => self.list_sites_for_user(&user.user_id).await,
+            Actor::ApiKey(_) => {
+                unreachable!("ApiKey should not be used for listing sites")
             }
         }
-    }
-
-    pub async fn list_sites_instance(&self) -> Result<Vec<serde_json::Value>, SiteError> {
-        self.site_repo
-            .list_all()
-            .await
-            .map_err(|e| SiteError::DatabaseError(e.to_string()))
-            .map(|sites| {
-                sites
-                    .into_iter()
-                    .map(|site| {
-                        json!({
-                            "id": site.id,
-                            "name": site.name,
-                            "storage_provider": site.storage_provider,
-                            "created_by": site.created_by,
-                            "created_at": site.created_at,
-                            "updated_at": site.updated_at,
-                            "role": "instance_admin",
-                        })
-                    })
-                    .collect()
-            })
     }
 
     pub async fn list_sites_for_user(&self, user_id: &str) -> Result<Vec<serde_json::Value>, SiteError> {
@@ -369,7 +345,7 @@ impl SiteService {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::middleware::auth::Principal;
+    use crate::middleware::auth::{Actor, UserActor};
     use crate::models::site::Site;
     use crate::test_helpers::{InMemorySiteRepository, InMemoryUserRepository};
     use std::sync::Arc;
@@ -394,30 +370,15 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_list_sites_instance() {
-        let site_repo = test_site_repo();
-        let user_repo = test_user_repo();
-        site_repo.add_site(create_test_site());
-        let service = SiteService::new(site_repo, user_repo);
-
-        let result = service.list_sites_instance().await;
-        assert!(result.is_ok());
-        let sites = result.unwrap();
-        assert_eq!(sites.len(), 1);
-        assert_eq!(sites[0]["name"], "Test Site");
-        assert_eq!(sites[0]["role"], "instance_admin");
-    }
-
-    #[tokio::test]
     async fn test_list_sites_for_user() {
         let site_repo = test_site_repo();
         let user_repo = test_user_repo();
         let service = SiteService::new(site_repo, user_repo);
 
-        let principal = Principal::UserSession {
+        let actor = Actor::User(UserActor {
             user_id: "user-123".to_string(),
-        };
-        let result = service.list_sites_for_principal(&principal).await;
+        });
+        let result = service.list_sites_for_actor(&actor).await;
         assert!(result.is_ok());
     }
 
@@ -490,7 +451,7 @@ mod tests {
         let service = SiteService::new(site_repo, user_repo);
 
         let result = service.create_site("", Some("filesystem"), "user-123").await;
-        assert!(matches!(result, Err(SiteError::InvalidStorageProvider(msg)) if msg.contains("Name is required")));
+        assert!(matches!(result, Err(SiteError::InvalidName(msg)) if msg.contains("Name is required")));
     }
 
     #[tokio::test]
@@ -500,7 +461,7 @@ mod tests {
         let service = SiteService::new(site_repo, user_repo);
 
         let result = service.create_site("   ", Some("filesystem"), "user-123").await;
-        assert!(matches!(result, Err(SiteError::InvalidStorageProvider(msg)) if msg.contains("Name is required")));
+        assert!(matches!(result, Err(SiteError::InvalidName(msg)) if msg.contains("Name is required")));
     }
 
     #[tokio::test]

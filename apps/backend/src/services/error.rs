@@ -30,11 +30,11 @@ pub enum ServiceError {
     #[error("Insufficient scope: {0}")]
     InsufficientScope(String),
 
+    #[error("Insufficient permission: {0}")]
+    InsufficientPermission(String),
+
     #[error("Site token denied")]
     SiteTokenDenied,
-
-    #[error("Instance token denied")]
-    InstanceTokenDenied,
 
     #[error("Missing site context")]
     MissingSiteContext,
@@ -73,8 +73,8 @@ impl ServiceError {
             ServiceError::BadRequest(_) => StatusCode::BAD_REQUEST,
             ServiceError::Conflict(_) => StatusCode::CONFLICT,
             ServiceError::InsufficientScope(_) => StatusCode::FORBIDDEN,
+            ServiceError::InsufficientPermission(_) => StatusCode::FORBIDDEN,
             ServiceError::SiteTokenDenied => StatusCode::FORBIDDEN,
-            ServiceError::InstanceTokenDenied => StatusCode::FORBIDDEN,
             ServiceError::MissingSiteContext => StatusCode::BAD_REQUEST,
             ServiceError::Internal(_) => StatusCode::INTERNAL_SERVER_ERROR,
             ServiceError::Site(e) => match e {
@@ -119,7 +119,7 @@ impl ServiceError {
                 WebhookError::DeliveryFailed(_) => StatusCode::BAD_GATEWAY,
             },
             ServiceError::Token(e) => match e {
-                TokenError::InvalidScope(_) | TokenError::NameRequired => StatusCode::BAD_REQUEST,
+                TokenError::NameRequired => StatusCode::BAD_REQUEST,
                 TokenError::NotFound => StatusCode::NOT_FOUND,
                 TokenError::HashError(_) | TokenError::DatabaseError(_) => StatusCode::INTERNAL_SERVER_ERROR,
             },
@@ -134,8 +134,8 @@ impl ServiceError {
             ServiceError::BadRequest(msg) => msg.clone(),
             ServiceError::Conflict(msg) => msg.clone(),
             ServiceError::InsufficientScope(scope) => format!("Insufficient scope: {}", scope),
+            ServiceError::InsufficientPermission(permission) => format!("Insufficient permission: {}", permission),
             ServiceError::SiteTokenDenied => "Site token denied".to_string(),
-            ServiceError::InstanceTokenDenied => "Instance token denied".to_string(),
             ServiceError::MissingSiteContext => "Missing site context".to_string(),
             ServiceError::Internal(_) => "Internal server error".to_string(),
             ServiceError::Site(e) => e.to_string(),
