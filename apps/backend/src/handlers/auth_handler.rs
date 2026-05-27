@@ -1,8 +1,10 @@
 use axum::{
     Json,
     extract::Extension,
+    http::StatusCode,
     response::{IntoResponse, Response},
 };
+use serde_json::json;
 use tracing::instrument;
 
 use crate::models::user::{CreateUser, LoginRequest};
@@ -42,8 +44,15 @@ pub async fn logout(services: Extension<Services>) -> Response {
 }
 
 #[instrument(skip(services))]
-pub async fn me(services: Extension<Services>, auth: crate::middleware::auth::AuthenticatedUser) -> Response {
-    match services.auth.get_user(&auth.user_id).await {
+pub async fn me(
+    services: Extension<Services>,
+    auth: crate::middleware::auth::AuthContext,
+) -> Response {
+    let user_id = match &auth.actor {
+        crate::middleware::auth::Actor::User(u) => &u.user_id,
+        _ => return (StatusCode::UNAUTHORIZED, Json(json!({"error": "Session authentication required"}))).into_response(),
+    };
+    match services.auth.get_user(user_id).await {
         Ok(Some(user)) => {
             use axum::{Json, http::StatusCode};
             (StatusCode::OK, Json(user)).into_response()

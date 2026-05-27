@@ -1,14 +1,19 @@
 use axum::{
     Json,
     extract::{Extension, Path},
-    http::HeaderMap,
     http::StatusCode,
     response::{IntoResponse, Response},
 };
+use serde::Deserialize;
 use serde_json::json;
 use tracing::instrument;
 
-use crate::middleware::auth::{HEADER_SITE_ID, Principal, SCOPE_SCHEMA_READ, SCOPE_SCHEMA_WRITE, require_site_scope};
+#[derive(Deserialize)]
+pub struct CollectionSlug {
+    collection_slug: String,
+}
+
+use crate::middleware::auth::{RequestContext, Scope, require_site_scope};
 use crate::models::collection::{Collection, CreateCollection, UpdateCollection};
 use crate::repository::Repository;
 use crate::services::Services;
@@ -23,20 +28,17 @@ use crate::services::Services;
     security(("bearer" = []), ("access_token" = [])),
     tag = "collections"
 )]
-#[instrument(skip(repository, services, principal))]
+#[instrument(skip(repository, services, ctx))]
 pub async fn list_collections(
-    principal: Principal,
-    headers: HeaderMap,
+    ctx: RequestContext,
     Extension(repository): Extension<Repository>,
     Extension(services): Extension<Services>,
 ) -> Response {
-    let site_id = headers.get(HEADER_SITE_ID).and_then(|v| v.to_str().ok());
-    let site = match require_site_scope(&principal, &repository, site_id, SCOPE_SCHEMA_READ, "viewer").await {
-        Ok(site) => site,
-        Err((status, err)) => return (status, err).into_response(),
-    };
+    if let Err((status, err)) = require_site_scope(&ctx, &repository, &Scope::CollectionsRead, "viewer").await {
+        return (status, err).into_response();
+    }
 
-    match services.collection.list_collections(&site.site_id).await {
+    match services.collection.list_collections(&ctx.site_id).await {
         Ok(items) => (StatusCode::OK, Json(items)).into_response(),
         Err(e) => e.into_response(),
     }
@@ -54,23 +56,20 @@ pub async fn list_collections(
     security(("bearer" = []), ("access_token" = [])),
     tag = "collections"
 )]
-#[instrument(skip(repository, services, principal))]
+#[instrument(skip(repository, services, ctx))]
 pub async fn get_collection(
-    principal: Principal,
-    headers: HeaderMap,
-    Path(collection_slug): Path<String>,
+    ctx: RequestContext,
+    Path(CollectionSlug { collection_slug }): Path<CollectionSlug>,
     Extension(repository): Extension<Repository>,
     Extension(services): Extension<Services>,
 ) -> Response {
-    let site_id = headers.get(HEADER_SITE_ID).and_then(|v| v.to_str().ok());
-    let site = match require_site_scope(&principal, &repository, site_id, SCOPE_SCHEMA_READ, "viewer").await {
-        Ok(site) => site,
-        Err((status, err)) => return (status, err).into_response(),
-    };
+    if let Err((status, err)) = require_site_scope(&ctx, &repository, &Scope::CollectionsRead, "viewer").await {
+        return (status, err).into_response();
+    }
 
     match services
         .collection
-        .get_collection(&site.site_id, &collection_slug)
+        .get_collection(&ctx.site_id, &collection_slug)
         .await
     {
         Ok(Some(item)) => (StatusCode::OK, Json(item)).into_response(),
@@ -92,19 +91,16 @@ pub async fn get_collection(
     security(("bearer" = []), ("access_token" = [])),
     tag = "collections"
 )]
-#[instrument(skip(repository, services, principal, payload))]
+#[instrument(skip(repository, services, ctx, payload))]
 pub async fn create_collection(
-    principal: Principal,
-    headers: HeaderMap,
+    ctx: RequestContext,
     Extension(repository): Extension<Repository>,
     Extension(services): Extension<Services>,
     Json(payload): Json<CreateCollection>,
 ) -> Response {
-    let site_id = headers.get(HEADER_SITE_ID).and_then(|v| v.to_str().ok());
-    let site = match require_site_scope(&principal, &repository, site_id, SCOPE_SCHEMA_WRITE, "editor").await {
-        Ok(site) => site,
-        Err((status, err)) => return (status, err).into_response(),
-    };
+    if let Err((status, err)) = require_site_scope(&ctx, &repository, &Scope::CollectionsWrite, "editor").await {
+        return (status, err).into_response();
+    }
 
     let definition_str = payload.definition.to_string();
     let is_singleton = payload.is_singleton.unwrap_or(false);
@@ -112,7 +108,7 @@ pub async fn create_collection(
     match services
         .collection
         .create_collection(
-            &site.site_id,
+            &ctx.site_id,
             &payload.name,
             &payload.slug,
             &definition_str,
@@ -138,27 +134,24 @@ pub async fn create_collection(
     security(("bearer" = []), ("access_token" = [])),
     tag = "collections"
 )]
-#[instrument(skip(repository, services, principal, payload))]
+#[instrument(skip(repository, services, ctx, payload))]
 pub async fn update_collection(
-    principal: Principal,
-    headers: HeaderMap,
-    Path(collection_slug): Path<String>,
+    ctx: RequestContext,
+    Path(CollectionSlug { collection_slug }): Path<CollectionSlug>,
     Extension(repository): Extension<Repository>,
     Extension(services): Extension<Services>,
     Json(payload): Json<UpdateCollection>,
 ) -> Response {
-    let site_id = headers.get(HEADER_SITE_ID).and_then(|v| v.to_str().ok());
-    let site = match require_site_scope(&principal, &repository, site_id, SCOPE_SCHEMA_WRITE, "editor").await {
-        Ok(site) => site,
-        Err((status, err)) => return (status, err).into_response(),
-    };
+    if let Err((status, err)) = require_site_scope(&ctx, &repository, &Scope::CollectionsWrite, "editor").await {
+        return (status, err).into_response();
+    }
 
     let definition_str = payload.definition.as_ref().map(|s| s.to_string());
 
     match services
         .collection
         .update_collection(
-            &site.site_id,
+            &ctx.site_id,
             &collection_slug,
             payload.name.as_deref(),
             payload.slug.as_deref(),
@@ -183,23 +176,20 @@ pub async fn update_collection(
     security(("bearer" = []), ("access_token" = [])),
     tag = "collections"
 )]
-#[instrument(skip(repository, services, principal))]
+#[instrument(skip(repository, services, ctx))]
 pub async fn delete_collection(
-    principal: Principal,
-    headers: HeaderMap,
-    Path(collection_slug): Path<String>,
+    ctx: RequestContext,
+    Path(CollectionSlug { collection_slug }): Path<CollectionSlug>,
     Extension(repository): Extension<Repository>,
     Extension(services): Extension<Services>,
 ) -> Response {
-    let site_id = headers.get(HEADER_SITE_ID).and_then(|v| v.to_str().ok());
-    let site = match require_site_scope(&principal, &repository, site_id, SCOPE_SCHEMA_WRITE, "editor").await {
-        Ok(site) => site,
-        Err((status, err)) => return (status, err).into_response(),
-    };
+    if let Err((status, err)) = require_site_scope(&ctx, &repository, &Scope::CollectionsWrite, "editor").await {
+        return (status, err).into_response();
+    }
 
     match services
         .collection
-        .delete_collection(&site.site_id, &collection_slug)
+        .delete_collection(&ctx.site_id, &collection_slug)
         .await
     {
         Ok(_) => StatusCode::NO_CONTENT.into_response(),

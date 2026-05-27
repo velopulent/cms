@@ -12,10 +12,13 @@ use serde_json::json;
 use std::sync::Arc;
 use tracing::instrument;
 
+#[derive(Deserialize)]
+pub struct FileId {
+    id: String,
+}
+
 use crate::config::Config;
-use crate::middleware::auth::{
-    HEADER_SITE_ID, Principal, SCOPE_ASSETS_READ, SCOPE_ASSETS_WRITE, extract_user_id, require_site_scope,
-};
+use crate::middleware::auth::{RequestContext, Scope, require_site_scope};
 use crate::models::file::{BatchFileIds, FileWithUrl};
 use crate::repository::Repository;
 use crate::repository::traits::ListFilesParams;
@@ -28,10 +31,6 @@ pub struct FileListParams {
     pub search: Option<String>,
     pub r#type: Option<String>,
     pub trashed: Option<String>,
-}
-
-fn request_site_id(headers: &HeaderMap) -> Option<&str> {
-    headers.get(HEADER_SITE_ID).and_then(|value| value.to_str().ok())
 }
 
 fn get_storage_for_site(
@@ -54,34 +53,24 @@ fn get_storage_for_site(
     security(("bearer" = []), ("access_token" = [])),
     tag = "files"
 )]
-#[instrument(skip(repository, services, principal, params, storage_registry))]
+#[instrument(skip(repository, services, ctx, params, storage_registry))]
 pub async fn list_files(
-    principal: Principal,
-    headers: HeaderMap,
+    ctx: RequestContext,
     Query(params): Query<FileListParams>,
     Extension(repository): Extension<Repository>,
     Extension(services): Extension<Services>,
     Extension(storage_registry): Extension<Arc<StorageRegistry>>,
 ) -> Response {
-    let site = match require_site_scope(
-        &principal,
-        &repository,
-        request_site_id(&headers),
-        SCOPE_ASSETS_READ,
-        "viewer",
-    )
-    .await
-    {
-        Ok(site) => site,
-        Err((status, err)) => return (status, err).into_response(),
-    };
+    if let Err((status, err)) = require_site_scope(&ctx, &repository, &Scope::FilesRead, "viewer").await {
+        return (status, err).into_response();
+    }
 
     let page = params.page.unwrap_or(1).max(1);
     let per_page: i64 = 30;
     let is_trashed = params.trashed.as_deref() == Some("true");
 
     let list_params = ListFilesParams {
-        site_id: &site.site_id,
+        site_id: &ctx.site_id,
         trashed: is_trashed,
         search: params.search.as_deref(),
         file_type: params.r#type.as_deref(),
@@ -91,7 +80,7 @@ pub async fn list_files(
 
     let storage_provider = services
         .file
-        .get_storage_provider(&site.site_id)
+        .get_storage_provider(&ctx.site_id)
         .await
         .unwrap_or_else(|_| "filesystem".into());
 
@@ -133,29 +122,19 @@ pub async fn list_files(
     security(("bearer" = []), ("access_token" = [])),
     tag = "files"
 )]
-#[instrument(skip(repository, services, config, principal, multipart, storage_registry))]
+#[instrument(skip(repository, services, config, ctx, multipart, storage_registry))]
 pub async fn upload_file(
-    principal: Principal,
-    headers: HeaderMap,
+    ctx: RequestContext,
     Extension(repository): Extension<Repository>,
     Extension(services): Extension<Services>,
     Extension(config): Extension<Config>,
     Extension(storage_registry): Extension<Arc<StorageRegistry>>,
     mut multipart: Multipart,
 ) -> Response {
-    let site = match require_site_scope(
-        &principal,
-        &repository,
-        request_site_id(&headers),
-        SCOPE_ASSETS_WRITE,
-        "editor",
-    )
-    .await
-    {
-        Ok(site) => site,
-        Err((status, err)) => return (status, err).into_response(),
-    };
-    let site_id = site.site_id.clone();
+    if let Err((status, err)) = require_site_scope(&ctx, &repository, &Scope::FilesWrite, "editor").await {
+        return (status, err).into_response();
+    }
+    let site_id = ctx.site_id.clone();
 
     let storage_provider = services
         .file
@@ -210,7 +189,7 @@ pub async fn upload_file(
 
     let file_name = file_name.unwrap_or_else(|| "upload".into());
     let content_type = file_content_type.unwrap_or_else(|| "application/octet-stream".into());
-    let created_by = extract_user_id(&principal);
+    let created_by = ctx.auth.actor.user_id();
 
     let storage = match get_storage_for_site(&storage_provider, &storage_registry) {
         Ok(s) => s,
@@ -246,33 +225,23 @@ pub async fn upload_file(
     security(("bearer" = []), ("access_token" = [])),
     tag = "files"
 )]
-#[instrument(skip(repository, services, principal, storage_registry))]
+#[instrument(skip(repository, services, ctx, storage_registry))]
 pub async fn get_file(
-    principal: Principal,
-    headers: HeaderMap,
-    Path(id): Path<String>,
+    ctx: RequestContext,
+    Path(FileId { id }): Path<FileId>,
     Extension(repository): Extension<Repository>,
     Extension(services): Extension<Services>,
     Extension(storage_registry): Extension<Arc<StorageRegistry>>,
 ) -> Response {
-    let site = match require_site_scope(
-        &principal,
-        &repository,
-        request_site_id(&headers),
-        SCOPE_ASSETS_READ,
-        "viewer",
-    )
-    .await
-    {
-        Ok(site) => site,
-        Err((status, err)) => return (status, err).into_response(),
-    };
+    if let Err((status, err)) = require_site_scope(&ctx, &repository, &Scope::FilesRead, "viewer").await {
+        return (status, err).into_response();
+    }
 
-    match services.file.get_file(&id, &site.site_id).await {
+    match services.file.get_file(&id, &ctx.site_id).await {
         Ok(Some(file)) => {
             let storage_provider = services
                 .file
-                .get_storage_provider(&site.site_id)
+                .get_storage_provider(&ctx.site_id)
                 .await
                 .unwrap_or_else(|_| "filesystem".into());
             let storage = match get_storage_for_site(&storage_provider, &storage_registry) {
@@ -298,28 +267,18 @@ pub async fn get_file(
     security(("bearer" = []), ("access_token" = [])),
     tag = "files"
 )]
-#[instrument(skip(repository, services, principal))]
+#[instrument(skip(repository, services, ctx))]
 pub async fn delete_file_handler(
-    principal: Principal,
-    headers: HeaderMap,
-    Path(id): Path<String>,
+    ctx: RequestContext,
+    Path(FileId { id }): Path<FileId>,
     Extension(repository): Extension<Repository>,
     Extension(services): Extension<Services>,
 ) -> Response {
-    let site = match require_site_scope(
-        &principal,
-        &repository,
-        request_site_id(&headers),
-        SCOPE_ASSETS_WRITE,
-        "editor",
-    )
-    .await
-    {
-        Ok(site) => site,
-        Err((status, err)) => return (status, err).into_response(),
-    };
+    if let Err((status, err)) = require_site_scope(&ctx, &repository, &Scope::FilesWrite, "editor").await {
+        return (status, err).into_response();
+    }
 
-    match services.file.soft_delete(&id, &site.site_id).await {
+    match services.file.soft_delete(&id, &ctx.site_id).await {
         Ok(0) => (StatusCode::NOT_FOUND, Json(json!({"error": "File not found"}))).into_response(),
         Ok(_) => (StatusCode::OK, Json(json!({"message": "File deleted"}))).into_response(),
         Err(e) => e.into_response(),
@@ -336,28 +295,18 @@ pub async fn delete_file_handler(
     security(("bearer" = []), ("access_token" = [])),
     tag = "files"
 )]
-#[instrument(skip(repository, services, principal))]
+#[instrument(skip(repository, services, ctx))]
 pub async fn get_file_references(
-    principal: Principal,
-    headers: HeaderMap,
-    Path(id): Path<String>,
+    ctx: RequestContext,
+    Path(FileId { id }): Path<FileId>,
     Extension(repository): Extension<Repository>,
     Extension(services): Extension<Services>,
 ) -> Response {
-    let site = match require_site_scope(
-        &principal,
-        &repository,
-        request_site_id(&headers),
-        SCOPE_ASSETS_READ,
-        "viewer",
-    )
-    .await
-    {
-        Ok(site) => site,
-        Err((status, err)) => return (status, err).into_response(),
-    };
+    if let Err((status, err)) = require_site_scope(&ctx, &repository, &Scope::FilesRead, "viewer").await {
+        return (status, err).into_response();
+    }
 
-    match services.file.get_file_references(&id, &site.site_id).await {
+    match services.file.get_file_references(&id, &ctx.site_id).await {
         Ok(refs) => (StatusCode::OK, Json(refs)).into_response(),
         Err(e) => e.into_response(),
     }
@@ -374,28 +323,18 @@ pub async fn get_file_references(
     security(("bearer" = []), ("access_token" = [])),
     tag = "files"
 )]
-#[instrument(skip(repository, services, principal))]
+#[instrument(skip(repository, services, ctx))]
 pub async fn restore_file(
-    principal: Principal,
-    headers: HeaderMap,
-    Path(id): Path<String>,
+    ctx: RequestContext,
+    Path(FileId { id }): Path<FileId>,
     Extension(repository): Extension<Repository>,
     Extension(services): Extension<Services>,
 ) -> Response {
-    let site = match require_site_scope(
-        &principal,
-        &repository,
-        request_site_id(&headers),
-        SCOPE_ASSETS_WRITE,
-        "editor",
-    )
-    .await
-    {
-        Ok(site) => site,
-        Err((status, err)) => return (status, err).into_response(),
-    };
+    if let Err((status, err)) = require_site_scope(&ctx, &repository, &Scope::FilesWrite, "editor").await {
+        return (status, err).into_response();
+    }
 
-    match services.file.restore(&id, &site.site_id).await {
+    match services.file.restore(&id, &ctx.site_id).await {
         Ok(0) => (
             StatusCode::NOT_FOUND,
             Json(json!({"error": "File not found or not deleted"})),
@@ -417,32 +356,22 @@ pub async fn restore_file(
     security(("bearer" = []), ("access_token" = [])),
     tag = "files"
 )]
-#[instrument(skip(repository, services, principal, body))]
+#[instrument(skip(repository, services, ctx, body))]
 pub async fn batch_delete_files(
-    principal: Principal,
-    headers: HeaderMap,
+    ctx: RequestContext,
     Extension(repository): Extension<Repository>,
     Extension(services): Extension<Services>,
     Json(body): Json<BatchFileIds>,
 ) -> Response {
-    let site = match require_site_scope(
-        &principal,
-        &repository,
-        request_site_id(&headers),
-        SCOPE_ASSETS_WRITE,
-        "editor",
-    )
-    .await
-    {
-        Ok(site) => site,
-        Err((status, err)) => return (status, err).into_response(),
-    };
+    if let Err((status, err)) = require_site_scope(&ctx, &repository, &Scope::FilesWrite, "editor").await {
+        return (status, err).into_response();
+    }
 
     if body.ids.is_empty() {
         return (StatusCode::BAD_REQUEST, Json(json!({"error": "No file IDs provided"}))).into_response();
     }
 
-    match services.file.batch_soft_delete(&site.site_id, &body.ids).await {
+    match services.file.batch_soft_delete(&ctx.site_id, &body.ids).await {
         Ok(count) => (StatusCode::OK, Json(json!({"deleted": count}))).into_response(),
         Err(e) => e.into_response(),
     }
@@ -459,32 +388,22 @@ pub async fn batch_delete_files(
     security(("bearer" = []), ("access_token" = [])),
     tag = "files"
 )]
-#[instrument(skip(repository, services, principal, body))]
+#[instrument(skip(repository, services, ctx, body))]
 pub async fn batch_restore_files(
-    principal: Principal,
-    headers: HeaderMap,
+    ctx: RequestContext,
     Extension(repository): Extension<Repository>,
     Extension(services): Extension<Services>,
     Json(body): Json<BatchFileIds>,
 ) -> Response {
-    let site = match require_site_scope(
-        &principal,
-        &repository,
-        request_site_id(&headers),
-        SCOPE_ASSETS_WRITE,
-        "editor",
-    )
-    .await
-    {
-        Ok(site) => site,
-        Err((status, err)) => return (status, err).into_response(),
-    };
+    if let Err((status, err)) = require_site_scope(&ctx, &repository, &Scope::FilesWrite, "editor").await {
+        return (status, err).into_response();
+    }
 
     if body.ids.is_empty() {
         return (StatusCode::BAD_REQUEST, Json(json!({"error": "No file IDs provided"}))).into_response();
     }
 
-    match services.file.batch_restore(&site.site_id, &body.ids).await {
+    match services.file.batch_restore(&ctx.site_id, &body.ids).await {
         Ok(count) => (StatusCode::OK, Json(json!({"restored": count}))).into_response(),
         Err(e) => e.into_response(),
     }
@@ -501,33 +420,23 @@ pub async fn batch_restore_files(
     security(("bearer" = []), ("access_token" = [])),
     tag = "files"
 )]
-#[instrument(skip(repository, services, principal, body, storage_registry))]
+#[instrument(skip(repository, services, ctx, body, storage_registry))]
 pub async fn batch_permanent_delete_files(
-    principal: Principal,
-    headers: HeaderMap,
+    ctx: RequestContext,
     Extension(repository): Extension<Repository>,
     Extension(services): Extension<Services>,
     Extension(storage_registry): Extension<Arc<StorageRegistry>>,
     Json(body): Json<BatchFileIds>,
 ) -> Response {
-    let site = match require_site_scope(
-        &principal,
-        &repository,
-        request_site_id(&headers),
-        SCOPE_ASSETS_WRITE,
-        "editor",
-    )
-    .await
-    {
-        Ok(site) => site,
-        Err((status, err)) => return (status, err).into_response(),
-    };
+    if let Err((status, err)) = require_site_scope(&ctx, &repository, &Scope::FilesWrite, "editor").await {
+        return (status, err).into_response();
+    }
 
     if body.ids.is_empty() {
         return (StatusCode::BAD_REQUEST, Json(json!({"error": "No file IDs provided"}))).into_response();
     }
 
-    let files = match repository.file.get_deleted_by_ids(&site.site_id, &body.ids).await {
+    let files = match repository.file.get_deleted_by_ids(&ctx.site_id, &body.ids).await {
         Ok(f) => f,
         Err(e) => {
             return (
@@ -540,7 +449,7 @@ pub async fn batch_permanent_delete_files(
 
     let storage_provider = services
         .file
-        .get_storage_provider(&site.site_id)
+        .get_storage_provider(&ctx.site_id)
         .await
         .unwrap_or_else(|_| "filesystem".into());
     let storage = match get_storage_for_site(&storage_provider, &storage_registry) {
@@ -559,7 +468,7 @@ pub async fn batch_permanent_delete_files(
         }
     }
 
-    match services.file.batch_permanent_delete(&site.site_id, &body.ids).await {
+    match services.file.batch_permanent_delete(&ctx.site_id, &body.ids).await {
         Ok(count) => (StatusCode::OK, Json(json!({"deleted": count}))).into_response(),
         Err(e) => e.into_response(),
     }
@@ -567,7 +476,7 @@ pub async fn batch_permanent_delete_files(
 
 #[instrument(skip(services, storage_registry))]
 pub async fn serve_file(
-    Path(id): Path<String>,
+    Path(FileId { id }): Path<FileId>,
     Extension(services): Extension<Services>,
     Extension(storage_registry): Extension<Arc<StorageRegistry>>,
 ) -> Response {
@@ -576,7 +485,7 @@ pub async fn serve_file(
 
 #[instrument(skip(services, storage_registry))]
 pub async fn serve_file_thumbnail(
-    Path(id): Path<String>,
+    Path(FileId { id }): Path<FileId>,
     Extension(services): Extension<Services>,
     Extension(storage_registry): Extension<Arc<StorageRegistry>>,
 ) -> Response {

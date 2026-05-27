@@ -1,7 +1,6 @@
 use axum::{
     Json,
     extract::{Extension, Path, Query},
-    http::HeaderMap,
     http::StatusCode,
     response::{IntoResponse, Response},
 };
@@ -10,7 +9,18 @@ use serde_json::json;
 use std::sync::Arc;
 use tracing::instrument;
 
-use crate::middleware::auth::{HEADER_SITE_ID, Principal, SCOPE_CONTENT_READ, SCOPE_CONTENT_WRITE, require_site_scope};
+#[derive(Deserialize)]
+pub struct EntryId {
+    id: String,
+}
+
+#[derive(Deserialize)]
+pub struct RevisionId {
+    id: String,
+    number: i64,
+}
+
+use crate::middleware::auth::{Actor, RequestContext, Scope, require_site_scope};
 use crate::models::entry::{CreateEntry, Entry, EntryRevisionResponse, RevisionsListResponse, UpdateEntry};
 use crate::repository::Repository;
 use crate::repository::traits::ListEntriesParams;
@@ -38,14 +48,6 @@ pub struct DiffQuery {
     pub diff: Option<bool>,
 }
 
-fn request_site_id(headers: &HeaderMap) -> Option<&str> {
-    headers.get(HEADER_SITE_ID).and_then(|value| value.to_str().ok())
-}
-
-fn created_by_from_principal(principal: &Principal) -> Option<&str> {
-    principal.user_id()
-}
-
 fn get_storage_for_site(
     site_storage_provider: &str,
     registry: &StorageRegistry,
@@ -70,36 +72,26 @@ fn get_storage_for_site(
     security(("bearer" = []), ("access_token" = [])),
     tag = "entries"
 )]
-#[instrument(skip(repository, services, principal, params))]
+#[instrument(skip(repository, services, ctx, params))]
 pub async fn list_entries(
-    principal: Principal,
-    headers: HeaderMap,
+    ctx: RequestContext,
     Query(params): Query<ListParams>,
     Extension(repository): Extension<Repository>,
     Extension(services): Extension<Services>,
 ) -> Response {
-    let site = match require_site_scope(
-        &principal,
-        &repository,
-        request_site_id(&headers),
-        SCOPE_CONTENT_READ,
-        "viewer",
-    )
-    .await
-    {
-        Ok(site) => site,
-        Err((status, err)) => return (status, err).into_response(),
-    };
+    if let Err((status, err)) = require_site_scope(&ctx, &repository, &Scope::EntriesRead, "viewer").await {
+        return (status, err).into_response();
+    }
 
-    let published_only = matches!(principal, Principal::SiteToken { .. });
+    let published_only = matches!(ctx.auth.actor, Actor::ApiKey(_));
     let page = params.page.unwrap_or(1).max(1);
     let per_page = params.per_page.unwrap_or(50).clamp(1, 200);
 
     let list_params = ListEntriesParams {
-        site_id: &site.site_id,
+        site_id: &ctx.site_id,
         collection_slug: params.r#type.as_deref(),
         collection_id: None,
-        status: if matches!(principal, Principal::UserSession { .. }) {
+        status: if matches!(ctx.auth.actor, Actor::User(_)) {
             params.status.as_deref()
         } else {
             None
@@ -140,35 +132,25 @@ pub async fn list_entries(
     security(("bearer" = []), ("access_token" = [])),
     tag = "entries"
 )]
-#[instrument(skip(repository, services, principal, storage_registry))]
+#[instrument(skip(repository, services, ctx, storage_registry))]
 pub async fn get_entry(
-    principal: Principal,
-    headers: HeaderMap,
-    Path(id): Path<String>,
+    ctx: RequestContext,
+    Path(EntryId { id }): Path<EntryId>,
     Extension(repository): Extension<Repository>,
     Extension(services): Extension<Services>,
     Extension(storage_registry): Extension<Arc<StorageRegistry>>,
 ) -> Response {
-    let site = match require_site_scope(
-        &principal,
-        &repository,
-        request_site_id(&headers),
-        SCOPE_CONTENT_READ,
-        "viewer",
-    )
-    .await
-    {
-        Ok(site) => site,
-        Err((status, err)) => return (status, err).into_response(),
-    };
+    if let Err((status, err)) = require_site_scope(&ctx, &repository, &Scope::EntriesRead, "viewer").await {
+        return (status, err).into_response();
+    }
 
-    let published_only = matches!(principal, Principal::SiteToken { .. });
+    let published_only = matches!(ctx.auth.actor, Actor::ApiKey(_));
 
-    match services.entry.get_entry(&id, &site.site_id, published_only).await {
+    match services.entry.get_entry(&id, &ctx.site_id, published_only).await {
         Ok(Some(item)) => {
             let storage_provider = services
                 .file
-                .get_storage_provider(&site.site_id)
+                .get_storage_provider(&ctx.site_id)
                 .await
                 .unwrap_or_else(|_| "filesystem".into());
             let storage = match get_storage_for_site(&storage_provider, &storage_registry) {
@@ -200,32 +182,22 @@ pub async fn get_entry(
     security(("bearer" = []), ("access_token" = [])),
     tag = "entries"
 )]
-#[instrument(skip(repository, services, principal, payload))]
+#[instrument(skip(repository, services, ctx, payload))]
 pub async fn create_entry(
-    principal: Principal,
-    headers: HeaderMap,
+    ctx: RequestContext,
     Extension(repository): Extension<Repository>,
     Extension(services): Extension<Services>,
     Json(payload): Json<CreateEntry>,
 ) -> Response {
-    let site = match require_site_scope(
-        &principal,
-        &repository,
-        request_site_id(&headers),
-        SCOPE_CONTENT_WRITE,
-        "editor",
-    )
-    .await
-    {
-        Ok(site) => site,
-        Err((status, err)) => return (status, err).into_response(),
-    };
+    if let Err((status, err)) = require_site_scope(&ctx, &repository, &Scope::EntriesWrite, "editor").await {
+        return (status, err).into_response();
+    }
 
-    let created_by = created_by_from_principal(&principal);
+    let created_by = ctx.auth.actor.user_id();
     match services
         .entry
         .create_entry(
-            &site.site_id,
+            &ctx.site_id,
             &payload.collection_id,
             &payload.data,
             &payload.slug,
@@ -251,34 +223,24 @@ pub async fn create_entry(
     security(("bearer" = []), ("access_token" = [])),
     tag = "entries"
 )]
-#[instrument(skip(repository, services, principal, payload))]
+#[instrument(skip(repository, services, ctx, payload))]
 pub async fn update_entry(
-    principal: Principal,
-    headers: HeaderMap,
-    Path(id): Path<String>,
+    ctx: RequestContext,
+    Path(EntryId { id }): Path<EntryId>,
     Extension(repository): Extension<Repository>,
     Extension(services): Extension<Services>,
     Json(payload): Json<UpdateEntry>,
 ) -> Response {
-    let site = match require_site_scope(
-        &principal,
-        &repository,
-        request_site_id(&headers),
-        SCOPE_CONTENT_WRITE,
-        "editor",
-    )
-    .await
-    {
-        Ok(site) => site,
-        Err((status, err)) => return (status, err).into_response(),
-    };
+    if let Err((status, err)) = require_site_scope(&ctx, &repository, &Scope::EntriesWrite, "editor").await {
+        return (status, err).into_response();
+    }
 
-    let created_by = created_by_from_principal(&principal);
+    let created_by = ctx.auth.actor.user_id();
     match services
         .entry
         .update_entry(
             &id,
-            &site.site_id,
+            &ctx.site_id,
             payload.data.as_ref(),
             payload.slug.as_deref(),
             payload.status.as_deref(),
@@ -304,28 +266,18 @@ pub async fn update_entry(
     security(("bearer" = []), ("access_token" = [])),
     tag = "entries"
 )]
-#[instrument(skip(repository, services, principal))]
+#[instrument(skip(repository, services, ctx))]
 pub async fn delete_entry(
-    principal: Principal,
-    headers: HeaderMap,
-    Path(id): Path<String>,
+    ctx: RequestContext,
+    Path(EntryId { id }): Path<EntryId>,
     Extension(repository): Extension<Repository>,
     Extension(services): Extension<Services>,
 ) -> Response {
-    let site = match require_site_scope(
-        &principal,
-        &repository,
-        request_site_id(&headers),
-        SCOPE_CONTENT_WRITE,
-        "editor",
-    )
-    .await
-    {
-        Ok(site) => site,
-        Err((status, err)) => return (status, err).into_response(),
-    };
+    if let Err((status, err)) = require_site_scope(&ctx, &repository, &Scope::EntriesWrite, "editor").await {
+        return (status, err).into_response();
+    }
 
-    match services.entry.delete_entry(&id, &site.site_id).await {
+    match services.entry.delete_entry(&id, &ctx.site_id).await {
         Ok(_) => StatusCode::NO_CONTENT.into_response(),
         Err(e) => e.into_response(),
     }
@@ -344,28 +296,18 @@ pub async fn delete_entry(
     security(("bearer" = []), ("access_token" = [])),
     tag = "entries"
 )]
-#[instrument(skip(repository, services, principal))]
+#[instrument(skip(repository, services, ctx))]
 pub async fn publish_entry(
-    principal: Principal,
-    headers: HeaderMap,
-    Path(id): Path<String>,
+    ctx: RequestContext,
+    Path(EntryId { id }): Path<EntryId>,
     Extension(repository): Extension<Repository>,
     Extension(services): Extension<Services>,
 ) -> Response {
-    let site = match require_site_scope(
-        &principal,
-        &repository,
-        request_site_id(&headers),
-        SCOPE_CONTENT_WRITE,
-        "editor",
-    )
-    .await
-    {
-        Ok(site) => site,
-        Err((status, err)) => return (status, err).into_response(),
-    };
+    if let Err((status, err)) = require_site_scope(&ctx, &repository, &Scope::EntriesWrite, "editor").await {
+        return (status, err).into_response();
+    }
 
-    match services.entry.publish_entry(&id, &site.site_id).await {
+    match services.entry.publish_entry(&id, &ctx.site_id).await {
         Ok(item) => (StatusCode::OK, Json(item)).into_response(),
         Err(e) => e.into_response(),
     }
@@ -384,28 +326,18 @@ pub async fn publish_entry(
     security(("bearer" = []), ("access_token" = [])),
     tag = "entries"
 )]
-#[instrument(skip(repository, services, principal))]
+#[instrument(skip(repository, services, ctx))]
 pub async fn unpublish_entry(
-    principal: Principal,
-    headers: HeaderMap,
-    Path(id): Path<String>,
+    ctx: RequestContext,
+    Path(EntryId { id }): Path<EntryId>,
     Extension(repository): Extension<Repository>,
     Extension(services): Extension<Services>,
 ) -> Response {
-    let site = match require_site_scope(
-        &principal,
-        &repository,
-        request_site_id(&headers),
-        SCOPE_CONTENT_WRITE,
-        "editor",
-    )
-    .await
-    {
-        Ok(site) => site,
-        Err((status, err)) => return (status, err).into_response(),
-    };
+    if let Err((status, err)) = require_site_scope(&ctx, &repository, &Scope::EntriesWrite, "editor").await {
+        return (status, err).into_response();
+    }
 
-    match services.entry.unpublish_entry(&id, &site.site_id).await {
+    match services.entry.unpublish_entry(&id, &ctx.site_id).await {
         Ok(item) => (StatusCode::OK, Json(item)).into_response(),
         Err(e) => e.into_response(),
     }
@@ -423,30 +355,20 @@ pub async fn unpublish_entry(
     security(("bearer" = []), ("access_token" = [])),
     tag = "entries"
 )]
-#[instrument(skip(repository, services, principal))]
+#[instrument(skip(repository, services, ctx))]
 pub async fn list_entry_revisions(
-    principal: Principal,
-    headers: HeaderMap,
-    Path(id): Path<String>,
+    ctx: RequestContext,
+    Path(EntryId { id }): Path<EntryId>,
     Query(params): Query<RevisionListParams>,
     Extension(repository): Extension<Repository>,
     Extension(services): Extension<Services>,
 ) -> Response {
-    let site = match require_site_scope(
-        &principal,
-        &repository,
-        request_site_id(&headers),
-        SCOPE_CONTENT_READ,
-        "viewer",
-    )
-    .await
-    {
-        Ok(site) => site,
-        Err((status, err)) => return (status, err).into_response(),
-    };
+    if let Err((status, err)) = require_site_scope(&ctx, &repository, &Scope::EntriesRead, "viewer").await {
+        return (status, err).into_response();
+    }
 
     // Verify entry exists and belongs to site
-    match services.entry.get_entry(&id, &site.site_id, false).await {
+    match services.entry.get_entry(&id, &ctx.site_id, false).await {
         Ok(Some(_)) => {}
         Ok(None) => return (StatusCode::NOT_FOUND, Json(json!({"error": "Entry not found"}))).into_response(),
         Err(e) => return e.into_response(),
@@ -455,7 +377,7 @@ pub async fn list_entry_revisions(
     let page = params.page.unwrap_or(1).max(1);
     let per_page = params.per_page.unwrap_or(50).clamp(1, 200);
 
-    match services.entry.list_revisions(&id, &site.site_id, page, per_page).await {
+    match services.entry.list_revisions(&id, &ctx.site_id, page, per_page).await {
         Ok(result) => {
             let response = RevisionsListResponse {
                 items: result.items.into_iter().map(EntryRevisionResponse::from).collect(),
@@ -485,41 +407,31 @@ pub async fn list_entry_revisions(
     security(("bearer" = []), ("access_token" = [])),
     tag = "entries"
 )]
-#[instrument(skip(repository, services, principal))]
+#[instrument(skip(repository, services, ctx))]
 pub async fn get_entry_revision(
-    principal: Principal,
-    headers: HeaderMap,
-    Path((id, number)): Path<(String, i64)>,
+    ctx: RequestContext,
+    Path(RevisionId { id, number }): Path<RevisionId>,
     Query(query): Query<DiffQuery>,
     Extension(repository): Extension<Repository>,
     Extension(services): Extension<Services>,
 ) -> Response {
-    let site = match require_site_scope(
-        &principal,
-        &repository,
-        request_site_id(&headers),
-        SCOPE_CONTENT_READ,
-        "viewer",
-    )
-    .await
-    {
-        Ok(site) => site,
-        Err((status, err)) => return (status, err).into_response(),
-    };
+    if let Err((status, err)) = require_site_scope(&ctx, &repository, &Scope::EntriesRead, "viewer").await {
+        return (status, err).into_response();
+    }
 
     // Verify entry exists and belongs to site
-    match services.entry.get_entry(&id, &site.site_id, false).await {
+    match services.entry.get_entry(&id, &ctx.site_id, false).await {
         Ok(Some(_)) => {}
         Ok(None) => return (StatusCode::NOT_FOUND, Json(json!({"error": "Entry not found"}))).into_response(),
         Err(e) => return e.into_response(),
     }
 
-    match services.entry.get_revision(&id, &site.site_id, number).await {
+    match services.entry.get_revision(&id, &ctx.site_id, number).await {
         Ok(Some(revision)) => {
             let mut response = EntryRevisionResponse::from(revision.clone());
 
             if query.diff.unwrap_or(false) && number > 1 {
-                if let Ok(Some(prev)) = services.entry.get_revision(&id, &site.site_id, number - 1).await {
+                if let Ok(Some(prev)) = services.entry.get_revision(&id, &ctx.site_id, number - 1).await {
                     if let Some(diff) = compute_diff_for_revision(&revision, Some(&prev)) {
                         response.diff_from_previous = Some(diff);
                     }
@@ -549,31 +461,21 @@ pub async fn get_entry_revision(
     security(("bearer" = []), ("access_token" = [])),
     tag = "entries"
 )]
-#[instrument(skip(repository, services, principal))]
+#[instrument(skip(repository, services, ctx))]
 pub async fn restore_entry_revision(
-    principal: Principal,
-    headers: HeaderMap,
-    Path((id, number)): Path<(String, i64)>,
+    ctx: RequestContext,
+    Path(RevisionId { id, number }): Path<RevisionId>,
     Extension(repository): Extension<Repository>,
     Extension(services): Extension<Services>,
 ) -> Response {
-    let site = match require_site_scope(
-        &principal,
-        &repository,
-        request_site_id(&headers),
-        SCOPE_CONTENT_WRITE,
-        "editor",
-    )
-    .await
-    {
-        Ok(site) => site,
-        Err((status, err)) => return (status, err).into_response(),
-    };
+    if let Err((status, err)) = require_site_scope(&ctx, &repository, &Scope::EntriesWrite, "editor").await {
+        return (status, err).into_response();
+    }
 
-    let created_by = created_by_from_principal(&principal);
+    let created_by = ctx.auth.actor.user_id();
     match services
         .entry
-        .restore_revision(&id, &site.site_id, number, created_by)
+        .restore_revision(&id, &ctx.site_id, number, created_by)
         .await
     {
         Ok(item) => (StatusCode::OK, Json(item)).into_response(),
