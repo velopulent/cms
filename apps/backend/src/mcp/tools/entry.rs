@@ -3,287 +3,253 @@ use std::sync::Arc;
 use rmcp::ErrorData as McpError;
 use rmcp::handler::server::wrapper::Parameters;
 use rmcp::model::CallToolResult;
+use rmcp::model::Content;
 use schemars::JsonSchema;
 use serde::Deserialize;
 
-use crate::mcp::auth::{map_err, ok_result, text_result};
 use crate::mcp::schema::ArbitraryJson;
-use crate::middleware::auth::{Principal, SCOPE_CONTENT_READ, SCOPE_CONTENT_WRITE};
+use crate::middleware::auth::{Actor, Scope};
 use crate::repository::traits::ListEntriesParams as RepoListEntriesParams;
 use crate::services::{Services, scope::ScopeChecker};
 use crate::storage::StorageRegistry;
 
-#[derive(Debug, Deserialize, JsonSchema)]
-pub struct ListEntriesParams {
-    #[serde(default)]
-    pub site_id: Option<String>,
-    #[serde(default)]
-    pub collection_slug: Option<String>,
-    #[serde(default)]
-    pub status: Option<String>,
-    #[serde(default)]
-    pub search: Option<String>,
-    #[serde(default = "default_page")]
-    pub page: i64,
-    #[serde(default = "default_per_page")]
-    pub per_page: i64,
+fn ok_result(data: &impl serde::Serialize) -> Result<CallToolResult, McpError> {
+    let json = serde_json::to_string_pretty(data).map_err(|e| {
+        McpError::internal_error(format!("Failed to serialize response: {}", e), None)
+    })?;
+    Ok(CallToolResult::success(vec![Content::text(json)]))
 }
 
-fn default_page() -> i64 {
-    1
+fn map_err(e: impl Into<crate::services::error::ServiceError>) -> McpError {
+    crate::mcp::auth::service_error_to_mcp(e.into())
 }
-fn default_per_page() -> i64 {
-    50
+
+#[derive(Debug, Deserialize, JsonSchema)]
+pub struct ListEntriesParams {
+    pub site_id: String,
+    pub collection_slug: Option<String>,
+    pub published_only: Option<bool>,
+    pub locale: Option<String>,
+    pub page: Option<i64>,
+    pub per_page: Option<i64>,
+    pub search: Option<String>,
 }
 
 pub async fn list_entries(
     scope: &Arc<ScopeChecker>,
     services: &Arc<Services>,
-    principal: &Principal,
+    actor: &Actor,
     params: Parameters<ListEntriesParams>,
 ) -> Result<CallToolResult, McpError> {
-    let site = scope
-        .require_site_scope(principal, params.0.site_id.as_deref(), SCOPE_CONTENT_READ, "viewer")
+    scope
+        .require_site_scope(actor, &params.0.site_id, &Scope::EntriesRead, "viewer")
         .await
         .map_err(map_err)?;
-
-    let published_only = matches!(principal, Principal::SiteToken { .. });
-    let page = params.0.page.max(1);
-    let per_page = params.0.per_page.clamp(1, 200);
-
+    let published_only = matches!(actor, Actor::ApiKey(_)) || params.0.published_only.unwrap_or(false);
+    let page = params.0.page.unwrap_or(1).max(1);
+    let per_page = params.0.per_page.unwrap_or(25).clamp(1, 100);
     let list_params = RepoListEntriesParams {
-        site_id: &site.site_id,
+        site_id: &params.0.site_id,
         collection_slug: params.0.collection_slug.as_deref(),
         collection_id: None,
-        status: if published_only {
-            None
-        } else {
-            params.0.status.as_deref()
-        },
+        status: None,
         search: params.0.search.as_deref(),
         published_only,
         page,
         per_page,
     };
-
-    let result = services.entry.list_entries(list_params).await.map_err(map_err)?;
-    let items = services.entry.resolve_entries_list_files(&result.items).await;
-    ok_result(&serde_json::json!({
-        "items": items,
-        "total": result.total,
-        "page": result.page,
-        "per_page": result.per_page,
-    }))
+    match services
+        .entry
+        .list_entries(list_params)
+        .await
+    {
+        Ok(result) => {
+            let response = serde_json::json!({
+                "items": result.items,
+                "total": result.total,
+                "page": result.page,
+                "per_page": result.per_page,
+            });
+            ok_result(&response)
+        }
+        Err(e) => Err(map_err(e)),
+    }
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
 pub struct GetEntryParams {
-    #[serde(default)]
-    pub site_id: Option<String>,
-    pub entry_id: String,
+    pub site_id: String,
+    pub id: String,
 }
 
 pub async fn get_entry(
     scope: &Arc<ScopeChecker>,
     services: &Arc<Services>,
-    storage_registry: &Arc<StorageRegistry>,
-    principal: &Principal,
+    _storage_registry: &Arc<StorageRegistry>,
+    actor: &Actor,
     params: Parameters<GetEntryParams>,
 ) -> Result<CallToolResult, McpError> {
-    let site = scope
-        .require_site_scope(principal, params.0.site_id.as_deref(), SCOPE_CONTENT_READ, "viewer")
+    scope
+        .require_site_scope(actor, &params.0.site_id, &Scope::EntriesRead, "viewer")
         .await
         .map_err(map_err)?;
-
-    let published_only = matches!(principal, Principal::SiteToken { .. });
-
+    let published_only = matches!(actor, Actor::ApiKey(_));
     match services
         .entry
-        .get_entry(&params.0.entry_id, &site.site_id, published_only)
+        .get_entry(&params.0.id, &params.0.site_id, published_only)
         .await
-        .map_err(map_err)?
     {
-        Some(entry) => {
-            let storage_provider = services
-                .file
-                .get_storage_provider(&site.site_id)
-                .await
-                .map_err(map_err)?;
-            let storage = storage_registry
-                .get(&storage_provider)
-                .ok_or_else(|| McpError::internal_error("Storage not configured", None))?;
-            let resolved = services
-                .entry
-                .resolve_entry_files(&entry, storage)
-                .await
-                .unwrap_or_else(|_| {
-                    serde_json::from_str(&entry.data)
-                        .unwrap_or_else(|e| {
-                            tracing::warn!("Failed to parse entry.data as JSON: {}", e);
-                            serde_json::Value::Object(Default::default())
-                        })
-                });
-            ok_result(&resolved)
-        }
-        None => Ok(text_result("Entry not found")),
+        Ok(Some(entry)) => ok_result(&entry),
+        Ok(None) => ok_result(&serde_json::json!({"error": "Entry not found"})),
+        Err(e) => Err(map_err(e)),
     }
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
 pub struct CreateEntryParams {
-    #[serde(default)]
-    pub site_id: Option<String>,
-    pub collection_id: String,
+    pub site_id: String,
+    pub collection_slug: String,
     #[schemars(with = "ArbitraryJson")]
-    pub data: serde_json::Value,
-    #[serde(default)]
-    pub slug: Option<String>,
+    pub values: serde_json::Value,
+    pub published: Option<bool>,
+    pub locale: Option<String>,
 }
 
 pub async fn create_entry(
     scope: &Arc<ScopeChecker>,
     services: &Arc<Services>,
-    principal: &Principal,
+    actor: &Actor,
     params: Parameters<CreateEntryParams>,
 ) -> Result<CallToolResult, McpError> {
-    let site = scope
-        .require_site_scope(principal, params.0.site_id.as_deref(), SCOPE_CONTENT_WRITE, "editor")
+    scope
+        .require_site_scope(actor, &params.0.site_id, &Scope::EntriesWrite, "editor")
         .await
         .map_err(map_err)?;
-
-    let created_by = principal.user_id();
-    let entry = services
+    let user_id = actor.user_id().unwrap_or("system");
+    let slug = uuid::Uuid::now_v7().to_string();
+    match services
         .entry
         .create_entry(
-            &site.site_id,
-            &params.0.collection_id,
-            &params.0.data,
-            params.0.slug.as_deref().unwrap_or(""),
-            created_by,
+            &params.0.site_id,
+            &params.0.collection_slug,
+            &params.0.values,
+            &slug,
+            Some(user_id),
         )
         .await
-        .map_err(map_err)?;
-
-    ok_result(&entry)
+    {
+        Ok(entry) => ok_result(&entry),
+        Err(e) => Err(map_err(e)),
+    }
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
 pub struct UpdateEntryParams {
-    #[serde(default)]
-    pub site_id: Option<String>,
-    pub entry_id: String,
-    #[serde(default)]
+    pub site_id: String,
+    pub id: String,
     #[schemars(with = "ArbitraryJson")]
-    pub data: Option<serde_json::Value>,
-    #[serde(default)]
-    pub slug: Option<String>,
-    #[serde(default)]
-    pub status: Option<String>,
+    pub values: Option<serde_json::Value>,
+    pub published: Option<bool>,
+    pub locale: Option<String>,
 }
 
 pub async fn update_entry(
     scope: &Arc<ScopeChecker>,
     services: &Arc<Services>,
-    principal: &Principal,
+    actor: &Actor,
     params: Parameters<UpdateEntryParams>,
 ) -> Result<CallToolResult, McpError> {
-    let site = scope
-        .require_site_scope(principal, params.0.site_id.as_deref(), SCOPE_CONTENT_WRITE, "editor")
+    scope
+        .require_site_scope(actor, &params.0.site_id, &Scope::EntriesWrite, "editor")
         .await
         .map_err(map_err)?;
-
-    let created_by = principal.user_id();
-    let entry = services
+    let user_id = actor.user_id().unwrap_or("system");
+    match services
         .entry
         .update_entry(
-            &params.0.entry_id,
-            &site.site_id,
-            params.0.data.as_ref(),
-            params.0.slug.as_deref(),
-            params.0.status.as_deref(),
-            created_by,
+            &params.0.id,
+            &params.0.site_id,
+            params.0.values.as_ref(),
             None,
+            params.0.published.map(|b| if b { "published" } else { "draft" }),
+            Some(user_id),
+            params.0.locale.as_deref(),
         )
         .await
-        .map_err(map_err)?;
-
-    ok_result(&entry)
+    {
+        Ok(entry) => ok_result(&entry),
+        Err(e) => Err(map_err(e)),
+    }
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
 pub struct DeleteEntryParams {
-    #[serde(default)]
-    pub site_id: Option<String>,
-    pub entry_id: String,
+    pub site_id: String,
+    pub id: String,
 }
 
 pub async fn delete_entry(
     scope: &Arc<ScopeChecker>,
     services: &Arc<Services>,
-    principal: &Principal,
+    actor: &Actor,
     params: Parameters<DeleteEntryParams>,
 ) -> Result<CallToolResult, McpError> {
-    let site = scope
-        .require_site_scope(principal, params.0.site_id.as_deref(), SCOPE_CONTENT_WRITE, "editor")
+    scope
+        .require_site_scope(actor, &params.0.site_id, &Scope::EntriesWrite, "editor")
         .await
         .map_err(map_err)?;
-
-    services
-        .entry
-        .delete_entry(&params.0.entry_id, &site.site_id)
-        .await
-        .map_err(map_err)?;
-    Ok(text_result("Entry deleted"))
+    match services.entry.delete_entry(&params.0.id, &params.0.site_id).await {
+        Ok(n) => {
+            if n > 0 {
+                ok_result(&serde_json::json!({"deleted": true}))
+            } else {
+                ok_result(&serde_json::json!({"error": "Entry not found"}))
+            }
+        }
+        Err(e) => Err(map_err(e)),
+    }
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
 pub struct PublishEntryParams {
-    #[serde(default)]
-    pub site_id: Option<String>,
-    pub entry_id: String,
+    pub site_id: String,
+    pub id: String,
 }
 
 pub async fn publish_entry(
     scope: &Arc<ScopeChecker>,
     services: &Arc<Services>,
-    principal: &Principal,
+    actor: &Actor,
     params: Parameters<PublishEntryParams>,
 ) -> Result<CallToolResult, McpError> {
-    let site = scope
-        .require_site_scope(principal, params.0.site_id.as_deref(), SCOPE_CONTENT_WRITE, "editor")
+    scope
+        .require_site_scope(actor, &params.0.site_id, &Scope::EntriesWrite, "editor")
         .await
         .map_err(map_err)?;
-
-    let entry = services
-        .entry
-        .publish_entry(&params.0.entry_id, &site.site_id)
-        .await
-        .map_err(map_err)?;
-    ok_result(&entry)
+    match services.entry.publish_entry(&params.0.id, &params.0.site_id).await {
+        Ok(entry) => ok_result(&entry),
+        Err(e) => Err(map_err(e)),
+    }
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
 pub struct UnpublishEntryParams {
-    #[serde(default)]
-    pub site_id: Option<String>,
-    pub entry_id: String,
+    pub site_id: String,
+    pub id: String,
 }
 
 pub async fn unpublish_entry(
     scope: &Arc<ScopeChecker>,
     services: &Arc<Services>,
-    principal: &Principal,
+    actor: &Actor,
     params: Parameters<UnpublishEntryParams>,
 ) -> Result<CallToolResult, McpError> {
-    let site = scope
-        .require_site_scope(principal, params.0.site_id.as_deref(), SCOPE_CONTENT_WRITE, "editor")
+    scope
+        .require_site_scope(actor, &params.0.site_id, &Scope::EntriesWrite, "editor")
         .await
         .map_err(map_err)?;
-
-    let entry = services
-        .entry
-        .unpublish_entry(&params.0.entry_id, &site.site_id)
-        .await
-        .map_err(map_err)?;
-    ok_result(&entry)
+    match services.entry.unpublish_entry(&params.0.id, &params.0.site_id).await {
+        Ok(entry) => ok_result(&entry),
+        Err(e) => Err(map_err(e)),
+    }
 }

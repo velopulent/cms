@@ -12,7 +12,7 @@ use serde_json::json;
 use std::sync::Arc;
 
 use crate::config::Config;
-use crate::middleware::auth::{Principal, verify_access_token};
+use crate::middleware::auth::{Actor, ScopeSet, verify_access_token};
 use crate::repository::Repository;
 
 pub fn mcp_error(code: ErrorCode, message: impl Into<String>) -> ErrorData {
@@ -37,17 +37,26 @@ pub fn map_err(e: impl Into<crate::services::error::ServiceError>) -> ErrorData 
     service_error_to_mcp(e.into())
 }
 
-pub fn resolve_principal(ctx: &RequestContext<RoleServer>) -> Result<Principal, ErrorData> {
+/// Resolve authenticated Actor + ScopeSet from the MCP request context.
+pub fn resolve_actor(ctx: &RequestContext<RoleServer>) -> Result<(Actor, ScopeSet), ErrorData> {
     let parts = ctx
         .extensions
         .get::<http::request::Parts>()
         .ok_or_else(|| mcp_error(ErrorCode::INTERNAL_ERROR, "MCP request context missing HTTP parts"))?;
 
-    parts
+    let actor = parts
         .extensions
-        .get::<Principal>()
+        .get::<Actor>()
         .cloned()
-        .ok_or_else(|| mcp_error(ErrorCode::INVALID_REQUEST, "Missing MCP authentication"))
+        .ok_or_else(|| mcp_error(ErrorCode::INVALID_REQUEST, "Missing MCP authentication"))?;
+
+    let scopes = parts
+        .extensions
+        .get::<ScopeSet>()
+        .cloned()
+        .unwrap_or_else(ScopeSet::all);
+
+    Ok((actor, scopes))
 }
 
 pub async fn authenticate_mcp_request(mut request: Request<Body>, next: Next) -> Response {
@@ -62,14 +71,19 @@ pub async fn authenticate_mcp_request(mut request: Request<Body>, next: Next) ->
     };
 
     let token = match bearer_token(&request) {
-        Some(token) if token.starts_with("cms_site_") || token.starts_with("cms_inst_") => token,
+        Some(token) if token.starts_with("cms_site_") => token,
         Some(_) => return auth_response(StatusCode::UNAUTHORIZED, "MCP requires a CMS access token"),
         None => return auth_response(StatusCode::UNAUTHORIZED, "Missing Authorization bearer token"),
     };
 
     match verify_access_token(&token, &repository, &config.hmac_secret).await {
-        Ok(principal) => {
-            request.extensions_mut().insert(principal);
+        Ok(actor) => {
+            let scopes = match &actor {
+                Actor::ApiKey(k) => ScopeSet::from_permission(&k.permission),
+                _ => ScopeSet::all(),
+            };
+            request.extensions_mut().insert(actor);
+            request.extensions_mut().insert(scopes);
             next.run(request).await
         }
         Err((status, Json(error))) => auth_response(status, &error.message),
@@ -92,8 +106,8 @@ pub fn service_error_to_mcp(error: crate::services::error::ServiceError) -> Erro
         crate::services::error::ServiceError::Unauthorized(_) => ErrorCode::INVALID_REQUEST,
         crate::services::error::ServiceError::Forbidden(_)
         | crate::services::error::ServiceError::InsufficientScope(_)
-        | crate::services::error::ServiceError::SiteTokenDenied
-        | crate::services::error::ServiceError::InstanceTokenDenied => ErrorCode::INVALID_REQUEST,
+        | crate::services::error::ServiceError::InsufficientPermission(_)
+        | crate::services::error::ServiceError::SiteTokenDenied => ErrorCode::INVALID_REQUEST,
         crate::services::error::ServiceError::NotFound(_) => ErrorCode::RESOURCE_NOT_FOUND,
         crate::services::error::ServiceError::BadRequest(_) => ErrorCode::INVALID_PARAMS,
         crate::services::error::ServiceError::Conflict(_) => ErrorCode::INVALID_PARAMS,
@@ -107,7 +121,8 @@ pub fn service_error_to_mcp(error: crate::services::error::ServiceError) -> Erro
 #[cfg(test)]
 mod tests {
     use crate::database::init_db;
-    use crate::middleware::auth::{Principal, create_token, is_token_not_expired, verify_access_token};
+    use crate::middleware::auth::{Actor, create_token, is_token_not_expired, verify_access_token};
+    use crate::models::access_token::AccessTokenPermission;
     use crate::repository::Repository;
     use crate::services::access_token::AccessTokenService;
 
@@ -146,39 +161,37 @@ mod tests {
             .expect("site should be created");
         let service = AccessTokenService::new(repository.access_token.clone(), hmac_secret.to_string());
         let token = service
-            .create_site_token("site-123", "MCP".to_string(), vec!["content:read".to_string()], None)
+            .create_site_token("site-123", "MCP".to_string(), AccessTokenPermission::Read, None)
             .await
             .expect("token should be created");
 
-        let principal = verify_access_token(&token.token, &repository, hmac_secret)
+        let actor = verify_access_token(&token.token, &repository, hmac_secret)
             .await
             .expect("token should verify");
 
-        match principal {
-            Principal::SiteToken { site_id, scopes, .. } => {
-                assert_eq!(site_id, "site-123");
-                assert!(scopes.contains("content:read"));
+        match actor {
+            Actor::ApiKey(k) => {
+                assert_eq!(k.site_id, "site-123");
+                assert_eq!(k.permission, AccessTokenPermission::Read);
             }
-            other => panic!("expected site token, got {other:?}"),
+            _ => panic!("expected API key actor"),
         }
     }
 
     #[tokio::test]
-    async fn test_verify_instance_access_token() {
+    async fn test_verify_instance_access_token_is_rejected() {
         let hmac_secret = "test-hmac-secret";
         let pool = init_db("sqlite::memory:").await.expect("db should initialize");
         let repository = Repository::new(&pool);
-        let service = AccessTokenService::new(repository.access_token.clone(), hmac_secret.to_string());
-        let token = service
-            .create_instance_token("MCP".to_string(), vec!["sites:read".to_string()])
+        assert!(
+            verify_access_token(
+                &format!("{}{}", "cms_", "inst_abcdefghijklmnopqrstuvwxyz"),
+                &repository,
+                hmac_secret
+            )
             .await
-            .expect("token should be created");
-
-        let principal = verify_access_token(&token.token, &repository, hmac_secret)
-            .await
-            .expect("token should verify");
-
-        assert!(matches!(principal, Principal::InstanceToken { .. }));
+            .is_err()
+        );
     }
 
     #[tokio::test]

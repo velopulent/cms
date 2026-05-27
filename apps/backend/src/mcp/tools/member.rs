@@ -7,12 +7,13 @@ use rmcp::model::Content;
 use schemars::JsonSchema;
 use serde::Deserialize;
 
-use crate::middleware::auth::{Principal, SCOPE_MEMBERS_READ, SCOPE_MEMBERS_WRITE};
+use crate::middleware::auth::{Actor, Scope};
 use crate::services::{Services, error::ServiceError, scope::ScopeChecker};
 
 fn ok_result(data: &impl serde::Serialize) -> Result<CallToolResult, McpError> {
-    let json = serde_json::to_string_pretty(data)
-        .map_err(|e| McpError::internal_error(format!("Serialization failed: {}", e), None))?;
+    let json = serde_json::to_string_pretty(data).map_err(|e| {
+        McpError::internal_error(format!("Failed to serialize response: {}", e), None)
+    })?;
     Ok(CallToolResult::success(vec![Content::text(json)]))
 }
 
@@ -28,40 +29,45 @@ pub struct ListMembersParams {
 pub async fn list_members(
     scope: &Arc<ScopeChecker>,
     services: &Arc<Services>,
-    principal: &Principal,
+    actor: &Actor,
     params: Parameters<ListMembersParams>,
 ) -> Result<CallToolResult, McpError> {
     scope
-        .require_admin_scope(principal, Some(&params.0.site_id), SCOPE_MEMBERS_READ)
+        .require_site_scope(actor, &params.0.site_id, &Scope::SiteRead, "viewer")
         .await
         .map_err(map_err)?;
-    let members = services.site.list_members(&params.0.site_id).await.map_err(map_err)?;
-    ok_result(&members)
+    match services.site.list_members(&params.0.site_id).await {
+        Ok(members) => ok_result(&members),
+        Err(e) => Err(map_err(e)),
+    }
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
 pub struct InviteMemberParams {
     pub site_id: String,
-    pub username: String,
+    pub email: String,
     pub role: String,
 }
 
 pub async fn invite_member(
     scope: &Arc<ScopeChecker>,
     services: &Arc<Services>,
-    principal: &Principal,
+    actor: &Actor,
     params: Parameters<InviteMemberParams>,
 ) -> Result<CallToolResult, McpError> {
     scope
-        .require_admin_scope(principal, Some(&params.0.site_id), SCOPE_MEMBERS_WRITE)
+        .require_site_scope(actor, &params.0.site_id, &Scope::SiteRead, "admin")
         .await
         .map_err(map_err)?;
-    let member = services
+    let user_id = actor.user_id().unwrap_or("system");
+    match services
         .site
-        .invite_member(&params.0.site_id, &params.0.username, &params.0.role)
+        .invite_member(&params.0.site_id, &params.0.email, &params.0.role, user_id)
         .await
-        .map_err(map_err)?;
-    ok_result(&member)
+    {
+        Ok(member) => ok_result(&member),
+        Err(e) => Err(map_err(e)),
+    }
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
@@ -73,18 +79,20 @@ pub struct RemoveMemberParams {
 pub async fn remove_member(
     scope: &Arc<ScopeChecker>,
     services: &Arc<Services>,
-    principal: &Principal,
+    actor: &Actor,
     params: Parameters<RemoveMemberParams>,
 ) -> Result<CallToolResult, McpError> {
     scope
-        .require_admin_scope(principal, Some(&params.0.site_id), SCOPE_MEMBERS_WRITE)
+        .require_site_scope(actor, &params.0.site_id, &Scope::SiteRead, "admin")
         .await
         .map_err(map_err)?;
-    let by_user_id = principal.user_id().unwrap_or("system");
-    services
+    match services
         .site
-        .remove_member(&params.0.site_id, &params.0.user_id, by_user_id)
+        .remove_member(&params.0.site_id, &params.0.user_id)
         .await
-        .map_err(map_err)?;
-    Ok(CallToolResult::success(vec![Content::text("Member removed")]))
+    {
+        Ok(true) => ok_result(&serde_json::json!({"deleted": true})),
+        Ok(false) => ok_result(&serde_json::json!({"error": "Member not found"})),
+        Err(e) => Err(map_err(e)),
+    }
 }

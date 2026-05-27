@@ -3,156 +3,157 @@ use std::sync::Arc;
 use rmcp::ErrorData as McpError;
 use rmcp::handler::server::wrapper::Parameters;
 use rmcp::model::CallToolResult;
+use rmcp::model::Content;
 use schemars::JsonSchema;
 use serde::Deserialize;
 
-use crate::mcp::auth::{map_err, ok_result, text_result};
-use crate::middleware::auth::{Principal, SCOPE_SCHEMA_READ, SCOPE_SCHEMA_WRITE};
-use crate::services::{Services, scope::ScopeChecker};
+use crate::middleware::auth::{Actor, Scope};
+use crate::services::{Services, error::ServiceError, scope::ScopeChecker};
+
+fn ok_result(data: &impl serde::Serialize) -> Result<CallToolResult, McpError> {
+    let json = serde_json::to_string_pretty(data).map_err(|e| {
+        McpError::internal_error(format!("Failed to serialize response: {}", e), None)
+    })?;
+    Ok(CallToolResult::success(vec![Content::text(json)]))
+}
+
+fn map_err(e: impl Into<ServiceError>) -> McpError {
+    crate::mcp::auth::service_error_to_mcp(e.into())
+}
 
 #[derive(Debug, Deserialize, JsonSchema)]
 pub struct ListCollectionsParams {
-    #[serde(default)]
-    pub site_id: Option<String>,
+    pub site_id: String,
 }
 
 pub async fn list_collections(
     scope: &Arc<ScopeChecker>,
     services: &Arc<Services>,
-    principal: &Principal,
+    actor: &Actor,
     params: Parameters<ListCollectionsParams>,
 ) -> Result<CallToolResult, McpError> {
-    let site = scope
-        .require_site_scope(principal, params.0.site_id.as_deref(), SCOPE_SCHEMA_READ, "viewer")
+    scope
+        .require_site_scope(actor, &params.0.site_id, &Scope::CollectionsRead, "viewer")
         .await
         .map_err(map_err)?;
-    let collections = services
-        .collection
-        .list_collections(&site.site_id)
-        .await
-        .map_err(map_err)?;
-    ok_result(&collections)
+    match services.collection.list_collections(&params.0.site_id).await {
+        Ok(collections) => ok_result(&collections),
+        Err(e) => Err(map_err(e)),
+    }
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
 pub struct GetCollectionParams {
-    #[serde(default)]
-    pub site_id: Option<String>,
-    pub slug: String,
+    pub site_id: String,
+    pub collection_slug: String,
 }
 
 pub async fn get_collection(
     scope: &Arc<ScopeChecker>,
     services: &Arc<Services>,
-    principal: &Principal,
+    actor: &Actor,
     params: Parameters<GetCollectionParams>,
 ) -> Result<CallToolResult, McpError> {
-    let site = scope
-        .require_site_scope(principal, params.0.site_id.as_deref(), SCOPE_SCHEMA_READ, "viewer")
+    scope
+        .require_site_scope(actor, &params.0.site_id, &Scope::CollectionsRead, "viewer")
         .await
         .map_err(map_err)?;
     match services
         .collection
-        .get_collection(&site.site_id, &params.0.slug)
+        .get_collection(&params.0.collection_slug, &params.0.site_id)
         .await
-        .map_err(map_err)?
     {
-        Some(col) => ok_result(&col),
-        None => Ok(text_result("Collection not found")),
+        Ok(Some(collection)) => ok_result(&collection),
+        Ok(None) => ok_result(&serde_json::json!({"error": "Collection not found"})),
+        Err(e) => Err(map_err(e)),
     }
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
 pub struct CreateCollectionParams {
-    #[serde(default)]
-    pub site_id: Option<String>,
+    pub site_id: String,
     pub name: String,
-    pub slug: String,
-    #[serde(default)]
-    pub definition: String,
-    #[serde(default)]
-    pub is_singleton: bool,
+    pub slug: Option<String>,
+    pub description: Option<String>,
 }
 
 pub async fn create_collection(
     scope: &Arc<ScopeChecker>,
     services: &Arc<Services>,
-    principal: &Principal,
+    actor: &Actor,
     params: Parameters<CreateCollectionParams>,
 ) -> Result<CallToolResult, McpError> {
-    let site = scope
-        .require_site_scope(principal, params.0.site_id.as_deref(), SCOPE_SCHEMA_WRITE, "editor")
+    scope
+        .require_site_scope(actor, &params.0.site_id, &Scope::CollectionsWrite, "admin")
         .await
         .map_err(map_err)?;
-    let col = services
+    let slug = params.0.slug.unwrap_or_else(|| params.0.name.to_lowercase().replace(' ', "-"));
+    match services
         .collection
-        .create_collection(
-            &site.site_id,
-            &params.0.name,
-            &params.0.slug,
-            &params.0.definition,
-            params.0.is_singleton,
-        )
+        .create_collection(&params.0.site_id, &params.0.name, &slug, params.0.description.as_deref().unwrap_or(""), false)
         .await
-        .map_err(map_err)?;
-    ok_result(&col)
+    {
+        Ok(collection) => ok_result(&collection),
+        Err(e) => Err(map_err(e)),
+    }
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
 pub struct UpdateCollectionParams {
-    #[serde(default)]
-    pub site_id: Option<String>,
-    pub slug: String,
+    pub site_id: String,
+    pub collection_slug: String,
     pub name: Option<String>,
-    pub new_slug: Option<String>,
-    pub definition: Option<String>,
+    pub description: Option<String>,
 }
 
 pub async fn update_collection(
     scope: &Arc<ScopeChecker>,
     services: &Arc<Services>,
-    principal: &Principal,
+    actor: &Actor,
     params: Parameters<UpdateCollectionParams>,
 ) -> Result<CallToolResult, McpError> {
-    let site = scope
-        .require_site_scope(principal, params.0.site_id.as_deref(), SCOPE_SCHEMA_WRITE, "editor")
+    scope
+        .require_site_scope(actor, &params.0.site_id, &Scope::CollectionsWrite, "admin")
         .await
         .map_err(map_err)?;
-    let col = services
+    match services
         .collection
-        .update_collection(
-            &site.site_id,
-            &params.0.slug,
-            params.0.name.as_deref(),
-            params.0.new_slug.as_deref(),
-            params.0.definition.as_deref(),
-        )
+        .update_collection(&params.0.site_id, &params.0.collection_slug, params.0.name.as_deref(), None, params.0.description.as_deref())
         .await
-        .map_err(map_err)?;
-    ok_result(&col)
+    {
+        Ok(collection) => ok_result(&collection),
+        Err(e) => Err(map_err(e)),
+    }
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
 pub struct DeleteCollectionParams {
-    #[serde(default)]
-    pub site_id: Option<String>,
-    pub slug: String,
+    pub site_id: String,
+    pub collection_slug: String,
 }
 
 pub async fn delete_collection(
     scope: &Arc<ScopeChecker>,
     services: &Arc<Services>,
-    principal: &Principal,
+    actor: &Actor,
     params: Parameters<DeleteCollectionParams>,
 ) -> Result<CallToolResult, McpError> {
-    let site = scope
-        .require_site_scope(principal, params.0.site_id.as_deref(), SCOPE_SCHEMA_WRITE, "editor")
+    scope
+        .require_site_scope(actor, &params.0.site_id, &Scope::CollectionsWrite, "admin")
         .await
         .map_err(map_err)?;
-    services
+    match services
         .collection
-        .delete_collection(&site.site_id, &params.0.slug)
+        .delete_collection(&params.0.collection_slug, &params.0.site_id)
         .await
-        .map_err(map_err)?;
-    Ok(text_result("Collection deleted"))
+    {
+        Ok(n) => {
+            if n > 0 {
+                ok_result(&serde_json::json!({"deleted": true}))
+            } else {
+                ok_result(&serde_json::json!({"error": "Collection not found"}))
+            }
+        }
+        Err(e) => Err(map_err(e)),
+    }
 }

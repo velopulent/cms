@@ -8,7 +8,7 @@ use serde::Deserialize;
 
 use crate::config::Config;
 use crate::mcp::auth::{map_err, ok_result, text_result};
-use crate::middleware::auth::{Principal, SCOPE_ASSETS_READ, SCOPE_ASSETS_WRITE};
+use crate::middleware::auth::{Actor, Scope};
 use crate::services::{Services, scope::ScopeChecker};
 use crate::signed_upload::SignedUploadToken;
 
@@ -31,11 +31,12 @@ pub struct ListFilesParams {
 pub async fn list_files(
     scope: &Arc<ScopeChecker>,
     services: &Arc<Services>,
-    principal: &Principal,
+    actor: &Actor,
     params: Parameters<ListFilesParams>,
 ) -> Result<CallToolResult, McpError> {
-    let site = scope
-        .require_site_scope(principal, params.0.site_id.as_deref(), SCOPE_ASSETS_READ, "viewer")
+    let site_id = params.0.site_id.as_deref().unwrap_or_else(|| actor.bound_site_id().unwrap_or(""));
+    scope
+        .require_site_scope(actor, site_id, &Scope::FilesRead, "viewer")
         .await
         .map_err(map_err)?;
 
@@ -44,7 +45,7 @@ pub async fn list_files(
 
     use crate::repository::traits::ListFilesParams as RepoListFilesParams;
     let list_params = RepoListFilesParams {
-        site_id: &site.site_id,
+        site_id,
         trashed: params.0.trashed.unwrap_or(false),
         search: params.0.search.as_deref(),
         file_type: params.0.file_type.as_deref(),
@@ -71,20 +72,16 @@ pub struct GetFileParams {
 pub async fn get_file(
     scope: &Arc<ScopeChecker>,
     services: &Arc<Services>,
-    principal: &Principal,
+    actor: &Actor,
     params: Parameters<GetFileParams>,
 ) -> Result<CallToolResult, McpError> {
-    let site = scope
-        .require_site_scope(principal, params.0.site_id.as_deref(), SCOPE_ASSETS_READ, "viewer")
+    let site_id = params.0.site_id.as_deref().unwrap_or_else(|| actor.bound_site_id().unwrap_or(""));
+    scope
+        .require_site_scope(actor, site_id, &Scope::FilesRead, "viewer")
         .await
         .map_err(map_err)?;
 
-    match services
-        .file
-        .get_file(&params.0.file_id, &site.site_id)
-        .await
-        .map_err(map_err)?
-    {
+    match services.file.get_file(&params.0.file_id, site_id).await.map_err(map_err)? {
         Some(file) => ok_result(&file),
         None => Ok(text_result("File not found")),
     }
@@ -106,21 +103,17 @@ fn default_content_type() -> String {
 pub async fn create_upload_url(
     scope: &Arc<ScopeChecker>,
     config: &Arc<Config>,
-    principal: &Principal,
+    actor: &Actor,
     public_base_url: Option<String>,
     params: Parameters<CreateUploadUrlParams>,
 ) -> Result<CallToolResult, McpError> {
-    let site = scope
-        .require_site_scope(principal, params.0.site_id.as_deref(), SCOPE_ASSETS_WRITE, "editor")
+    let site_id = params.0.site_id.as_deref().unwrap_or_else(|| actor.bound_site_id().unwrap_or(""));
+    scope
+        .require_site_scope(actor, site_id, &Scope::FilesWrite, "editor")
         .await
         .map_err(map_err)?;
 
-    let (token, upload_path) = SignedUploadToken::generate(
-        &site.site_id,
-        &params.0.filename,
-        &params.0.content_type,
-        &config.hmac_secret,
-    );
+    let (token, upload_path) = SignedUploadToken::generate(site_id, &params.0.filename, &params.0.content_type, &config.hmac_secret);
 
     let fallback_base_url = format!("http://{}", config.bind_address);
     let base_url = public_base_url
@@ -150,18 +143,15 @@ pub struct DeleteFileParams {
 pub async fn delete_file(
     scope: &Arc<ScopeChecker>,
     services: &Arc<Services>,
-    principal: &Principal,
+    actor: &Actor,
     params: Parameters<DeleteFileParams>,
 ) -> Result<CallToolResult, McpError> {
-    let site = scope
-        .require_site_scope(principal, params.0.site_id.as_deref(), SCOPE_ASSETS_WRITE, "editor")
+    let site_id = params.0.site_id.as_deref().unwrap_or_else(|| actor.bound_site_id().unwrap_or(""));
+    scope
+        .require_site_scope(actor, site_id, &Scope::FilesWrite, "editor")
         .await
         .map_err(map_err)?;
 
-    services
-        .file
-        .soft_delete(&params.0.file_id, &site.site_id)
-        .await
-        .map_err(map_err)?;
+    services.file.soft_delete(&params.0.file_id, site_id).await.map_err(map_err)?;
     Ok(text_result("File deleted"))
 }

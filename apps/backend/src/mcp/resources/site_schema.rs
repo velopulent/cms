@@ -1,116 +1,110 @@
 use std::sync::Arc;
 
+use rmcp::model::{ListResourcesResult, ReadResourceResult, Resource, ResourceContents, Annotations, Annotated};
+use rmcp::model::RawResource;
 use rmcp::ErrorData as McpError;
-use rmcp::model::AnnotateAble;
-use rmcp::model::{ListResourcesResult, PaginatedRequestParams, RawResource, ReadResourceResult, ResourceContents};
+use chrono::Utc;
 
-const JSON_MIME_TYPE: &str = "application/json";
+use crate::middleware::auth::{Actor, Scope};
+use crate::services::{Services, scope::ScopeChecker};
 
-use crate::middleware::auth::{Principal, SCOPE_SCHEMA_READ, SCOPE_SITES_READ};
-use crate::services::{Services, error::ServiceError, scope::ScopeChecker};
+fn map_err(e: impl Into<crate::services::error::ServiceError>) -> McpError {
+    crate::mcp::auth::service_error_to_mcp(e.into())
+}
+
+fn site_to_resource(site: &serde_json::Value) -> Resource {
+    let id = site["id"].as_str().unwrap_or("unknown");
+    let name = site["name"].as_str().unwrap_or("Unknown");
+    Annotated::new(
+        RawResource {
+            uri: format!("cms://{}/schema", id),
+            name: format!("{} Schema", name),
+            title: Some(format!("Content schema for {}", name)),
+            description: Some(format!("Content schema for {}", name)),
+            mime_type: Some("application/json".to_string()),
+            size: None,
+            icons: None,
+            meta: None,
+        },
+        Some(Annotations::for_resource(0.5, Utc::now())),
+    )
+}
 
 pub async fn list_resources(
     scope: &Arc<ScopeChecker>,
     services: &Arc<Services>,
-    principal: &Principal,
-    _request: Option<PaginatedRequestParams>,
+    actor: &Actor,
+    _request: Option<rmcp::model::PaginatedRequestParams>,
 ) -> Result<ListResourcesResult, McpError> {
-    match principal {
-        Principal::SiteToken { .. } => scope.check_scope(principal, SCOPE_SCHEMA_READ),
-        Principal::InstanceToken { .. } => scope.check_scope(principal, SCOPE_SITES_READ),
-        Principal::UserSession { .. } => Ok(()),
+    match actor {
+        Actor::ApiKey(k) => {
+            scope
+                .require_site_scope(actor, &k.site_id, &Scope::SiteRead, "viewer")
+                .await
+                .map_err(map_err)?;
+            let site = services
+                .site
+                .get_site(&k.site_id)
+                .await
+                .map_err(map_err)?
+                .ok_or_else(|| McpError::invalid_request("Site not found", None))?;
+            let site_value = serde_json::to_value(&site).unwrap_or_default();
+            Ok(ListResourcesResult::with_all_items(vec![site_to_resource(&site_value)]))
+        }
+        Actor::User(_) => {
+            scope
+                .require_site_scope(actor, "", &Scope::SiteRead, "viewer")
+                .await
+                .map_err(map_err)?;
+            let sites = services.site.list_sites_for_actor(actor).await.map_err(map_err)?;
+            let resources: Vec<Resource> = sites.into_iter().map(|s| site_to_resource(&s)).collect();
+            Ok(ListResourcesResult::with_all_items(resources))
+        }
     }
-    .map_err(crate::mcp::auth::service_error_to_mcp)?;
-
-    let sites = match principal {
-        Principal::SiteToken { site_id, .. } => match services.site.get_site(site_id).await {
-            Ok(Some(site)) => vec![serde_json::to_value(site).unwrap_or_default()],
-            Ok(None) => Vec::new(),
-            Err(e) => return Err(crate::mcp::auth::service_error_to_mcp(ServiceError::Site(e))),
-        },
-        _ => match services.site.list_sites_for_principal(principal).await {
-            Ok(sites) => sites,
-            Err(e) => return Err(crate::mcp::auth::service_error_to_mcp(ServiceError::Site(e))),
-        },
-    };
-
-    let mut resources = Vec::new();
-
-    for site in sites {
-        let site_id = site.get("id").and_then(|v| v.as_str()).unwrap_or("");
-        let site_name = site.get("name").and_then(|v| v.as_str()).unwrap_or("Site");
-
-        resources.push(
-            RawResource::new(format!("cms://sites/{}", site_id), site_name)
-                .with_mime_type(JSON_MIME_TYPE)
-                .no_annotation(),
-        );
-
-        resources.push(
-            RawResource::new(
-                format!("cms://sites/{}/collections", site_id),
-                format!("Collections for {}", site_name),
-            )
-            .with_mime_type(JSON_MIME_TYPE)
-            .no_annotation(),
-        );
-    }
-
-    Ok(ListResourcesResult::with_all_items(resources))
 }
 
 pub async fn read_resource(
     scope: &Arc<ScopeChecker>,
     services: &Arc<Services>,
-    principal: &Principal,
+    actor: &Actor,
     uri: &str,
 ) -> Result<ReadResourceResult, McpError> {
-    let parts: Vec<&str> = uri.strip_prefix("cms://").unwrap_or("").split('/').collect();
+    let site_id = uri
+        .strip_prefix("cms://")
+        .and_then(|s| s.strip_suffix("/schema"))
+        .ok_or_else(|| McpError::invalid_request("Invalid resource URI", None))?;
 
-    if parts.len() < 2 {
-        return Err(McpError::invalid_params("Invalid resource URI", None));
-    }
+    scope
+        .require_site_scope(actor, site_id, &Scope::SiteRead, "viewer")
+        .await
+        .map_err(map_err)?;
 
-    let site_id = parts[1];
+    let site = services
+        .site
+        .get_site(site_id)
+        .await
+        .map_err(map_err)?
+        .ok_or_else(|| McpError::invalid_request("Site not found", None))?;
 
-    if parts.len() == 2 {
-        match services.site.get_site(site_id).await {
-            Ok(Some(site)) => {
-                if let Err(e) = scope
-                    .require_site_scope(principal, Some(site_id), SCOPE_SCHEMA_READ, "viewer")
-                    .await
-                {
-                    return Err(crate::mcp::auth::service_error_to_mcp(e));
-                }
-                return Ok(ReadResourceResult::new(vec![json_resource_contents(&site, uri)]));
-            }
-            Ok(None) => return Err(McpError::invalid_params("Site not found", None)),
-            Err(e) => return Err(crate::mcp::auth::service_error_to_mcp(ServiceError::Site(e))),
-        }
-    }
+    let collections = services.collection.list_collections(site_id).await.map_err(map_err)?;
+    let singletons = services.singleton.list_singletons(site_id).await.map_err(map_err)?;
 
-    if parts.len() >= 3 && parts[2] == "collections" {
-        if let Err(e) = scope
-            .require_site_scope(principal, Some(site_id), SCOPE_SCHEMA_READ, "viewer")
-            .await
-        {
-            return Err(crate::mcp::auth::service_error_to_mcp(e));
-        }
-        match services.collection.list_collections(site_id).await {
-            Ok(collections) => {
-                return Ok(ReadResourceResult::new(vec![json_resource_contents(&collections, uri)]));
-            }
-            Err(e) => return Err(crate::mcp::auth::service_error_to_mcp(ServiceError::Collection(e))),
-        }
-    }
-
-    Err(McpError::invalid_params("Unknown resource URI", None))
-}
-
-fn json_resource_contents(data: &impl serde::Serialize, uri: &str) -> ResourceContents {
-    let json = serde_json::to_string_pretty(data).unwrap_or_else(|e| {
-        tracing::error!("Failed to serialize resource: {}", e);
-        "{}".to_string()
+    let schema = serde_json::json!({
+        "site": {
+            "id": site.id,
+            "name": site.name,
+        },
+        "collections": collections,
+        "singletons": singletons,
     });
-    ResourceContents::text(json, uri).with_mime_type(JSON_MIME_TYPE)
+
+    let schema_json = serde_json::to_string_pretty(&schema)
+        .map_err(|e| McpError::internal_error(format!("Failed to serialize schema: {}", e), None))?;
+
+    Ok(ReadResourceResult::new(vec![ResourceContents::TextResourceContents {
+        uri: uri.to_string(),
+        mime_type: Some("application/json".to_string()),
+        text: schema_json,
+        meta: None,
+    }]))
 }
