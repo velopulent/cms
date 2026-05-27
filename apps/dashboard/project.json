@@ -23,7 +23,7 @@
     "typecheck": {
       "executor": "nx:run-commands",
       "options": {
-        "command": "npx tsc --noEmit",
+        "command": "bun run tsc --noEmit",
         "cwd": "apps/dashboard"
       }
     },
