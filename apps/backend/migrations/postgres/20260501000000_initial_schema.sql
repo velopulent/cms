@@ -62,13 +62,12 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_entries_collection_slug ON entries(collect
 
 CREATE TABLE IF NOT EXISTS access_tokens (
     id TEXT PRIMARY KEY NOT NULL,
-    kind TEXT NOT NULL CHECK(kind IN ('instance', 'site')),
-    site_id TEXT REFERENCES sites(id) ON DELETE CASCADE,
+    site_id TEXT NOT NULL REFERENCES sites(id) ON DELETE CASCADE,
     name TEXT NOT NULL,
     token_hash TEXT NOT NULL,
     token_prefix TEXT NOT NULL,
     token_hmac TEXT,
-    scopes TEXT NOT NULL,
+    permission TEXT NOT NULL CHECK(permission IN ('read', 'write')),
     created_by_user_id TEXT REFERENCES users(id),
     last_used_at TIMESTAMP WITH TIME ZONE,
     created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
@@ -78,7 +77,6 @@ CREATE TABLE IF NOT EXISTS access_tokens (
 
 CREATE UNIQUE INDEX IF NOT EXISTS idx_access_tokens_hash ON access_tokens(token_hash);
 CREATE INDEX IF NOT EXISTS idx_access_tokens_prefix ON access_tokens(token_prefix);
-CREATE INDEX IF NOT EXISTS idx_access_tokens_kind ON access_tokens(kind);
 CREATE INDEX IF NOT EXISTS idx_access_tokens_site ON access_tokens(site_id);
 
 CREATE TABLE IF NOT EXISTS files (

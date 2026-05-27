@@ -70,13 +70,12 @@ CREATE UNIQUE INDEX idx_entries_collection_slug ON entries(collection_id, slug);
 
 CREATE TABLE IF NOT EXISTS access_tokens (
     id VARCHAR(36) PRIMARY KEY NOT NULL,
-    kind VARCHAR(20) NOT NULL,
-    site_id VARCHAR(36),
+    site_id VARCHAR(36) NOT NULL,
     name VARCHAR(255) NOT NULL,
     token_hash TEXT NOT NULL,
     token_prefix VARCHAR(64) NOT NULL,
     token_hmac TEXT,
-    scopes TEXT NOT NULL,
+    permission VARCHAR(20) NOT NULL,
     created_by_user_id VARCHAR(36),
     last_used_at DATETIME,
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -84,12 +83,11 @@ CREATE TABLE IF NOT EXISTS access_tokens (
     revoked_at DATETIME,
     FOREIGN KEY (site_id) REFERENCES sites(id) ON DELETE CASCADE,
     FOREIGN KEY (created_by_user_id) REFERENCES users(id),
-    CHECK (kind IN ('instance', 'site'))
+    CHECK (permission IN ('read', 'write'))
 );
 
 CREATE UNIQUE INDEX idx_access_tokens_hash ON access_tokens(token_hash);
 CREATE INDEX idx_access_tokens_prefix ON access_tokens(token_prefix);
-CREATE INDEX idx_access_tokens_kind ON access_tokens(kind);
 CREATE INDEX idx_access_tokens_site ON access_tokens(site_id);
 
 CREATE TABLE IF NOT EXISTS files (
