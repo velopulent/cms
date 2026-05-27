@@ -2,7 +2,7 @@ use async_trait::async_trait;
 use serde_json::Value;
 
 use crate::models::{
-    access_token::{AccessToken, AccessTokenKind},
+    access_token::AccessToken,
     collection::Collection,
     entry::{Entry, EntryRevision},
     file::{File, FileReference},
@@ -221,7 +221,6 @@ pub trait FileRepository: Send + Sync {
 pub type AccessTokenLookupRow = (
     String,
     String,
-    Option<String>,
     String,
     Option<String>,
     Option<String>,
@@ -231,20 +230,19 @@ pub type AccessTokenLookupRow = (
 
 #[async_trait]
 pub trait AccessTokenRepository: Send + Sync {
-    async fn list(&self, kind: AccessTokenKind, site_id: Option<&str>) -> Result<Vec<AccessToken>, RepositoryError>;
+    async fn list(&self, site_id: &str) -> Result<Vec<AccessToken>, RepositoryError>;
     async fn create(
         &self,
         id: &str,
-        kind: AccessTokenKind,
-        site_id: Option<&str>,
+        site_id: &str,
         name: &str,
         token_hash: &str,
         token_prefix: &str,
         token_hmac: &str,
-        scopes: &str,
+        permission: &str,
         created_by_user_id: Option<&str>,
     ) -> Result<(), RepositoryError>;
-    async fn delete(&self, id: &str, kind: AccessTokenKind, site_id: Option<&str>) -> Result<u64, RepositoryError>;
+    async fn delete(&self, id: &str, site_id: &str) -> Result<u64, RepositoryError>;
     async fn find_by_prefix(&self, prefix: &str) -> Result<Vec<AccessTokenLookupRow>, RepositoryError>;
     async fn update_last_used(&self, id: &str) -> Result<(), RepositoryError>;
 }
