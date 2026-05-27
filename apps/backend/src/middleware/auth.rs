@@ -1,6 +1,4 @@
-use hmac::digest::KeyInit;
-use std::collections::BTreeSet;
-use std::str::FromStr;
+use std::collections::HashSet;
 
 use cookie::Cookie;
 
@@ -10,38 +8,203 @@ use axum::{
     http::{StatusCode, request::Parts},
 };
 use hmac::{Hmac, Mac};
+use hmac::digest::KeyInit;
 use jsonwebtoken::{Algorithm, DecodingKey, EncodingKey, Validation, decode, encode};
 use sha2::Sha256;
 use tracing::Span;
 
 use crate::config::Config;
 use crate::middleware::error::AuthError;
-use crate::models::access_token::AccessTokenKind;
-use crate::models::user::Claims;
+use crate::models::access_token::AccessTokenPermission;
 use crate::repository::Repository;
 
 type HmacSha256 = Hmac<Sha256>;
 
 const TOKEN_PREFIX_LEN: usize = 24;
 
-pub const HEADER_SITE_ID: &str = "x-cms-site-id";
-pub const SCOPE_SITES_READ: &str = "sites:read";
-pub const SCOPE_SITES_WRITE: &str = "sites:write";
-pub const SCOPE_SITES_DELETE: &str = "sites:delete";
-pub const SCOPE_MEMBERS_READ: &str = "members:read";
-pub const SCOPE_MEMBERS_WRITE: &str = "members:write";
-pub const SCOPE_TOKENS_READ: &str = "tokens:read";
-pub const SCOPE_TOKENS_WRITE: &str = "tokens:write";
-pub const SCOPE_SITE_READ: &str = "site:read";
-pub const SCOPE_SCHEMA_READ: &str = "schema:read";
-pub const SCOPE_SCHEMA_WRITE: &str = "schema:write";
-pub const SCOPE_CONTENT_READ: &str = "content:read";
-pub const SCOPE_CONTENT_WRITE: &str = "content:write";
-pub const SCOPE_ASSETS_READ: &str = "assets:read";
-pub const SCOPE_ASSETS_WRITE: &str = "assets:write";
-pub const SCOPE_WEBHOOKS_READ: &str = "webhooks:read";
-pub const SCOPE_WEBHOOKS_WRITE: &str = "webhooks:write";
-pub const SCOPE_WEBHOOKS_TRIGGER: &str = "webhooks:trigger";
+// ── Actor model ──
+
+#[derive(Debug, Clone)]
+pub struct UserActor {
+    pub user_id: String,
+}
+
+#[derive(Debug, Clone)]
+pub struct ApiKeyActor {
+    pub token_id: String,
+    pub site_id: String,
+    pub permission: AccessTokenPermission,
+}
+
+#[derive(Debug, Clone)]
+pub enum Actor {
+    User(UserActor),
+    ApiKey(ApiKeyActor),
+}
+
+impl Actor {
+    pub fn user_id(&self) -> Option<&str> {
+        match self {
+            Self::User(u) => Some(&u.user_id),
+            _ => None,
+        }
+    }
+
+    pub fn bound_site_id(&self) -> Option<&str> {
+        match self {
+            Self::ApiKey(k) => Some(&k.site_id),
+            _ => None,
+        }
+    }
+}
+
+// ── Auth context ──
+
+#[derive(Debug, Clone)]
+pub enum AuthMethod {
+    JwtSession,
+    ApiKey,
+}
+
+#[derive(Debug, Hash, Eq, PartialEq, Clone)]
+pub enum Scope {
+    SiteRead,
+    FilesRead,
+    FilesWrite,
+    CollectionsRead,
+    CollectionsWrite,
+    EntriesRead,
+    EntriesWrite,
+    WebhooksRead,
+    WebhooksWrite,
+}
+
+#[derive(Debug, Clone)]
+pub struct ScopeSet(pub HashSet<Scope>);
+
+impl ScopeSet {
+    pub fn from_permission(perm: &AccessTokenPermission) -> Self {
+        let mut set = HashSet::new();
+        set.insert(Scope::SiteRead);
+        set.insert(Scope::FilesRead);
+        set.insert(Scope::CollectionsRead);
+        set.insert(Scope::EntriesRead);
+        set.insert(Scope::WebhooksRead);
+        if perm.can_write() {
+            set.insert(Scope::FilesWrite);
+            set.insert(Scope::CollectionsWrite);
+            set.insert(Scope::EntriesWrite);
+            set.insert(Scope::WebhooksWrite);
+        }
+        Self(set)
+    }
+
+    pub fn all() -> Self {
+        Self(HashSet::from([
+            Scope::SiteRead,
+            Scope::FilesRead,
+            Scope::FilesWrite,
+            Scope::CollectionsRead,
+            Scope::CollectionsWrite,
+            Scope::EntriesRead,
+            Scope::EntriesWrite,
+            Scope::WebhooksRead,
+            Scope::WebhooksWrite,
+        ]))
+    }
+
+    pub fn allows(&self, scope: &Scope) -> bool {
+        self.0.contains(scope)
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct AuthContext {
+    pub actor: Actor,
+    pub auth_method: AuthMethod,
+    pub scopes: ScopeSet,
+}
+
+// ── Request context ──
+
+#[derive(Debug, Clone)]
+pub struct RequestContext {
+    pub site_id: String,
+    pub auth: AuthContext,
+}
+
+impl<S> FromRequestParts<S> for RequestContext
+where
+    S: Send + Sync,
+{
+    type Rejection = (StatusCode, Json<AuthError>);
+
+    async fn from_request_parts(parts: &mut Parts, _state: &S) -> Result<Self, Self::Rejection> {
+        parts
+            .extensions
+            .get::<RequestContext>()
+            .cloned()
+            .ok_or_else(|| AuthError::unauthorized("Missing request context"))
+    }
+}
+
+/// Extract AuthContext directly from request (for file-serving routes without middleware).
+impl<S> FromRequestParts<S> for AuthContext
+where
+    S: Send + Sync,
+{
+    type Rejection = (StatusCode, Json<AuthError>);
+
+    async fn from_request_parts(parts: &mut Parts, _state: &S) -> Result<Self, Self::Rejection> {
+        if let Some(ctx) = parts.extensions.get::<AuthContext>() {
+            return Ok(ctx.clone());
+        }
+
+        if let Some(token) = extract_bearer_token(parts) {
+            let repository = parts
+                .extensions
+                .get::<Repository>()
+                .cloned()
+                .ok_or_else(|| AuthError::unauthorized("Server configuration error"))?;
+            let config = parts
+                .extensions
+                .get::<Config>()
+                .cloned()
+                .ok_or_else(|| AuthError::unauthorized("Server configuration error"))?;
+            let actor = verify_access_token(&token, &repository, &config.hmac_secret).await?;
+            let scopes = match &actor {
+                Actor::ApiKey(k) => ScopeSet::from_permission(&k.permission),
+                _ => ScopeSet::all(),
+            };
+            return Ok(AuthContext {
+                actor,
+                auth_method: AuthMethod::ApiKey,
+                scopes,
+            });
+        }
+
+        if let Some(token) = extract_cookie_value(parts, "token") {
+            let config = parts
+                .extensions
+                .get::<Config>()
+                .cloned()
+                .ok_or_else(|| AuthError::unauthorized("Server configuration error"))?;
+            let claims = verify_token(&token, &config.jwt_secret)
+                .map_err(|_| AuthError::unauthorized("Invalid session"))?;
+            return Ok(AuthContext {
+                actor: Actor::User(UserActor {
+                    user_id: claims.sub,
+                }),
+                auth_method: AuthMethod::JwtSession,
+                scopes: ScopeSet::all(),
+            });
+        }
+
+        Err(AuthError::unauthorized("Authentication required"))
+    }
+}
+
+// ── Cookie / header helpers ──
 
 fn extract_cookie_value(parts: &Parts, name: &str) -> Option<String> {
     let cookie_header = parts.headers.get("cookie")?.to_str().ok()?;
@@ -59,12 +222,9 @@ fn extract_cookie_value(parts: &Parts, name: &str) -> Option<String> {
 
 fn extract_bearer_token(parts: &Parts) -> Option<String> {
     let auth_header = parts.headers.get("Authorization")?.to_str().ok()?;
-
-    if let Some(token) = auth_header.strip_prefix("Bearer ") {
-        Some(token.trim().to_string())
-    } else {
-        None
-    }
+    auth_header
+        .strip_prefix("Bearer ")
+        .map(|token| token.trim().to_string())
 }
 
 fn extract_csrf_token(parts: &Parts) -> Option<String> {
@@ -72,128 +232,7 @@ fn extract_csrf_token(parts: &Parts) -> Option<String> {
     Some(header.to_string())
 }
 
-#[derive(Debug, Clone)]
-pub struct AuthenticatedUser {
-    pub user_id: String,
-}
-
-#[derive(Debug, Clone)]
-pub enum Principal {
-    UserSession {
-        user_id: String,
-    },
-    InstanceToken {
-        token_id: String,
-        scopes: BTreeSet<String>,
-    },
-    SiteToken {
-        token_id: String,
-        site_id: String,
-        scopes: BTreeSet<String>,
-    },
-}
-
-impl Principal {
-    pub fn user_id(&self) -> Option<&str> {
-        match self {
-            Self::UserSession { user_id } => Some(user_id),
-            _ => None,
-        }
-    }
-
-    pub fn bound_site_id(&self) -> Option<&str> {
-        match self {
-            Self::SiteToken { site_id, .. } => Some(site_id),
-            _ => None,
-        }
-    }
-
-    pub fn is_instance_token(&self) -> bool {
-        matches!(self, Self::InstanceToken { .. })
-    }
-
-    pub fn is_site_token(&self) -> bool {
-        matches!(self, Self::SiteToken { .. })
-    }
-
-    pub fn is_user_session(&self) -> bool {
-        matches!(self, Self::UserSession { .. })
-    }
-}
-
-#[derive(Debug, Clone)]
-pub struct RequireInstanceToken(pub Principal);
-
-impl<S> FromRequestParts<S> for RequireInstanceToken
-where
-    S: Send + Sync,
-{
-    type Rejection = (StatusCode, Json<AuthError>);
-
-    async fn from_request_parts(parts: &mut Parts, state: &S) -> Result<Self, Self::Rejection> {
-        let principal = Principal::from_request_parts(parts, state).await?;
-        match principal {
-            Principal::InstanceToken { .. } => Ok(Self(principal)),
-            _ => Err(AuthError::instance_token_required()),
-        }
-    }
-}
-
-#[derive(Debug, Clone)]
-pub struct RequireSiteToken {
-    pub site_id: String,
-    pub scopes: BTreeSet<String>,
-}
-
-impl<S> FromRequestParts<S> for RequireSiteToken
-where
-    S: Send + Sync,
-{
-    type Rejection = (StatusCode, Json<AuthError>);
-
-    async fn from_request_parts(parts: &mut Parts, state: &S) -> Result<Self, Self::Rejection> {
-        let principal = Principal::from_request_parts(parts, state).await?;
-        match principal {
-            Principal::SiteToken {
-                token_id: _,
-                site_id,
-                scopes,
-            } => Ok(Self { site_id, scopes }),
-            _ => Err(AuthError::site_token_required()),
-        }
-    }
-}
-
-#[derive(Debug, Clone)]
-pub enum SiteOrUserPrincipal {
-    SiteToken { site_id: String, scopes: BTreeSet<String> },
-    UserSession { user_id: String },
-}
-
-impl<S> FromRequestParts<S> for SiteOrUserPrincipal
-where
-    S: Send + Sync,
-{
-    type Rejection = (StatusCode, Json<AuthError>);
-
-    async fn from_request_parts(parts: &mut Parts, state: &S) -> Result<Self, Self::Rejection> {
-        let principal = Principal::from_request_parts(parts, state).await?;
-        match principal {
-            Principal::SiteToken {
-                token_id: _,
-                site_id,
-                scopes,
-            } => Ok(Self::SiteToken { site_id, scopes }),
-            Principal::UserSession { user_id } => Ok(Self::UserSession { user_id }),
-            Principal::InstanceToken { .. } => Err(AuthError::instance_token_denied()),
-        }
-    }
-}
-
-#[derive(Debug, Clone)]
-pub struct SiteContext {
-    pub site_id: String,
-}
+// ── HMAC / JWT ──
 
 pub fn compute_key_hmac(key: &str, hmac_secret: &str) -> String {
     let mut mac = HmacSha256::new_from_slice(hmac_secret.as_bytes()).expect("HMAC can take key of any size");
@@ -207,7 +246,7 @@ pub fn create_token(user_id: String, jwt_secret: &str) -> Result<String, jsonweb
         .expect("valid timestamp")
         .timestamp() as usize;
 
-    let claims = Claims {
+    let claims = crate::models::user::Claims {
         sub: user_id,
         exp: expiration,
     };
@@ -219,173 +258,30 @@ pub fn create_token(user_id: String, jwt_secret: &str) -> Result<String, jsonweb
     )
 }
 
-pub fn verify_token(token: &str, jwt_secret: &str) -> Result<Claims, jsonwebtoken::errors::Error> {
+pub fn verify_token(token: &str, jwt_secret: &str) -> Result<crate::models::user::Claims, jsonwebtoken::errors::Error> {
     let mut validation = Validation::new(Algorithm::HS256);
     validation.validate_exp = true;
 
-    let data = decode::<Claims>(token, &DecodingKey::from_secret(jwt_secret.as_bytes()), &validation)?;
+    let data = decode::<crate::models::user::Claims>(
+        token,
+        &DecodingKey::from_secret(jwt_secret.as_bytes()),
+        &validation,
+    )?;
 
     Ok(data.claims)
 }
 
-fn allowed_scopes() -> BTreeSet<&'static str> {
-    [
-        SCOPE_SITES_READ,
-        SCOPE_SITES_WRITE,
-        SCOPE_SITES_DELETE,
-        SCOPE_MEMBERS_READ,
-        SCOPE_MEMBERS_WRITE,
-        SCOPE_TOKENS_READ,
-        SCOPE_TOKENS_WRITE,
-        SCOPE_SITE_READ,
-        SCOPE_SCHEMA_READ,
-        SCOPE_SCHEMA_WRITE,
-        SCOPE_CONTENT_READ,
-        SCOPE_CONTENT_WRITE,
-        SCOPE_ASSETS_READ,
-        SCOPE_ASSETS_WRITE,
-        SCOPE_WEBHOOKS_READ,
-        SCOPE_WEBHOOKS_WRITE,
-        SCOPE_WEBHOOKS_TRIGGER,
-    ]
-    .into_iter()
-    .collect()
-}
-
-pub fn parse_scopes(value: &str) -> BTreeSet<String> {
-    let allowed = allowed_scopes();
-
-    value
-        .split(',')
-        .map(str::trim)
-        .filter(|scope| !scope.is_empty())
-        .filter(|scope| {
-            if !allowed.contains(scope) {
-                tracing::warn!(scope = %scope, "Unknown scope ignored");
-                false
-            } else {
-                true
-            }
-        })
-        .map(ToString::to_string)
-        .collect()
-}
-
-pub fn scopes_to_string(scopes: &[&str]) -> String {
-    scopes.join(",")
-}
-
-pub fn default_instance_scopes() -> Vec<&'static str> {
-    vec![
-        SCOPE_SITES_READ,
-        SCOPE_SITES_WRITE,
-        SCOPE_SITES_DELETE,
-        SCOPE_MEMBERS_READ,
-        SCOPE_MEMBERS_WRITE,
-        SCOPE_TOKENS_READ,
-        SCOPE_TOKENS_WRITE,
-        SCOPE_WEBHOOKS_READ,
-        SCOPE_WEBHOOKS_WRITE,
-        SCOPE_WEBHOOKS_TRIGGER,
-    ]
-}
-
-pub fn default_site_scopes() -> Vec<&'static str> {
-    vec![
-        SCOPE_SITE_READ,
-        SCOPE_SCHEMA_READ,
-        SCOPE_SCHEMA_WRITE,
-        SCOPE_CONTENT_READ,
-        SCOPE_CONTENT_WRITE,
-        SCOPE_ASSETS_READ,
-        SCOPE_ASSETS_WRITE,
-        SCOPE_TOKENS_READ,
-        SCOPE_TOKENS_WRITE,
-        SCOPE_WEBHOOKS_READ,
-        SCOPE_WEBHOOKS_TRIGGER,
-    ]
-}
-
-impl<S> FromRequestParts<S> for AuthenticatedUser
-where
-    S: Send + Sync,
-{
-    type Rejection = (StatusCode, Json<AuthError>);
-
-    async fn from_request_parts(parts: &mut Parts, state: &S) -> Result<Self, Self::Rejection> {
-        match Principal::from_request_parts(parts, state).await? {
-            Principal::UserSession { user_id } => Ok(Self { user_id }),
-            _ => Err(AuthError::unauthorized("User session required")),
-        }
-    }
-}
-
-impl<S> FromRequestParts<S> for Principal
-where
-    S: Send + Sync,
-{
-    type Rejection = (StatusCode, Json<AuthError>);
-
-    async fn from_request_parts(parts: &mut Parts, _state: &S) -> Result<Self, Self::Rejection> {
-        if let Some(token) = extract_bearer_token(parts) {
-            if token.starts_with("cms_") {
-                let repository = parts
-                    .extensions
-                    .get::<Repository>()
-                    .ok_or_else(|| AuthError::unauthorized("Internal server error"))?;
-
-                let config = parts
-                    .extensions
-                    .get::<Config>()
-                    .ok_or_else(|| AuthError::unauthorized("Internal server error"))?;
-
-                return verify_access_token(&token, repository, &config.hmac_secret).await;
-            }
-
-            let config = parts
-                .extensions
-                .get::<Config>()
-                .ok_or_else(|| AuthError::unauthorized("Internal server error"))?;
-
-            let claims = verify_token(&token, &config.jwt_secret)
-                .map_err(|_| AuthError::unauthorized("Invalid or expired token"))?;
-
-            Span::current().record("user_id", tracing::field::display(&claims.sub));
-
-            return Ok(Self::UserSession { user_id: claims.sub });
-        }
-
-        if let Some(token) = extract_cookie_value(parts, "token") {
-            let config = parts
-                .extensions
-                .get::<Config>()
-                .ok_or_else(|| AuthError::unauthorized("Internal server error"))?;
-
-            // Ensure CSRF is enforced for mutations in cookie-based sessions
-            match parts.method.as_str() {
-                "POST" | "PUT" | "PATCH" | "DELETE" => {
-                    verify_csrf(parts, config).map_err(|(_, msg)| AuthError::csrf_error(&msg))?;
-                }
-                _ => {}
-            }
-
-            let claims = verify_token(&token, &config.jwt_secret)
-                .map_err(|_| AuthError::unauthorized("Invalid or expired token"))?;
-
-            Span::current().record("user_id", tracing::field::display(&claims.sub));
-
-            return Ok(Self::UserSession { user_id: claims.sub });
-        }
-
-        Err(AuthError::unauthorized("Missing authentication"))
-    }
-}
+// ── Access token verification ──
 
 pub(crate) async fn verify_access_token(
     token: &str,
     repository: &Repository,
     hmac_secret: &str,
-) -> Result<Principal, (StatusCode, Json<AuthError>)> {
+) -> Result<Actor, (StatusCode, Json<AuthError>)> {
+    if !token.starts_with("cms_site_") {
+        return Err(AuthError::unauthorized("Invalid access token"));
+    }
+
     let prefix: String = token.chars().take(TOKEN_PREFIX_LEN).collect();
 
     let keys = repository
@@ -396,23 +292,13 @@ pub(crate) async fn verify_access_token(
 
     let token_hmac = compute_key_hmac(token, hmac_secret);
 
-    for (token_id, kind, site_id, stored_hash, stored_hmac, expires_at, revoked_at, scopes) in keys {
+    for (token_id, site_id, stored_hash, stored_hmac, expires_at, revoked_at, permission) in keys {
         if let Some(ref stored) = stored_hmac {
             if stored != &token_hmac {
                 continue;
             }
-        } else {
-            match bcrypt::verify(token, &stored_hash) {
-                Ok(valid) => {
-                    if !valid {
-                        continue;
-                    }
-                }
-                Err(e) => {
-                    tracing::error!(error = %e, "bcrypt verification failed");
-                    continue;
-                }
-            }
+        } else if !bcrypt::verify(token, &stored_hash).unwrap_or(false) {
+            continue;
         }
 
         if revoked_at.is_some() {
@@ -423,28 +309,25 @@ pub(crate) async fn verify_access_token(
             return Err(AuthError::unauthorized("Access token has expired"));
         }
 
+        let permission = permission
+            .parse::<AccessTokenPermission>()
+            .map_err(|_| AuthError::unauthorized("Invalid access token"))?;
+
         let _ = repository.access_token.update_last_used(&token_id).await;
 
-        let kind = AccessTokenKind::from_str(&kind).map_err(|_| AuthError::unauthorized("Invalid access token"))?;
-        let scopes = parse_scopes(&scopes);
-
-        return match kind {
-            AccessTokenKind::Instance => Ok(Principal::InstanceToken { token_id, scopes }),
-            AccessTokenKind::Site => {
-                let site_id = site_id.ok_or_else(|| AuthError::unauthorized("Site token missing site binding"))?;
-                Span::current().record("site_id", tracing::field::display(&site_id));
-                Ok(Principal::SiteToken {
-                    token_id,
-                    site_id,
-                    scopes,
-                })
-            }
-        };
+        Span::current().record("site_id", tracing::field::display(&site_id));
+        return Ok(Actor::ApiKey(ApiKeyActor {
+            token_id,
+            site_id,
+            permission,
+        }));
     }
 
     tracing::warn!(prefix = %prefix, "Invalid access token attempt");
     Err(AuthError::unauthorized("Invalid access token"))
 }
+
+// ── CSRF ──
 
 pub fn verify_csrf(parts: &Parts, config: &Config) -> Result<(), (StatusCode, String)> {
     if !config.cookie_secure {
@@ -481,106 +364,40 @@ pub fn is_token_not_expired(expires_at: Option<&str>) -> bool {
     }
 }
 
-pub async fn require_admin_scope(
-    principal: &Principal,
-    repository: &Repository,
-    site_id: Option<&str>,
-    scope: &str,
-) -> Result<(), (StatusCode, Json<AuthError>)> {
-    match principal {
-        Principal::InstanceToken { scopes, .. } => {
-            if scopes.contains(scope) {
-                Ok(())
-            } else {
-                Err(AuthError::insufficient_scope(scope))
-            }
-        }
-        Principal::UserSession { user_id } => match scope {
-            SCOPE_SITES_READ | SCOPE_SITES_WRITE => Ok(()),
-            SCOPE_SITES_DELETE => {
-                let site_id = site_id.ok_or_else(|| AuthError::forbidden("Site id is required"))?;
-                check_site_access_repo(repository, user_id, site_id, "owner").await
-            }
-            SCOPE_MEMBERS_READ | SCOPE_WEBHOOKS_READ => {
-                let site_id = site_id.ok_or_else(|| AuthError::forbidden("Site id is required"))?;
-                check_site_access_repo(repository, user_id, site_id, "viewer").await
-            }
-            SCOPE_MEMBERS_WRITE | SCOPE_TOKENS_READ | SCOPE_TOKENS_WRITE | SCOPE_WEBHOOKS_WRITE => {
-                let site_id = site_id.ok_or_else(|| AuthError::forbidden("Site id is required"))?;
-                check_site_access_repo(repository, user_id, site_id, "admin").await
-            }
-            SCOPE_WEBHOOKS_TRIGGER => {
-                let site_id = site_id.ok_or_else(|| AuthError::forbidden("Site id is required"))?;
-                check_site_access_repo(repository, user_id, site_id, "editor").await
-            }
-            _ => Err(AuthError::forbidden("Unsupported admin scope")),
-        },
-        Principal::SiteToken { .. } => Err(AuthError::site_token_denied()),
-    }
-}
-
-pub async fn resolve_site_context(
-    principal: &Principal,
-    repository: &Repository,
-    explicit_site_id: Option<&str>,
-) -> Result<SiteContext, (StatusCode, Json<AuthError>)> {
-    match principal {
-        Principal::SiteToken { site_id, .. } => {
-            if let Some(explicit) = explicit_site_id {
-                if explicit != site_id {
-                    return Err(AuthError::forbidden("Site token does not have access to this site"));
-                }
-            }
-            Ok(SiteContext {
-                site_id: site_id.clone(),
-            })
-        }
-        Principal::UserSession { user_id } => {
-            let site_id = explicit_site_id.ok_or_else(|| AuthError::forbidden("Missing site context"))?;
-            check_site_access_repo(repository, user_id, site_id, "viewer").await?;
-            Ok(SiteContext {
-                site_id: site_id.to_string(),
-            })
-        }
-        Principal::InstanceToken { .. } => Err(AuthError::instance_token_denied()),
-    }
-}
+// ── Authorization helpers ──
 
 pub async fn require_site_scope(
-    principal: &Principal,
+    ctx: &RequestContext,
     repository: &Repository,
-    explicit_site_id: Option<&str>,
-    scope: &str,
+    scope: &Scope,
     jwt_min_role: &str,
-) -> Result<SiteContext, (StatusCode, Json<AuthError>)> {
-    let site = resolve_site_context(principal, repository, explicit_site_id).await?;
-
-    match principal {
-        Principal::SiteToken { scopes, .. } => {
-            if scopes.contains(scope) {
-                Ok(site)
+) -> Result<(), (StatusCode, Json<AuthError>)> {
+    match &ctx.auth.actor {
+        Actor::ApiKey(_) => {
+            if ctx.auth.scopes.allows(scope) {
+                Ok(())
             } else {
-                Err(AuthError::insufficient_scope(scope))
+                Err(AuthError::insufficient_permission("write"))
             }
         }
-        Principal::UserSession { user_id } => {
-            check_site_access_repo(repository, user_id, &site.site_id, jwt_min_role).await?;
-            Ok(site)
+        Actor::User(user) => {
+            check_site_access_repo(repository, &user.user_id, &ctx.site_id, jwt_min_role).await
         }
-        Principal::InstanceToken { .. } => Err(AuthError::instance_token_denied()),
     }
 }
 
-pub fn site_context_from_headers(parts: &Parts) -> Option<String> {
-    parts
-        .headers
-        .get(HEADER_SITE_ID)
-        .and_then(|value| value.to_str().ok())
-        .map(ToString::to_string)
-}
-
-pub fn extract_user_id(principal: &Principal) -> Option<&str> {
-    principal.user_id()
+pub async fn require_user_role(
+    ctx: &RequestContext,
+    repository: &Repository,
+    min_role: &str,
+) -> Result<String, (StatusCode, Json<AuthError>)> {
+    match &ctx.auth.actor {
+        Actor::User(user) => {
+            check_site_access_repo(repository, &user.user_id, &ctx.site_id, min_role).await?;
+            Ok(user.user_id.clone())
+        }
+        _ => Err(AuthError::site_token_denied()),
+    }
 }
 
 pub async fn check_site_access_repo(
@@ -625,6 +442,7 @@ pub async fn check_site_access_repo(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::models::access_token::AccessTokenPermission;
 
     #[test]
     fn test_create_and_verify_token() {
@@ -639,12 +457,26 @@ mod tests {
     }
 
     #[test]
-    fn test_parse_scopes() {
-        let scopes = parse_scopes("site:read, content:write, invalid:scope, content:write");
-        assert!(scopes.contains("site:read"));
-        assert!(scopes.contains("content:write"));
-        assert!(!scopes.contains("invalid:scope"));
-        assert_eq!(scopes.len(), 2);
+    fn test_scope_set_from_read_permission() {
+        let scopes = ScopeSet::from_permission(&AccessTokenPermission::Read);
+        assert!(scopes.allows(&Scope::FilesRead));
+        assert!(!scopes.allows(&Scope::FilesWrite));
+    }
+
+    #[test]
+    fn test_scope_set_from_write_permission() {
+        let scopes = ScopeSet::from_permission(&AccessTokenPermission::Write);
+        assert!(scopes.allows(&Scope::FilesRead));
+        assert!(scopes.allows(&Scope::FilesWrite));
+    }
+
+    #[test]
+    fn test_scope_set_all() {
+        let scopes = ScopeSet::all();
+        assert!(scopes.allows(&Scope::FilesRead));
+        assert!(scopes.allows(&Scope::FilesWrite));
+        assert!(scopes.allows(&Scope::EntriesWrite));
+        assert!(scopes.allows(&Scope::WebhooksWrite));
     }
 
     #[test]
@@ -666,5 +498,25 @@ mod tests {
         let h1 = compute_key_hmac(key, secret);
         let h2 = compute_key_hmac(key, secret);
         assert_eq!(h1, h2);
+    }
+
+    #[test]
+    fn test_api_key_actor_bound_site() {
+        let actor = Actor::ApiKey(ApiKeyActor {
+            token_id: "tok-1".into(),
+            site_id: "site-42".into(),
+            permission: AccessTokenPermission::Read,
+        });
+        assert_eq!(actor.bound_site_id(), Some("site-42"));
+        assert!(actor.user_id().is_none());
+    }
+
+    #[test]
+    fn test_user_actor_user_id() {
+        let actor = Actor::User(UserActor {
+            user_id: "usr-1".into(),
+        });
+        assert_eq!(actor.user_id(), Some("usr-1"));
+        assert!(actor.bound_site_id().is_none());
     }
 }
