@@ -91,7 +91,7 @@ pub async fn create_webhook(
         return (status, err).into_response();
     }
 
-    let created_by = ctx.auth.actor.user_id().unwrap_or("system");
+    let created_by = ctx.auth.actor.user_id();
     let webhook = services
         .webhook
         .create_webhook(&ctx.site_id, &payload.label, &payload.url, &payload.headers, created_by)
@@ -222,7 +222,7 @@ pub async fn trigger_webhook(
         return (status, err).into_response();
     }
 
-    let triggered_by = ctx.auth.actor.user_id().unwrap_or("system");
+    let triggered_by = ctx.auth.actor.user_id();
     match services
         .webhook
         .trigger_webhook(&webhook_id, &ctx.site_id, triggered_by)
