@@ -88,7 +88,7 @@ impl WebhookService for WebhookServiceImpl {
         let req = request.into_inner();
         ensure_same_site(&auth, &req.site_id)?;
 
-        let created_by = "system";
+        let created_by = None;
         let headers: HashMap<String, String> = req.headers.into_iter().collect();
 
         let webhook = self
@@ -165,7 +165,7 @@ impl WebhookService for WebhookServiceImpl {
         let req = request.into_inner();
         ensure_same_site(&auth, &req.site_id)?;
 
-        let triggered_by = "system";
+        let triggered_by = None;
 
         let delivery = self
             .app_webhook_service

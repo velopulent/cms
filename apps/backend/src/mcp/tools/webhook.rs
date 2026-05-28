@@ -48,7 +48,7 @@ pub async fn create_webhook(
         .require_site_scope(actor, &params.0.site_id, &Scope::WebhooksWrite, "admin")
         .await
         .map_err(map_err)?;
-    let user_id = actor.user_id().unwrap_or("system");
+    let user_id = actor.user_id();
     let webhook = services
         .webhook
         .create_webhook(&params.0.site_id, &params.0.label, &params.0.url, &HashMap::new(), user_id)
@@ -73,7 +73,7 @@ pub async fn trigger_webhook(
         .require_site_scope(actor, &params.0.site_id, &Scope::WebhooksWrite, "editor")
         .await
         .map_err(map_err)?;
-    let user_id = actor.user_id().unwrap_or("system");
+    let user_id = actor.user_id();
     let delivery = services
         .webhook
         .trigger_webhook(&params.0.webhook_id, &params.0.site_id, user_id)
