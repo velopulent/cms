@@ -57,6 +57,26 @@ async fn gql(server: &TestServer, token: &str, query: &str) -> Value {
     resp.json().await.unwrap()
 }
 
+async fn gql_with_vars(server: &TestServer, token: &str, query: &str, variables: Value) -> Value {
+    let client = reqwest::Client::builder().build().unwrap();
+    let resp = client
+        .post(format!("{}/api/graphql", server.base_url))
+        .header("Authorization", format!("Bearer {}", token))
+        .json(&json!({"query": query, "variables": variables}))
+        .send()
+        .await
+        .unwrap();
+    resp.json().await.unwrap()
+}
+
+async fn create_webhook(server: &TestServer, token: &str, site_id: &str, label: &str) -> Value {
+    let query = r#"mutation CreateWebhook($siteId: String!, $label: String!, $url: String!) {
+        createWebhook(siteId: $siteId, label: $label, url: $url) { id label url }
+    }"#;
+    let vars = json!({"siteId": site_id, "label": label, "url": "https://example.com/hook"});
+    gql_with_vars(server, token, query, vars).await
+}
+
 #[tokio::test]
 async fn test_webhooks_query() {
     let server = TestServer::start().await;
@@ -82,29 +102,85 @@ async fn test_webhook_not_found() {
 }
 
 #[tokio::test]
-async fn test_create_webhook_foreign_key_bug() {
+async fn test_create_webhook_mutation() {
     let server = TestServer::start().await;
     let (site_id, token) = setup(&server).await;
 
-    let query = r#"mutation CreateWebhook($siteId: String!, $label: String!, $url: String!) {
-        createWebhook(siteId: $siteId, label: $label, url: $url) { id label url }
-    }"#;
-    let vars = json!({"siteId": site_id, "label": "Hook", "url": "https://example.com/hook"});
-    let client = reqwest::Client::builder().build().unwrap();
-    let resp = client
-        .post(format!("{}/api/graphql", server.base_url))
-        .header("Authorization", format!("Bearer {}", token))
-        .json(&json!({"query": query, "variables": vars}))
-        .send()
-        .await
-        .unwrap();
-    let body: Value = resp.json().await.unwrap();
+    let body = create_webhook(&server, &token, &site_id, "New Hook").await;
+    assert!(body["errors"].is_null(), "errors: {:?}", body["errors"]);
+    assert_eq!(body["data"]["createWebhook"]["label"].as_str().unwrap(), "New Hook");
+}
 
-    assert!(body["errors"].is_array(), "expected FK error, got: {:?}", body);
-    let msg = body["errors"][0]["message"].as_str().unwrap();
-    assert!(
-        msg.contains("FOREIGN KEY") || msg.contains("Database error"),
-        "unexpected error: {}",
-        msg
-    );
+#[tokio::test]
+async fn test_webhook_by_id() {
+    let server = TestServer::start().await;
+    let (site_id, token) = setup(&server).await;
+
+    let created = create_webhook(&server, &token, &site_id, "My Hook").await;
+    assert!(created["errors"].is_null(), "create_webhook errors: {:?}", created["errors"]);
+    let hook_id = created["data"]["createWebhook"]["id"].as_str().unwrap();
+
+    let query = format!(r#"{{ webhook(siteId: "{}", webhookId: "{}") {{ id label }} }}"#, site_id, hook_id);
+    let body = gql(&server, &token, &query).await;
+    assert!(body["errors"].is_null());
+    assert_eq!(body["data"]["webhook"]["label"].as_str().unwrap(), "My Hook");
+}
+
+#[tokio::test]
+async fn test_delete_webhook_mutation() {
+    let server = TestServer::start().await;
+    let (site_id, token) = setup(&server).await;
+
+    let created = create_webhook(&server, &token, &site_id, "Delete Me").await;
+    let hook_id = created["data"]["createWebhook"]["id"].as_str().unwrap();
+
+    let query = format!(r#"mutation {{ deleteWebhook(siteId: "{}", webhookId: "{}") }}"#, site_id, hook_id);
+    let body = gql(&server, &token, &query).await;
+    assert!(body["errors"].is_null());
+    assert_eq!(body["data"]["deleteWebhook"].as_bool().unwrap(), true);
+}
+
+#[tokio::test]
+async fn test_update_webhook_mutation() {
+    let server = TestServer::start().await;
+    let (site_id, token) = setup(&server).await;
+
+    let created = create_webhook(&server, &token, &site_id, "Old Label").await;
+    let hook_id = created["data"]["createWebhook"]["id"].as_str().unwrap();
+
+    let query = r#"mutation UpdateWebhook($siteId: String!, $webhookId: String!, $label: String!) {
+        updateWebhook(siteId: $siteId, webhookId: $webhookId, label: $label) { id label }
+    }"#;
+    let vars = json!({"siteId": site_id, "webhookId": hook_id, "label": "New Label"});
+    let body = gql_with_vars(&server, &token, query, vars).await;
+    assert!(body["errors"].is_null());
+    assert_eq!(body["data"]["updateWebhook"]["label"].as_str().unwrap(), "New Label");
+}
+
+#[tokio::test]
+async fn test_trigger_webhook_mutation() {
+    let server = TestServer::start().await;
+    let (site_id, token) = setup(&server).await;
+
+    let created = create_webhook(&server, &token, &site_id, "Trigger Me").await;
+    let hook_id = created["data"]["createWebhook"]["id"].as_str().unwrap();
+
+    let query = format!(r#"mutation {{ triggerWebhook(siteId: "{}", webhookId: "{}") {{ id status }} }}"#, site_id, hook_id);
+    let body = gql(&server, &token, &query).await;
+    assert!(body["errors"].is_null());
+    assert!(body["data"]["triggerWebhook"]["status"].as_str().unwrap() == "success" || body["data"]["triggerWebhook"]["status"].as_str().unwrap() == "failed");
+}
+
+#[tokio::test]
+async fn test_webhook_deliveries_query() {
+    let server = TestServer::start().await;
+    let (site_id, token) = setup(&server).await;
+
+    let created = create_webhook(&server, &token, &site_id, "Delivery Hook").await;
+    let hook_id = created["data"]["createWebhook"]["id"].as_str().unwrap();
+
+    let query = format!(r#"{{ webhookDeliveries(siteId: "{}", webhookId: "{}") {{ id status }} }}"#, site_id, hook_id);
+    let body = gql(&server, &token, &query).await;
+    assert!(body["errors"].is_null());
+    let _ = body["data"]["webhookDeliveries"].as_array().unwrap();
 }
