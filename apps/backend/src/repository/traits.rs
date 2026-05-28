@@ -258,7 +258,7 @@ pub trait WebhookRepository: Send + Sync {
         label: &str,
         url: &str,
         headers_encrypted: &str,
-        created_by: &str,
+        created_by: Option<&str>,
     ) -> Result<SiteWebhook, RepositoryError>;
     async fn update(
         &self,
@@ -276,7 +276,7 @@ pub trait WebhookRepository: Send + Sync {
         status_code: Option<i32>,
         response_body: Option<&str>,
         duration_ms: Option<i64>,
-        triggered_by: &str,
+        triggered_by: Option<&str>,
     ) -> Result<WebhookDelivery, RepositoryError>;
     async fn list_deliveries(
         &self,

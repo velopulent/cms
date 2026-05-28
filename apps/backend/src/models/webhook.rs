@@ -9,7 +9,7 @@ pub struct SiteWebhook {
     pub label: String,
     pub url: String,
     pub headers_encrypted: String,
-    pub created_by: String,
+    pub created_by: Option<String>,
     pub created_at: String,
     pub updated_at: String,
 }
@@ -37,6 +37,6 @@ pub struct WebhookDelivery {
     pub status_code: Option<i32>,
     pub response_body: Option<String>,
     pub duration_ms: Option<i64>,
-    pub triggered_by: String,
+    pub triggered_by: Option<String>,
     pub triggered_at: String,
 }
