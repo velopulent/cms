@@ -17,6 +17,8 @@
 - `apps/backend/src/mcp/` - MCP server (tools/`*.rs`, `schema.rs`, `server.rs`, `auth.rs`, `transports/`)
 - `apps/backend/src/repository/` - Data access layer
 - `apps/backend/src/router/` - Route composition
+- `apps/backend/tests/common/` - Shared integration test infrastructure
+- `apps/backend/tests/rest/` - REST API integration tests
 - `libs/proto/` - Protocol Buffer definitions (`cms.proto`)
 - `apps/dashboard/` - React frontend app
 - `apps/web/` - Landing Page and Documentation (NextJS + Fumadocs)
@@ -42,8 +44,16 @@ bun run format               # Format all projects
 ```
 
 ### Testing
-- Rust: `bun run test` (runs both `#[cfg(test)]` modules and `tests/` integration tests)
-- Integration tests in `apps/backend/tests/` use in-memory SQLite (`sqlite::memory:`) and include schema directly
+- Rust unit tests: `bun run test` (runs `#[cfg(test)]` modules in `src/`)
+- Integration tests: `cargo test --test rest` from `apps/backend/` (runs HTTP-level API tests)
+- Unit tests live inline in source files (19 modules) and in `apps/backend/tests/mock_user_repository.rs`, `apps/backend/tests/file_service_tests.rs`
+- Integration tests in `apps/backend/tests/` are black-box HTTP tests against a real server (no internal imports)
+  - `tests/common/` — shared infrastructure: `TestServer` (random port, SQLite in-memory, temp storage, seeded admin), auth helpers, `TestClient` wrapper, fixture builders
+  - `tests/rest/` — REST API tests: `auth`, `sites`, `collections`, `entries`, `singletons`, `files`, `webhooks`, `access_tokens`
+  - Each test module gets its own server instance (isolated DB + storage)
+  - Tests communicate only via HTTP using `reqwest`
+  - Run: `cargo test --test rest -- --test-threads=1`
+- Future test targets: `tests/graphql/`, `tests/grpc/`, `tests/mcp/` can reuse `tests/common/`
 
 ## Environment Variables
 
