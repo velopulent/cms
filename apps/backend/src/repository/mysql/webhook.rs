@@ -47,7 +47,7 @@ impl WebhookRepository for MysqlWebhookRepository {
         label: &str,
         url: &str,
         headers_encrypted: &str,
-        created_by: &str,
+        created_by: Option<&str>,
     ) -> Result<SiteWebhook, RepositoryError> {
         sqlx::query(
             "INSERT INTO site_webhooks (id, site_id, label, url, headers_encrypted, created_by) VALUES (?, ?, ?, ?, ?, ?)",
@@ -106,7 +106,7 @@ impl WebhookRepository for MysqlWebhookRepository {
         status_code: Option<i32>,
         response_body: Option<&str>,
         duration_ms: Option<i64>,
-        triggered_by: &str,
+        triggered_by: Option<&str>,
     ) -> Result<WebhookDelivery, RepositoryError> {
         sqlx::query(
             "INSERT INTO site_webhook_deliveries (id, webhook_id, status, status_code, response_body, duration_ms, triggered_by) VALUES (?, ?, ?, ?, ?, ?, ?)",
