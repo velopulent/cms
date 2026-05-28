@@ -94,7 +94,7 @@ impl MutationRoot {
         let webhook = gql_ctx
             .services
             .webhook
-            .create_webhook(&site_id, &label, &url, &parsed_headers, "system")
+            .create_webhook(&site_id, &label, &url, &parsed_headers, None)
             .await
             .map_err(|e| async_graphql::Error::new(format!("Error: {}", e)))?;
 
@@ -163,7 +163,7 @@ impl MutationRoot {
         let delivery = gql_ctx
             .services
             .webhook
-            .trigger_webhook(&webhook_id, &site_id, "system")
+            .trigger_webhook(&webhook_id, &site_id, None)
             .await
             .map_err(|e| async_graphql::Error::new(format!("Error: {}", e)))?;
 
