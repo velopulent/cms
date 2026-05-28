@@ -108,7 +108,7 @@ impl WebhookService {
         label: &str,
         url: &str,
         headers: &HashMap<String, String>,
-        created_by: &str,
+        created_by: Option<&str>,
     ) -> Result<SiteWebhook, WebhookError> {
         debug!(
             "Creating webhook: site_id={}, label={}, url_pattern={}, headers_count={}",
@@ -231,10 +231,10 @@ impl WebhookService {
         &self,
         id: &str,
         site_id: &str,
-        triggered_by: &str,
+        triggered_by: Option<&str>,
     ) -> Result<WebhookDelivery, WebhookError> {
         info!(
-            "Triggering webhook: id={}, site_id={}, triggered_by={}",
+            "Triggering webhook: id={}, site_id={}, triggered_by={:?}",
             id, site_id, triggered_by
         );
 
