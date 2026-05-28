@@ -379,8 +379,8 @@ pub struct SiteWebhook {
         ::prost::alloc::string::String,
         ::prost::alloc::string::String,
     >,
-    #[prost(string, tag = "6")]
-    pub created_by: ::prost::alloc::string::String,
+    #[prost(string, optional, tag = "6")]
+    pub created_by: ::core::option::Option<::prost::alloc::string::String>,
     #[prost(string, tag = "7")]
     pub created_at: ::prost::alloc::string::String,
     #[prost(string, tag = "8")]
@@ -400,8 +400,8 @@ pub struct WebhookDelivery {
     pub response_body: ::core::option::Option<::prost::alloc::string::String>,
     #[prost(int64, optional, tag = "6")]
     pub duration_ms: ::core::option::Option<i64>,
-    #[prost(string, tag = "7")]
-    pub triggered_by: ::prost::alloc::string::String,
+    #[prost(string, optional, tag = "7")]
+    pub triggered_by: ::core::option::Option<::prost::alloc::string::String>,
     #[prost(string, tag = "8")]
     pub triggered_at: ::prost::alloc::string::String,
 }
