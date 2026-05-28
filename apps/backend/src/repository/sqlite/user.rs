@@ -70,7 +70,7 @@ impl UserRepository for SqliteUserRepository {
             }
             Err(e) => {
                 error!("Failed to create user: error occurred");
-                Err(RepositoryError::Database(e.to_string()))
+                Err(e.into())
             }
         }
     }
