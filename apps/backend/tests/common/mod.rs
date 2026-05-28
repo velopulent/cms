@@ -81,53 +81,6 @@ impl TestServer {
         }
     }
 
-    pub async fn register_user(
-        &self,
-        client: &reqwest::Client,
-        username: &str,
-        email: &str,
-        password: &str,
-    ) -> reqwest::Response {
-        let resp = client
-            .post(format!("{}/api/auth/register", self.base_url))
-            .json(&serde_json::json!({
-                "username": username,
-                "email": email,
-                "password": password,
-            }))
-            .send()
-            .await
-            .expect("Failed to send register request");
-
-        assert!(
-            resp.status().is_success(),
-            "Register failed: {} {}",
-            resp.status(),
-            resp.text().await.unwrap_or_default()
-        );
-
-        resp
-    }
-
-    pub async fn register_user_expect_error(
-        &self,
-        client: &reqwest::Client,
-        username: &str,
-        email: &str,
-        password: &str,
-    ) -> reqwest::Response {
-        client
-            .post(format!("{}/api/auth/register", self.base_url))
-            .json(&serde_json::json!({
-                "username": username,
-                "email": email,
-                "password": password,
-            }))
-            .send()
-            .await
-            .expect("Failed to send register request")
-    }
-
     pub async fn login_user(
         &self,
         client: &reqwest::Client,
@@ -143,14 +96,6 @@ impl TestServer {
             .send()
             .await
             .expect("Failed to send login request")
-    }
-
-    pub async fn me(&self, client: &reqwest::Client) -> reqwest::Response {
-        client
-            .get(format!("{}/api/auth/me", self.base_url))
-            .send()
-            .await
-            .expect("Failed to send me request")
     }
 }
 
