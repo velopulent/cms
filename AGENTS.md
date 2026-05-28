@@ -50,10 +50,12 @@ bun run format               # Format all projects
 - Integration tests in `apps/backend/tests/` are black-box HTTP tests against a real server (no internal imports)
   - `tests/common/` — shared infrastructure: `TestServer` (random port, SQLite in-memory, temp storage, seeded admin), auth helpers, `TestClient` wrapper, fixture builders
   - `tests/rest/` — REST API tests: `auth`, `sites`, `collections`, `entries`, `singletons`, `files`, `webhooks`, `access_tokens`
+  - `tests/graphql/` — GraphQL API tests: `auth`, `sites`, `collections`, `entries`, `files`, `webhooks`
   - Each test module gets its own server instance (isolated DB + storage)
   - Tests communicate only via HTTP using `reqwest`
-  - Run: `cargo test --test rest -- --test-threads=1`
-- Future test targets: `tests/graphql/`, `tests/grpc/`, `tests/mcp/` can reuse `tests/common/`
+  - Run REST: `cargo test --test rest -- --test-threads=1`
+  - Run GraphQL: `cargo test --test graphql -- --test-threads=1`
+- Future test targets: `tests/grpc/`, `tests/mcp/` can reuse `tests/common/`
 
 ## Environment Variables
 
