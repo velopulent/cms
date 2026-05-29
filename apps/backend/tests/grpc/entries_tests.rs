@@ -1,3 +1,4 @@
+use cms::grpc::cms::v1::collection_service_client::CollectionServiceClient;
 use cms::grpc::cms::v1::entry_service_client::EntryServiceClient;
 use cms::grpc::cms::v1::{
     CreateCollectionRequest, CreateEntryRequest, DeleteEntryRequest, GetEntryRequest, GetEntryRevisionRequest,
@@ -5,18 +6,14 @@ use cms::grpc::cms::v1::{
     UnpublishEntryRequest, UpdateEntryRequest,
 };
 
-use crate::common::{GrpcTestContext, auth_interceptor, seed_access_token, seed_site};
+use crate::common::{GrpcTestContext, auth_interceptor};
 
 async fn setup() -> (GrpcTestContext, String, String, String) {
     let ctx = GrpcTestContext::start().await;
-    let site_id = seed_site(&ctx.repository, "Test Site", &ctx.admin_user_id).await;
-    let token = seed_access_token(&ctx.repository, &site_id, "write").await;
+    let (site_id, token) = ctx.setup_site_and_token().await;
 
     let channel = ctx.connect().await;
-    let mut client = cms::grpc::cms::v1::collection_service_client::CollectionServiceClient::with_interceptor(
-        channel,
-        auth_interceptor(&token),
-    );
+    let mut client = CollectionServiceClient::with_interceptor(channel, auth_interceptor(&token));
 
     let collection = client
         .create_collection(tonic::Request::new(CreateCollectionRequest {
