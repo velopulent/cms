@@ -1,4 +1,6 @@
 use serde_json::{json, Value};
+use wiremock::{Mock, MockServer, ResponseTemplate};
+use wiremock::matchers::method;
 
 use crate::common::TestServer;
 
@@ -165,4 +167,42 @@ async fn test_list_deliveries_empty() {
     assert_eq!(resp.status(), 200);
     let body: Value = resp.json().await.unwrap();
     assert!(body["items"].is_array());
+}
+
+#[tokio::test]
+async fn test_trigger_webhook() {
+    let mock_server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .respond_with(ResponseTemplate::new(200))
+        .expect(1)
+        .mount(&mock_server)
+        .await;
+
+    let server = TestServer::start().await;
+    let (jwt, csrf, site_id) = setup(&server).await;
+    let client = reqwest::Client::builder().build().unwrap();
+
+    let create_resp = client
+        .post(format!("{}/api/dashboard/sites/{}/webhooks", server.base_url, site_id))
+        .headers(auth_header(&jwt, &csrf))
+        .json(&json!({"label": "Trigger Me", "url": mock_server.uri()}))
+        .send()
+        .await
+        .unwrap();
+    let created: Value = create_resp.json().await.unwrap();
+    let hook_id = created["id"].as_str().unwrap();
+
+    let resp = client
+        .post(format!(
+            "{}/api/dashboard/sites/{}/webhooks/{}/trigger",
+            server.base_url, site_id, hook_id
+        ))
+        .headers(auth_header(&jwt, &csrf))
+        .send()
+        .await
+        .unwrap();
+
+    assert_eq!(resp.status(), 200);
+    let body: Value = resp.json().await.unwrap();
+    assert_eq!(body["status"], "success");
 }
