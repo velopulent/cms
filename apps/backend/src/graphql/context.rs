@@ -71,7 +71,6 @@ impl GqlContext {
         }
     }
 
-    #[allow(dead_code)]
     pub fn require_site_match(&self, site_id: &str) -> async_graphql::Result<()> {
         let key_site = self.require_site()?;
         if key_site == site_id {
