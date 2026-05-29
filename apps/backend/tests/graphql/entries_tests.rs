@@ -286,10 +286,12 @@ async fn test_restore_revision_mutation() {
     let entry_id = created["data"]["createEntry"]["id"].as_str().unwrap();
 
     let update_query = r#"mutation UpdateEntry($id: String!, $input: UpdateEntryInput!) {
-        updateEntry(id: $id, $input: $input) { id }
+        updateEntry(id: $id, input: $input) { id }
     }"#;
     let vars = json!({"id": entry_id, "input": {"data": json!({"title": "V2"})}});
-    gql_with_vars(&server, &token, update_query, vars).await;
+    let body = gql_with_vars(&server, &token, update_query, vars).await;
+    assert!(body["errors"].is_null(), "update failed: {:?}", body["errors"]);
+    assert_eq!(body["data"]["updateEntry"]["id"].as_str().unwrap(), entry_id);
 
     let restore_query = format!(r#"mutation {{ restoreRevision(entryId: "{}", revisionNumber: 1) {{ id data }} }}"#, entry_id);
     let body = gql(&server, &token, &restore_query).await;
