@@ -134,7 +134,7 @@ impl GrpcTestContext {
             interceptor,
         );
 
-        let (grpc_shutdown_tx, _grpc_shutdown_rx) = tokio::sync::oneshot::channel::<()>();
+        let (grpc_shutdown_tx, grpc_shutdown_rx) = tokio::sync::oneshot::channel::<()>();
         tokio::spawn(async move {
             tonic::transport::Server::builder()
                 .add_service(collection_server)
@@ -143,7 +143,9 @@ impl GrpcTestContext {
                 .add_service(file_server)
                 .add_service(site_server)
                 .add_service(webhook_server)
-                .serve_with_incoming(incoming)
+                .serve_with_incoming_shutdown(incoming, async move {
+                    let _ = grpc_shutdown_rx.await;
+                })
                 .await
                 .unwrap();
         });
