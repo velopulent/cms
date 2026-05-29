@@ -85,6 +85,87 @@ async fn test_list_files_default_pagination() {
     assert!(resp.per_page >= 1);
 }
 
+async fn seed_file_with_mime(
+    repo: &cms::repository::Repository,
+    site_id: &str,
+    name: &str,
+    mime_type: &str,
+) -> String {
+    let id = uuid::Uuid::now_v7().to_string();
+    let ext = mime_type.split('/').last().unwrap_or("bin");
+    repo.file
+        .create(
+            &id,
+            site_id,
+            &format!("{}.{}", name, ext),
+            &format!("{}.{}", name, ext),
+            mime_type,
+            100,
+            "filesystem",
+            &format!("s_{}/f_{}/{}.{}", site_id, id, name, ext),
+            None,
+            None,
+            None,
+            None,
+        )
+        .await
+        .expect("Failed to seed file");
+    id
+}
+
+#[tokio::test]
+async fn test_list_files_filter_by_category() {
+    let (ctx, site_id, token) = setup().await;
+    let channel = ctx.connect().await;
+    let mut client = FileServiceClient::with_interceptor(channel, auth_interceptor(&token));
+
+    seed_file_with_mime(&ctx.repository, &site_id, "photo", "image/png").await;
+    seed_file_with_mime(&ctx.repository, &site_id, "banner", "image/jpeg").await;
+    seed_file_with_mime(&ctx.repository, &site_id, "doc", "application/pdf").await;
+
+    let resp = client
+        .list_files(tonic::Request::new(ListFilesRequest {
+            search: None,
+            file_type: Some("image".into()),
+            page: 1,
+            per_page: 10,
+        }))
+        .await
+        .unwrap()
+        .into_inner();
+
+    assert_eq!(resp.files.len(), 2);
+    assert_eq!(resp.total, 2);
+    let types: Vec<&str> = resp.files.iter().map(|f| f.mime_type.as_str()).collect();
+    assert!(types.iter().all(|t| t.starts_with("image/")));
+}
+
+#[tokio::test]
+async fn test_list_files_filter_by_exact_mime_type() {
+    let (ctx, site_id, token) = setup().await;
+    let channel = ctx.connect().await;
+    let mut client = FileServiceClient::with_interceptor(channel, auth_interceptor(&token));
+
+    seed_file_with_mime(&ctx.repository, &site_id, "photo", "image/png").await;
+    seed_file_with_mime(&ctx.repository, &site_id, "banner", "image/jpeg").await;
+    seed_file_with_mime(&ctx.repository, &site_id, "doc", "application/pdf").await;
+
+    let resp = client
+        .list_files(tonic::Request::new(ListFilesRequest {
+            search: None,
+            file_type: Some("image/png".into()),
+            page: 1,
+            per_page: 10,
+        }))
+        .await
+        .unwrap()
+        .into_inner();
+
+    assert_eq!(resp.files.len(), 1);
+    assert_eq!(resp.total, 1);
+    assert_eq!(resp.files[0].mime_type, "image/png");
+}
+
 #[tokio::test]
 async fn test_get_file() {
     let (ctx, site_id, token) = setup().await;

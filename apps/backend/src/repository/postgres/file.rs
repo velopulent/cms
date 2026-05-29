@@ -90,7 +90,11 @@ impl FileRepository for PostgresFileRepository {
                     query.push_str(clause);
                     count_query.push_str(clause);
                 }
-                _ => {}
+                mime => {
+                    query.push_str(" AND mime_type = ?");
+                    count_query.push_str(" AND mime_type = ?");
+                    bindings.push(mime.to_string());
+                }
             }
         }
 
