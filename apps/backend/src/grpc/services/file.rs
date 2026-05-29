@@ -38,13 +38,16 @@ impl FileService for FileServiceImpl {
 
         let req = request.into_inner();
 
+        let page_val = if req.page <= 0 { 1 } else { req.page };
+        let per_page_val = if req.per_page <= 0 { 30 } else { req.per_page };
+
         let params = ListFilesParams {
             site_id: &site_id,
             trashed: false,
             search: req.search.as_deref(),
             file_type: req.file_type.as_deref(),
-            page: req.page,
-            per_page: req.per_page,
+            page: page_val,
+            per_page: per_page_val,
         };
 
         let result = self

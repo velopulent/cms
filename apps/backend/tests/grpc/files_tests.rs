@@ -60,6 +60,32 @@ async fn test_list_files() {
 }
 
 #[tokio::test]
+async fn test_list_files_default_pagination() {
+    let (ctx, site_id, token) = setup().await;
+    let channel = ctx.connect().await;
+    let mut client = FileServiceClient::with_interceptor(channel, auth_interceptor(&token));
+
+    seed_file(&ctx.repository, &site_id, "file1").await;
+    seed_file(&ctx.repository, &site_id, "file2").await;
+
+    let resp = client
+        .list_files(tonic::Request::new(ListFilesRequest {
+            search: None,
+            file_type: None,
+            page: 0,
+            per_page: 0,
+        }))
+        .await
+        .unwrap()
+        .into_inner();
+
+    assert_eq!(resp.files.len(), 2);
+    assert_eq!(resp.total, 2);
+    assert!(resp.page >= 1);
+    assert!(resp.per_page >= 1);
+}
+
+#[tokio::test]
 async fn test_get_file() {
     let (ctx, site_id, token) = setup().await;
     let channel = ctx.connect().await;
