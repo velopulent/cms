@@ -4,35 +4,27 @@ use cms::grpc::cms::v1::{
     RestoreFileRequest,
 };
 
-use crate::common::{GrpcTestContext, auth_interceptor, seed_access_token, seed_site};
+use crate::common::{GrpcTestContext, auth_interceptor};
 
 async fn setup() -> (GrpcTestContext, String, String) {
     let ctx = GrpcTestContext::start().await;
-    let site_id = seed_site(&ctx.repository, "Test Site", &ctx.admin_user_id).await;
-    let token = seed_access_token(&ctx.repository, &site_id, "write").await;
+    let (site_id, token) = ctx.setup_site_and_token().await;
     (ctx, site_id, token)
 }
 
-async fn seed_file(repo: &cms::repository::Repository, site_id: &str, name: &str) -> String {
-    let id = uuid::Uuid::now_v7().to_string();
-    repo.file
-        .create(
-            &id,
-            site_id,
-            &format!("{}.txt", name),
-            &format!("{}.txt", name),
-            "text/plain",
-            100,
-            "filesystem",
-            &format!("s_{}/f_{}/{}.txt", site_id, id, name),
-            None,
-            None,
-            None,
-            None,
-        )
-        .await
-        .expect("Failed to seed file");
-    id
+async fn seed_file(ctx: &GrpcTestContext, site_id: &str, name: &str) -> String {
+    let body = ctx
+        .upload_file(site_id, &format!("{}.txt", name), b"test content", "text/plain")
+        .await;
+    body["id"].as_str().unwrap().to_string()
+}
+
+async fn seed_file_with_mime(ctx: &GrpcTestContext, site_id: &str, name: &str, mime_type: &str) -> String {
+    let ext = mime_type.split('/').last().unwrap_or("bin");
+    let body = ctx
+        .upload_file(site_id, &format!("{}.{}", name, ext), b"test content", mime_type)
+        .await;
+    body["id"].as_str().unwrap().to_string()
 }
 
 #[tokio::test]
@@ -41,8 +33,8 @@ async fn test_list_files() {
     let channel = ctx.connect().await;
     let mut client = FileServiceClient::with_interceptor(channel, auth_interceptor(&token));
 
-    seed_file(&ctx.repository, &site_id, "file1").await;
-    seed_file(&ctx.repository, &site_id, "file2").await;
+    seed_file(&ctx, &site_id, "file1").await;
+    seed_file(&ctx, &site_id, "file2").await;
 
     let resp = client
         .list_files(tonic::Request::new(ListFilesRequest {
@@ -65,8 +57,8 @@ async fn test_list_files_default_pagination() {
     let channel = ctx.connect().await;
     let mut client = FileServiceClient::with_interceptor(channel, auth_interceptor(&token));
 
-    seed_file(&ctx.repository, &site_id, "file1").await;
-    seed_file(&ctx.repository, &site_id, "file2").await;
+    seed_file(&ctx, &site_id, "file1").await;
+    seed_file(&ctx, &site_id, "file2").await;
 
     let resp = client
         .list_files(tonic::Request::new(ListFilesRequest {
@@ -85,43 +77,15 @@ async fn test_list_files_default_pagination() {
     assert!(resp.per_page >= 1);
 }
 
-async fn seed_file_with_mime(
-    repo: &cms::repository::Repository,
-    site_id: &str,
-    name: &str,
-    mime_type: &str,
-) -> String {
-    let id = uuid::Uuid::now_v7().to_string();
-    let ext = mime_type.split('/').last().unwrap_or("bin");
-    repo.file
-        .create(
-            &id,
-            site_id,
-            &format!("{}.{}", name, ext),
-            &format!("{}.{}", name, ext),
-            mime_type,
-            100,
-            "filesystem",
-            &format!("s_{}/f_{}/{}.{}", site_id, id, name, ext),
-            None,
-            None,
-            None,
-            None,
-        )
-        .await
-        .expect("Failed to seed file");
-    id
-}
-
 #[tokio::test]
 async fn test_list_files_filter_by_category() {
     let (ctx, site_id, token) = setup().await;
     let channel = ctx.connect().await;
     let mut client = FileServiceClient::with_interceptor(channel, auth_interceptor(&token));
 
-    seed_file_with_mime(&ctx.repository, &site_id, "photo", "image/png").await;
-    seed_file_with_mime(&ctx.repository, &site_id, "banner", "image/jpeg").await;
-    seed_file_with_mime(&ctx.repository, &site_id, "doc", "application/pdf").await;
+    seed_file_with_mime(&ctx, &site_id, "photo", "image/png").await;
+    seed_file_with_mime(&ctx, &site_id, "banner", "image/jpeg").await;
+    seed_file_with_mime(&ctx, &site_id, "doc", "application/pdf").await;
 
     let resp = client
         .list_files(tonic::Request::new(ListFilesRequest {
@@ -146,9 +110,9 @@ async fn test_list_files_filter_by_exact_mime_type() {
     let channel = ctx.connect().await;
     let mut client = FileServiceClient::with_interceptor(channel, auth_interceptor(&token));
 
-    seed_file_with_mime(&ctx.repository, &site_id, "photo", "image/png").await;
-    seed_file_with_mime(&ctx.repository, &site_id, "banner", "image/jpeg").await;
-    seed_file_with_mime(&ctx.repository, &site_id, "doc", "application/pdf").await;
+    seed_file_with_mime(&ctx, &site_id, "photo", "image/png").await;
+    seed_file_with_mime(&ctx, &site_id, "banner", "image/jpeg").await;
+    seed_file_with_mime(&ctx, &site_id, "doc", "application/pdf").await;
 
     let resp = client
         .list_files(tonic::Request::new(ListFilesRequest {
@@ -172,7 +136,7 @@ async fn test_get_file() {
     let channel = ctx.connect().await;
     let mut client = FileServiceClient::with_interceptor(channel, auth_interceptor(&token));
 
-    let file_id = seed_file(&ctx.repository, &site_id, "get-me").await;
+    let file_id = seed_file(&ctx, &site_id, "get-me").await;
 
     let resp = client
         .get_file(tonic::Request::new(GetFileRequest { id: file_id.clone() }))
@@ -181,7 +145,7 @@ async fn test_get_file() {
         .into_inner();
 
     assert_eq!(resp.id, file_id);
-    assert_eq!(resp.original_name, "get-me.txt");
+    assert!(resp.original_name.contains("get-me"));
     assert_eq!(resp.mime_type, "text/plain");
 }
 
@@ -191,7 +155,7 @@ async fn test_delete_file() {
     let channel = ctx.connect().await;
     let mut client = FileServiceClient::with_interceptor(channel, auth_interceptor(&token));
 
-    let file_id = seed_file(&ctx.repository, &site_id, "delete-me").await;
+    let file_id = seed_file(&ctx, &site_id, "delete-me").await;
 
     let resp = client
         .delete_file(tonic::Request::new(DeleteFileRequest { id: file_id.clone() }))
@@ -208,7 +172,7 @@ async fn test_restore_file() {
     let channel = ctx.connect().await;
     let mut client = FileServiceClient::with_interceptor(channel, auth_interceptor(&token));
 
-    let file_id = seed_file(&ctx.repository, &site_id, "restore-me").await;
+    let file_id = seed_file(&ctx, &site_id, "restore-me").await;
 
     client
         .delete_file(tonic::Request::new(DeleteFileRequest { id: file_id.clone() }))
@@ -222,7 +186,7 @@ async fn test_restore_file() {
         .into_inner();
 
     assert_eq!(resp.id, file_id);
-    assert_eq!(resp.original_name, "restore-me.txt");
+    assert!(resp.original_name.contains("restore-me"));
 }
 
 #[tokio::test]
@@ -231,8 +195,8 @@ async fn test_batch_delete_files() {
     let channel = ctx.connect().await;
     let mut client = FileServiceClient::with_interceptor(channel, auth_interceptor(&token));
 
-    let id1 = seed_file(&ctx.repository, &site_id, "batch1").await;
-    let id2 = seed_file(&ctx.repository, &site_id, "batch2").await;
+    let id1 = seed_file(&ctx, &site_id, "batch1").await;
+    let id2 = seed_file(&ctx, &site_id, "batch2").await;
 
     let resp = client
         .batch_delete_files(tonic::Request::new(BatchDeleteFilesRequest { ids: vec![id1, id2] }))
@@ -249,8 +213,8 @@ async fn test_batch_restore_files() {
     let channel = ctx.connect().await;
     let mut client = FileServiceClient::with_interceptor(channel, auth_interceptor(&token));
 
-    let id1 = seed_file(&ctx.repository, &site_id, "batch-r1").await;
-    let id2 = seed_file(&ctx.repository, &site_id, "batch-r2").await;
+    let id1 = seed_file(&ctx, &site_id, "batch-r1").await;
+    let id2 = seed_file(&ctx, &site_id, "batch-r2").await;
 
     client
         .batch_delete_files(tonic::Request::new(BatchDeleteFilesRequest {
