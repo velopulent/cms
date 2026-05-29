@@ -4,12 +4,11 @@ use cms::grpc::cms::v1::{
     UpdateCollectionRequest,
 };
 
-use crate::common::{GrpcTestContext, auth_interceptor, seed_access_token, seed_site};
+use crate::common::{GrpcTestContext, auth_interceptor};
 
 async fn setup() -> (GrpcTestContext, String, String) {
     let ctx = GrpcTestContext::start().await;
-    let site_id = seed_site(&ctx.repository, "Test Site", &ctx.admin_user_id).await;
-    let token = seed_access_token(&ctx.repository, &site_id, "write").await;
+    let (site_id, token) = ctx.setup_site_and_token().await;
     (ctx, site_id, token)
 }
 
