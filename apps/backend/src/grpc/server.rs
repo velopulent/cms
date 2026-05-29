@@ -57,9 +57,36 @@ pub async fn start_grpc_server(
     let webhook_svc =
         crate::grpc::cms::v1::webhook_service_server::WebhookServiceServer::with_interceptor(webhook_svc, interceptor);
 
+    let reflection_service = tonic_reflection::server::Builder::configure()
+        .register_encoded_file_descriptor_set(tonic::include_file_descriptor_set!("cms_descriptor"))
+        .build_v1()
+        .expect("Failed to build reflection service");
+
+    let (health_reporter, health_service) = tonic_health::server::health_reporter();
+    health_reporter
+        .set_serving::<crate::grpc::cms::v1::collection_service_server::CollectionServiceServer<CollectionServiceImpl>>()
+        .await;
+    health_reporter
+        .set_serving::<crate::grpc::cms::v1::entry_service_server::EntryServiceServer<EntryServiceImpl>>()
+        .await;
+    health_reporter
+        .set_serving::<crate::grpc::cms::v1::singleton_service_server::SingletonServiceServer<SingletonServiceImpl>>()
+        .await;
+    health_reporter
+        .set_serving::<crate::grpc::cms::v1::file_service_server::FileServiceServer<FileServiceImpl>>()
+        .await;
+    health_reporter
+        .set_serving::<crate::grpc::cms::v1::site_service_server::SiteServiceServer<SiteServiceImpl>>()
+        .await;
+    health_reporter
+        .set_serving::<crate::grpc::cms::v1::webhook_service_server::WebhookServiceServer<WebhookServiceImpl>>()
+        .await;
+
     info!("gRPC server listening on {}", grpc_addr);
 
     Server::builder()
+        .add_service(reflection_service)
+        .add_service(health_service)
         .add_service(collection_svc)
         .add_service(entry_svc)
         .add_service(singleton_svc)
