@@ -63,3 +63,4 @@ tonic-prost-build = "0.14"
 tempfile = "3"
 tokio-test = "0.4"
 tokio-stream = { version = "0.1", features = ["net"] }
+wiremock = "0.6"

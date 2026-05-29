@@ -3,6 +3,8 @@ use cms::grpc::cms::v1::{
     CreateWebhookRequest, DeleteWebhookRequest, GetWebhookRequest, ListWebhookDeliveriesRequest, ListWebhooksRequest,
     TriggerWebhookRequest, UpdateWebhookRequest,
 };
+use wiremock::{Mock, MockServer, ResponseTemplate};
+use wiremock::matchers::method;
 
 use crate::common::{GrpcTestContext, auth_interceptor, seed_access_token, seed_site};
 
@@ -182,6 +184,13 @@ async fn test_delete_webhook() {
 
 #[tokio::test]
 async fn test_trigger_webhook() {
+    let mock_server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .respond_with(ResponseTemplate::new(200))
+        .expect(1)
+        .mount(&mock_server)
+        .await;
+
     let (ctx, site_id, token) = setup().await;
     let channel = ctx.connect().await;
     let mut client = WebhookServiceClient::with_interceptor(channel, auth_interceptor(&token));
@@ -190,7 +199,7 @@ async fn test_trigger_webhook() {
         .create_webhook(tonic::Request::new(CreateWebhookRequest {
             site_id: site_id.clone(),
             label: "Trigger Me".into(),
-            url: "https://httpbin.org/post".into(),
+            url: mock_server.uri(),
             headers: Default::default(),
         }))
         .await
@@ -214,6 +223,12 @@ async fn test_trigger_webhook() {
 
 #[tokio::test]
 async fn test_list_webhook_deliveries() {
+    let mock_server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .respond_with(ResponseTemplate::new(200))
+        .mount(&mock_server)
+        .await;
+
     let (ctx, site_id, token) = setup().await;
     let channel = ctx.connect().await;
     let mut client = WebhookServiceClient::with_interceptor(channel, auth_interceptor(&token));
@@ -222,7 +237,7 @@ async fn test_list_webhook_deliveries() {
         .create_webhook(tonic::Request::new(CreateWebhookRequest {
             site_id: site_id.clone(),
             label: "Deliveries".into(),
-            url: "https://httpbin.org/post".into(),
+            url: mock_server.uri(),
             headers: Default::default(),
         }))
         .await

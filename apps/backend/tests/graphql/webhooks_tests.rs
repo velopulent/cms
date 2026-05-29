@@ -1,4 +1,6 @@
 use serde_json::{json, Value};
+use wiremock::{Mock, MockServer, ResponseTemplate};
+use wiremock::matchers::method;
 
 use crate::common::TestServer;
 
@@ -69,11 +71,11 @@ async fn gql_with_vars(server: &TestServer, token: &str, query: &str, variables:
     resp.json().await.unwrap()
 }
 
-async fn create_webhook(server: &TestServer, token: &str, site_id: &str, label: &str) -> Value {
+async fn create_webhook(server: &TestServer, token: &str, site_id: &str, label: &str, url: &str) -> Value {
     let query = r#"mutation CreateWebhook($siteId: String!, $label: String!, $url: String!) {
         createWebhook(siteId: $siteId, label: $label, url: $url) { id label url }
     }"#;
-    let vars = json!({"siteId": site_id, "label": label, "url": "https://example.com/hook"});
+    let vars = json!({"siteId": site_id, "label": label, "url": url});
     gql_with_vars(server, token, query, vars).await
 }
 
@@ -106,7 +108,7 @@ async fn test_create_webhook_mutation() {
     let server = TestServer::start().await;
     let (site_id, token) = setup(&server).await;
 
-    let body = create_webhook(&server, &token, &site_id, "New Hook").await;
+    let body = create_webhook(&server, &token, &site_id, "New Hook", "https://example.com/hook").await;
     assert!(body["errors"].is_null(), "errors: {:?}", body["errors"]);
     assert_eq!(body["data"]["createWebhook"]["label"].as_str().unwrap(), "New Hook");
 }
@@ -116,7 +118,7 @@ async fn test_webhook_by_id() {
     let server = TestServer::start().await;
     let (site_id, token) = setup(&server).await;
 
-    let created = create_webhook(&server, &token, &site_id, "My Hook").await;
+    let created = create_webhook(&server, &token, &site_id, "My Hook", "https://example.com/hook").await;
     assert!(created["errors"].is_null(), "create_webhook errors: {:?}", created["errors"]);
     let hook_id = created["data"]["createWebhook"]["id"].as_str().unwrap();
 
@@ -131,7 +133,7 @@ async fn test_delete_webhook_mutation() {
     let server = TestServer::start().await;
     let (site_id, token) = setup(&server).await;
 
-    let created = create_webhook(&server, &token, &site_id, "Delete Me").await;
+    let created = create_webhook(&server, &token, &site_id, "Delete Me", "https://example.com/hook").await;
     let hook_id = created["data"]["createWebhook"]["id"].as_str().unwrap();
 
     let query = format!(r#"mutation {{ deleteWebhook(siteId: "{}", webhookId: "{}") }}"#, site_id, hook_id);
@@ -145,7 +147,7 @@ async fn test_update_webhook_mutation() {
     let server = TestServer::start().await;
     let (site_id, token) = setup(&server).await;
 
-    let created = create_webhook(&server, &token, &site_id, "Old Label").await;
+    let created = create_webhook(&server, &token, &site_id, "Old Label", "https://example.com/hook").await;
     let hook_id = created["data"]["createWebhook"]["id"].as_str().unwrap();
 
     let query = r#"mutation UpdateWebhook($siteId: String!, $webhookId: String!, $label: String!) {
@@ -159,25 +161,41 @@ async fn test_update_webhook_mutation() {
 
 #[tokio::test]
 async fn test_trigger_webhook_mutation() {
+    let mock_server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .respond_with(ResponseTemplate::new(200))
+        .expect(1)
+        .mount(&mock_server)
+        .await;
+
     let server = TestServer::start().await;
     let (site_id, token) = setup(&server).await;
 
-    let created = create_webhook(&server, &token, &site_id, "Trigger Me").await;
+    let created = create_webhook(&server, &token, &site_id, "Trigger Me", &mock_server.uri()).await;
     let hook_id = created["data"]["createWebhook"]["id"].as_str().unwrap();
 
     let query = format!(r#"mutation {{ triggerWebhook(siteId: "{}", webhookId: "{}") {{ id status }} }}"#, site_id, hook_id);
     let body = gql(&server, &token, &query).await;
     assert!(body["errors"].is_null());
-    assert!(body["data"]["triggerWebhook"]["status"].as_str().unwrap() == "success" || body["data"]["triggerWebhook"]["status"].as_str().unwrap() == "failed");
+    assert_eq!(body["data"]["triggerWebhook"]["status"].as_str().unwrap(), "success");
 }
 
 #[tokio::test]
 async fn test_webhook_deliveries_query() {
+    let mock_server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .respond_with(ResponseTemplate::new(200))
+        .mount(&mock_server)
+        .await;
+
     let server = TestServer::start().await;
     let (site_id, token) = setup(&server).await;
 
-    let created = create_webhook(&server, &token, &site_id, "Delivery Hook").await;
+    let created = create_webhook(&server, &token, &site_id, "Delivery Hook", &mock_server.uri()).await;
     let hook_id = created["data"]["createWebhook"]["id"].as_str().unwrap();
+
+    let query = format!(r#"mutation {{ triggerWebhook(siteId: "{}", webhookId: "{}") {{ id status }} }}"#, site_id, hook_id);
+    gql(&server, &token, &query).await;
 
     let query = format!(r#"{{ webhookDeliveries(siteId: "{}", webhookId: "{}") {{ id status }} }}"#, site_id, hook_id);
     let body = gql(&server, &token, &query).await;
