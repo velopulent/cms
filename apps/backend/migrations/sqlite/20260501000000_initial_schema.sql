@@ -1,3 +1,5 @@
+-- CMS Schema (SQLite)
+
 CREATE TABLE IF NOT EXISTS users (
     id TEXT PRIMARY KEY NOT NULL,
     username TEXT UNIQUE NOT NULL,
@@ -122,3 +124,28 @@ CREATE TABLE IF NOT EXISTS entry_revisions (
 CREATE INDEX IF NOT EXISTS idx_entry_revisions_entry_id ON entry_revisions(entry_id);
 CREATE INDEX IF NOT EXISTS idx_entry_revisions_entry_number ON entry_revisions(entry_id, revision_number);
 CREATE INDEX IF NOT EXISTS idx_entry_revisions_created_at ON entry_revisions(entry_id, created_at DESC);
+
+CREATE TABLE IF NOT EXISTS site_webhooks (
+    id TEXT PRIMARY KEY NOT NULL,
+    site_id TEXT NOT NULL REFERENCES sites(id) ON DELETE CASCADE,
+    label TEXT NOT NULL,
+    url TEXT NOT NULL,
+    headers_encrypted TEXT NOT NULL,
+    created_by TEXT REFERENCES users(id) ON DELETE SET NULL,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS site_webhook_deliveries (
+    id TEXT PRIMARY KEY NOT NULL,
+    webhook_id TEXT NOT NULL REFERENCES site_webhooks(id) ON DELETE CASCADE,
+    status TEXT NOT NULL CHECK(status IN ('success', 'failed')),
+    status_code INTEGER,
+    response_body TEXT,
+    duration_ms INTEGER,
+    triggered_by TEXT REFERENCES users(id) ON DELETE SET NULL,
+    triggered_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_site_webhooks_site_id ON site_webhooks(site_id);
+CREATE INDEX IF NOT EXISTS idx_site_webhook_deliveries_webhook_id ON site_webhook_deliveries(webhook_id);
