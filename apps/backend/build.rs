@@ -20,7 +20,7 @@ fn main() {
 
     tonic_prost_build::configure()
         .build_server(true)
-        .build_client(false)
+        .build_client(true)
         .out_dir("src/grpc/cms")
         .compile_protos(&[proto_file_str], &[proto_dir_str])
         .expect("Failed to compile proto");
