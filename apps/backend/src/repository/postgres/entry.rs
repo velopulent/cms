@@ -284,7 +284,7 @@ impl EntryRepository for PostgresEntryRepository {
 
     async fn unpublish(&self, id: &str, site_id: &str) -> Result<Entry, RepositoryError> {
         let result =
-            sqlx::query("UPDATE entries SET status = 'draft', updated_at = NOW() WHERE id = $1 AND site_id = $2")
+            sqlx::query("UPDATE entries SET status = 'draft', published_at = NULL, updated_at = NOW() WHERE id = $1 AND site_id = $2")
                 .bind(id)
                 .bind(site_id)
                 .execute(&self.pool)

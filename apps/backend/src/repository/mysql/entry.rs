@@ -275,7 +275,7 @@ impl EntryRepository for MysqlEntryRepository {
 
     async fn unpublish(&self, id: &str, site_id: &str) -> Result<Entry, RepositoryError> {
         let result =
-            sqlx::query("UPDATE entries SET status = 'draft', updated_at = NOW() WHERE id = ? AND site_id = ?")
+            sqlx::query("UPDATE entries SET status = 'draft', published_at = NULL, updated_at = NOW() WHERE id = ? AND site_id = ?")
                 .bind(id)
                 .bind(site_id)
                 .execute(&self.pool)

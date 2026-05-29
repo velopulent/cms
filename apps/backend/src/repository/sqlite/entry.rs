@@ -317,7 +317,7 @@ impl EntryRepository for SqliteEntryRepository {
 
     async fn unpublish(&self, id: &str, site_id: &str) -> Result<Entry, RepositoryError> {
         let result = sqlx::query(
-            "UPDATE entries SET status = 'draft', updated_at = datetime('now') WHERE id = ? AND site_id = ?",
+            "UPDATE entries SET status = 'draft', published_at = NULL, updated_at = datetime('now') WHERE id = ? AND site_id = ?",
         )
         .bind(id)
         .bind(site_id)
