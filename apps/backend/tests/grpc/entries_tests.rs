@@ -1,0 +1,356 @@
+use cms::grpc::cms::v1::entry_service_client::EntryServiceClient;
+use cms::grpc::cms::v1::{
+    CreateCollectionRequest, CreateEntryRequest, DeleteEntryRequest, GetEntryRequest, GetEntryRevisionRequest,
+    ListEntriesRequest, ListEntryRevisionsRequest, PublishEntryRequest, RestoreEntryRevisionRequest,
+    UnpublishEntryRequest, UpdateEntryRequest,
+};
+
+use crate::common::{GrpcTestContext, auth_interceptor, seed_access_token, seed_site};
+
+async fn setup() -> (GrpcTestContext, String, String, String) {
+    let ctx = GrpcTestContext::start().await;
+    let site_id = seed_site(&ctx.repository, "Test Site", &ctx.admin_user_id).await;
+    let token = seed_access_token(&ctx.repository, &site_id, "write").await;
+
+    let channel = ctx.connect().await;
+    let mut client = cms::grpc::cms::v1::collection_service_client::CollectionServiceClient::with_interceptor(
+        channel,
+        auth_interceptor(&token),
+    );
+
+    let collection = client
+        .create_collection(tonic::Request::new(CreateCollectionRequest {
+            name: "Posts".into(),
+            slug: "posts".into(),
+            definition: r#"{"fields":[{"name":"title","type":"string"}]}"#.into(),
+            is_singleton: false,
+        }))
+        .await
+        .unwrap()
+        .into_inner();
+
+    (ctx, site_id, token, collection.id)
+}
+
+#[tokio::test]
+async fn test_create_entry() {
+    let (ctx, _site_id, token, collection_id) = setup().await;
+    let channel = ctx.connect().await;
+    let mut client = EntryServiceClient::with_interceptor(channel, auth_interceptor(&token));
+
+    let resp = client
+        .create_entry(tonic::Request::new(CreateEntryRequest {
+            collection_id: collection_id.clone(),
+            data: r#"{"title":"Hello World"}"#.into(),
+            slug: "hello-world".into(),
+        }))
+        .await
+        .unwrap()
+        .into_inner();
+
+    assert_eq!(resp.collection_id, collection_id);
+    assert_eq!(resp.slug, "hello-world");
+    assert_eq!(resp.status, "draft");
+    assert!(!resp.id.is_empty());
+}
+
+#[tokio::test]
+async fn test_get_entry() {
+    let (ctx, _site_id, token, collection_id) = setup().await;
+    let channel = ctx.connect().await;
+    let mut client = EntryServiceClient::with_interceptor(channel, auth_interceptor(&token));
+
+    let created = client
+        .create_entry(tonic::Request::new(CreateEntryRequest {
+            collection_id: collection_id.clone(),
+            data: r#"{"title":"Test"}"#.into(),
+            slug: "test-entry".into(),
+        }))
+        .await
+        .unwrap()
+        .into_inner();
+
+    let fetched = client
+        .get_entry(tonic::Request::new(GetEntryRequest { id: created.id.clone() }))
+        .await
+        .unwrap()
+        .into_inner();
+
+    assert_eq!(fetched.id, created.id);
+    assert_eq!(fetched.slug, "test-entry");
+}
+
+#[tokio::test]
+async fn test_list_entries() {
+    let (ctx, _site_id, token, collection_id) = setup().await;
+    let channel = ctx.connect().await;
+    let mut client = EntryServiceClient::with_interceptor(channel, auth_interceptor(&token));
+
+    for i in 0..3 {
+        client
+            .create_entry(tonic::Request::new(CreateEntryRequest {
+                collection_id: collection_id.clone(),
+                data: format!(r#"{{"title":"Entry {}"}}"#, i),
+                slug: format!("entry-{}", i),
+            }))
+            .await
+            .unwrap();
+    }
+
+    let resp = client
+        .list_entries(tonic::Request::new(ListEntriesRequest {
+            collection_id: Some(collection_id),
+            status: None,
+            search: None,
+            page: 1,
+            per_page: 10,
+        }))
+        .await
+        .unwrap()
+        .into_inner();
+
+    assert_eq!(resp.items.len(), 3);
+    assert_eq!(resp.total, 3);
+}
+
+#[tokio::test]
+async fn test_update_entry() {
+    let (ctx, _site_id, token, collection_id) = setup().await;
+    let channel = ctx.connect().await;
+    let mut client = EntryServiceClient::with_interceptor(channel, auth_interceptor(&token));
+
+    let created = client
+        .create_entry(tonic::Request::new(CreateEntryRequest {
+            collection_id: collection_id.clone(),
+            data: r#"{"title":"Old"}"#.into(),
+            slug: "update-me".into(),
+        }))
+        .await
+        .unwrap()
+        .into_inner();
+
+    let updated = client
+        .update_entry(tonic::Request::new(UpdateEntryRequest {
+            id: created.id,
+            data: Some(r#"{"title":"New"}"#.into()),
+            slug: None,
+            status: None,
+            change_summary: Some("Updated title".into()),
+        }))
+        .await
+        .unwrap()
+        .into_inner();
+
+    assert_eq!(updated.data, r#"{"title":"New"}"#);
+}
+
+#[tokio::test]
+async fn test_delete_entry() {
+    let (ctx, _site_id, token, collection_id) = setup().await;
+    let channel = ctx.connect().await;
+    let mut client = EntryServiceClient::with_interceptor(channel, auth_interceptor(&token));
+
+    let created = client
+        .create_entry(tonic::Request::new(CreateEntryRequest {
+            collection_id: collection_id.clone(),
+            data: r#"{"title":"Delete Me"}"#.into(),
+            slug: "delete-me".into(),
+        }))
+        .await
+        .unwrap()
+        .into_inner();
+
+    let resp = client
+        .delete_entry(tonic::Request::new(DeleteEntryRequest { id: created.id }))
+        .await
+        .unwrap()
+        .into_inner();
+
+    assert!(resp.success);
+
+    let result = client
+        .get_entry(tonic::Request::new(GetEntryRequest {
+            id: "nonexistent".into(),
+        }))
+        .await;
+    assert!(result.is_err());
+}
+
+#[tokio::test]
+async fn test_publish_entry() {
+    let (ctx, _site_id, token, collection_id) = setup().await;
+    let channel = ctx.connect().await;
+    let mut client = EntryServiceClient::with_interceptor(channel, auth_interceptor(&token));
+
+    let created = client
+        .create_entry(tonic::Request::new(CreateEntryRequest {
+            collection_id: collection_id.clone(),
+            data: r#"{"title":"Publish Me"}"#.into(),
+            slug: "publish-me".into(),
+        }))
+        .await
+        .unwrap()
+        .into_inner();
+
+    assert_eq!(created.status, "draft");
+
+    let published = client
+        .publish_entry(tonic::Request::new(PublishEntryRequest { id: created.id }))
+        .await
+        .unwrap()
+        .into_inner();
+
+    assert_eq!(published.status, "published");
+    assert!(published.published_at.is_some());
+}
+
+#[tokio::test]
+async fn test_unpublish_entry() {
+    let (ctx, _site_id, token, collection_id) = setup().await;
+    let channel = ctx.connect().await;
+    let mut client = EntryServiceClient::with_interceptor(channel, auth_interceptor(&token));
+
+    let created = client
+        .create_entry(tonic::Request::new(CreateEntryRequest {
+            collection_id: collection_id.clone(),
+            data: r#"{"title":"Unpublish Me"}"#.into(),
+            slug: "unpublish-me".into(),
+        }))
+        .await
+        .unwrap()
+        .into_inner();
+
+    client
+        .publish_entry(tonic::Request::new(PublishEntryRequest { id: created.id.clone() }))
+        .await
+        .unwrap();
+
+    let unpublished = client
+        .unpublish_entry(tonic::Request::new(UnpublishEntryRequest { id: created.id }))
+        .await
+        .unwrap()
+        .into_inner();
+
+    assert_eq!(unpublished.status, "draft");
+    assert!(unpublished.published_at.is_none());
+}
+
+#[tokio::test]
+async fn test_list_entry_revisions() {
+    let (ctx, _site_id, token, collection_id) = setup().await;
+    let channel = ctx.connect().await;
+    let mut client = EntryServiceClient::with_interceptor(channel, auth_interceptor(&token));
+
+    let created = client
+        .create_entry(tonic::Request::new(CreateEntryRequest {
+            collection_id: collection_id.clone(),
+            data: r#"{"title":"V1"}"#.into(),
+            slug: "revision-test".into(),
+        }))
+        .await
+        .unwrap()
+        .into_inner();
+
+    client
+        .update_entry(tonic::Request::new(UpdateEntryRequest {
+            id: created.id.clone(),
+            data: Some(r#"{"title":"V2"}"#.into()),
+            slug: None,
+            status: None,
+            change_summary: Some("Updated to V2".into()),
+        }))
+        .await
+        .unwrap();
+
+    let resp = client
+        .list_entry_revisions(tonic::Request::new(ListEntryRevisionsRequest {
+            entry_id: created.id,
+            page: 1,
+            per_page: 10,
+        }))
+        .await
+        .unwrap()
+        .into_inner();
+
+    assert!(resp.items.len() >= 2);
+    assert!(resp.total >= 2);
+}
+
+#[tokio::test]
+async fn test_get_entry_revision() {
+    let (ctx, _site_id, token, collection_id) = setup().await;
+    let channel = ctx.connect().await;
+    let mut client = EntryServiceClient::with_interceptor(channel, auth_interceptor(&token));
+
+    let created = client
+        .create_entry(tonic::Request::new(CreateEntryRequest {
+            collection_id: collection_id.clone(),
+            data: r#"{"title":"V1"}"#.into(),
+            slug: "get-revision".into(),
+        }))
+        .await
+        .unwrap()
+        .into_inner();
+
+    client
+        .update_entry(tonic::Request::new(UpdateEntryRequest {
+            id: created.id.clone(),
+            data: Some(r#"{"title":"V2"}"#.into()),
+            slug: None,
+            status: None,
+            change_summary: None,
+        }))
+        .await
+        .unwrap();
+
+    let revision = client
+        .get_entry_revision(tonic::Request::new(GetEntryRevisionRequest {
+            entry_id: created.id,
+            revision_number: 1,
+        }))
+        .await
+        .unwrap()
+        .into_inner();
+
+    assert_eq!(revision.revision_number, 1);
+    assert!(revision.data.contains("V1"));
+}
+
+#[tokio::test]
+async fn test_restore_entry_revision() {
+    let (ctx, _site_id, token, collection_id) = setup().await;
+    let channel = ctx.connect().await;
+    let mut client = EntryServiceClient::with_interceptor(channel, auth_interceptor(&token));
+
+    let created = client
+        .create_entry(tonic::Request::new(CreateEntryRequest {
+            collection_id: collection_id.clone(),
+            data: r#"{"title":"Original"}"#.into(),
+            slug: "restore-revision".into(),
+        }))
+        .await
+        .unwrap()
+        .into_inner();
+
+    client
+        .update_entry(tonic::Request::new(UpdateEntryRequest {
+            id: created.id.clone(),
+            data: Some(r#"{"title":"Changed"}"#.into()),
+            slug: None,
+            status: None,
+            change_summary: None,
+        }))
+        .await
+        .unwrap();
+
+    let restored = client
+        .restore_entry_revision(tonic::Request::new(RestoreEntryRevisionRequest {
+            entry_id: created.id,
+            revision_number: 1,
+        }))
+        .await
+        .unwrap()
+        .into_inner();
+
+    assert!(restored.data.contains("Original"));
+}
