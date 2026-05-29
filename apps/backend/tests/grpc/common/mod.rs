@@ -12,6 +12,7 @@ use cms::grpc::services::entry::EntryServiceImpl;
 use cms::grpc::services::file::FileServiceImpl;
 use cms::grpc::services::singleton::SingletonServiceImpl;
 use cms::repository::Repository;
+use cms::router::create_router;
 use cms::services::Services;
 use cms::storage::{StorageRegistry, STORAGE_KIND_FILESYSTEM};
 use tokio::net::TcpListener;
@@ -20,21 +21,15 @@ use tonic::transport::Channel;
 use tonic::Request;
 
 pub struct GrpcTestContext {
-    pub addr: SocketAddr,
-    pub repository: Repository,
-    pub admin_user_id: String,
+    pub grpc_addr: SocketAddr,
+    pub rest_base_url: String,
     _shutdown: tokio::sync::oneshot::Sender<()>,
+    _grpc_shutdown: tokio::sync::oneshot::Sender<()>,
     _storage_dir: tempfile::TempDir,
 }
 
 impl GrpcTestContext {
     pub async fn start() -> Self {
-        let listener = TcpListener::bind("127.0.0.1:0")
-            .await
-            .expect("Failed to bind random port");
-        let addr = listener.local_addr().unwrap();
-        let incoming = TcpListenerStream::new(listener);
-
         let storage_dir = tempfile::tempdir().expect("Failed to create temp storage dir");
         let storage_path = storage_dir.path().to_str().unwrap().to_string();
 
@@ -59,7 +54,7 @@ impl GrpcTestContext {
 
         let repository = Repository::new(&pool);
 
-        let admin_user_id = seed_admin_and_get_id(&repository).await;
+        seed_admin(&repository).await;
 
         let mut storage_registry = StorageRegistry::new();
         let fs_storage = cms::storage::FileSystemStorage::new(&storage_path)
@@ -69,8 +64,38 @@ impl GrpcTestContext {
 
         let config = Arc::new(config);
         let repository_arc = Arc::new(repository.clone());
-
         let services = Services::new(repository_arc.clone(), &config);
+
+        // Start Axum server for REST-based seeding
+        let axum_listener = TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("Failed to bind random port");
+        let axum_port = axum_listener.local_addr().unwrap().port();
+        let rest_base_url = format!("http://127.0.0.1:{}", axum_port);
+
+        let app = create_router(
+            repository.clone(),
+            (*config).clone(),
+            storage_registry.clone(),
+            Services::new(repository_arc.clone(), &config),
+        );
+
+        let (axum_shutdown_tx, axum_shutdown_rx) = tokio::sync::oneshot::channel::<()>();
+        tokio::spawn(async move {
+            let server = axum::serve(axum_listener, app).with_graceful_shutdown(async move {
+                let _ = axum_shutdown_rx.await;
+            });
+            if let Err(e) = server.await {
+                eprintln!("Axum test server error: {}", e);
+            }
+        });
+
+        // Start tonic gRPC server
+        let grpc_listener = TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("Failed to bind random port");
+        let grpc_addr = grpc_listener.local_addr().unwrap();
+        let incoming = TcpListenerStream::new(grpc_listener);
 
         let collection_svc = CollectionServiceImpl::new(services.collection.clone(), repository_arc.clone());
         let entry_svc = EntryServiceImpl::new(services.entry.clone(), repository_arc.clone());
@@ -80,7 +105,7 @@ impl GrpcTestContext {
         let site_svc = SiteServiceImpl::new(services.site.clone(), repository_arc.clone());
         let webhook_svc = WebhookServiceImpl::new(services.webhook.clone(), repository_arc);
 
-        let interceptor = AuthInterceptor::new(config);
+        let interceptor = AuthInterceptor::new(config.clone());
 
         let collection_server =
             cms::grpc::cms::v1::collection_service_server::CollectionServiceServer::with_interceptor(
@@ -109,8 +134,7 @@ impl GrpcTestContext {
             interceptor,
         );
 
-        let (shutdown_tx, _shutdown_rx) = tokio::sync::oneshot::channel::<()>();
-
+        let (grpc_shutdown_tx, _grpc_shutdown_rx) = tokio::sync::oneshot::channel::<()>();
         tokio::spawn(async move {
             tonic::transport::Server::builder()
                 .add_service(collection_server)
@@ -124,91 +148,155 @@ impl GrpcTestContext {
                 .unwrap();
         });
 
-        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+        tokio::time::sleep(std::time::Duration::from_millis(200)).await;
 
         GrpcTestContext {
-            addr,
-            repository,
-            admin_user_id,
-            _shutdown: shutdown_tx,
+            grpc_addr,
+            rest_base_url,
+            _shutdown: axum_shutdown_tx,
+            _grpc_shutdown: grpc_shutdown_tx,
             _storage_dir: storage_dir,
         }
     }
 
     pub async fn connect(&self) -> Channel {
-        tonic::transport::Channel::from_shared(format!("http://{}", self.addr))
+        tonic::transport::Channel::from_shared(format!("http://{}", self.grpc_addr))
             .unwrap()
             .connect()
             .await
             .unwrap()
     }
+
+    pub async fn setup_site_and_token(&self) -> (String, String) {
+        let client = reqwest::Client::builder().build().unwrap();
+
+        // Login as admin
+        let resp = client
+            .post(format!("{}/api/auth/login", self.rest_base_url))
+            .json(&serde_json::json!({
+                "username": "admin",
+                "password": "admin",
+            }))
+            .send()
+            .await
+            .expect("Failed to login");
+
+        let (jwt, csrf) = extract_cookies(&resp);
+
+        // Create site
+        let resp = client
+            .post(format!("{}/api/dashboard/sites", self.rest_base_url))
+            .header("Cookie", format!("token={}; csrf={}", jwt, csrf))
+            .header("X-CSRF-Token", &csrf)
+            .json(&serde_json::json!({"name": "Test Site", "storage_provider": "filesystem"}))
+            .send()
+            .await
+            .expect("Failed to create site");
+        let site: serde_json::Value = resp.json().await.unwrap();
+        let site_id = site["id"].as_str().unwrap().to_string();
+
+        // Create access token
+        let resp = client
+            .post(format!(
+                "{}/api/dashboard/sites/{}/tokens",
+                self.rest_base_url, site_id
+            ))
+            .header("Cookie", format!("token={}; csrf={}", jwt, csrf))
+            .header("X-CSRF-Token", &csrf)
+            .json(&serde_json::json!({"name": "Test Token", "permission": "write"}))
+            .send()
+            .await
+            .expect("Failed to create token");
+        let token_val: serde_json::Value = resp.json().await.unwrap();
+        let token = token_val["token"].as_str().unwrap().to_string();
+
+        (site_id, token)
+    }
+
+    pub async fn upload_file(&self, site_id: &str, filename: &str, content: &[u8], mime_type: &str) -> serde_json::Value {
+        let client = reqwest::Client::builder().build().unwrap();
+
+        let resp = client
+            .post(format!("{}/api/auth/login", self.rest_base_url))
+            .json(&serde_json::json!({
+                "username": "admin",
+                "password": "admin",
+            }))
+            .send()
+            .await
+            .expect("Failed to login");
+
+        let (jwt, csrf) = extract_cookies(&resp);
+
+        let part = reqwest::multipart::Part::bytes(content.to_vec())
+            .file_name(filename.to_string())
+            .mime_str(mime_type)
+            .unwrap();
+
+        let form = reqwest::multipart::Form::new().text("site_id", site_id.to_string()).part("file", part);
+
+        let resp = client
+            .post(format!(
+                "{}/api/dashboard/sites/{}/files",
+                self.rest_base_url, site_id
+            ))
+            .header("Cookie", format!("token={}; csrf={}", jwt, csrf))
+            .header("X-CSRF-Token", &csrf)
+            .multipart(form)
+            .send()
+            .await
+            .expect("Failed to upload file");
+
+        resp.json().await.unwrap()
+    }
 }
 
-#[derive(Clone)]
-pub struct TestAuthInterceptor {
-    token: String,
+fn extract_cookies(resp: &reqwest::Response) -> (String, String) {
+    let headers = resp.headers();
+    let mut jwt = String::new();
+    let mut csrf = String::new();
+    for cookie in headers.get_all("set-cookie").iter() {
+        if let Ok(val) = cookie.to_str() {
+            if val.starts_with("token=") {
+                jwt = val
+                    .split(';')
+                    .next()
+                    .and_then(|c| c.strip_prefix("token="))
+                    .unwrap_or("")
+                    .to_string();
+            }
+            if val.starts_with("csrf=") {
+                csrf = val
+                    .split(';')
+                    .next()
+                    .and_then(|c| c.strip_prefix("csrf="))
+                    .unwrap_or("")
+                    .to_string();
+            }
+        }
+    }
+    (jwt, csrf)
 }
 
-impl tonic::service::Interceptor for TestAuthInterceptor {
-    fn call(&mut self, mut req: Request<()>) -> Result<Request<()>, tonic::Status> {
+pub fn auth_interceptor(token: &str) -> impl tonic::service::Interceptor + Clone + use<> {
+    let token = token.to_string();
+    move |mut req: Request<()>| {
         req.metadata_mut().insert(
             "authorization",
-            tonic::metadata::MetadataValue::from_str(&format!("Bearer {}", self.token)).unwrap(),
+            tonic::metadata::MetadataValue::from_str(&format!("Bearer {}", token)).unwrap(),
         );
         Ok(req)
     }
 }
 
-pub fn auth_interceptor(token: &str) -> TestAuthInterceptor {
-    TestAuthInterceptor {
-        token: token.to_string(),
+async fn seed_admin(repo: &Repository) {
+    if !repo.user.exists("admin").await.unwrap_or(false) {
+        let id = uuid::Uuid::now_v7().to_string();
+        let password_hash =
+            bcrypt::hash("admin", bcrypt::DEFAULT_COST).expect("Failed to hash password");
+        repo.user
+            .create(&id, "admin", "admin@cms.local", &password_hash)
+            .await
+            .expect("Failed to seed admin user");
     }
-}
-
-pub async fn seed_access_token(repo: &Repository, site_id: &str, permission: &str) -> String {
-    let token = format!("cms_site_{}", uuid::Uuid::new_v4().to_string().replace('-', ""));
-    let prefix: String = token.chars().take(24).collect();
-    let token_hash = bcrypt::hash(&token, bcrypt::DEFAULT_COST).expect("Failed to hash token");
-    let hmac = cms::grpc::interceptor::compute_key_hmac(&token, "test-hmac-secret-integration");
-    let id = uuid::Uuid::now_v7().to_string();
-
-    repo.access_token
-        .create(
-            &id,
-            site_id,
-            "Test Token",
-            &token_hash,
-            &prefix,
-            &hmac,
-            permission,
-            None,
-        )
-        .await
-        .expect("Failed to create access token");
-
-    token
-}
-
-pub async fn seed_site(repo: &Repository, name: &str, created_by: &str) -> String {
-    let id = uuid::Uuid::now_v7().to_string();
-    repo.site
-        .create(&id, name, "filesystem", created_by)
-        .await
-        .expect("Failed to seed site");
-    id
-}
-
-pub async fn seed_admin_and_get_id(repo: &Repository) -> String {
-    let username = "admin";
-    if let Ok(Some(user)) = repo.user.find_by_username(username).await {
-        return user.id;
-    }
-    let id = uuid::Uuid::now_v7().to_string();
-    let password_hash =
-        bcrypt::hash("admin", bcrypt::DEFAULT_COST).expect("Failed to hash password");
-    repo.user
-        .create(&id, username, "admin@cms.local", &password_hash)
-        .await
-        .expect("Failed to seed admin user");
-    id
 }
