@@ -625,6 +625,7 @@ dependencies = [
  "thiserror",
  "time",
  "tokio",
+ "tokio-stream",
  "tokio-test",
  "tokio-util",
  "tonic",
