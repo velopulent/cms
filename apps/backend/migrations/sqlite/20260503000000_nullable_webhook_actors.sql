@@ -1,8 +1,9 @@
 -- Make created_by and triggered_by nullable in webhook tables
 -- Previously these referenced users(id) with NOT NULL, but API key operations
 -- don't have a user context, causing FK violations.
+-- Columns are now nullable but FK constraints are preserved for referential integrity.
 
--- site_webhooks: recreate table without FK/NOT NULL on created_by
+-- site_webhooks: recreate table with nullable created_by + FK
 ALTER TABLE site_webhooks RENAME TO site_webhooks_old;
 
 CREATE TABLE site_webhooks (
@@ -11,7 +12,7 @@ CREATE TABLE site_webhooks (
     label TEXT NOT NULL,
     url TEXT NOT NULL,
     headers_encrypted TEXT NOT NULL,
-    created_by TEXT,
+    created_by TEXT REFERENCES users(id) ON DELETE SET NULL,
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
     updated_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
@@ -22,7 +23,7 @@ INSERT INTO site_webhooks (id, site_id, label, url, headers_encrypted, created_b
 
 DROP TABLE site_webhooks_old;
 
--- site_webhook_deliveries: recreate table without FK/NOT NULL on triggered_by
+-- site_webhook_deliveries: recreate table with nullable triggered_by + FK
 ALTER TABLE site_webhook_deliveries RENAME TO site_webhook_deliveries_old;
 
 CREATE TABLE site_webhook_deliveries (
@@ -32,7 +33,7 @@ CREATE TABLE site_webhook_deliveries (
     status_code INTEGER,
     response_body TEXT,
     duration_ms INTEGER,
-    triggered_by TEXT,
+    triggered_by TEXT REFERENCES users(id) ON DELETE SET NULL,
     triggered_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
