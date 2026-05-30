@@ -297,6 +297,66 @@ impl CmsServer {
         let (actor, _scopes) = self.resolve_actor(&ctx)?;
         webhook::delete_webhook(&self.scope_checker, &self.services, &actor, params).await
     }
+
+    #[tool(description = "Get a webhook by ID")]
+    async fn get_webhook(
+        &self,
+        ctx: RequestContext<RoleServer>,
+        params: Parameters<webhook::GetWebhookParams>,
+    ) -> Result<CallToolResult, McpError> {
+        let (actor, _scopes) = self.resolve_actor(&ctx)?;
+        webhook::get_webhook(&self.scope_checker, &self.services, &actor, params).await
+    }
+
+    #[tool(description = "Update a webhook")]
+    async fn update_webhook(
+        &self,
+        ctx: RequestContext<RoleServer>,
+        params: Parameters<webhook::UpdateWebhookParams>,
+    ) -> Result<CallToolResult, McpError> {
+        let (actor, _scopes) = self.resolve_actor(&ctx)?;
+        webhook::update_webhook(&self.scope_checker, &self.services, &actor, params).await
+    }
+
+    #[tool(description = "List delivery attempts for a webhook")]
+    async fn list_webhook_deliveries(
+        &self,
+        ctx: RequestContext<RoleServer>,
+        params: Parameters<webhook::ListWebhookDeliveriesParams>,
+    ) -> Result<CallToolResult, McpError> {
+        let (actor, _scopes) = self.resolve_actor(&ctx)?;
+        webhook::list_webhook_deliveries(&self.scope_checker, &self.services, &actor, params).await
+    }
+
+    #[tool(description = "Restore a soft-deleted file")]
+    async fn restore_file(
+        &self,
+        ctx: RequestContext<RoleServer>,
+        params: Parameters<file::RestoreFileParams>,
+    ) -> Result<CallToolResult, McpError> {
+        let (actor, _scopes) = self.resolve_actor(&ctx)?;
+        file::restore_file(&self.scope_checker, &self.services, &actor, params).await
+    }
+
+    #[tool(description = "List revisions of an entry")]
+    async fn list_revisions(
+        &self,
+        ctx: RequestContext<RoleServer>,
+        params: Parameters<entry::ListRevisionsParams>,
+    ) -> Result<CallToolResult, McpError> {
+        let (actor, _scopes) = self.resolve_actor(&ctx)?;
+        entry::list_revisions(&self.scope_checker, &self.services, &actor, params).await
+    }
+
+    #[tool(description = "Restore an entry to a previous revision")]
+    async fn restore_revision(
+        &self,
+        ctx: RequestContext<RoleServer>,
+        params: Parameters<entry::RestoreRevisionParams>,
+    ) -> Result<CallToolResult, McpError> {
+        let (actor, _scopes) = self.resolve_actor(&ctx)?;
+        entry::restore_revision(&self.scope_checker, &self.services, &actor, params).await
+    }
 }
 
 #[cfg(test)]
@@ -312,7 +372,7 @@ mod tests {
         assert!(tools.iter().any(|tool| tool.name == "get_site"));
         assert!(!tools.iter().any(|tool| tool.name.contains("token")));
         assert!(!tools.iter().any(|tool| tool.name == "list_sites"));
-        assert!(tools.len() > 10);
+        assert!(tools.len() > 15);
     }
 
     fn all_tools() -> Vec<rmcp::model::Tool> {
@@ -355,13 +415,15 @@ mod tests {
         for tool in all_tools() {
             let cleaned = clean_input_schema(tool.input_schema);
             assert!(
-                cleaned.contains_key("type"),
-                "tool '{}' input_schema missing 'type'",
+                cleaned.get("type").and_then(|v| v.as_str()) == Some("object"),
+                "tool '{}' input_schema must have type 'object'",
                 tool.name
             );
+            let has_properties = cleaned.contains_key("properties");
+            let has_required = cleaned.contains_key("required");
             assert!(
-                cleaned.contains_key("properties"),
-                "tool '{}' input_schema missing 'properties'",
+                has_properties || !has_required,
+                "tool '{}' has 'required' but no 'properties'",
                 tool.name
             );
         }
