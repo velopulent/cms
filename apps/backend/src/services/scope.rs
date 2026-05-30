@@ -23,6 +23,11 @@ impl ScopeChecker {
     ) -> Result<(), ServiceError> {
         match actor {
             Actor::ApiKey(k) => {
+                if site_id != k.site_id {
+                    return Err(ServiceError::Forbidden(
+                        "Token is not authorized for this site".into(),
+                    ));
+                }
                 let scopes = crate::middleware::auth::ScopeSet::from_permission(&k.permission);
                 if scopes.allows(scope) {
                     Ok(())
@@ -109,6 +114,22 @@ mod tests {
 
         let result = checker
             .require_site_scope(&actor, "site-1", &Scope::EntriesWrite, "editor")
+            .await;
+
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn api_key_rejects_cross_site_access() {
+        let checker = ScopeChecker::new(Arc::new(InMemoryUserRepository::new()));
+        let actor = Actor::ApiKey(ApiKeyActor {
+            token_id: "token-1".to_string(),
+            site_id: "site-1".to_string(),
+            permission: AccessTokenPermission::Read,
+        });
+
+        let result = checker
+            .require_site_scope(&actor, "site-2", &Scope::EntriesRead, "viewer")
             .await;
 
         assert!(result.is_err());
