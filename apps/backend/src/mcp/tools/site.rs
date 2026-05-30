@@ -19,22 +19,28 @@ fn map_err(e: impl Into<ServiceError>) -> McpError {
     crate::mcp::auth::service_error_to_mcp(e.into())
 }
 
-#[derive(Debug, Deserialize, JsonSchema)]
-pub struct GetSiteParams {
-    pub site_id: String,
+fn require_site_id(actor: &Actor) -> Result<String, McpError> {
+    actor
+        .bound_site_id()
+        .map(String::from)
+        .ok_or_else(|| McpError::invalid_request("No site context", None))
 }
+
+#[derive(Debug, Deserialize, JsonSchema)]
+pub struct GetSiteParams {}
 
 pub async fn get_site(
     scope: &Arc<ScopeChecker>,
     services: &Arc<Services>,
     actor: &Actor,
-    params: Parameters<GetSiteParams>,
+    _params: Parameters<GetSiteParams>,
 ) -> Result<CallToolResult, McpError> {
+    let site_id = require_site_id(actor)?;
     scope
-        .require_site_scope(actor, &params.0.site_id, &Scope::SiteRead, "viewer")
+        .require_site_scope(actor, &site_id, &Scope::SiteRead, "viewer")
         .await
         .map_err(map_err)?;
-    match services.site.get_site(&params.0.site_id).await.map_err(map_err)? {
+    match services.site.get_site(&site_id).await.map_err(map_err)? {
         Some(site) => ok_result(&site),
         None => ok_result(&serde_json::json!({"error": "Site not found"})),
     }
@@ -42,7 +48,6 @@ pub async fn get_site(
 
 #[derive(Debug, Deserialize, JsonSchema)]
 pub struct UpdateSiteParams {
-    pub site_id: String,
     pub name: Option<String>,
 }
 
@@ -52,13 +57,14 @@ pub async fn update_site(
     actor: &Actor,
     params: Parameters<UpdateSiteParams>,
 ) -> Result<CallToolResult, McpError> {
+    let site_id = require_site_id(actor)?;
     scope
-        .require_site_scope(actor, &params.0.site_id, &Scope::SiteRead, "admin")
+        .require_site_scope(actor, &site_id, &Scope::SiteRead, "admin")
         .await
         .map_err(map_err)?;
     let site = services
         .site
-        .update_site(&params.0.site_id, params.0.name.as_deref())
+        .update_site(&site_id, params.0.name.as_deref())
         .await
         .map_err(map_err)?;
     ok_result(&site)

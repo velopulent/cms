@@ -7,6 +7,7 @@ use rmcp::model::Content;
 use schemars::JsonSchema;
 use serde::Deserialize;
 
+use crate::mcp::schema::ArbitraryJson;
 use crate::middleware::auth::{Actor, Scope};
 use crate::services::{Services, error::ServiceError, scope::ScopeChecker};
 
@@ -21,22 +22,28 @@ fn map_err(e: impl Into<ServiceError>) -> McpError {
     crate::mcp::auth::service_error_to_mcp(e.into())
 }
 
-#[derive(Debug, Deserialize, JsonSchema)]
-pub struct ListCollectionsParams {
-    pub site_id: String,
+fn require_site_id(actor: &Actor) -> Result<String, McpError> {
+    actor
+        .bound_site_id()
+        .map(String::from)
+        .ok_or_else(|| McpError::invalid_request("No site context", None))
 }
+
+#[derive(Debug, Deserialize, JsonSchema)]
+pub struct ListCollectionsParams {}
 
 pub async fn list_collections(
     scope: &Arc<ScopeChecker>,
     services: &Arc<Services>,
     actor: &Actor,
-    params: Parameters<ListCollectionsParams>,
+    _params: Parameters<ListCollectionsParams>,
 ) -> Result<CallToolResult, McpError> {
+    let site_id = require_site_id(actor)?;
     scope
-        .require_site_scope(actor, &params.0.site_id, &Scope::CollectionsRead, "viewer")
+        .require_site_scope(actor, &site_id, &Scope::CollectionsRead, "viewer")
         .await
         .map_err(map_err)?;
-    match services.collection.list_collections(&params.0.site_id).await {
+    match services.collection.list_collections(&site_id).await {
         Ok(collections) => ok_result(&collections),
         Err(e) => Err(map_err(e)),
     }
@@ -44,8 +51,7 @@ pub async fn list_collections(
 
 #[derive(Debug, Deserialize, JsonSchema)]
 pub struct GetCollectionParams {
-    pub site_id: String,
-    pub collection_slug: String,
+    pub slug: String,
 }
 
 pub async fn get_collection(
@@ -54,13 +60,14 @@ pub async fn get_collection(
     actor: &Actor,
     params: Parameters<GetCollectionParams>,
 ) -> Result<CallToolResult, McpError> {
+    let site_id = require_site_id(actor)?;
     scope
-        .require_site_scope(actor, &params.0.site_id, &Scope::CollectionsRead, "viewer")
+        .require_site_scope(actor, &site_id, &Scope::CollectionsRead, "viewer")
         .await
         .map_err(map_err)?;
     match services
         .collection
-        .get_collection(&params.0.collection_slug, &params.0.site_id)
+        .get_collection(&site_id, &params.0.slug)
         .await
     {
         Ok(Some(collection)) => ok_result(&collection),
@@ -71,10 +78,11 @@ pub async fn get_collection(
 
 #[derive(Debug, Deserialize, JsonSchema)]
 pub struct CreateCollectionParams {
-    pub site_id: String,
     pub name: String,
     pub slug: Option<String>,
-    pub description: Option<String>,
+    #[schemars(with = "ArbitraryJson")]
+    pub definition: serde_json::Value,
+    pub is_singleton: Option<bool>,
 }
 
 pub async fn create_collection(
@@ -83,14 +91,17 @@ pub async fn create_collection(
     actor: &Actor,
     params: Parameters<CreateCollectionParams>,
 ) -> Result<CallToolResult, McpError> {
+    let site_id = require_site_id(actor)?;
     scope
-        .require_site_scope(actor, &params.0.site_id, &Scope::CollectionsWrite, "admin")
+        .require_site_scope(actor, &site_id, &Scope::CollectionsWrite, "admin")
         .await
         .map_err(map_err)?;
     let slug = params.0.slug.unwrap_or_else(|| params.0.name.to_lowercase().replace(' ', "-"));
+    let definition = params.0.definition.to_string();
+    let is_singleton = params.0.is_singleton.unwrap_or(false);
     match services
         .collection
-        .create_collection(&params.0.site_id, &params.0.name, &slug, params.0.description.as_deref().unwrap_or(""), false)
+        .create_collection(&site_id, &params.0.name, &slug, &definition, is_singleton)
         .await
     {
         Ok(collection) => ok_result(&collection),
@@ -100,10 +111,11 @@ pub async fn create_collection(
 
 #[derive(Debug, Deserialize, JsonSchema)]
 pub struct UpdateCollectionParams {
-    pub site_id: String,
-    pub collection_slug: String,
+    pub slug: String,
     pub name: Option<String>,
-    pub description: Option<String>,
+    pub new_slug: Option<String>,
+    #[schemars(with = "ArbitraryJson")]
+    pub definition: Option<serde_json::Value>,
 }
 
 pub async fn update_collection(
@@ -112,13 +124,21 @@ pub async fn update_collection(
     actor: &Actor,
     params: Parameters<UpdateCollectionParams>,
 ) -> Result<CallToolResult, McpError> {
+    let site_id = require_site_id(actor)?;
     scope
-        .require_site_scope(actor, &params.0.site_id, &Scope::CollectionsWrite, "admin")
+        .require_site_scope(actor, &site_id, &Scope::CollectionsWrite, "admin")
         .await
         .map_err(map_err)?;
+    let definition_str = params.0.definition.map(|d| d.to_string());
     match services
         .collection
-        .update_collection(&params.0.site_id, &params.0.collection_slug, params.0.name.as_deref(), None, params.0.description.as_deref())
+        .update_collection(
+            &site_id,
+            &params.0.slug,
+            params.0.name.as_deref(),
+            params.0.new_slug.as_deref(),
+            definition_str.as_deref(),
+        )
         .await
     {
         Ok(collection) => ok_result(&collection),
@@ -128,8 +148,7 @@ pub async fn update_collection(
 
 #[derive(Debug, Deserialize, JsonSchema)]
 pub struct DeleteCollectionParams {
-    pub site_id: String,
-    pub collection_slug: String,
+    pub slug: String,
 }
 
 pub async fn delete_collection(
@@ -138,13 +157,14 @@ pub async fn delete_collection(
     actor: &Actor,
     params: Parameters<DeleteCollectionParams>,
 ) -> Result<CallToolResult, McpError> {
+    let site_id = require_site_id(actor)?;
     scope
-        .require_site_scope(actor, &params.0.site_id, &Scope::CollectionsWrite, "admin")
+        .require_site_scope(actor, &site_id, &Scope::CollectionsWrite, "admin")
         .await
         .map_err(map_err)?;
     match services
         .collection
-        .delete_collection(&params.0.collection_slug, &params.0.site_id)
+        .delete_collection(&site_id, &params.0.slug)
         .await
     {
         Ok(n) => {

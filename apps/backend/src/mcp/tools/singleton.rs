@@ -12,31 +12,33 @@ use crate::middleware::auth::{Actor, Scope};
 use crate::services::{Services, scope::ScopeChecker};
 use crate::storage::StorageRegistry;
 
-#[derive(Debug, Deserialize, JsonSchema)]
-pub struct ListSingletonsParams {
-    #[serde(default)]
-    pub site_id: Option<String>,
+fn require_site_id(actor: &Actor) -> Result<String, McpError> {
+    actor
+        .bound_site_id()
+        .map(String::from)
+        .ok_or_else(|| McpError::invalid_request("No site context", None))
 }
+
+#[derive(Debug, Deserialize, JsonSchema)]
+pub struct ListSingletonsParams {}
 
 pub async fn list_singletons(
     scope: &Arc<ScopeChecker>,
     services: &Arc<Services>,
     actor: &Actor,
-    params: Parameters<ListSingletonsParams>,
+    _params: Parameters<ListSingletonsParams>,
 ) -> Result<CallToolResult, McpError> {
-    let site_id = params.0.site_id.as_deref().unwrap_or_else(|| actor.bound_site_id().unwrap_or(""));
+    let site_id = require_site_id(actor)?;
     scope
-        .require_site_scope(actor, site_id, &Scope::EntriesRead, "viewer")
+        .require_site_scope(actor, &site_id, &Scope::EntriesRead, "viewer")
         .await
         .map_err(map_err)?;
-    let singletons = services.singleton.list_singletons(site_id).await.map_err(map_err)?;
+    let singletons = services.singleton.list_singletons(&site_id).await.map_err(map_err)?;
     ok_result(&singletons)
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
 pub struct GetSingletonParams {
-    #[serde(default)]
-    pub site_id: Option<String>,
     pub slug: String,
 }
 
@@ -47,20 +49,20 @@ pub async fn get_singleton(
     actor: &Actor,
     params: Parameters<GetSingletonParams>,
 ) -> Result<CallToolResult, McpError> {
-    let site_id = params.0.site_id.as_deref().unwrap_or_else(|| actor.bound_site_id().unwrap_or(""));
+    let site_id = require_site_id(actor)?;
     scope
-        .require_site_scope(actor, site_id, &Scope::EntriesRead, "viewer")
+        .require_site_scope(actor, &site_id, &Scope::EntriesRead, "viewer")
         .await
         .map_err(map_err)?;
 
-    let storage_provider = services.file.get_storage_provider(site_id).await.map_err(map_err)?;
+    let storage_provider = services.file.get_storage_provider(&site_id).await.map_err(map_err)?;
     let storage = storage_registry
         .get(&storage_provider)
         .ok_or_else(|| McpError::internal_error("Storage not configured", None))?;
 
     let singleton = services
         .singleton
-        .get_singleton(site_id, &params.0.slug, storage)
+        .get_singleton(&site_id, &params.0.slug, storage)
         .await
         .map_err(map_err)?;
     ok_result(&singleton)
@@ -68,8 +70,6 @@ pub async fn get_singleton(
 
 #[derive(Debug, Deserialize, JsonSchema)]
 pub struct UpdateSingletonParams {
-    #[serde(default)]
-    pub site_id: Option<String>,
     pub slug: String,
     #[schemars(with = "ArbitraryJson")]
     pub data: serde_json::Value,
@@ -81,15 +81,15 @@ pub async fn update_singleton(
     actor: &Actor,
     params: Parameters<UpdateSingletonParams>,
 ) -> Result<CallToolResult, McpError> {
-    let site_id = params.0.site_id.as_deref().unwrap_or_else(|| actor.bound_site_id().unwrap_or(""));
+    let site_id = require_site_id(actor)?;
     scope
-        .require_site_scope(actor, site_id, &Scope::EntriesWrite, "editor")
+        .require_site_scope(actor, &site_id, &Scope::EntriesWrite, "editor")
         .await
         .map_err(map_err)?;
 
     let singleton = services
         .singleton
-        .update_singleton(site_id, &params.0.slug, &params.0.data)
+        .update_singleton(&site_id, &params.0.slug, &params.0.data)
         .await
         .map_err(map_err)?;
     ok_result(&singleton)
