@@ -13,15 +13,24 @@ fn map_err(e: impl Into<crate::services::error::ServiceError>) -> McpError {
     crate::mcp::auth::service_error_to_mcp(e.into())
 }
 
-fn site_to_resource(site: &serde_json::Value) -> Resource {
-    let id = site["id"].as_str().unwrap_or("unknown");
-    let name = site["name"].as_str().unwrap_or("Unknown");
+fn require_site_id(actor: &Actor) -> Result<String, McpError> {
+    actor
+        .bound_site_id()
+        .map(String::from)
+        .ok_or_else(|| McpError::invalid_request("No site context", None))
+}
+
+fn resource_uri(site_id: &str, path: &str) -> String {
+    format!("cms://{}{}", site_id, path)
+}
+
+fn make_resource(uri: &str, name: &str, title: &str, description: &str) -> Resource {
     Annotated::new(
         RawResource {
-            uri: format!("cms://{}/schema", id),
-            name: format!("{} Schema", name),
-            title: Some(format!("Content schema for {}", name)),
-            description: Some(format!("Content schema for {}", name)),
+            uri: uri.to_string(),
+            name: name.to_string(),
+            title: Some(title.to_string()),
+            description: Some(description.to_string()),
             mime_type: Some("application/json".to_string()),
             size: None,
             icons: None,
@@ -29,39 +38,6 @@ fn site_to_resource(site: &serde_json::Value) -> Resource {
         },
         Some(Annotations::for_resource(0.5, Utc::now())),
     )
-}
-
-pub async fn list_resources(
-    scope: &Arc<ScopeChecker>,
-    services: &Arc<Services>,
-    actor: &Actor,
-    _request: Option<rmcp::model::PaginatedRequestParams>,
-) -> Result<ListResourcesResult, McpError> {
-    match actor {
-        Actor::ApiKey(k) => {
-            scope
-                .require_site_scope(actor, &k.site_id, &Scope::SiteRead, "viewer")
-                .await
-                .map_err(map_err)?;
-            let site = services
-                .site
-                .get_site(&k.site_id)
-                .await
-                .map_err(map_err)?
-                .ok_or_else(|| McpError::invalid_request("Site not found", None))?;
-            let site_value = serde_json::to_value(&site).unwrap_or_default();
-            Ok(ListResourcesResult::with_all_items(vec![site_to_resource(&site_value)]))
-        }
-        Actor::User(_) => {
-            scope
-                .require_site_scope(actor, "", &Scope::SiteRead, "viewer")
-                .await
-                .map_err(map_err)?;
-            let sites = services.site.list_sites_for_actor(actor).await.map_err(map_err)?;
-            let resources: Vec<Resource> = sites.into_iter().map(|s| site_to_resource(&s)).collect();
-            Ok(ListResourcesResult::with_all_items(resources))
-        }
-    }
 }
 
 fn collection_to_schema_value(c: &Collection) -> serde_json::Value {
@@ -84,15 +60,80 @@ fn collection_to_schema_value(c: &Collection) -> serde_json::Value {
     })
 }
 
+pub async fn list_resources(
+    scope: &Arc<ScopeChecker>,
+    services: &Arc<Services>,
+    actor: &Actor,
+    _request: Option<rmcp::model::PaginatedRequestParams>,
+) -> Result<ListResourcesResult, McpError> {
+    let site_id = require_site_id(actor)?;
+
+    scope
+        .require_site_scope(actor, &site_id, &Scope::SiteRead, "viewer")
+        .await
+        .map_err(map_err)?;
+
+    let site = services
+        .site
+        .get_site(&site_id)
+        .await
+        .map_err(map_err)?
+        .ok_or_else(|| McpError::invalid_request("Site not found", None))?;
+
+    let site_name = site.name.clone();
+
+    let mut resources = vec![make_resource(
+        &resource_uri(&site_id, "/schema"),
+        &format!("{} Schema", site_name),
+        &format!("Content schema for {}", site_name),
+        &format!("Full content schema for {}", site_name),
+    )];
+
+    let collections = services
+        .collection
+        .list_collections(&site_id)
+        .await
+        .map_err(map_err)?;
+
+    for c in &collections {
+        resources.push(make_resource(
+            &resource_uri(&site_id, &format!("/collections/{}", c.slug)),
+            &format!("{}/{}", site_name, c.name),
+            &format!("Collection: {}", c.name),
+            &format!("Schema for {} collection", c.name),
+        ));
+    }
+
+    let singletons = services
+        .singleton
+        .list_singletons(&site_id)
+        .await
+        .map_err(map_err)?;
+
+    for s in &singletons {
+        resources.push(make_resource(
+            &resource_uri(&site_id, &format!("/singletons/{}", s.slug)),
+            &format!("{}/{}", site_name, s.name),
+            &format!("Singleton: {}", s.name),
+            &format!("Schema for {} singleton", s.name),
+        ));
+    }
+
+    Ok(ListResourcesResult::with_all_items(resources))
+}
+
 pub async fn read_resource(
     scope: &Arc<ScopeChecker>,
     services: &Arc<Services>,
     actor: &Actor,
     uri: &str,
 ) -> Result<ReadResourceResult, McpError> {
-    let site_id = uri
+    let remainder = uri
         .strip_prefix("cms://")
-        .and_then(|s| s.strip_suffix("/schema"))
+        .ok_or_else(|| McpError::invalid_request("Invalid resource URI", None))?;
+
+    let (site_id, path) = remainder
+        .split_once('/')
         .ok_or_else(|| McpError::invalid_request("Invalid resource URI", None))?;
 
     scope
@@ -100,6 +141,25 @@ pub async fn read_resource(
         .await
         .map_err(map_err)?;
 
+    match path {
+        "schema" => read_schema_resource(services, site_id, uri).await,
+        p if p.starts_with("collections/") => {
+            let slug = &p["collections/".len()..];
+            read_collection_resource(services, site_id, slug, uri).await
+        }
+        p if p.starts_with("singletons/") => {
+            let slug = &p["singletons/".len()..];
+            read_singleton_resource(services, site_id, slug, uri).await
+        }
+        _ => Err(McpError::invalid_request("Unknown resource path", None)),
+    }
+}
+
+async fn read_schema_resource(
+    services: &Arc<Services>,
+    site_id: &str,
+    uri: &str,
+) -> Result<ReadResourceResult, McpError> {
     let site = services
         .site
         .get_site(site_id)
@@ -133,10 +193,59 @@ pub async fn read_resource(
     }]))
 }
 
+async fn read_collection_resource(
+    services: &Arc<Services>,
+    site_id: &str,
+    slug: &str,
+    uri: &str,
+) -> Result<ReadResourceResult, McpError> {
+    let collection = services
+        .collection
+        .get_collection(site_id, slug)
+        .await
+        .map_err(map_err)?
+        .ok_or_else(|| McpError::invalid_request("Collection not found", None))?;
+
+    let value = collection_to_schema_value(&collection);
+    let json = serde_json::to_string_pretty(&value)
+        .map_err(|e| McpError::internal_error(format!("Failed to serialize: {}", e), None))?;
+
+    Ok(ReadResourceResult::new(vec![ResourceContents::TextResourceContents {
+        uri: uri.to_string(),
+        mime_type: Some("application/json".to_string()),
+        text: json,
+        meta: None,
+    }]))
+}
+
+async fn read_singleton_resource(
+    services: &Arc<Services>,
+    site_id: &str,
+    slug: &str,
+    uri: &str,
+) -> Result<ReadResourceResult, McpError> {
+    let singletons = services.singleton.list_singletons(site_id).await.map_err(map_err)?;
+
+    let singleton = singletons
+        .iter()
+        .find(|s| s.slug == slug)
+        .ok_or_else(|| McpError::invalid_request("Singleton not found", None))?;
+
+    let json = serde_json::to_string_pretty(singleton)
+        .map_err(|e| McpError::internal_error(format!("Failed to serialize: {}", e), None))?;
+
+    Ok(ReadResourceResult::new(vec![ResourceContents::TextResourceContents {
+        uri: uri.to_string(),
+        mime_type: Some("application/json".to_string()),
+        text: json,
+        meta: None,
+    }]))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
-use crate::models::collection::Collection;
+    use crate::models::collection::Collection;
 
     fn make_collection(definition: &str, singleton_data: Option<&str>) -> Collection {
         Collection {
@@ -251,6 +360,19 @@ use crate::models::collection::Collection;
         assert!(
             !pretty.contains(r#"\"fields\""#),
             "no escaped field names allowed"
+        );
+    }
+
+    #[test]
+    fn resource_uri_format() {
+        assert_eq!(resource_uri("site-1", "/schema"), "cms://site-1/schema");
+        assert_eq!(
+            resource_uri("site-1", "/collections/blog"),
+            "cms://site-1/collections/blog"
+        );
+        assert_eq!(
+            resource_uri("site-1", "/singletons/settings"),
+            "cms://site-1/singletons/settings"
         );
     }
 }
