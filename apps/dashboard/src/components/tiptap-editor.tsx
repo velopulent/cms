@@ -1,4 +1,3 @@
-import Link from "@tiptap/extension-link";
 import Placeholder from "@tiptap/extension-placeholder";
 import { EditorContent, useEditor, useEditorState } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
@@ -58,12 +57,13 @@ export function TiptapEditor({
   const editor = useEditor({
     editable,
     extensions: [
-      StarterKit,
-      Placeholder.configure({ placeholder }),
-      Link.configure({
-        openOnClick: false,
-        HTMLAttributes: { class: "text-primary underline" },
+      StarterKit.configure({
+        link: {
+          openOnClick: false,
+          HTMLAttributes: { class: "text-primary underline" },
+        },
       }),
+      Placeholder.configure({ placeholder }),
       ImageWithControls.configure({ siteId }),
     ],
     content,
