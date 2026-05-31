@@ -122,6 +122,22 @@ pub async fn create_entry(
         .require_site_scope(actor, &site_id, &Scope::EntriesWrite, "editor")
         .await
         .map_err(map_err)?;
+
+    // Validate entry data against collection definition
+    if let Ok(Some(collection)) = services
+        .collection
+        .get_by_id(&params.0.collection_id)
+        .await
+    {
+        if let Ok(definition) = serde_json::from_str::<serde_json::Value>(&collection.definition) {
+            if let Some(fields) = definition.get("fields").and_then(|f| f.as_array()) {
+                if let Some(err) = crate::services::definition_validation::validate_entry_data(&params.0.values, fields) {
+                    return Err(McpError::invalid_request(err, None));
+                }
+            }
+        }
+    }
+
     let slug = params
         .0
         .slug

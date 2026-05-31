@@ -96,8 +96,13 @@ pub async fn create_collection(
         .require_site_scope(actor, &site_id, &Scope::CollectionsWrite, "admin")
         .await
         .map_err(map_err)?;
-    let slug = params.0.slug.unwrap_or_else(|| params.0.name.to_lowercase().replace(' ', "-"));
-    let definition = params.0.definition.to_string();
+    let slug = params
+        .0
+        .slug
+        .unwrap_or_else(|| params.0.name.to_lowercase().replace(' ', "-"));
+    let normalized = crate::services::definition_validation::normalize_definition(&params.0.definition)
+        .map_err(|e| McpError::invalid_request(e, None))?;
+    let definition = normalized.to_string();
     let is_singleton = params.0.is_singleton.unwrap_or(false);
     match services
         .collection
@@ -129,7 +134,14 @@ pub async fn update_collection(
         .require_site_scope(actor, &site_id, &Scope::CollectionsWrite, "admin")
         .await
         .map_err(map_err)?;
-    let definition_str = params.0.definition.map(|d| d.to_string());
+    let definition_str = match params.0.definition {
+        Some(d) => {
+            let normalized = crate::services::definition_validation::normalize_definition(&d)
+                .map_err(|e| McpError::invalid_request(e, None))?;
+            Some(normalized.to_string())
+        }
+        None => None,
+    };
     match services
         .collection
         .update_collection(
