@@ -19,7 +19,7 @@ async fn setup() -> (GrpcTestContext, String, String, String) {
         .create_collection(tonic::Request::new(CreateCollectionRequest {
             name: "Posts".into(),
             slug: "posts".into(),
-            definition: r#"{"fields":[{"name":"title","type":"string"}]}"#.into(),
+            definition: r#"{"fields":[{"name":"title","type":"text"}]}"#.into(),
             is_singleton: false,
         }))
         .await
