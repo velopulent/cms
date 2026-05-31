@@ -24,6 +24,9 @@ pub enum CollectionError {
     #[error("Collection with this name or slug already exists")]
     AlreadyExists,
 
+    #[error("Invalid definition: {0}")]
+    InvalidDefinition(String),
+
     #[error("Database error: {0}")]
     DatabaseError(String),
 }
@@ -36,6 +39,7 @@ impl CollectionError {
                 StatusCode::CONFLICT,
                 Json(json!({"error": "Collection with this name or slug already exists"})),
             ),
+            CollectionError::InvalidDefinition(msg) => (StatusCode::BAD_REQUEST, Json(json!({"error": msg}))),
             CollectionError::DatabaseError(msg) => (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": msg}))),
         };
         (status, body).into_response()
@@ -89,8 +93,15 @@ impl CollectionService {
             site_id, name, slug, is_singleton
         );
 
+        let definition_value: serde_json::Value = serde_json::from_str(definition)
+            .unwrap_or(serde_json::json!({"fields": []}));
+        let normalized =
+            super::definition_validation::normalize_definition(&definition_value)
+                .map_err(CollectionError::InvalidDefinition)?;
+        let definition_str = normalized.to_string();
+
         self.collection_repo
-            .create(&id, site_id, name, slug, definition, is_singleton)
+            .create(&id, site_id, name, slug, &definition_str, is_singleton)
             .await
             .map_err(|e| {
                 error!(
@@ -155,9 +166,16 @@ impl CollectionService {
 
         let name = name.unwrap_or(&existing.name);
         let new_slug = new_slug.unwrap_or(&existing.slug);
-        let definition_str = definition
-            .map(|s| s.to_string())
-            .unwrap_or_else(|| existing.definition.clone());
+        let definition_str = match definition {
+            Some(d) => {
+                let value: serde_json::Value = serde_json::from_str(d)
+                    .unwrap_or(serde_json::json!({"fields": []}));
+                let normalized = super::definition_validation::normalize_definition(&value)
+                    .map_err(CollectionError::InvalidDefinition)?;
+                normalized.to_string()
+            }
+            None => existing.definition.clone(),
+        };
 
         let name_changed = name != existing.name;
         let slug_changed = new_slug != existing.slug;
