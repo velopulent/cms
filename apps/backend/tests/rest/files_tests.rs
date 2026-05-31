@@ -259,3 +259,30 @@ async fn test_batch_delete_files() {
     let body: Value = resp.json().await.unwrap();
     assert_eq!(body["deleted"], 3);
 }
+
+#[tokio::test]
+async fn test_upload_file_invalid_mime_type() {
+    let server = TestServer::start().await;
+    let (jwt, csrf, site_id) = setup(&server).await;
+    let api_key = get_api_key(&server, &jwt, &csrf, &site_id).await;
+    let client = reqwest::Client::builder().build().unwrap();
+
+    let part = reqwest::multipart::Part::bytes(b"executable content".to_vec())
+        .file_name("malware.exe")
+        .mime_str("application/x-executable")
+        .unwrap();
+    let form = reqwest::multipart::Form::new().part("file", part);
+
+    let resp = client
+        .post(format!("{}/files", server.base_url))
+        .headers(api_key_header(&api_key))
+        .multipart(form)
+        .send()
+        .await
+        .unwrap();
+
+    assert_eq!(resp.status(), 400);
+    let body: Value = resp.json().await.unwrap();
+    let error = body["error"].as_str().unwrap_or("");
+    assert!(error.contains("Content type") || error.contains("content type") || error.contains("Invalid"), "Expected MIME error, got: {}", error);
+}

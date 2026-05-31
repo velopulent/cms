@@ -220,3 +220,50 @@ async fn test_public_api_collections() {
     let body: Value = resp.json().await.unwrap();
     assert!(body.is_array());
 }
+
+#[tokio::test]
+async fn test_create_collection_invalid_field_type() {
+    let server = TestServer::start().await;
+    let (jwt, csrf, site_id) = setup(&server).await;
+    let client = reqwest::Client::builder().build().unwrap();
+
+    let resp = client
+        .post(format!("{}/api/dashboard/sites/{}/collections", server.base_url, site_id))
+        .headers(auth_header(&jwt, &csrf))
+        .json(&json!({
+            "name": "Bad Def",
+            "slug": "bad-def",
+            "definition": {"fields": [{"name": "title", "type": "string"}]}
+        }))
+        .send()
+        .await
+        .unwrap();
+
+    assert_eq!(resp.status(), 400);
+    let body: Value = resp.json().await.unwrap();
+    let error = body["error"].as_str().unwrap_or("");
+    assert!(error.contains("Invalid definition") || error.contains("invalid type") || error.contains("field type"), "Expected validation error, got: {}", error);
+}
+
+#[tokio::test]
+async fn test_create_collection_duplicate_slug() {
+    let server = TestServer::start().await;
+    let (jwt, csrf, site_id) = setup(&server).await;
+
+    create_collection(&server, &jwt, &csrf, &site_id, "Posts", "posts").await;
+
+    let client = reqwest::Client::builder().build().unwrap();
+    let resp = client
+        .post(format!("{}/api/dashboard/sites/{}/collections", server.base_url, site_id))
+        .headers(auth_header(&jwt, &csrf))
+        .json(&json!({
+            "name": "Posts Again",
+            "slug": "posts",
+            "definition": {"fields": [{"name": "title", "type": "text"}]}
+        }))
+        .send()
+        .await
+        .unwrap();
+
+    assert_eq!(resp.status(), 409);
+}

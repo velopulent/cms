@@ -114,3 +114,78 @@ async fn test_update_singleton() {
 
     assert_eq!(resp.status(), 200);
 }
+
+#[tokio::test]
+async fn test_get_singleton_not_found() {
+    let server = TestServer::start().await;
+    let (jwt, csrf, site_id) = setup(&server).await;
+    let client = reqwest::Client::builder().build().unwrap();
+
+    let resp = client
+        .get(format!("{}/api/dashboard/sites/{}/singletons/nonexistent", server.base_url, site_id))
+        .headers(auth_header(&jwt, &csrf))
+        .send()
+        .await
+        .unwrap();
+
+    assert_eq!(resp.status(), 404);
+}
+
+#[tokio::test]
+async fn test_get_not_a_singleton() {
+    let server = TestServer::start().await;
+    let (jwt, csrf, site_id) = setup(&server).await;
+    let client = reqwest::Client::builder().build().unwrap();
+
+    client
+        .post(format!("{}/api/dashboard/sites/{}/collections", server.base_url, site_id))
+        .headers(auth_header(&jwt, &csrf))
+        .json(&json!({
+            "name": "Posts",
+            "slug": "posts",
+            "definition": {"fields": [{"name": "title", "type": "text"}]},
+            "is_singleton": false,
+        }))
+        .send()
+        .await
+        .unwrap();
+
+    let resp = client
+        .get(format!("{}/api/dashboard/sites/{}/singletons/posts", server.base_url, site_id))
+        .headers(auth_header(&jwt, &csrf))
+        .send()
+        .await
+        .unwrap();
+
+    assert_eq!(resp.status(), 404);
+}
+
+#[tokio::test]
+async fn test_update_singleton_validation_failed() {
+    let server = TestServer::start().await;
+    let (jwt, csrf, site_id) = setup(&server).await;
+    let client = reqwest::Client::builder().build().unwrap();
+
+    client
+        .post(format!("{}/api/dashboard/sites/{}/collections", server.base_url, site_id))
+        .headers(auth_header(&jwt, &csrf))
+        .json(&json!({
+            "name": "Settings",
+            "slug": "settings",
+            "definition": {"fields": [{"name": "count", "type": "number", "required": true}]},
+            "is_singleton": true,
+        }))
+        .send()
+        .await
+        .unwrap();
+
+    let resp = client
+        .put(format!("{}/api/dashboard/sites/{}/singletons/settings", server.base_url, site_id))
+        .headers(auth_header(&jwt, &csrf))
+        .json(&json!({"data": {"count": "not-a-number"}}))
+        .send()
+        .await
+        .unwrap();
+
+    assert_eq!(resp.status(), 400);
+}
