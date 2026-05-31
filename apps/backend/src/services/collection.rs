@@ -186,7 +186,7 @@ impl CollectionService {
             name_changed, slug_changed, definition_changed
         );
 
-        if let Some(ref new_def) = definition {
+        if let Some(new_def) = definition {
             debug!("Processing definition changes for migration");
             let old_def: Option<serde_json::Value> = serde_json::from_str(&existing.definition).ok();
             let new_def_parsed: Option<serde_json::Value> = serde_json::from_str(new_def).ok();
@@ -225,7 +225,7 @@ impl CollectionService {
 
         debug!("Updating collection in repository: id={}", existing.id);
         self.collection_repo
-            .update(&existing.id, name, &new_slug, &definition_str)
+            .update(&existing.id, name, new_slug, &definition_str)
             .await
             .map_err(|e| {
                 error!(
@@ -294,13 +294,11 @@ pub fn compute_field_rename_map(old_def: &serde_json::Value, new_def: &serde_jso
             && of["type"] == nf["type"]
             && of.get("required") == nf.get("required")
             && of.get("options") == nf.get("options")
-        {
-            if let (Some(on), Some(nn)) = (of["name"].as_str(), nf["name"].as_str()) {
+            && let (Some(on), Some(nn)) = (of["name"].as_str(), nf["name"].as_str()) {
                 rename_map.insert(on.to_string(), nn.to_string());
                 used_old[i] = true;
                 used_new[i] = true;
             }
-        }
     }
 
     for (i, of) in old_fields.iter().enumerate() {
