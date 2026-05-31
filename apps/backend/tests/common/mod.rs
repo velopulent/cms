@@ -34,7 +34,9 @@ impl TestServer {
         config.hmac_secret = "test-hmac-secret-integration".to_string();
         config.storage_fs_path = Some(storage_path.clone());
         config.cookie_secure = false;
-        config.mcp_enabled = false;
+        config.mcp_enabled = true;
+        config.mcp_allowed_hosts = vec!["127.0.0.1".to_string()];
+        config.mcp_allowed_origins = vec![];
         config.rate_limit_max_requests = 10000;
         config.rate_limit_window_secs = 60;
         config.db_max_connections = 5;
