@@ -1,6 +1,7 @@
 pub mod access_token;
 pub mod auth;
 pub mod collection;
+pub mod definition_validation;
 pub mod entry;
 pub mod error;
 pub mod file;
@@ -45,6 +46,7 @@ impl Services {
             entry: Arc::new(entry::EntryService::new(
                 repository.entry.clone(),
                 repository.file.clone(),
+                repository.collection.clone(),
             )),
             file: Arc::new(file::FileService::new(repository.file.clone(), config.clone())),
             singleton: Arc::new(singleton::SingletonService::new(
