@@ -24,6 +24,9 @@ pub enum SingletonError {
     #[error("Collection is not a singleton")]
     NotASingleton,
 
+    #[error("Validation failed: {0}")]
+    ValidationFailed(String),
+
     #[error("Database error: {0}")]
     DatabaseError(String),
 }
@@ -38,6 +41,10 @@ impl SingletonError {
             SingletonError::NotASingleton => (
                 axum::http::StatusCode::NOT_FOUND,
                 Json(json!({"error": "Singleton not found"})),
+            ),
+            SingletonError::ValidationFailed(msg) => (
+                axum::http::StatusCode::BAD_REQUEST,
+                Json(json!({"error": msg})),
             ),
             SingletonError::DatabaseError(msg) => (
                 axum::http::StatusCode::INTERNAL_SERVER_ERROR,
@@ -159,6 +166,17 @@ impl SingletonService {
                 item.id, site_id, slug
             );
             return Err(SingletonError::NotASingleton);
+        }
+
+        // Validate singleton data against collection definition
+        if let Ok(definition) = serde_json::from_str::<Value>(&item.definition) {
+            if let Some(fields) = definition.get("fields").and_then(|f| f.as_array()) {
+                if let Some(err) =
+                    super::definition_validation::validate_entry_data(data, fields)
+                {
+                    return Err(SingletonError::ValidationFailed(err));
+                }
+            }
         }
 
         let data_str = data.to_string();
