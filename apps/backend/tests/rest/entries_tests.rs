@@ -283,12 +283,13 @@ async fn test_unpublish_entry() {
     let entry = create_entry(&server, &jwt, &csrf, &site_id, &col_id, "to-unpublish", json!({"title": "Published"})).await;
     let entry_id = entry["id"].as_str().unwrap();
 
-    client
+    let resp = client
         .post(format!("{}/api/dashboard/sites/{}/entries/{}/publish", server.base_url, site_id, entry_id))
         .headers(auth_header(&jwt, &csrf))
         .send()
         .await
         .unwrap();
+    assert!(resp.status().is_success(), "publish entry failed: {} {}", resp.status(), resp.text().await.unwrap_or_default());
 
     let resp = client
         .post(format!("{}/api/dashboard/sites/{}/entries/{}/unpublish", server.base_url, site_id, entry_id))
@@ -332,13 +333,14 @@ async fn test_list_revisions() {
     let entry = create_entry(&server, &jwt, &csrf, &site_id, &col_id, "revisioned", json!({"title": "V1"})).await;
     let entry_id = entry["id"].as_str().unwrap();
 
-    client
+    let resp = client
         .put(format!("{}/api/dashboard/sites/{}/entries/{}", server.base_url, site_id, entry_id))
         .headers(auth_header(&jwt, &csrf))
         .json(&json!({"data": {"title": "V2"}}))
         .send()
         .await
         .unwrap();
+    assert!(resp.status().is_success(), "update entry for revisions failed: {} {}", resp.status(), resp.text().await.unwrap_or_default());
 
     let resp = client
         .get(format!("{}/api/dashboard/sites/{}/entries/{}/revisions", server.base_url, site_id, entry_id))
@@ -363,13 +365,14 @@ async fn test_restore_revision() {
     let entry = create_entry(&server, &jwt, &csrf, &site_id, &col_id, "restorable", json!({"title": "Original"})).await;
     let entry_id = entry["id"].as_str().unwrap();
 
-    client
+    let resp = client
         .put(format!("{}/api/dashboard/sites/{}/entries/{}", server.base_url, site_id, entry_id))
         .headers(auth_header(&jwt, &csrf))
         .json(&json!({"data": {"title": "Changed"}}))
         .send()
         .await
         .unwrap();
+    assert!(resp.status().is_success(), "update entry for restore failed: {} {}", resp.status(), resp.text().await.unwrap_or_default());
 
     let resp = client
         .post(format!("{}/api/dashboard/sites/{}/entries/{}/revisions/1/restore", server.base_url, site_id, entry_id))

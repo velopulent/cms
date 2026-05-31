@@ -99,13 +99,14 @@ async fn test_list_files() {
         .unwrap();
     let form = reqwest::multipart::Form::new().part("file", part);
 
-    client
+    let resp = client
         .post(format!("{}/files", server.base_url))
         .headers(api_key_header(&api_key))
         .multipart(form)
         .send()
         .await
         .unwrap();
+    assert!(resp.status().is_success(), "upload file failed: {} {}", resp.status(), resp.text().await.unwrap_or_default());
 
     let resp = client
         .get(format!("{}/files", server.base_url))

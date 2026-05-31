@@ -68,13 +68,14 @@ async fn test_list_webhooks() {
     let (jwt, csrf, site_id) = setup(&server).await;
     let client = reqwest::Client::builder().build().unwrap();
 
-    client
+    let resp = client
         .post(format!("{}/api/dashboard/sites/{}/webhooks", server.base_url, site_id))
         .headers(auth_header(&jwt, &csrf))
         .json(&json!({"label": "Hook 1", "url": "https://example.com/h1"}))
         .send()
         .await
         .unwrap();
+    assert_eq!(resp.status(), 201, "create webhook failed: {} {}", resp.status(), resp.text().await.unwrap_or_default());
 
     let resp = client
         .get(format!("{}/api/dashboard/sites/{}/webhooks", server.base_url, site_id))
