@@ -37,6 +37,13 @@ pub fn map_err(e: impl Into<crate::services::error::ServiceError>) -> ErrorData 
     service_error_to_mcp(e.into())
 }
 
+/// Convert a service error into a tool execution error (CallToolResult with isError: true).
+/// Use this for business logic errors that the LLM can act on (not found, validation, permission).
+pub fn tool_error(e: impl Into<crate::services::error::ServiceError>) -> CallToolResult {
+    let error = e.into();
+    CallToolResult::error(vec![Content::text(error.error_message())])
+}
+
 /// Resolve authenticated Actor + ScopeSet from the MCP request context.
 pub fn resolve_actor(ctx: &RequestContext<RoleServer>) -> Result<(Actor, ScopeSet), ErrorData> {
     let parts = ctx
