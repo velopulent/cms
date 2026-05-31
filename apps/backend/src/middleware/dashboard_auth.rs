@@ -28,11 +28,7 @@ pub async fn dashboard_auth_middleware(mut request: Request, next: Next) -> Resp
         .and_then(|cookies| {
             cookies.split(';').find_map(|c| {
                 let c = c.trim();
-                if let Some(val) = c.strip_prefix("token=") {
-                    Some(val.to_string())
-                } else {
-                    None
-                }
+                c.strip_prefix("token=").map(|val| val.to_string())
             })
         });
 

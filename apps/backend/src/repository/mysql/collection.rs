@@ -136,8 +136,8 @@ impl CollectionRepository for MysqlCollectionRepository {
         rename_map: &std::collections::HashMap<String, String>,
     ) -> Result<(), RepositoryError> {
         for entry in entry_items {
-            if let Ok(mut data) = serde_json::from_str::<serde_json::Value>(&entry.data) {
-                if let Some(obj) = data.as_object_mut() {
+            if let Ok(mut data) = serde_json::from_str::<serde_json::Value>(&entry.data)
+                && let Some(obj) = data.as_object_mut() {
                     let mut renamed = serde_json::Map::new();
                     for (key, value) in obj.iter() {
                         let new_key = rename_map.get(key).cloned().unwrap_or_else(|| key.clone());
@@ -152,7 +152,6 @@ impl CollectionRepository for MysqlCollectionRepository {
                         .execute(&self.pool)
                         .await?;
                 }
-            }
         }
         Ok(())
     }
@@ -162,9 +161,9 @@ impl CollectionRepository for MysqlCollectionRepository {
         collection: &Collection,
         rename_map: &std::collections::HashMap<String, String>,
     ) -> Result<(), RepositoryError> {
-        if let Some(ref data_str) = collection.singleton_data {
-            if let Ok(mut data) = serde_json::from_str::<serde_json::Value>(data_str) {
-                if let Some(obj) = data.as_object_mut() {
+        if let Some(ref data_str) = collection.singleton_data
+            && let Ok(mut data) = serde_json::from_str::<serde_json::Value>(data_str)
+                && let Some(obj) = data.as_object_mut() {
                     let mut renamed = serde_json::Map::new();
                     for (key, value) in obj.iter() {
                         let new_key = rename_map.get(key).cloned().unwrap_or_else(|| key.clone());
@@ -179,8 +178,6 @@ impl CollectionRepository for MysqlCollectionRepository {
                         .execute(&self.pool)
                         .await?;
                 }
-            }
-        }
         Ok(())
     }
 }

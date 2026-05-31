@@ -172,8 +172,8 @@ impl FileService {
                 let mut tdata: Option<(Vec<u8>, String)> = None;
                 let mut tkey: Option<String> = None;
 
-                if let Ok(reader) = ImageReader::new(std::io::Cursor::new(&data_clone)).with_guessed_format() {
-                    if let Ok(img) = reader.decode() {
+                if let Ok(reader) = ImageReader::new(std::io::Cursor::new(&data_clone)).with_guessed_format()
+                    && let Ok(img) = reader.decode() {
                         w = Some(img.width() as i32);
                         h = Some(img.height() as i32);
 
@@ -187,7 +187,6 @@ impl FileService {
                             tdata = Some((thumb_bytes, thumb_mime));
                         }
                     }
-                }
 
                 (w, h, tdata, tkey)
             })

@@ -170,8 +170,8 @@ impl WebhookService {
             headers.is_some()
         );
 
-        if let Some(url_val) = url {
-            if let Err(e) = validate_url(url_val) {
+        if let Some(url_val) = url
+            && let Err(e) = validate_url(url_val) {
                 warn!(
                     "Webhook update failed: invalid url_pattern={}, error={}",
                     sanitize_url_for_logging(url_val),
@@ -179,13 +179,11 @@ impl WebhookService {
                 );
                 return Err(WebhookError::InvalidUrl(format!("Invalid URL: {}", e)));
             }
-        }
-        if let Some(label_val) = label {
-            if label_val.trim().is_empty() {
+        if let Some(label_val) = label
+            && label_val.trim().is_empty() {
                 warn!("Webhook update failed: label is empty");
                 return Err(WebhookError::InvalidLabel("Label cannot be empty".into()));
             }
-        }
 
         let headers_encrypted = headers.map(|h| {
             debug!("Encrypting headers for webhook update");
@@ -296,7 +294,7 @@ impl WebhookService {
                 let status_code = resp.status().as_u16() as i32;
                 let body = resp.text().await.unwrap_or_default();
                 let truncated_body = truncate_str(&body, MAX_RESPONSE_BODY_CHARS);
-                let success = status_code >= 200 && status_code < 300;
+                let success = (200..300).contains(&status_code);
                 let status = if success { "success" } else { "failed" };
 
                 info!(
@@ -427,14 +425,10 @@ fn decrypt_headers(encrypted: &str, key: &[u8; 32]) -> HashMap<String, String> {
 }
 
 fn truncate_str(s: &str, max_chars: usize) -> String {
-    if s.chars().count() <= max_chars {
-        s.to_string()
-    } else {
-        s.char_indices()
-            .nth(max_chars)
-            .map(|(i, _)| s[..i].to_string())
-            .unwrap_or_else(|| s.to_string())
-    }
+    s.char_indices()
+        .nth(max_chars)
+        .map(|(i, _)| s[..i].to_string())
+        .unwrap_or_else(|| s.to_string())
 }
 
 #[cfg(test)]

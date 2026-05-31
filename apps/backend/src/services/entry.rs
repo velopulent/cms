@@ -98,17 +98,14 @@ impl EntryService {
         );
 
         // Validate entry data against collection definition
-        if let Ok(Some(collection)) = self.collection_repo.get_by_id(collection_id).await {
-            if let Ok(definition) = serde_json::from_str::<Value>(&collection.definition) {
-                if let Some(fields) = definition.get("fields").and_then(|f| f.as_array()) {
-                    if let Some(err) =
+        if let Ok(Some(collection)) = self.collection_repo.get_by_id(collection_id).await
+            && let Ok(definition) = serde_json::from_str::<Value>(&collection.definition)
+                && let Some(fields) = definition.get("fields").and_then(|f| f.as_array())
+                    && let Some(err) =
                         super::definition_validation::validate_entry_data(data, fields)
                     {
                         return Err(EntryError::ValidationFailed(err));
                     }
-                }
-            }
-        }
 
         let data_str = data.to_string();
 
@@ -190,17 +187,13 @@ impl EntryService {
             .collection_repo
             .get_by_id(&existing.collection_id)
             .await
-        {
-            if let Ok(definition) = serde_json::from_str::<Value>(&collection.definition) {
-                if let Some(fields) = definition.get("fields").and_then(|f| f.as_array()) {
-                    if let Some(err) =
+            && let Ok(definition) = serde_json::from_str::<Value>(&collection.definition)
+                && let Some(fields) = definition.get("fields").and_then(|f| f.as_array())
+                    && let Some(err) =
                         super::definition_validation::validate_entry_data(&resolved_data, fields)
                     {
                         return Err(EntryError::ValidationFailed(err));
                     }
-                }
-            }
-        }
 
         let data_str = resolved_data.to_string();
         let final_slug = slug.unwrap_or(&existing.slug);
@@ -388,8 +381,8 @@ impl EntryService {
 
         let mut file_map = serde_json::Map::new();
 
-        if !file_ids.is_empty() {
-            if let Ok(file_items) = self.file_repo.get_by_ids(site_id, &file_ids).await {
+        if !file_ids.is_empty()
+            && let Ok(file_items) = self.file_repo.get_by_ids(site_id, &file_ids).await {
                 for f in file_items {
                     let url = storage.url(&f.storage_key, &f.id);
 
@@ -409,7 +402,6 @@ impl EntryService {
                     );
                 }
             }
-        }
 
         let mut result = data.clone();
         if let serde_json::Value::Object(ref mut obj) = result {

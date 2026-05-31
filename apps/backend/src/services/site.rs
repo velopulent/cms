@@ -157,12 +157,11 @@ impl SiteService {
         debug!("Updating site: id={}, name={:?}", site_id, name);
 
         let name = name.map(|n| n.trim());
-        if let Some(n) = name {
-            if n.is_empty() {
+        if let Some(n) = name
+            && n.is_empty() {
                 warn!("Site update failed: name is empty");
                 return Err(SiteError::InvalidName("Name is required".into()));
             }
-        }
 
         let existing = self
             .site_repo
@@ -508,6 +507,28 @@ mod tests {
         let result = service.update_site("site-123", None).await;
         assert!(result.is_ok());
         assert_eq!(result.unwrap().name, "Test Site");
+    }
+
+    #[tokio::test]
+    async fn test_update_site_empty_name() {
+        let site_repo = test_site_repo();
+        let user_repo = test_user_repo();
+        site_repo.add_site(create_test_site());
+        let service = SiteService::new(site_repo, user_repo);
+
+        let result = service.update_site("site-123", Some("")).await;
+        assert!(matches!(result, Err(SiteError::InvalidName(msg)) if msg.contains("Name is required")));
+    }
+
+    #[tokio::test]
+    async fn test_update_site_whitespace_name() {
+        let site_repo = test_site_repo();
+        let user_repo = test_user_repo();
+        site_repo.add_site(create_test_site());
+        let service = SiteService::new(site_repo, user_repo);
+
+        let result = service.update_site("site-123", Some("   ")).await;
+        assert!(matches!(result, Err(SiteError::InvalidName(msg)) if msg.contains("Name is required")));
     }
 
     #[tokio::test]

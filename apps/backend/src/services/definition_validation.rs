@@ -129,8 +129,8 @@ pub fn validate_entry_data(data: &Value, fields: &[Value]) -> Option<String> {
             }
         }
 
-        if let Some(v) = value {
-            if !v.is_null() {
+        if let Some(v) = value
+            && !v.is_null() {
                 match field_type {
                     "number" => {
                         if !v.is_number() {
@@ -148,19 +148,18 @@ pub fn validate_entry_data(data: &Value, fields: &[Value]) -> Option<String> {
                         {
                             let valid: Vec<&str> =
                                 options.iter().filter_map(|o| o.as_str()).collect();
-                            if let Some(s) = v.as_str() {
-                                if !valid.is_empty() && !valid.contains(&s) {
+                            if let Some(s) = v.as_str()
+                                && !valid.is_empty() && !valid.contains(&s) {
                                     return Some(format!(
                                         "Field '{}' value '{}' is not in allowed options: {:?}",
                                         name, s, valid
                                     ));
                                 }
-                            }
                         }
                     }
                     "image" | "video" | "audio" | "document" | "archive" => {
-                        if let Some(s) = v.as_str() {
-                            if !s.is_empty()
+                        if let Some(s) = v.as_str()
+                            && !s.is_empty()
                                 && !s.starts_with("/api/files/")
                                 && !s.starts_with("http")
                             {
@@ -169,12 +168,10 @@ pub fn validate_entry_data(data: &Value, fields: &[Value]) -> Option<String> {
                                     name, s
                                 ));
                             }
-                        }
                     }
                     _ => {}
                 }
             }
-        }
     }
 
     None

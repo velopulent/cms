@@ -169,15 +169,13 @@ impl SingletonService {
         }
 
         // Validate singleton data against collection definition
-        if let Ok(definition) = serde_json::from_str::<Value>(&item.definition) {
-            if let Some(fields) = definition.get("fields").and_then(|f| f.as_array()) {
-                if let Some(err) =
+        if let Ok(definition) = serde_json::from_str::<Value>(&item.definition)
+            && let Some(fields) = definition.get("fields").and_then(|f| f.as_array())
+                && let Some(err) =
                     super::definition_validation::validate_entry_data(data, fields)
                 {
                     return Err(SingletonError::ValidationFailed(err));
                 }
-            }
-        }
 
         let data_str = data.to_string();
         debug!("Updating singleton data for item: id={}", item.id);
@@ -203,8 +201,8 @@ impl SingletonService {
 
         let mut file_map = serde_json::Map::new();
 
-        if !file_ids.is_empty() {
-            if let Ok(file_items) = self.file_repo.get_by_ids(site_id, &file_ids).await {
+        if !file_ids.is_empty()
+            && let Ok(file_items) = self.file_repo.get_by_ids(site_id, &file_ids).await {
                 for f in file_items {
                     let url = storage.url(&f.storage_key, &f.id);
 
@@ -224,7 +222,6 @@ impl SingletonService {
                     );
                 }
             }
-        }
 
         let mut result = data.clone();
         if let serde_json::Value::Object(ref mut obj) = result {
