@@ -75,8 +75,17 @@ impl FileRepository for SqliteFileRepository {
                     query.push_str(" AND mime_type LIKE 'video/%'");
                     count_query.push_str(" AND mime_type LIKE 'video/%'");
                 }
+                "audio" => {
+                    query.push_str(" AND mime_type LIKE 'audio/%'");
+                    count_query.push_str(" AND mime_type LIKE 'audio/%'");
+                }
                 "document" => {
-                    let clause = " AND (mime_type LIKE 'application/pdf' OR mime_type LIKE 'application/%' OR mime_type LIKE 'text/%')";
+                    let clause = " AND (mime_type IN ('application/pdf', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', 'application/vnd.ms-excel', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'application/vnd.ms-powerpoint', 'application/vnd.openxmlformats-officedocument.presentationml.presentation') OR mime_type LIKE 'text/%')";
+                    query.push_str(clause);
+                    count_query.push_str(clause);
+                }
+                "archive" => {
+                    let clause = " AND mime_type IN ('application/zip', 'application/gzip', 'application/x-tar', 'application/x-7z-compressed', 'application/x-rar-compressed')";
                     query.push_str(clause);
                     count_query.push_str(clause);
                 }
