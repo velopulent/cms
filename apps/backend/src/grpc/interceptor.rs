@@ -122,13 +122,11 @@ async fn validate_auth(ctx: &AuthContext, repository: &Repository) -> Result<Grp
             return Err(tonic::Status::unauthenticated("Invalid access token"));
         }
 
-        if let Some(exp) = expires_at {
-            if let Ok(expiry) = chrono::NaiveDateTime::parse_from_str(&exp, "%Y-%m-%d %H:%M:%S") {
-                if expiry < chrono::Utc::now().naive_utc() {
+        if let Some(exp) = expires_at
+            && let Ok(expiry) = chrono::NaiveDateTime::parse_from_str(&exp, "%Y-%m-%d %H:%M:%S")
+                && expiry < chrono::Utc::now().naive_utc() {
                     return Err(tonic::Status::unauthenticated("Access token has expired"));
                 }
-            }
-        }
 
         if let Err(e) = repository.access_token.update_last_used(&key_id).await {
             tracing::warn!(error = ?e, key_id = %key_id, "Failed to update last_used");
