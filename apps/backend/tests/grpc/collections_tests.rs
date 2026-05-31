@@ -172,3 +172,53 @@ async fn test_delete_collection() {
 
     assert!(result.is_err());
 }
+
+#[tokio::test]
+async fn test_grpc_unauthenticated() {
+    let ctx = GrpcTestContext::start().await;
+    let channel = ctx.connect().await;
+    let mut client = CollectionServiceClient::with_interceptor(channel, auth_interceptor("invalid-token-12345"));
+
+    let result = client
+        .list_collections(tonic::Request::new(ListCollectionsRequest {}))
+        .await;
+
+    assert!(result.is_err());
+    let status = result.unwrap_err();
+    assert_eq!(status.code(), tonic::Code::Unauthenticated);
+}
+
+#[tokio::test]
+async fn test_grpc_create_collection_invalid_definition() {
+    let (_ctx, _site_id, token) = setup().await;
+    let channel = _ctx.connect().await;
+    let mut client = CollectionServiceClient::with_interceptor(channel, auth_interceptor(&token));
+
+    let result = client
+        .create_collection(tonic::Request::new(CreateCollectionRequest {
+            name: "Bad".into(),
+            slug: "bad".into(),
+            definition: r#"{"fields":[{"name":"title","type":"string"}]}"#.into(),
+            is_singleton: false,
+        }))
+        .await;
+
+    assert!(result.is_err());
+}
+
+#[tokio::test]
+async fn test_grpc_get_collection_not_found() {
+    let (_ctx, _site_id, token) = setup().await;
+    let channel = _ctx.connect().await;
+    let mut client = CollectionServiceClient::with_interceptor(channel, auth_interceptor(&token));
+
+    let result = client
+        .get_collection(tonic::Request::new(GetCollectionRequest {
+            slug: "nonexistent".into(),
+        }))
+        .await;
+
+    assert!(result.is_err());
+    let status = result.unwrap_err();
+    assert_eq!(status.code(), tonic::Code::NotFound);
+}
