@@ -134,4 +134,68 @@ mod tests {
 
         assert!(result.is_err());
     }
+
+    #[tokio::test]
+    async fn write_token_has_write_scope() {
+        let checker = ScopeChecker::new(Arc::new(InMemoryUserRepository::new()));
+        let actor = Actor::ApiKey(ApiKeyActor {
+            token_id: "token-1".to_string(),
+            site_id: "site-1".to_string(),
+            permission: AccessTokenPermission::Write,
+        });
+
+        let result = checker
+            .require_site_scope(&actor, "site-1", &Scope::EntriesWrite, "editor")
+            .await;
+
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn user_actor_requires_site_access() {
+        let checker = ScopeChecker::new(Arc::new(InMemoryUserRepository::new()));
+        let actor = Actor::User(crate::middleware::auth::UserActor {
+            user_id: "user-1".to_string(),
+        });
+
+        let result = checker
+            .require_site_scope(&actor, "site-1", &Scope::EntriesRead, "viewer")
+            .await;
+
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_actor_user_id() {
+        let checker = ScopeChecker::new(Arc::new(InMemoryUserRepository::new()));
+
+        let user_actor = Actor::User(crate::middleware::auth::UserActor {
+            user_id: "user-1".to_string(),
+        });
+        assert_eq!(checker.actor_user_id(&user_actor), Some("user-1"));
+
+        let api_actor = Actor::ApiKey(ApiKeyActor {
+            token_id: "token-1".to_string(),
+            site_id: "site-1".to_string(),
+            permission: AccessTokenPermission::Read,
+        });
+        assert!(checker.actor_user_id(&api_actor).is_none());
+    }
+
+    #[test]
+    fn test_actor_site_id() {
+        let checker = ScopeChecker::new(Arc::new(InMemoryUserRepository::new()));
+
+        let api_actor = Actor::ApiKey(ApiKeyActor {
+            token_id: "token-1".to_string(),
+            site_id: "site-1".to_string(),
+            permission: AccessTokenPermission::Read,
+        });
+        assert_eq!(checker.actor_site_id(&api_actor), Some("site-1"));
+
+        let user_actor = Actor::User(crate::middleware::auth::UserActor {
+            user_id: "user-1".to_string(),
+        });
+        assert!(checker.actor_site_id(&user_actor).is_none());
+    }
 }
