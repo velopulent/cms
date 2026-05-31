@@ -22,19 +22,16 @@ impl GqlContext {
         let mut site_id = None;
         let mut permission = None;
 
-        if let Some(header) = auth_header {
-            if let Some(token) = header.strip_prefix("Bearer ") {
-                if token.starts_with("cms_site_") {
-                    if let Ok(auth_actor) = verify_access_token(token, &repository, hmac_secret).await {
+        if let Some(header) = auth_header
+            && let Some(token) = header.strip_prefix("Bearer ")
+                && token.starts_with("cms_site_")
+                    && let Ok(auth_actor) = verify_access_token(token, &repository, hmac_secret).await {
                         if let Actor::ApiKey(k) = &auth_actor {
                             site_id = Some(k.site_id.clone());
                             permission = Some(k.permission.clone());
                         }
                         actor = Some(auth_actor);
                     }
-                }
-            }
-        }
 
         Self {
             repository,
