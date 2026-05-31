@@ -164,3 +164,123 @@ impl IntoResponse for ServiceError {
         (status, Json(json!({"error": message}))).into_response()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_status_code_mapping() {
+        assert_eq!(ServiceError::Unauthorized("".into()).status_code(), StatusCode::UNAUTHORIZED);
+        assert_eq!(ServiceError::Forbidden("".into()).status_code(), StatusCode::FORBIDDEN);
+        assert_eq!(ServiceError::NotFound("".into()).status_code(), StatusCode::NOT_FOUND);
+        assert_eq!(ServiceError::BadRequest("".into()).status_code(), StatusCode::BAD_REQUEST);
+        assert_eq!(ServiceError::Conflict("".into()).status_code(), StatusCode::CONFLICT);
+        assert_eq!(ServiceError::InsufficientScope("".into()).status_code(), StatusCode::FORBIDDEN);
+        assert_eq!(ServiceError::InsufficientPermission("".into()).status_code(), StatusCode::FORBIDDEN);
+        assert_eq!(ServiceError::SiteTokenDenied.status_code(), StatusCode::FORBIDDEN);
+        assert_eq!(ServiceError::MissingSiteContext.status_code(), StatusCode::BAD_REQUEST);
+        assert_eq!(ServiceError::Internal("".into()).status_code(), StatusCode::INTERNAL_SERVER_ERROR);
+    }
+
+    #[test]
+    fn test_error_message() {
+        assert_eq!(ServiceError::Unauthorized("msg".into()).error_message(), "msg");
+        assert_eq!(ServiceError::Forbidden("msg".into()).error_message(), "msg");
+        assert_eq!(ServiceError::NotFound("msg".into()).error_message(), "msg");
+        assert_eq!(ServiceError::BadRequest("msg".into()).error_message(), "msg");
+        assert_eq!(ServiceError::Conflict("msg".into()).error_message(), "msg");
+        assert_eq!(ServiceError::InsufficientScope("write".into()).error_message(), "Insufficient scope: write");
+        assert_eq!(
+            ServiceError::InsufficientPermission("admin".into()).error_message(),
+            "Insufficient permission: admin"
+        );
+        assert_eq!(ServiceError::SiteTokenDenied.error_message(), "Site token denied");
+        assert_eq!(ServiceError::MissingSiteContext.error_message(), "Missing site context");
+        assert_eq!(ServiceError::Internal("secret".into()).error_message(), "Internal server error");
+    }
+
+    #[test]
+    fn test_status_codes_for_domain_errors() {
+        assert_eq!(
+            ServiceError::Site(SiteError::NotFound).status_code(),
+            StatusCode::NOT_FOUND
+        );
+        assert_eq!(
+            ServiceError::Site(SiteError::InvalidStorageProvider("x".into())).status_code(),
+            StatusCode::BAD_REQUEST
+        );
+        assert_eq!(
+            ServiceError::Site(SiteError::AlreadyMember).status_code(),
+            StatusCode::CONFLICT
+        );
+        assert_eq!(
+            ServiceError::Collection(CollectionError::NotFound).status_code(),
+            StatusCode::NOT_FOUND
+        );
+        assert_eq!(
+            ServiceError::Collection(CollectionError::AlreadyExists).status_code(),
+            StatusCode::CONFLICT
+        );
+        assert_eq!(
+            ServiceError::Collection(CollectionError::InvalidDefinition("x".into())).status_code(),
+            StatusCode::BAD_REQUEST
+        );
+        assert_eq!(
+            ServiceError::Entry(EntryError::NotFound).status_code(),
+            StatusCode::NOT_FOUND
+        );
+        assert_eq!(
+            ServiceError::Entry(EntryError::AlreadyExists).status_code(),
+            StatusCode::CONFLICT
+        );
+        assert_eq!(
+            ServiceError::Entry(EntryError::ValidationFailed("x".into())).status_code(),
+            StatusCode::BAD_REQUEST
+        );
+        assert_eq!(
+            ServiceError::File(FileError::NotFound).status_code(),
+            StatusCode::NOT_FOUND
+        );
+        assert_eq!(
+            ServiceError::File(FileError::FileTooLarge("too large".into())).status_code(),
+            StatusCode::PAYLOAD_TOO_LARGE
+        );
+        assert_eq!(
+            ServiceError::File(FileError::InvalidContentType("x".into())).status_code(),
+            StatusCode::BAD_REQUEST
+        );
+        assert_eq!(
+            ServiceError::Singleton(SingletonError::NotFound).status_code(),
+            StatusCode::NOT_FOUND
+        );
+        assert_eq!(
+            ServiceError::Singleton(SingletonError::NotASingleton).status_code(),
+            StatusCode::NOT_FOUND
+        );
+        assert_eq!(
+            ServiceError::Singleton(SingletonError::ValidationFailed("x".into())).status_code(),
+            StatusCode::BAD_REQUEST
+        );
+        assert_eq!(
+            ServiceError::Webhook(WebhookError::NotFound).status_code(),
+            StatusCode::NOT_FOUND
+        );
+        assert_eq!(
+            ServiceError::Webhook(WebhookError::InvalidUrl("x".into())).status_code(),
+            StatusCode::BAD_REQUEST
+        );
+        assert_eq!(
+            ServiceError::Webhook(WebhookError::DeliveryFailed("x".into())).status_code(),
+            StatusCode::BAD_GATEWAY
+        );
+        assert_eq!(
+            ServiceError::Token(TokenError::NameRequired).status_code(),
+            StatusCode::BAD_REQUEST
+        );
+        assert_eq!(
+            ServiceError::Token(TokenError::NotFound).status_code(),
+            StatusCode::NOT_FOUND
+        );
+    }
+}
