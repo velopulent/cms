@@ -13,7 +13,9 @@ pub const STORAGE_KIND_FILESYSTEM: &str = "filesystem";
 pub const STORAGE_KIND_S3: &str = "s3";
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Default)]
 pub enum StorageKind {
+    #[default]
     Filesystem,
     S3,
 }
@@ -35,11 +37,6 @@ impl StorageKind {
     }
 }
 
-impl Default for StorageKind {
-    fn default() -> Self {
-        StorageKind::Filesystem
-    }
-}
 
 #[derive(Clone)]
 pub struct StorageRegistry {
