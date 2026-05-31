@@ -91,12 +91,14 @@ impl ServiceError {
             ServiceError::Collection(e) => match e {
                 CollectionError::NotFound => StatusCode::NOT_FOUND,
                 CollectionError::AlreadyExists => StatusCode::CONFLICT,
+                CollectionError::InvalidDefinition(_) => StatusCode::BAD_REQUEST,
                 CollectionError::DatabaseError(_) => StatusCode::INTERNAL_SERVER_ERROR,
             },
             ServiceError::Entry(e) => match e {
                 EntryError::NotFound => StatusCode::NOT_FOUND,
                 EntryError::RevisionNotFound => StatusCode::NOT_FOUND,
                 EntryError::AlreadyExists => StatusCode::CONFLICT,
+                EntryError::ValidationFailed(_) => StatusCode::BAD_REQUEST,
                 EntryError::DatabaseError(_) => StatusCode::INTERNAL_SERVER_ERROR,
             },
             ServiceError::File(e) => match e {
@@ -104,12 +106,14 @@ impl ServiceError {
                 FileError::NotFoundOrNotDeleted => StatusCode::NOT_FOUND,
                 FileError::NoFileProvided => StatusCode::BAD_REQUEST,
                 FileError::FileTooLarge(_) => StatusCode::PAYLOAD_TOO_LARGE,
+                FileError::InvalidContentType(_) => StatusCode::BAD_REQUEST,
                 FileError::StorageError(_) => StatusCode::INTERNAL_SERVER_ERROR,
                 FileError::NoStorageConfigured => StatusCode::INTERNAL_SERVER_ERROR,
                 FileError::DatabaseError(_) => StatusCode::INTERNAL_SERVER_ERROR,
             },
             ServiceError::Singleton(e) => match e {
                 SingletonError::NotFound | SingletonError::NotASingleton => StatusCode::NOT_FOUND,
+                SingletonError::ValidationFailed(_) => StatusCode::BAD_REQUEST,
                 SingletonError::DatabaseError(_) => StatusCode::INTERNAL_SERVER_ERROR,
             },
             ServiceError::Webhook(e) => match e {

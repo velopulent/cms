@@ -33,6 +33,9 @@ pub enum FileError {
     #[error("File too large: {0}")]
     FileTooLarge(String),
 
+    #[error("Invalid content type: {0}")]
+    InvalidContentType(String),
+
     #[error("Storage error: {0}")]
     StorageError(String),
 
@@ -62,6 +65,7 @@ impl FileError {
                 Json(json!({"error": "No storage providers configured"})),
             ),
             FileError::DatabaseError(msg) => (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": msg}))),
+            FileError::InvalidContentType(msg) => (StatusCode::BAD_REQUEST, Json(json!({"error": msg}))),
         };
         (status, body).into_response()
     }
@@ -120,6 +124,13 @@ impl FileService {
             return Err(FileError::FileTooLarge(format!(
                 "File too large. Maximum size is {}MB",
                 self.config.max_upload_size_bytes / (1024 * 1024)
+            )));
+        }
+
+        if !crate::utils::content_types::is_allowed(content_type) {
+            return Err(FileError::InvalidContentType(format!(
+                "Content type '{}' is not allowed. Accepted types: images, videos, audio, documents, archives",
+                content_type
             )));
         }
 
