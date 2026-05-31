@@ -733,4 +733,174 @@ mod tests {
             axum::http::StatusCode::INTERNAL_SERVER_ERROR
         );
     }
+
+    #[tokio::test]
+    async fn test_list_revisions() {
+        let entry_repo = test_entry_repo();
+        let file_repo = test_file_repo();
+        let service = EntryService::new(entry_repo, file_repo, test_collection_repo());
+
+        let data = json!({"title": "Test"});
+        let entry = service
+            .create_entry("site-123", "col-123", &data, "test-entry", None)
+            .await
+            .unwrap();
+
+        let result = service.list_revisions(&entry.id, "site-123", 1, 10).await;
+        assert!(result.is_ok());
+        let revisions = result.unwrap();
+        assert_eq!(revisions.total, 1);
+    }
+
+    #[tokio::test]
+    async fn test_list_revisions_entry_not_found() {
+        let service = EntryService::new(test_entry_repo(), test_file_repo(), test_collection_repo());
+        let result = service.list_revisions("nonexistent", "site-123", 1, 10).await;
+        assert!(matches!(result, Err(EntryError::NotFound)));
+    }
+
+    #[tokio::test]
+    async fn test_get_revision() {
+        let entry_repo = test_entry_repo();
+        let file_repo = test_file_repo();
+        let service = EntryService::new(entry_repo, file_repo, test_collection_repo());
+
+        let data = json!({"title": "Test"});
+        let entry = service
+            .create_entry("site-123", "col-123", &data, "test-entry", None)
+            .await
+            .unwrap();
+
+        let result = service.get_revision(&entry.id, "site-123", 1).await;
+        assert!(result.is_ok());
+        let rev = result.unwrap();
+        assert!(rev.is_some());
+        assert_eq!(rev.unwrap().revision_number, 1);
+    }
+
+    #[tokio::test]
+    async fn test_get_revision_entry_not_found() {
+        let service = EntryService::new(test_entry_repo(), test_file_repo(), test_collection_repo());
+        let result = service.get_revision("nonexistent", "site-123", 1).await;
+        assert!(matches!(result, Err(EntryError::NotFound)));
+    }
+
+    #[tokio::test]
+    async fn test_get_revision_not_found() {
+        let entry_repo = test_entry_repo();
+        let file_repo = test_file_repo();
+        let service = EntryService::new(entry_repo, file_repo, test_collection_repo());
+
+        let data = json!({"title": "Test"});
+        let entry = service
+            .create_entry("site-123", "col-123", &data, "test-entry", None)
+            .await
+            .unwrap();
+
+        let result = service.get_revision(&entry.id, "site-123", 999).await;
+        assert!(result.is_ok());
+        assert!(result.unwrap().is_none());
+    }
+
+    #[tokio::test]
+    async fn test_restore_revision() {
+        let entry_repo = test_entry_repo();
+        let file_repo = test_file_repo();
+        let service = EntryService::new(entry_repo, file_repo, test_collection_repo());
+
+        let data = json!({"title": "Original"});
+        let entry = service
+            .create_entry("site-123", "col-123", &data, "test-entry", None)
+            .await
+            .unwrap();
+
+        let updated = json!({"title": "Updated"});
+        service
+            .update_entry(&entry.id, "site-123", Some(&updated), None, None, None, None)
+            .await
+            .unwrap();
+
+        let result = service.restore_revision(&entry.id, "site-123", 1, None).await;
+        assert!(result.is_ok());
+        let restored = result.unwrap();
+        assert_eq!(restored.id, entry.id);
+    }
+
+    #[tokio::test]
+    async fn test_restore_revision_entry_not_found() {
+        let service = EntryService::new(test_entry_repo(), test_file_repo(), test_collection_repo());
+        let result = service.restore_revision("nonexistent", "site-123", 1, None).await;
+        assert!(matches!(result, Err(EntryError::NotFound)));
+    }
+
+    #[tokio::test]
+    async fn test_restore_revision_not_found() {
+        let entry_repo = test_entry_repo();
+        let file_repo = test_file_repo();
+        let service = EntryService::new(entry_repo, file_repo, test_collection_repo());
+
+        let data = json!({"title": "Test"});
+        let entry = service
+            .create_entry("site-123", "col-123", &data, "test-entry", None)
+            .await
+            .unwrap();
+
+        let result = service.restore_revision(&entry.id, "site-123", 999, None).await;
+        assert!(matches!(result, Err(EntryError::RevisionNotFound)));
+    }
+
+    #[tokio::test]
+    async fn test_create_entry_validation_failed() {
+        let entry_repo = test_entry_repo();
+        let file_repo = test_file_repo();
+        let col_repo = test_collection_repo();
+
+        let collection = crate::models::collection::Collection {
+            id: "col-123".to_string(),
+            site_id: "site-123".to_string(),
+            name: "Posts".to_string(),
+            slug: "posts".to_string(),
+            definition: r#"{"fields":[{"name":"title","type":"number","required":true}]}"#.to_string(),
+            is_singleton: false,
+            singleton_data: None,
+            created_at: "2024-01-01 00:00:00".to_string(),
+            updated_at: "2024-01-01 00:00:00".to_string(),
+        };
+        col_repo.add_collection(collection);
+
+        let service = EntryService::new(entry_repo, file_repo, col_repo);
+        let data = json!({"title": "not-a-number"});
+        let result = service
+            .create_entry("site-123", "col-123", &data, "bad-entry", None)
+            .await;
+        assert!(matches!(result, Err(EntryError::ValidationFailed(_))));
+    }
+
+    #[tokio::test]
+    async fn test_update_entry_validation_failed() {
+        let entry_repo = test_entry_repo();
+        entry_repo.add_entry(create_test_entry());
+        let file_repo = test_file_repo();
+        let col_repo = test_collection_repo();
+
+        let collection = crate::models::collection::Collection {
+            id: "col-123".to_string(),
+            site_id: "site-123".to_string(),
+            name: "Posts".to_string(),
+            slug: "posts".to_string(),
+            definition: r#"{"fields":[{"name":"title","type":"number","required":true}]}"#.to_string(),
+            is_singleton: false,
+            singleton_data: None,
+            created_at: "2024-01-01 00:00:00".to_string(),
+            updated_at: "2024-01-01 00:00:00".to_string(),
+        };
+        col_repo.add_collection(collection);
+
+        let service = EntryService::new(entry_repo, file_repo, col_repo);
+        let data = json!({"title": "not-a-number"});
+        let result = service
+            .update_entry("entry-123", "site-123", Some(&data), None, None, None, None)
+            .await;
+        assert!(matches!(result, Err(EntryError::ValidationFailed(_))));
+    }
 }
