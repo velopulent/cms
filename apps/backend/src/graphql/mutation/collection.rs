@@ -13,7 +13,7 @@ impl CollectionMutation {
         gql_ctx.require_write()?;
 
         let definition_str = input.definition.to_string();
-        let is_singleton = false;
+        let is_singleton = input.is_singleton.unwrap_or(false);
 
         let collection = gql_ctx
             .services

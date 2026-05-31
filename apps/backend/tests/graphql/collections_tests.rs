@@ -77,6 +77,14 @@ async fn create_collection(server: &TestServer, token: &str, name: &str, slug: &
     gql_with_vars(server, token, query, vars).await
 }
 
+async fn create_singleton_collection(server: &TestServer, token: &str, name: &str, slug: &str) -> Value {
+    let query = r#"mutation CreateCollection($input: CreateCollectionInput!) {
+        createCollection(input: $input) { id name slug isSingleton singletonData }
+    }"#;
+    let vars = json!({"input": {"name": name, "slug": slug, "definition": json!({"fields": [{"name": "title", "type": "text"}]}), "isSingleton": true}});
+    gql_with_vars(server, token, query, vars).await
+}
+
 #[tokio::test]
 async fn test_collections_query() {
     let server = TestServer::start().await;
@@ -148,4 +156,17 @@ async fn test_delete_collection_mutation() {
     let body = gql(&server, &token, r#"mutation { deleteCollection(slug: "to-delete") }"#).await;
     assert!(body["errors"].is_null());
     assert_eq!(body["data"]["deleteCollection"].as_bool().unwrap(), true);
+}
+
+#[tokio::test]
+async fn test_create_singleton_collection() {
+    let server = TestServer::start().await;
+    let (_, token) = setup(&server).await;
+
+    let body = create_singleton_collection(&server, &token, "Settings", "settings").await;
+    assert!(body["errors"].is_null(), "errors: {:?}", body["errors"]);
+    assert_eq!(body["data"]["createCollection"]["name"].as_str().unwrap(), "Settings");
+    assert_eq!(body["data"]["createCollection"]["slug"].as_str().unwrap(), "settings");
+    assert_eq!(body["data"]["createCollection"]["isSingleton"].as_bool().unwrap(), true);
+    assert!(body["data"]["createCollection"]["singletonData"].is_null());
 }

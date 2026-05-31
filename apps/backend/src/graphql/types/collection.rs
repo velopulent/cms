@@ -43,6 +43,7 @@ pub struct CreateCollectionInput {
     pub name: String,
     pub slug: String,
     pub definition: Json,
+    pub is_singleton: Option<bool>,
 }
 
 #[derive(InputObject)]
