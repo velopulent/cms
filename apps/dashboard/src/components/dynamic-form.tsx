@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { Archive, FileText, Music } from "lucide-react";
+import { useEffect, useState } from "react";
 import { FilePickerDialog } from "@/components/file-picker-dialog";
 import { TiptapEditor } from "@/components/tiptap-editor";
 import { Badge } from "@/components/ui/badge";
@@ -127,6 +128,17 @@ function FieldInput({
   const numValue = typeof value === "number" ? value : 0;
   const boolValue = typeof value === "boolean" ? value : false;
 
+  const normalizedAccept: string[] | undefined = Array.isArray(field.accept)
+    ? field.accept
+    : typeof field.accept === "string"
+      ? [field.accept]
+      : undefined;
+  const normalizedOptions: string[] | undefined = Array.isArray(field.options)
+    ? field.options
+    : typeof field.options === "string"
+      ? [field.options]
+      : undefined;
+
   switch (field.type) {
     case "text":
       return (
@@ -226,7 +238,7 @@ function FieldInput({
           </SelectTrigger>
           <SelectContent>
             <SelectGroup>
-              {(field.options ?? []).map((opt) => (
+              {(normalizedOptions ?? []).map((opt) => (
                 <SelectItem key={opt} value={opt}>
                   {opt}
                 </SelectItem>
@@ -259,7 +271,11 @@ function FieldInput({
         </div>
       );
 
-    case "media":
+    case "image":
+    case "video":
+    case "audio":
+    case "document":
+    case "archive":
       return (
         <FileField
           value={strValue}
@@ -267,6 +283,8 @@ function FieldInput({
           siteId={siteId}
           isInvalid={isInvalid}
           readOnly={readOnly}
+          category={field.type}
+          accept={normalizedAccept}
         />
       );
 
@@ -285,18 +303,28 @@ function FieldInput({
   }
 }
 
+function formatFileSize(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
 function FileField({
   value,
   onChange,
   siteId,
   isInvalid,
   readOnly,
+  category,
+  accept,
 }: {
   value: string;
   onChange: (val: unknown) => void;
   siteId?: string;
   isInvalid: boolean;
   readOnly?: boolean;
+  category?: string;
+  accept?: string[];
 }) {
   const [pickerOpen, setPickerOpen] = useState(false);
   const [selectedFileInfo, setSelectedFileInfo] = useState<FileItem | null>(
@@ -307,18 +335,60 @@ function FileField({
   const fileId = fileIdMatch ? fileIdMatch[1] : null;
   const isExternalUrl = !fileId && value.startsWith("http");
   const isVideo = selectedFileInfo?.mime_type?.startsWith("video/");
+  const isAudio = selectedFileInfo?.mime_type?.startsWith("audio/");
+  const isImage =
+    selectedFileInfo?.mime_type?.startsWith("image/") ||
+    (!selectedFileInfo && isExternalUrl);
+
+  useEffect(() => {
+    if (!fileId || !siteId) return;
+
+    let cancelled = false;
+
+    fetch(`/api/dashboard/sites/${siteId}/files/${fileId}`, {
+      credentials: "include",
+    })
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data: FileItem | null) => {
+        if (!cancelled && data) setSelectedFileInfo(data);
+      })
+      .catch(() => {});
+
+    return () => {
+      cancelled = true;
+    };
+  }, [fileId, siteId]);
+
+  const filterAccept =
+    accept?.join(", ") ||
+    (category === "image"
+      ? "image/*"
+      : category === "video"
+        ? "video/*"
+        : category === "audio"
+          ? "audio/*"
+          : category === "document"
+            ? ".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.csv,.html,.md"
+            : category === "archive"
+              ? ".zip,.gz,.tar,.7z,.rar"
+              : undefined);
 
   return (
     <div className="flex flex-col gap-2">
       {value && (
         <div className="relative flex flex-col gap-3 rounded-lg border p-2">
           <div className="flex items-center gap-3">
-            {isExternalUrl && (
+            {isExternalUrl && isImage && (
               <img
                 src={value}
                 alt="Selected file"
                 className="h-16 w-16 rounded object-cover"
               />
+            )}
+            {isExternalUrl && !isImage && (
+              <div className="flex h-16 w-16 items-center justify-center rounded bg-muted">
+                <FileText className="size-6 text-muted-foreground" />
+              </div>
             )}
             {fileId && isVideo && selectedFileInfo?.thumbnail_url && (
               <img
@@ -327,7 +397,7 @@ function FileField({
                 className="h-16 w-16 rounded object-cover"
               />
             )}
-            {fileId && !isVideo && (
+            {fileId && !isVideo && isImage && (
               <img
                 src={`/api/files/${fileId}/thumbnail`}
                 alt="Selected file"
@@ -337,13 +407,41 @@ function FileField({
                 }}
               />
             )}
+            {fileId && isAudio && (
+              <div className="flex h-16 w-16 items-center justify-center rounded bg-muted">
+                <Music className="size-6 text-muted-foreground" />
+              </div>
+            )}
+            {fileId &&
+              !isVideo &&
+              !isImage &&
+              !isAudio &&
+              selectedFileInfo?.mime_type && (
+                <div className="flex h-16 w-16 items-center justify-center rounded bg-muted">
+                  {selectedFileInfo.mime_type.startsWith("application/pdf") ||
+                  selectedFileInfo.mime_type.startsWith("application/msword") ||
+                  selectedFileInfo.mime_type.startsWith("application/vnd.") ||
+                  selectedFileInfo.mime_type.startsWith("text/") ? (
+                    <FileText className="size-6 text-muted-foreground" />
+                  ) : (
+                    <Archive className="size-6 text-muted-foreground" />
+                  )}
+                </div>
+              )}
             <div className="flex-1">
               <Badge variant="secondary" className="text-xs">
-                {fileId ? `File: ${fileId.slice(0, 8)}...` : "File selected"}
+                {selectedFileInfo?.original_name
+                  ? selectedFileInfo.original_name
+                  : fileId
+                    ? `${fileId.slice(0, 8)}...`
+                    : "File selected"}
               </Badge>
-              {isVideo && selectedFileInfo?.original_name && (
-                <p className="mt-1 truncate text-xs text-muted-foreground">
-                  {selectedFileInfo.original_name}
+              {selectedFileInfo?.mime_type && (
+                <p className="mt-1 text-xs text-muted-foreground">
+                  {selectedFileInfo.mime_type}
+                  {selectedFileInfo.size
+                    ? ` — ${formatFileSize(selectedFileInfo.size)}`
+                    : ""}
                 </p>
               )}
             </div>
@@ -368,6 +466,13 @@ function FileField({
               className="w-full overflow-hidden rounded"
             />
           )}
+          {isAudio && value && (
+            <audio
+              controls
+              src={value}
+              className="w-full"
+            />
+          )}
         </div>
       )}
       {!readOnly && (
@@ -390,6 +495,7 @@ function FileField({
             setSelectedFileInfo(file);
           }}
           siteId={siteId}
+          accept={filterAccept}
         />
       )}
     </div>
