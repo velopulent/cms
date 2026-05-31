@@ -210,11 +210,10 @@ fn extract_cookie_value(parts: &Parts, name: &str) -> Option<String> {
     let cookie_header = parts.headers.get("cookie")?.to_str().ok()?;
 
     for cookie in cookie_header.split(';') {
-        if let Ok(parsed) = Cookie::parse(cookie.trim()) {
-            if parsed.name() == name {
+        if let Ok(parsed) = Cookie::parse(cookie.trim())
+            && parsed.name() == name {
                 return Some(parsed.value().to_string());
             }
-        }
     }
 
     None
