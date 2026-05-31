@@ -87,8 +87,43 @@ const FIELD_TYPES = [
   { value: "date", label: "Date" },
   { value: "select", label: "Select" },
   { value: "image_url", label: "Image URL" },
-  { value: "media", label: "File Upload" },
+  { value: "image", label: "Image" },
+  { value: "video", label: "Video" },
+  { value: "audio", label: "Audio" },
+  { value: "document", label: "Document" },
+  { value: "archive", label: "Archive" },
 ];
+
+const FILE_FIELD_TYPES = ["image", "video", "audio", "document", "archive"];
+
+const CONTENT_TYPE_MIME_TYPES: Record<string, string[]> = {
+  image: [
+    "image/jpeg",
+    "image/png",
+    "image/gif",
+    "image/webp",
+    "image/avif",
+    "image/svg+xml",
+  ],
+  video: ["video/mp4", "video/webm", "video/ogg", "video/quicktime"],
+  audio: ["audio/mpeg", "audio/wav", "audio/ogg", "audio/webm", "audio/aac"],
+  document: [
+    "application/pdf",
+    "application/msword",
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    "application/vnd.ms-excel",
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    "text/plain",
+    "text/csv",
+    "text/markdown",
+  ],
+  archive: [
+    "application/zip",
+    "application/gzip",
+    "application/x-tar",
+    "application/x-7z-compressed",
+  ],
+};
 
 function slugify(text: string) {
   return text
@@ -430,6 +465,99 @@ function SortableFieldItem({
             Required
           </FieldLabel>
         </Field>
+        {field.type === "select" && (
+          <div className="flex flex-col gap-2 mt-2">
+            <FieldLabel className="text-xs">Options</FieldLabel>
+            <div className="flex flex-wrap gap-1">
+              {(field.options ?? []).map((opt, optIdx) => (
+                <span
+                  key={optIdx}
+                  className="inline-flex items-center gap-1 rounded-md border border-border bg-background px-2 py-0.5 text-xs"
+                >
+                  {opt}
+                  <button
+                    type="button"
+                    className="ml-0.5 text-muted-foreground hover:text-foreground"
+                    onClick={() => {
+                      const newOpts = (field.options ?? []).filter(
+                        (_, i) => i !== optIdx,
+                      );
+                      form.setFieldValue(
+                        `fields[${index}].options`,
+                        newOpts,
+                      );
+                    }}
+                  >
+                    ×
+                  </button>
+                </span>
+              ))}
+            </div>
+            <Input
+              placeholder="Add option and press Enter"
+              className="h-8 text-xs"
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  e.preventDefault();
+                  const input = e.target as HTMLInputElement;
+                  const val = input.value.trim();
+                  if (val) {
+                    const current = field.options ?? [];
+                    form.setFieldValue(`fields[${index}].options`, [
+                      ...current,
+                      val,
+                    ]);
+                    input.value = "";
+                  }
+                }
+              }}
+            />
+          </div>
+        )}
+        {FILE_FIELD_TYPES.includes(field.type) && (
+          <div className="flex flex-col gap-2 mt-2">
+            <FieldLabel className="text-xs">
+              Accepted MIME types{" "}
+              <span className="text-muted-foreground">(optional)</span>
+            </FieldLabel>
+            <div className="flex flex-wrap gap-1">
+              {(CONTENT_TYPE_MIME_TYPES[field.type] ?? []).map((mime) => {
+                const selected = (field.accept ?? []).includes(mime);
+                return (
+                  <button
+                    key={mime}
+                    type="button"
+                    className={`inline-flex items-center rounded-md border px-2 py-0.5 text-xs transition-colors ${
+                      selected
+                        ? "border-primary bg-primary/10 text-primary"
+                        : "border-border bg-background text-muted-foreground hover:text-foreground"
+                    }`}
+                    onClick={() => {
+                      const current = field.accept ?? [];
+                      const newAccept = selected
+                        ? current.filter((a) => a !== mime)
+                        : [...current, mime];
+                      form.setFieldValue(
+                        `fields[${index}].accept`,
+                        newAccept.length > 0 ? newAccept : undefined,
+                      );
+                    }}
+                  >
+                    {mime.split("/")[1] ?? mime}
+                  </button>
+                );
+              })}
+            </div>
+            <p className="text-xs text-muted-foreground">
+              {(() => {
+                const acceptCount = (field.accept ?? []).length;
+                if (acceptCount === 0)
+                  return "All files in this category accepted";
+                return `${acceptCount} type${acceptCount === 1 ? "" : "s"} selected`;
+              })()}
+            </p>
+          </div>
+        )}
       </div>
       <Button
         type="button"
@@ -449,6 +577,8 @@ const collectionFieldSchema = z.object({
   name: z.string().min(1, "Field name is required"),
   type: z.string(),
   required: z.boolean().optional(),
+  options: z.array(z.string()).optional(),
+  accept: z.array(z.string()).optional(),
   _id: z.string(),
 });
 
