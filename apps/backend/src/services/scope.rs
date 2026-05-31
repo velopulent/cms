@@ -4,6 +4,16 @@ use crate::middleware::auth::{Actor, Scope};
 use crate::repository::traits::UserRepository;
 use crate::services::error::ServiceError;
 
+fn role_order(r: &str) -> u8 {
+    match r {
+        "owner" => 4,
+        "admin" => 3,
+        "editor" => 2,
+        "viewer" => 1,
+        _ => 0,
+    }
+}
+
 #[derive(Clone)]
 pub struct ScopeChecker {
     user_repo: Arc<dyn UserRepository>,
@@ -29,10 +39,19 @@ impl ScopeChecker {
                     ));
                 }
                 let scopes = crate::middleware::auth::ScopeSet::from_permission(&k.permission);
-                if scopes.allows(scope) {
+                if !scopes.allows(scope) {
+                    return Err(ServiceError::InsufficientPermission(min_role.into()));
+                }
+                // Write tokens are created by admins, so they get admin-level role.
+                // Read tokens get viewer role.
+                let api_role = match k.permission {
+                    crate::models::access_token::AccessTokenPermission::Read => "viewer",
+                    crate::models::access_token::AccessTokenPermission::Write => "admin",
+                };
+                if role_order(api_role) >= role_order(min_role) {
                     Ok(())
                 } else {
-                    Err(ServiceError::InsufficientPermission("write".into()))
+                    Err(ServiceError::InsufficientPermission(min_role.into()))
                 }
             }
             Actor::User(user) => {
@@ -50,14 +69,6 @@ impl ScopeChecker {
     }
 
     async fn check_site_access(&self, user_id: &str, site_id: &str, min_role: &str) -> Result<(), ServiceError> {
-        let role_order = |r: &str| match r {
-            "owner" => 4,
-            "admin" => 3,
-            "editor" => 2,
-            "viewer" => 1,
-            _ => 0,
-        };
-
         let min_level = role_order(min_role);
 
         let role = self
