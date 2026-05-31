@@ -1,7 +1,7 @@
 "use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ImagePlus, Search, Trash2, Upload } from "lucide-react";
+import { Archive, FileText, ImagePlus, Music, Search, Trash2, Upload, Video } from "lucide-react";
 import { useRef, useState } from "react";
 import { toast } from "sonner";
 import {
@@ -68,11 +68,59 @@ export function FilePickerDialog({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const queryClient = useQueryClient();
 
+  const acceptTypes = accept ? accept.split(",").map((s) => s.trim()) : [];
+  const fileType = acceptTypes.length > 0
+    ? acceptTypes.some((m) => m.includes("image/"))
+      ? "image"
+      : acceptTypes.some((m) => m.includes("video/"))
+        ? "video"
+        : acceptTypes.some((m) => m.includes("audio/"))
+          ? "audio"
+          : acceptTypes.some(
+              (m) =>
+                m.startsWith("application/pdf") ||
+                m.startsWith("application/msword") ||
+                m.startsWith("application/vnd.") ||
+                m.startsWith("text/"),
+            )
+            ? "document"
+            : acceptTypes.some(
+                  (m) =>
+                    m.startsWith("application/zip") ||
+                    m.startsWith("application/gzip") ||
+                    m.startsWith("application/x-tar") ||
+                    m.startsWith("application/x-7z") ||
+                    m.startsWith("application/x-rar"),
+                )
+              ? "archive"
+              : undefined
+    : undefined;
+
   const { data, isLoading } = useQuery({
-    queryKey: ["files", siteId, page, search],
-    queryFn: () => getFiles(siteId, { page, search: search || undefined }),
+    queryKey: ["files", siteId, page, search, fileType],
+    queryFn: () =>
+      getFiles(siteId, {
+        page,
+        search: search || undefined,
+        type: fileType,
+      }),
     enabled: open,
   });
+
+  const filteredItems = (() => {
+    const items = data?.items ?? [];
+    if (!accept || accept.length === 0) return items;
+    const patterns = accept.split(",").map((s) => s.trim());
+    return items.filter((file) => {
+      return patterns.some((pattern) => {
+        if (pattern.endsWith("/*")) {
+          const prefix = pattern.slice(0, -2);
+          return file.mime_type.startsWith(prefix);
+        }
+        return file.mime_type === pattern;
+      });
+    });
+  })();
 
   const uploadMutation = useMutation({
     mutationFn: ({
@@ -170,13 +218,13 @@ export function FilePickerDialog({
                       <Skeleton key={id} className="aspect-square rounded-lg" />
                     ))}
                   </div>
-                ) : !data?.items.length ? (
+                ) : !filteredItems.length ? (
                   <div className="flex flex-1 items-center justify-center text-muted-foreground text-sm">
                     No files found.
                   </div>
                 ) : (
                   <div className="grid grid-cols-3 gap-3 overflow-y-auto sm:grid-cols-4">
-                    {data.items.map((file) => (
+                    {filteredItems.map((file) => (
                       <FileGridItem
                         key={file.id}
                         file={file}
@@ -193,7 +241,7 @@ export function FilePickerDialog({
                 {data && data.total > data.per_page && (
                   <div className="flex items-center justify-between text-sm text-muted-foreground">
                     <span>
-                      {data.items.length} of {data.total} files
+                      {filteredItems.length} of {data.total} files
                     </span>
                     <div className="flex gap-2">
                       <Button
@@ -247,7 +295,19 @@ export function FilePickerDialog({
                   onClick={() => fileInputRef.current?.click()}
                   disabled={uploadMutation.isPending}
                 >
-                  <ImagePlus data-icon="inline-start" />
+                  {fileType === "image" ? (
+                    <ImagePlus data-icon="inline-start" />
+                  ) : fileType === "video" ? (
+                    <Video data-icon="inline-start" />
+                  ) : fileType === "audio" ? (
+                    <Music data-icon="inline-start" />
+                  ) : fileType === "document" ? (
+                    <FileText data-icon="inline-start" />
+                  ) : fileType === "archive" ? (
+                    <Archive data-icon="inline-start" />
+                  ) : (
+                    <Upload data-icon="inline-start" />
+                  )}
                   {uploadMutation.isPending ? "Uploading..." : "Choose File"}
                 </Button>
                 <input
