@@ -3,26 +3,15 @@ use std::sync::Arc;
 use rmcp::ErrorData as McpError;
 use rmcp::handler::server::wrapper::Parameters;
 use rmcp::model::CallToolResult;
-use rmcp::model::Content;
 use schemars::JsonSchema;
 use serde::Deserialize;
 
+use crate::mcp::auth::{ok_result, tool_error};
 use crate::mcp::schema::ArbitraryJson;
 use crate::middleware::auth::{Actor, Scope};
 use crate::repository::traits::ListEntriesParams as RepoListEntriesParams;
 use crate::services::{Services, scope::ScopeChecker};
 use crate::storage::StorageRegistry;
-
-fn ok_result(data: &impl serde::Serialize) -> Result<CallToolResult, McpError> {
-    let json = serde_json::to_string_pretty(data).map_err(|e| {
-        McpError::internal_error(format!("Failed to serialize response: {}", e), None)
-    })?;
-    Ok(CallToolResult::success(vec![Content::text(json)]))
-}
-
-fn map_err(e: impl Into<crate::services::error::ServiceError>) -> McpError {
-    crate::mcp::auth::service_error_to_mcp(e.into())
-}
 
 fn require_site_id(actor: &Actor) -> Result<String, McpError> {
     actor
@@ -47,10 +36,12 @@ pub async fn list_entries(
     params: Parameters<ListEntriesParams>,
 ) -> Result<CallToolResult, McpError> {
     let site_id = require_site_id(actor)?;
-    scope
+    if let Err(e) = scope
         .require_site_scope(actor, &site_id, &Scope::EntriesRead, "viewer")
         .await
-        .map_err(map_err)?;
+    {
+        return Ok(tool_error(e));
+    }
     let published_only = params.0.published_only.unwrap_or(true);
     let page = params.0.page.unwrap_or(1).max(1);
     let per_page = params.0.per_page.unwrap_or(25).clamp(1, 100);
@@ -74,7 +65,7 @@ pub async fn list_entries(
             });
             ok_result(&response)
         }
-        Err(e) => Err(map_err(e)),
+        Err(e) => Ok(tool_error(e)),
     }
 }
 
@@ -91,14 +82,18 @@ pub async fn get_entry(
     params: Parameters<GetEntryParams>,
 ) -> Result<CallToolResult, McpError> {
     let site_id = require_site_id(actor)?;
-    scope
+    if let Err(e) = scope
         .require_site_scope(actor, &site_id, &Scope::EntriesRead, "viewer")
         .await
-        .map_err(map_err)?;
+    {
+        return Ok(tool_error(e));
+    }
     match services.entry.get_entry(&params.0.id, &site_id, true).await {
         Ok(Some(entry)) => ok_result(&entry),
-        Ok(None) => ok_result(&serde_json::json!({"error": "Entry not found"})),
-        Err(e) => Err(map_err(e)),
+        Ok(None) => Ok(tool_error(crate::services::error::ServiceError::NotFound(
+            "Entry not found".into(),
+        ))),
+        Err(e) => Ok(tool_error(e)),
     }
 }
 
@@ -118,25 +113,23 @@ pub async fn create_entry(
     params: Parameters<CreateEntryParams>,
 ) -> Result<CallToolResult, McpError> {
     let site_id = require_site_id(actor)?;
-    scope
+    if let Err(e) = scope
         .require_site_scope(actor, &site_id, &Scope::EntriesWrite, "editor")
         .await
-        .map_err(map_err)?;
+    {
+        return Ok(tool_error(e));
+    }
 
     // Validate entry data against collection definition
     if let Ok(Some(collection)) = services
         .collection
         .get_by_id(&params.0.collection_id)
         .await
-    {
-        if let Ok(definition) = serde_json::from_str::<serde_json::Value>(&collection.definition) {
-            if let Some(fields) = definition.get("fields").and_then(|f| f.as_array()) {
-                if let Some(err) = crate::services::definition_validation::validate_entry_data(&params.0.values, fields) {
-                    return Err(McpError::invalid_request(err, None));
+        && let Ok(definition) = serde_json::from_str::<serde_json::Value>(&collection.definition)
+            && let Some(fields) = definition.get("fields").and_then(|f| f.as_array())
+                && let Some(err) = crate::services::definition_validation::validate_entry_data(&params.0.values, fields) {
+                    return Ok(tool_error(crate::services::error::ServiceError::BadRequest(err)));
                 }
-            }
-        }
-    }
 
     let slug = params
         .0
@@ -148,7 +141,7 @@ pub async fn create_entry(
         .await
     {
         Ok(entry) => ok_result(&entry),
-        Err(e) => Err(map_err(e)),
+        Err(e) => Ok(tool_error(e)),
     }
 }
 
@@ -169,10 +162,12 @@ pub async fn update_entry(
     params: Parameters<UpdateEntryParams>,
 ) -> Result<CallToolResult, McpError> {
     let site_id = require_site_id(actor)?;
-    scope
+    if let Err(e) = scope
         .require_site_scope(actor, &site_id, &Scope::EntriesWrite, "editor")
         .await
-        .map_err(map_err)?;
+    {
+        return Ok(tool_error(e));
+    }
     match services
         .entry
         .update_entry(
@@ -187,7 +182,7 @@ pub async fn update_entry(
         .await
     {
         Ok(entry) => ok_result(&entry),
-        Err(e) => Err(map_err(e)),
+        Err(e) => Ok(tool_error(e)),
     }
 }
 
@@ -203,19 +198,23 @@ pub async fn delete_entry(
     params: Parameters<DeleteEntryParams>,
 ) -> Result<CallToolResult, McpError> {
     let site_id = require_site_id(actor)?;
-    scope
+    if let Err(e) = scope
         .require_site_scope(actor, &site_id, &Scope::EntriesWrite, "editor")
         .await
-        .map_err(map_err)?;
+    {
+        return Ok(tool_error(e));
+    }
     match services.entry.delete_entry(&params.0.id, &site_id).await {
         Ok(n) => {
             if n > 0 {
                 ok_result(&serde_json::json!({"deleted": true}))
             } else {
-                ok_result(&serde_json::json!({"error": "Entry not found"}))
+                Ok(tool_error(crate::services::error::ServiceError::NotFound(
+                    "Entry not found".into(),
+                )))
             }
         }
-        Err(e) => Err(map_err(e)),
+        Err(e) => Ok(tool_error(e)),
     }
 }
 
@@ -231,13 +230,15 @@ pub async fn publish_entry(
     params: Parameters<PublishEntryParams>,
 ) -> Result<CallToolResult, McpError> {
     let site_id = require_site_id(actor)?;
-    scope
+    if let Err(e) = scope
         .require_site_scope(actor, &site_id, &Scope::EntriesWrite, "editor")
         .await
-        .map_err(map_err)?;
+    {
+        return Ok(tool_error(e));
+    }
     match services.entry.publish_entry(&params.0.id, &site_id).await {
         Ok(entry) => ok_result(&entry),
-        Err(e) => Err(map_err(e)),
+        Err(e) => Ok(tool_error(e)),
     }
 }
 
@@ -253,13 +254,15 @@ pub async fn unpublish_entry(
     params: Parameters<UnpublishEntryParams>,
 ) -> Result<CallToolResult, McpError> {
     let site_id = require_site_id(actor)?;
-    scope
+    if let Err(e) = scope
         .require_site_scope(actor, &site_id, &Scope::EntriesWrite, "editor")
         .await
-        .map_err(map_err)?;
+    {
+        return Ok(tool_error(e));
+    }
     match services.entry.unpublish_entry(&params.0.id, &site_id).await {
         Ok(entry) => ok_result(&entry),
-        Err(e) => Err(map_err(e)),
+        Err(e) => Ok(tool_error(e)),
     }
 }
 
@@ -277,10 +280,12 @@ pub async fn list_revisions(
     params: Parameters<ListRevisionsParams>,
 ) -> Result<CallToolResult, McpError> {
     let site_id = require_site_id(actor)?;
-    scope
+    if let Err(e) = scope
         .require_site_scope(actor, &site_id, &Scope::EntriesRead, "viewer")
         .await
-        .map_err(map_err)?;
+    {
+        return Ok(tool_error(e));
+    }
     let page = params.0.page.unwrap_or(1).max(1);
     let per_page = params.0.per_page.unwrap_or(50).clamp(1, 200);
     match services
@@ -297,7 +302,7 @@ pub async fn list_revisions(
             });
             ok_result(&response)
         }
-        Err(e) => Err(map_err(e)),
+        Err(e) => Ok(tool_error(e)),
     }
 }
 
@@ -314,16 +319,18 @@ pub async fn restore_revision(
     params: Parameters<RestoreRevisionParams>,
 ) -> Result<CallToolResult, McpError> {
     let site_id = require_site_id(actor)?;
-    scope
+    if let Err(e) = scope
         .require_site_scope(actor, &site_id, &Scope::EntriesWrite, "editor")
         .await
-        .map_err(map_err)?;
+    {
+        return Ok(tool_error(e));
+    }
     match services
         .entry
         .restore_revision(&params.0.entry_id, &site_id, params.0.revision_number, None)
         .await
     {
         Ok(entry) => ok_result(&entry),
-        Err(e) => Err(map_err(e)),
+        Err(e) => Ok(tool_error(e)),
     }
 }

@@ -3,21 +3,12 @@ use std::sync::Arc;
 use rmcp::ErrorData as McpError;
 use rmcp::handler::server::wrapper::Parameters;
 use rmcp::model::CallToolResult;
-use rmcp::model::Content;
 use schemars::JsonSchema;
 use serde::Deserialize;
 
+use crate::mcp::auth::{ok_result, tool_error};
 use crate::middleware::auth::{Actor, Scope};
-use crate::services::{Services, error::ServiceError, scope::ScopeChecker};
-
-fn ok_result(data: &impl serde::Serialize) -> Result<CallToolResult, McpError> {
-    let json = serde_json::to_string_pretty(data).map_err(|e| McpError::internal_error(format!("Failed to serialize response: {}", e), None))?;
-    Ok(CallToolResult::success(vec![Content::text(json)]))
-}
-
-fn map_err(e: impl Into<ServiceError>) -> McpError {
-    crate::mcp::auth::service_error_to_mcp(e.into())
-}
+use crate::services::{Services, scope::ScopeChecker};
 
 fn require_site_id(actor: &Actor) -> Result<String, McpError> {
     actor
@@ -36,13 +27,18 @@ pub async fn get_site(
     _params: Parameters<GetSiteParams>,
 ) -> Result<CallToolResult, McpError> {
     let site_id = require_site_id(actor)?;
-    scope
+    if let Err(e) = scope
         .require_site_scope(actor, &site_id, &Scope::SiteRead, "viewer")
         .await
-        .map_err(map_err)?;
-    match services.site.get_site(&site_id).await.map_err(map_err)? {
-        Some(site) => ok_result(&site),
-        None => ok_result(&serde_json::json!({"error": "Site not found"})),
+    {
+        return Ok(tool_error(e));
+    }
+    match services.site.get_site(&site_id).await {
+        Ok(Some(site)) => ok_result(&site),
+        Ok(None) => Ok(tool_error(crate::services::error::ServiceError::NotFound(
+            "Site not found".into(),
+        ))),
+        Err(e) => Ok(tool_error(e)),
     }
 }
 
@@ -58,14 +54,18 @@ pub async fn update_site(
     params: Parameters<UpdateSiteParams>,
 ) -> Result<CallToolResult, McpError> {
     let site_id = require_site_id(actor)?;
-    scope
+    if let Err(e) = scope
         .require_site_scope(actor, &site_id, &Scope::SiteRead, "admin")
         .await
-        .map_err(map_err)?;
-    let site = services
+    {
+        return Ok(tool_error(e));
+    }
+    match services
         .site
         .update_site(&site_id, params.0.name.as_deref())
         .await
-        .map_err(map_err)?;
-    ok_result(&site)
+    {
+        Ok(site) => ok_result(&site),
+        Err(e) => Ok(tool_error(e)),
+    }
 }

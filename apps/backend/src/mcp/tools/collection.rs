@@ -3,24 +3,13 @@ use std::sync::Arc;
 use rmcp::ErrorData as McpError;
 use rmcp::handler::server::wrapper::Parameters;
 use rmcp::model::CallToolResult;
-use rmcp::model::Content;
 use schemars::JsonSchema;
 use serde::Deserialize;
 
+use crate::mcp::auth::{ok_result, tool_error};
 use crate::mcp::schema::ArbitraryJson;
 use crate::middleware::auth::{Actor, Scope};
-use crate::services::{Services, error::ServiceError, scope::ScopeChecker};
-
-fn ok_result(data: &impl serde::Serialize) -> Result<CallToolResult, McpError> {
-    let json = serde_json::to_string_pretty(data).map_err(|e| {
-        McpError::internal_error(format!("Failed to serialize response: {}", e), None)
-    })?;
-    Ok(CallToolResult::success(vec![Content::text(json)]))
-}
-
-fn map_err(e: impl Into<ServiceError>) -> McpError {
-    crate::mcp::auth::service_error_to_mcp(e.into())
-}
+use crate::services::{Services, scope::ScopeChecker};
 
 fn require_site_id(actor: &Actor) -> Result<String, McpError> {
     actor
@@ -39,13 +28,15 @@ pub async fn list_collections(
     _params: Parameters<ListCollectionsParams>,
 ) -> Result<CallToolResult, McpError> {
     let site_id = require_site_id(actor)?;
-    scope
+    if let Err(e) = scope
         .require_site_scope(actor, &site_id, &Scope::CollectionsRead, "viewer")
         .await
-        .map_err(map_err)?;
+    {
+        return Ok(tool_error(e));
+    }
     match services.collection.list_collections(&site_id).await {
         Ok(collections) => ok_result(&collections),
-        Err(e) => Err(map_err(e)),
+        Err(e) => Ok(tool_error(e)),
     }
 }
 
@@ -61,18 +52,22 @@ pub async fn get_collection(
     params: Parameters<GetCollectionParams>,
 ) -> Result<CallToolResult, McpError> {
     let site_id = require_site_id(actor)?;
-    scope
+    if let Err(e) = scope
         .require_site_scope(actor, &site_id, &Scope::CollectionsRead, "viewer")
         .await
-        .map_err(map_err)?;
+    {
+        return Ok(tool_error(e));
+    }
     match services
         .collection
         .get_collection(&site_id, &params.0.slug)
         .await
     {
         Ok(Some(collection)) => ok_result(&collection),
-        Ok(None) => ok_result(&serde_json::json!({"error": "Collection not found"})),
-        Err(e) => Err(map_err(e)),
+        Ok(None) => Ok(tool_error(crate::services::error::ServiceError::NotFound(
+            "Collection not found".into(),
+        ))),
+        Err(e) => Ok(tool_error(e)),
     }
 }
 
@@ -92,10 +87,12 @@ pub async fn create_collection(
     params: Parameters<CreateCollectionParams>,
 ) -> Result<CallToolResult, McpError> {
     let site_id = require_site_id(actor)?;
-    scope
+    if let Err(e) = scope
         .require_site_scope(actor, &site_id, &Scope::CollectionsWrite, "admin")
         .await
-        .map_err(map_err)?;
+    {
+        return Ok(tool_error(e));
+    }
     let slug = params
         .0
         .slug
@@ -110,7 +107,7 @@ pub async fn create_collection(
         .await
     {
         Ok(collection) => ok_result(&collection),
-        Err(e) => Err(map_err(e)),
+        Err(e) => Ok(tool_error(e)),
     }
 }
 
@@ -130,10 +127,12 @@ pub async fn update_collection(
     params: Parameters<UpdateCollectionParams>,
 ) -> Result<CallToolResult, McpError> {
     let site_id = require_site_id(actor)?;
-    scope
+    if let Err(e) = scope
         .require_site_scope(actor, &site_id, &Scope::CollectionsWrite, "admin")
         .await
-        .map_err(map_err)?;
+    {
+        return Ok(tool_error(e));
+    }
     let definition_str = match params.0.definition {
         Some(d) => {
             let normalized = crate::services::definition_validation::normalize_definition(&d)
@@ -154,7 +153,7 @@ pub async fn update_collection(
         .await
     {
         Ok(collection) => ok_result(&collection),
-        Err(e) => Err(map_err(e)),
+        Err(e) => Ok(tool_error(e)),
     }
 }
 
@@ -170,10 +169,12 @@ pub async fn delete_collection(
     params: Parameters<DeleteCollectionParams>,
 ) -> Result<CallToolResult, McpError> {
     let site_id = require_site_id(actor)?;
-    scope
+    if let Err(e) = scope
         .require_site_scope(actor, &site_id, &Scope::CollectionsWrite, "admin")
         .await
-        .map_err(map_err)?;
+    {
+        return Ok(tool_error(e));
+    }
     match services
         .collection
         .delete_collection(&site_id, &params.0.slug)
@@ -183,9 +184,11 @@ pub async fn delete_collection(
             if n > 0 {
                 ok_result(&serde_json::json!({"deleted": true}))
             } else {
-                ok_result(&serde_json::json!({"error": "Collection not found"}))
+                Ok(tool_error(crate::services::error::ServiceError::NotFound(
+                    "Collection not found".into(),
+                )))
             }
         }
-        Err(e) => Err(map_err(e)),
+        Err(e) => Ok(tool_error(e)),
     }
 }

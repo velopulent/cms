@@ -6,7 +6,7 @@ use rmcp::model::CallToolResult;
 use schemars::JsonSchema;
 use serde::Deserialize;
 
-use crate::mcp::auth::{map_err, ok_result};
+use crate::mcp::auth::{ok_result, tool_error};
 use crate::mcp::schema::ArbitraryJson;
 use crate::middleware::auth::{Actor, Scope};
 use crate::services::{Services, scope::ScopeChecker};
@@ -29,12 +29,16 @@ pub async fn list_singletons(
     _params: Parameters<ListSingletonsParams>,
 ) -> Result<CallToolResult, McpError> {
     let site_id = require_site_id(actor)?;
-    scope
+    if let Err(e) = scope
         .require_site_scope(actor, &site_id, &Scope::EntriesRead, "viewer")
         .await
-        .map_err(map_err)?;
-    let singletons = services.singleton.list_singletons(&site_id).await.map_err(map_err)?;
-    ok_result(&singletons)
+    {
+        return Ok(tool_error(e));
+    }
+    match services.singleton.list_singletons(&site_id).await {
+        Ok(singletons) => ok_result(&singletons),
+        Err(e) => Ok(tool_error(e)),
+    }
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
@@ -50,22 +54,31 @@ pub async fn get_singleton(
     params: Parameters<GetSingletonParams>,
 ) -> Result<CallToolResult, McpError> {
     let site_id = require_site_id(actor)?;
-    scope
+    if let Err(e) = scope
         .require_site_scope(actor, &site_id, &Scope::EntriesRead, "viewer")
         .await
-        .map_err(map_err)?;
+    {
+        return Ok(tool_error(e));
+    }
 
-    let storage_provider = services.file.get_storage_provider(&site_id).await.map_err(map_err)?;
-    let storage = storage_registry
-        .get(&storage_provider)
-        .ok_or_else(|| McpError::internal_error("Storage not configured", None))?;
+    let storage_provider = services.file.get_storage_provider(&site_id).await;
+    let storage_provider = match storage_provider {
+        Ok(p) => p,
+        Err(e) => return Ok(tool_error(e)),
+    };
+    let storage = match storage_registry.get(&storage_provider) {
+        Some(s) => s,
+        None => return Ok(tool_error(crate::services::error::ServiceError::Internal("Storage not configured".into()))),
+    };
 
-    let singleton = services
+    match services
         .singleton
         .get_singleton(&site_id, &params.0.slug, storage)
         .await
-        .map_err(map_err)?;
-    ok_result(&singleton)
+    {
+        Ok(singleton) => ok_result(&singleton),
+        Err(e) => Ok(tool_error(e)),
+    }
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
@@ -82,15 +95,19 @@ pub async fn update_singleton(
     params: Parameters<UpdateSingletonParams>,
 ) -> Result<CallToolResult, McpError> {
     let site_id = require_site_id(actor)?;
-    scope
+    if let Err(e) = scope
         .require_site_scope(actor, &site_id, &Scope::EntriesWrite, "editor")
         .await
-        .map_err(map_err)?;
+    {
+        return Ok(tool_error(e));
+    }
 
-    let singleton = services
+    match services
         .singleton
         .update_singleton(&site_id, &params.0.slug, &params.0.data)
         .await
-        .map_err(map_err)?;
-    ok_result(&singleton)
+    {
+        Ok(singleton) => ok_result(&singleton),
+        Err(e) => Ok(tool_error(e)),
+    }
 }

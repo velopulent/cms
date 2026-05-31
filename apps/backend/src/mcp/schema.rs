@@ -65,8 +65,8 @@ pub fn clean_input_schema(schema: Arc<JsonObject>) -> Arc<JsonObject> {
 }
 
 fn simplify_nullable_type(obj: &mut serde_json::Map<String, serde_json::Value>) {
-    if let Some(type_val) = obj.get("type") {
-        if let Some(types) = type_val.as_array() {
+    if let Some(type_val) = obj.get("type")
+        && let Some(types) = type_val.as_array() {
             let non_null: Vec<&serde_json::Value> = types
                 .iter()
                 .filter(|v| v.as_str() != Some("null"))
@@ -75,7 +75,6 @@ fn simplify_nullable_type(obj: &mut serde_json::Map<String, serde_json::Value>) 
                 obj.insert("type".to_string(), non_null[0].clone());
             }
         }
-    }
 }
 
 #[cfg(test)]

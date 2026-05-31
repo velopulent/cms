@@ -7,7 +7,7 @@ use rmcp::model::CallToolResult;
 use schemars::JsonSchema;
 use serde::Deserialize;
 
-use crate::mcp::auth::{map_err, ok_result};
+use crate::mcp::auth::{ok_result, tool_error};
 use crate::mcp::schema::ArbitraryJson;
 use crate::middleware::auth::{Actor, Scope};
 use crate::services::{Services, scope::ScopeChecker};
@@ -29,12 +29,16 @@ pub async fn list_webhooks(
     _params: Parameters<ListWebhooksParams>,
 ) -> Result<CallToolResult, McpError> {
     let site_id = require_site_id(actor)?;
-    scope
+    if let Err(e) = scope
         .require_site_scope(actor, &site_id, &Scope::WebhooksRead, "viewer")
         .await
-        .map_err(map_err)?;
-    let webhooks = services.webhook.list_webhooks(&site_id).await.map_err(map_err)?;
-    ok_result(&webhooks)
+    {
+        return Ok(tool_error(e));
+    }
+    match services.webhook.list_webhooks(&site_id).await {
+        Ok(webhooks) => ok_result(&webhooks),
+        Err(e) => Ok(tool_error(e)),
+    }
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
@@ -49,18 +53,22 @@ pub async fn get_webhook(
     params: Parameters<GetWebhookParams>,
 ) -> Result<CallToolResult, McpError> {
     let site_id = require_site_id(actor)?;
-    scope
+    if let Err(e) = scope
         .require_site_scope(actor, &site_id, &Scope::WebhooksRead, "viewer")
         .await
-        .map_err(map_err)?;
+    {
+        return Ok(tool_error(e));
+    }
     match services
         .webhook
         .get_webhook(&params.0.webhook_id, &site_id)
         .await
     {
         Ok(Some(webhook)) => ok_result(&webhook),
-        Ok(None) => ok_result(&serde_json::json!({"error": "Webhook not found"})),
-        Err(e) => Err(map_err(e)),
+        Ok(None) => Ok(tool_error(crate::services::error::ServiceError::NotFound(
+            "Webhook not found".into(),
+        ))),
+        Err(e) => Ok(tool_error(e)),
     }
 }
 
@@ -79,21 +87,25 @@ pub async fn create_webhook(
     params: Parameters<CreateWebhookParams>,
 ) -> Result<CallToolResult, McpError> {
     let site_id = require_site_id(actor)?;
-    scope
+    if let Err(e) = scope
         .require_site_scope(actor, &site_id, &Scope::WebhooksWrite, "admin")
         .await
-        .map_err(map_err)?;
+    {
+        return Ok(tool_error(e));
+    }
     let headers: HashMap<String, String> = params
         .0
         .headers
         .and_then(|h| serde_json::from_value(h).ok())
         .unwrap_or_default();
-    let webhook = services
+    match services
         .webhook
         .create_webhook(&site_id, &params.0.label, &params.0.url, &headers, None)
         .await
-        .map_err(map_err)?;
-    ok_result(&webhook)
+    {
+        Ok(webhook) => ok_result(&webhook),
+        Err(e) => Ok(tool_error(e)),
+    }
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
@@ -112,15 +124,17 @@ pub async fn update_webhook(
     params: Parameters<UpdateWebhookParams>,
 ) -> Result<CallToolResult, McpError> {
     let site_id = require_site_id(actor)?;
-    scope
+    if let Err(e) = scope
         .require_site_scope(actor, &site_id, &Scope::WebhooksWrite, "admin")
         .await
-        .map_err(map_err)?;
+    {
+        return Ok(tool_error(e));
+    }
     let headers: Option<HashMap<String, String>> = params
         .0
         .headers
         .and_then(|h| serde_json::from_value(h).ok());
-    let webhook = services
+    match services
         .webhook
         .update_webhook(
             &params.0.webhook_id,
@@ -130,8 +144,10 @@ pub async fn update_webhook(
             headers.as_ref(),
         )
         .await
-        .map_err(map_err)?;
-    ok_result(&webhook)
+    {
+        Ok(webhook) => ok_result(&webhook),
+        Err(e) => Ok(tool_error(e)),
+    }
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
@@ -146,16 +162,20 @@ pub async fn trigger_webhook(
     params: Parameters<TriggerWebhookParams>,
 ) -> Result<CallToolResult, McpError> {
     let site_id = require_site_id(actor)?;
-    scope
+    if let Err(e) = scope
         .require_site_scope(actor, &site_id, &Scope::WebhooksWrite, "editor")
         .await
-        .map_err(map_err)?;
-    let delivery = services
+    {
+        return Ok(tool_error(e));
+    }
+    match services
         .webhook
         .trigger_webhook(&params.0.webhook_id, &site_id, None)
         .await
-        .map_err(map_err)?;
-    ok_result(&delivery)
+    {
+        Ok(delivery) => ok_result(&delivery),
+        Err(e) => Ok(tool_error(e)),
+    }
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
@@ -170,16 +190,20 @@ pub async fn delete_webhook(
     params: Parameters<DeleteWebhookParams>,
 ) -> Result<CallToolResult, McpError> {
     let site_id = require_site_id(actor)?;
-    scope
+    if let Err(e) = scope
         .require_site_scope(actor, &site_id, &Scope::WebhooksWrite, "admin")
         .await
-        .map_err(map_err)?;
-    services
+    {
+        return Ok(tool_error(e));
+    }
+    match services
         .webhook
         .delete_webhook(&params.0.webhook_id, &site_id)
         .await
-        .map_err(map_err)?;
-    ok_result(&serde_json::json!({"deleted": true}))
+    {
+        Ok(_) => ok_result(&serde_json::json!({"deleted": true})),
+        Err(e) => Ok(tool_error(e)),
+    }
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
@@ -196,10 +220,12 @@ pub async fn list_webhook_deliveries(
     params: Parameters<ListWebhookDeliveriesParams>,
 ) -> Result<CallToolResult, McpError> {
     let site_id = require_site_id(actor)?;
-    scope
+    if let Err(e) = scope
         .require_site_scope(actor, &site_id, &Scope::WebhooksRead, "viewer")
         .await
-        .map_err(map_err)?;
+    {
+        return Ok(tool_error(e));
+    }
     let page = params.0.page.unwrap_or(1).max(1);
     let per_page = params.0.per_page.unwrap_or(50).clamp(1, 200);
     match services
@@ -216,6 +242,6 @@ pub async fn list_webhook_deliveries(
             });
             ok_result(&response)
         }
-        Err(e) => Err(map_err(e)),
+        Err(e) => Ok(tool_error(e)),
     }
 }

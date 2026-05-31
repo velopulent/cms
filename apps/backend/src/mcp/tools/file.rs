@@ -7,7 +7,7 @@ use schemars::JsonSchema;
 use serde::Deserialize;
 
 use crate::config::Config;
-use crate::mcp::auth::{map_err, ok_result, text_result};
+use crate::mcp::auth::{ok_result, text_result, tool_error};
 use crate::middleware::auth::{Actor, Scope};
 use crate::services::{Services, scope::ScopeChecker};
 use crate::signed_upload::SignedUploadToken;
@@ -40,10 +40,12 @@ pub async fn list_files(
     params: Parameters<ListFilesParams>,
 ) -> Result<CallToolResult, McpError> {
     let site_id = require_site_id(actor)?;
-    scope
+    if let Err(e) = scope
         .require_site_scope(actor, &site_id, &Scope::FilesRead, "viewer")
         .await
-        .map_err(map_err)?;
+    {
+        return Ok(tool_error(e));
+    }
 
     let page = params.0.page.unwrap_or(1).max(1);
     let per_page = params.0.per_page.unwrap_or(50).clamp(1, 200);
@@ -58,13 +60,15 @@ pub async fn list_files(
         per_page,
     };
 
-    let result = services.file.list_files(list_params).await.map_err(map_err)?;
-    ok_result(&serde_json::json!({
-        "items": result.items,
-        "total": result.total,
-        "page": result.page,
-        "per_page": result.per_page,
-    }))
+    match services.file.list_files(list_params).await {
+        Ok(result) => ok_result(&serde_json::json!({
+            "items": result.items,
+            "total": result.total,
+            "page": result.page,
+            "per_page": result.per_page,
+        })),
+        Err(e) => Ok(tool_error(e)),
+    }
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
@@ -79,14 +83,19 @@ pub async fn get_file(
     params: Parameters<GetFileParams>,
 ) -> Result<CallToolResult, McpError> {
     let site_id = require_site_id(actor)?;
-    scope
+    if let Err(e) = scope
         .require_site_scope(actor, &site_id, &Scope::FilesRead, "viewer")
         .await
-        .map_err(map_err)?;
+    {
+        return Ok(tool_error(e));
+    }
 
-    match services.file.get_file(&params.0.file_id, &site_id).await.map_err(map_err)? {
-        Some(file) => ok_result(&file),
-        None => Ok(text_result("File not found")),
+    match services.file.get_file(&params.0.file_id, &site_id).await {
+        Ok(Some(file)) => ok_result(&file),
+        Ok(None) => Ok(tool_error(crate::services::error::ServiceError::NotFound(
+            "File not found".into(),
+        ))),
+        Err(e) => Ok(tool_error(e)),
     }
 }
 
@@ -109,10 +118,12 @@ pub async fn create_upload_url(
     params: Parameters<CreateUploadUrlParams>,
 ) -> Result<CallToolResult, McpError> {
     let site_id = require_site_id(actor)?;
-    scope
+    if let Err(e) = scope
         .require_site_scope(actor, &site_id, &Scope::FilesWrite, "editor")
         .await
-        .map_err(map_err)?;
+    {
+        return Ok(tool_error(e));
+    }
 
     let (token, upload_path) = SignedUploadToken::generate(&site_id, &params.0.filename, &params.0.content_type, &config.hmac_secret);
 
@@ -146,13 +157,17 @@ pub async fn delete_file(
     params: Parameters<DeleteFileParams>,
 ) -> Result<CallToolResult, McpError> {
     let site_id = require_site_id(actor)?;
-    scope
+    if let Err(e) = scope
         .require_site_scope(actor, &site_id, &Scope::FilesWrite, "editor")
         .await
-        .map_err(map_err)?;
+    {
+        return Ok(tool_error(e));
+    }
 
-    services.file.soft_delete(&params.0.file_id, &site_id).await.map_err(map_err)?;
-    Ok(text_result("File deleted"))
+    match services.file.soft_delete(&params.0.file_id, &site_id).await {
+        Ok(_) => Ok(text_result("File deleted")),
+        Err(e) => Ok(tool_error(e)),
+    }
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
@@ -167,15 +182,23 @@ pub async fn restore_file(
     params: Parameters<RestoreFileParams>,
 ) -> Result<CallToolResult, McpError> {
     let site_id = require_site_id(actor)?;
-    scope
+    if let Err(e) = scope
         .require_site_scope(actor, &site_id, &Scope::FilesWrite, "editor")
         .await
-        .map_err(map_err)?;
+    {
+        return Ok(tool_error(e));
+    }
 
-    let n = services.file.restore(&params.0.file_id, &site_id).await.map_err(map_err)?;
-    if n > 0 {
-        Ok(text_result("File restored"))
-    } else {
-        Ok(text_result("File not found or not deleted"))
+    match services.file.restore(&params.0.file_id, &site_id).await {
+        Ok(n) => {
+            if n > 0 {
+                Ok(text_result("File restored"))
+            } else {
+                Ok(tool_error(crate::services::error::ServiceError::NotFound(
+                    "File not found or not deleted".into(),
+                )))
+            }
+        }
+        Err(e) => Ok(tool_error(e)),
     }
 }
