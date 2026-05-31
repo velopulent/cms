@@ -134,6 +134,7 @@ export interface ContentField {
   type: string;
   required?: boolean;
   options?: string[];
+  accept?: string[];
 }
 
 export interface Entry {
