@@ -461,11 +461,10 @@ pub async fn batch_permanent_delete_files(
         if let Err(e) = storage.delete(&file.storage_key).await {
             tracing::warn!("Failed to delete file {} from storage: {}", file.id, e);
         }
-        if let Some(ref tk) = file.thumbnail_key {
-            if let Err(e) = storage.delete(tk).await {
+        if let Some(ref tk) = file.thumbnail_key
+            && let Err(e) = storage.delete(tk).await {
                 tracing::warn!("Failed to delete thumbnail {} from storage: {}", file.id, e);
             }
-        }
     }
 
     match services.file.batch_permanent_delete(&ctx.site_id, &body.ids).await {

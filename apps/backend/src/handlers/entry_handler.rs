@@ -430,13 +430,11 @@ pub async fn get_entry_revision(
         Ok(Some(revision)) => {
             let mut response = EntryRevisionResponse::from(revision.clone());
 
-            if query.diff.unwrap_or(false) && number > 1 {
-                if let Ok(Some(prev)) = services.entry.get_revision(&id, &ctx.site_id, number - 1).await {
-                    if let Some(diff) = compute_diff_for_revision(&revision, Some(&prev)) {
+            if query.diff.unwrap_or(false) && number > 1
+                && let Ok(Some(prev)) = services.entry.get_revision(&id, &ctx.site_id, number - 1).await
+                    && let Some(diff) = compute_diff_for_revision(&revision, Some(&prev)) {
                         response.diff_from_previous = Some(diff);
                     }
-                }
-            }
 
             (StatusCode::OK, Json(response)).into_response()
         }
