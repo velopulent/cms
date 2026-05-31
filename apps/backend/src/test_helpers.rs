@@ -940,3 +940,140 @@ impl AccessTokenRepository for InMemoryAccessTokenRepository {
         Ok(())
     }
 }
+
+#[derive(Clone)]
+pub struct InMemoryWebhookRepository {
+    webhooks: Arc<Mutex<Vec<crate::models::webhook::SiteWebhook>>>,
+    deliveries: Arc<Mutex<Vec<crate::models::webhook::WebhookDelivery>>>,
+}
+
+impl InMemoryWebhookRepository {
+    pub fn new() -> Self {
+        Self {
+            webhooks: Arc::new(Mutex::new(Vec::new())),
+            deliveries: Arc::new(Mutex::new(Vec::new())),
+        }
+    }
+
+    pub fn add_webhook(&self, webhook: crate::models::webhook::SiteWebhook) {
+        let mut webhooks = self.webhooks.lock().unwrap();
+        webhooks.push(webhook);
+    }
+}
+
+impl Default for InMemoryWebhookRepository {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+#[async_trait]
+impl crate::repository::traits::WebhookRepository for InMemoryWebhookRepository {
+    async fn list_for_site(&self, site_id: &str) -> Result<Vec<crate::models::webhook::SiteWebhook>, RepositoryError> {
+        let webhooks = self.webhooks.lock().unwrap();
+        Ok(webhooks.iter().filter(|w| w.site_id == site_id).cloned().collect())
+    }
+
+    async fn get_by_id(&self, id: &str, site_id: &str) -> Result<Option<crate::models::webhook::SiteWebhook>, RepositoryError> {
+        let webhooks = self.webhooks.lock().unwrap();
+        Ok(webhooks.iter().find(|w| w.id == id && w.site_id == site_id).cloned())
+    }
+
+    async fn create(
+        &self,
+        id: &str,
+        site_id: &str,
+        label: &str,
+        url: &str,
+        headers_encrypted: &str,
+        created_by: Option<&str>,
+    ) -> Result<crate::models::webhook::SiteWebhook, RepositoryError> {
+        let mut webhooks = self.webhooks.lock().unwrap();
+        let webhook = crate::models::webhook::SiteWebhook {
+            id: id.to_string(),
+            site_id: site_id.to_string(),
+            label: label.to_string(),
+            url: url.to_string(),
+            headers_encrypted: headers_encrypted.to_string(),
+            created_by: created_by.map(|s| s.to_string()),
+            created_at: now_timestamp(),
+            updated_at: now_timestamp(),
+        };
+        webhooks.push(webhook.clone());
+        Ok(webhook)
+    }
+
+    async fn update(
+        &self,
+        id: &str,
+        label: Option<&str>,
+        url: Option<&str>,
+        headers_encrypted: Option<&str>,
+    ) -> Result<crate::models::webhook::SiteWebhook, RepositoryError> {
+        let mut webhooks = self.webhooks.lock().unwrap();
+        if let Some(webhook) = webhooks.iter_mut().find(|w| w.id == id) {
+            if let Some(l) = label {
+                webhook.label = l.to_string();
+            }
+            if let Some(u) = url {
+                webhook.url = u.to_string();
+            }
+            if let Some(h) = headers_encrypted {
+                webhook.headers_encrypted = h.to_string();
+            }
+            webhook.updated_at = now_timestamp();
+            return Ok(webhook.clone());
+        }
+        Err(RepositoryError::NotFound)
+    }
+
+    async fn delete(&self, id: &str, site_id: &str) -> Result<u64, RepositoryError> {
+        let mut webhooks = self.webhooks.lock().unwrap();
+        let len = webhooks.len();
+        webhooks.retain(|w| !(w.id == id && w.site_id == site_id));
+        Ok((len - webhooks.len()) as u64)
+    }
+
+    async fn create_delivery(
+        &self,
+        id: &str,
+        webhook_id: &str,
+        status: &str,
+        status_code: Option<i32>,
+        response_body: Option<&str>,
+        duration_ms: Option<i64>,
+        triggered_by: Option<&str>,
+    ) -> Result<crate::models::webhook::WebhookDelivery, RepositoryError> {
+        let mut deliveries = self.deliveries.lock().unwrap();
+        let delivery = crate::models::webhook::WebhookDelivery {
+            id: id.to_string(),
+            webhook_id: webhook_id.to_string(),
+            status: status.to_string(),
+            status_code,
+            response_body: response_body.map(|s| s.to_string()),
+            duration_ms,
+            triggered_by: triggered_by.map(|s| s.to_string()),
+            triggered_at: now_timestamp(),
+        };
+        deliveries.push(delivery.clone());
+        Ok(delivery)
+    }
+
+    async fn list_deliveries(
+        &self,
+        webhook_id: &str,
+        page: i64,
+        per_page: i64,
+    ) -> Result<(Vec<crate::models::webhook::WebhookDelivery>, i64), RepositoryError> {
+        let deliveries = self.deliveries.lock().unwrap();
+        let filtered: Vec<crate::models::webhook::WebhookDelivery> = deliveries
+            .iter()
+            .filter(|d| d.webhook_id == webhook_id)
+            .cloned()
+            .collect();
+        let total = filtered.len() as i64;
+        let offset = ((page - 1) * per_page) as usize;
+        let items = filtered.into_iter().skip(offset).take(per_page as usize).collect();
+        Ok((items, total))
+    }
+}
