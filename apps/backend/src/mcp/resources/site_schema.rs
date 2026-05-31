@@ -180,6 +180,31 @@ async fn read_schema_resource(
         },
         "collections": collections_json,
         "singletons": singletons,
+        "field_types": [
+            {"type": "text", "label": "Text"},
+            {"type": "textarea", "label": "Text Area"},
+            {"type": "rich_text", "label": "Rich Text (Tiptap)"},
+            {"type": "number", "label": "Number"},
+            {"type": "boolean", "label": "Boolean"},
+            {"type": "date", "label": "Date"},
+            {"type": "select", "label": "Select", "properties": ["options"]},
+            {"type": "image_url", "label": "Image URL"},
+            {"type": "image", "label": "Image", "category": "image", "properties": ["accept"]},
+            {"type": "video", "label": "Video", "category": "video", "properties": ["accept"]},
+            {"type": "audio", "label": "Audio", "category": "audio", "properties": ["accept"]},
+            {"type": "document", "label": "Document", "category": "document", "properties": ["accept"]},
+            {"type": "archive", "label": "Archive", "category": "archive", "properties": ["accept"]}
+        ],
+        "content_types": {
+            "categories": ["image", "video", "audio", "document", "archive"],
+            "mime_types": {
+                "image": crate::utils::content_types::IMAGE_TYPES,
+                "video": crate::utils::content_types::VIDEO_TYPES,
+                "audio": crate::utils::content_types::AUDIO_TYPES,
+                "document": crate::utils::content_types::DOCUMENT_TYPES,
+                "archive": crate::utils::content_types::ARCHIVE_TYPES
+            }
+        }
     });
 
     let schema_json = serde_json::to_string_pretty(&schema)
