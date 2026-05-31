@@ -10,7 +10,8 @@ use uuid::Uuid;
 use crate::models::entry::{Entry, EntryRevision};
 use crate::repository::error::RepositoryError;
 use crate::repository::traits::{
-    EntriesListResult, EntryRepository, FileRepository, ListEntriesParams, RevisionsListResult,
+    CollectionRepository, EntriesListResult, EntryRepository, FileRepository, ListEntriesParams,
+    RevisionsListResult,
 };
 use crate::storage::StorageProvider;
 
@@ -18,6 +19,7 @@ use crate::storage::StorageProvider;
 pub struct EntryService {
     entry_repo: Arc<dyn EntryRepository>,
     file_repo: Arc<dyn FileRepository>,
+    collection_repo: Arc<dyn CollectionRepository>,
 }
 
 #[derive(Error, Debug)]
@@ -30,6 +32,9 @@ pub enum EntryError {
 
     #[error("Entry with this slug already exists for this collection")]
     AlreadyExists,
+
+    #[error("Validation failed: {0}")]
+    ValidationFailed(String),
 
     #[error("Database error: {0}")]
     DatabaseError(String),
@@ -44,6 +49,7 @@ impl EntryError {
                 StatusCode::CONFLICT,
                 Json(json!({"error": "Entry with this slug already exists for this collection"})),
             ),
+            EntryError::ValidationFailed(msg) => (StatusCode::BAD_REQUEST, Json(json!({"error": msg}))),
             EntryError::DatabaseError(msg) => (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": msg}))),
         };
         (status, body).into_response()
@@ -51,8 +57,12 @@ impl EntryError {
 }
 
 impl EntryService {
-    pub fn new(entry_repo: Arc<dyn EntryRepository>, file_repo: Arc<dyn FileRepository>) -> Self {
-        Self { entry_repo, file_repo }
+    pub fn new(
+        entry_repo: Arc<dyn EntryRepository>,
+        file_repo: Arc<dyn FileRepository>,
+        collection_repo: Arc<dyn CollectionRepository>,
+    ) -> Self {
+        Self { entry_repo, file_repo, collection_repo }
     }
 
     pub async fn list_entries(&self, params: ListEntriesParams<'_>) -> Result<EntriesListResult, EntryError> {
@@ -78,7 +88,6 @@ impl EntryService {
         created_by: Option<&str>,
     ) -> Result<Entry, EntryError> {
         let id = Uuid::now_v7().to_string();
-        let data_str = data.to_string();
 
         debug!(
             "Creating entry: site_id={}, collection_id={}, slug={}, has_creator={}",
@@ -87,6 +96,21 @@ impl EntryService {
             slug,
             created_by.is_some()
         );
+
+        // Validate entry data against collection definition
+        if let Ok(Some(collection)) = self.collection_repo.get_by_id(collection_id).await {
+            if let Ok(definition) = serde_json::from_str::<Value>(&collection.definition) {
+                if let Some(fields) = definition.get("fields").and_then(|f| f.as_array()) {
+                    if let Some(err) =
+                        super::definition_validation::validate_entry_data(data, fields)
+                    {
+                        return Err(EntryError::ValidationFailed(err));
+                    }
+                }
+            }
+        }
+
+        let data_str = data.to_string();
 
         self.entry_repo
             .create(&id, site_id, collection_id, &data_str, slug, created_by)
@@ -160,6 +184,24 @@ impl EntryService {
             Some(d) => d.clone(),
             None => serde_json::from_str(&existing.data).unwrap_or(Value::Null),
         };
+
+        // Validate entry data against collection definition
+        if let Ok(Some(collection)) = self
+            .collection_repo
+            .get_by_id(&existing.collection_id)
+            .await
+        {
+            if let Ok(definition) = serde_json::from_str::<Value>(&collection.definition) {
+                if let Some(fields) = definition.get("fields").and_then(|f| f.as_array()) {
+                    if let Some(err) =
+                        super::definition_validation::validate_entry_data(&resolved_data, fields)
+                    {
+                        return Err(EntryError::ValidationFailed(err));
+                    }
+                }
+            }
+        }
+
         let data_str = resolved_data.to_string();
         let final_slug = slug.unwrap_or(&existing.slug);
         let final_status = status.unwrap_or(&existing.status);
@@ -392,12 +434,18 @@ mod tests {
     use crate::test_helpers::{InMemoryEntryRepository, InMemoryFileRepository};
     use std::sync::Arc;
 
+    use crate::test_helpers::InMemoryCollectionRepository;
+
     fn test_entry_repo() -> Arc<InMemoryEntryRepository> {
         Arc::new(InMemoryEntryRepository::new())
     }
 
     fn test_file_repo() -> Arc<InMemoryFileRepository> {
         Arc::new(InMemoryFileRepository::new())
+    }
+
+    fn test_collection_repo() -> Arc<InMemoryCollectionRepository> {
+        Arc::new(InMemoryCollectionRepository::new())
     }
 
     fn create_test_entry() -> Entry {
@@ -418,7 +466,7 @@ mod tests {
     async fn test_list_entries() {
         let entry_repo = test_entry_repo();
         let file_repo = test_file_repo();
-        let service = EntryService::new(entry_repo, file_repo);
+        let service = EntryService::new(entry_repo, file_repo, test_collection_repo());
 
         let params = ListEntriesParams {
             site_id: "site-123",
@@ -439,7 +487,7 @@ mod tests {
     async fn test_get_entry_not_found() {
         let entry_repo = test_entry_repo();
         let file_repo = test_file_repo();
-        let service = EntryService::new(entry_repo, file_repo);
+        let service = EntryService::new(entry_repo, file_repo, test_collection_repo());
 
         let result = service.get_entry("nonexistent", "site-123", false).await;
         assert!(result.is_ok());
@@ -450,7 +498,7 @@ mod tests {
     async fn test_create_entry_success() {
         let entry_repo = test_entry_repo();
         let file_repo = test_file_repo();
-        let service = EntryService::new(entry_repo, file_repo);
+        let service = EntryService::new(entry_repo, file_repo, test_collection_repo());
 
         let data = json!({"title": "New Entry"});
         let result = service
@@ -466,7 +514,7 @@ mod tests {
     async fn test_create_entry_empty_data() {
         let entry_repo = test_entry_repo();
         let file_repo = test_file_repo();
-        let service = EntryService::new(entry_repo, file_repo);
+        let service = EntryService::new(entry_repo, file_repo, test_collection_repo());
 
         let data = json!({});
         let result = service
@@ -480,7 +528,7 @@ mod tests {
         let entry_repo = test_entry_repo();
         entry_repo.add_entry(create_test_entry());
         let file_repo = test_file_repo();
-        let service = EntryService::new(entry_repo, file_repo);
+        let service = EntryService::new(entry_repo, file_repo, test_collection_repo());
 
         let new_data = json!({"title": "Updated Title"});
         let result = service
@@ -503,7 +551,7 @@ mod tests {
     async fn test_update_entry_not_found() {
         let entry_repo = test_entry_repo();
         let file_repo = test_file_repo();
-        let service = EntryService::new(entry_repo, file_repo);
+        let service = EntryService::new(entry_repo, file_repo, test_collection_repo());
 
         let result = service
             .update_entry("nonexistent", "site-123", Some(&json!({})), None, None, None, None)
@@ -516,7 +564,7 @@ mod tests {
         let entry_repo = test_entry_repo();
         entry_repo.add_entry(create_test_entry());
         let file_repo = test_file_repo();
-        let service = EntryService::new(entry_repo, file_repo);
+        let service = EntryService::new(entry_repo, file_repo, test_collection_repo());
 
         let result = service
             .update_entry("entry-123", "site-123", None, None, Some("published"), None, None)
@@ -530,7 +578,7 @@ mod tests {
         let entry_repo = test_entry_repo();
         entry_repo.add_entry(create_test_entry());
         let file_repo = test_file_repo();
-        let service = EntryService::new(entry_repo, file_repo);
+        let service = EntryService::new(entry_repo, file_repo, test_collection_repo());
 
         let result = service.delete_entry("entry-123", "site-123").await;
         assert!(result.is_ok());
@@ -541,7 +589,7 @@ mod tests {
     async fn test_delete_entry_not_found() {
         let entry_repo = test_entry_repo();
         let file_repo = test_file_repo();
-        let service = EntryService::new(entry_repo, file_repo);
+        let service = EntryService::new(entry_repo, file_repo, test_collection_repo());
 
         let result = service.delete_entry("nonexistent", "site-123").await;
         assert!(result.is_ok());
@@ -553,7 +601,7 @@ mod tests {
         let entry_repo = test_entry_repo();
         entry_repo.add_entry(create_test_entry());
         let file_repo = test_file_repo();
-        let service = EntryService::new(entry_repo, file_repo);
+        let service = EntryService::new(entry_repo, file_repo, test_collection_repo());
 
         let result = service.publish_entry("entry-123", "site-123").await;
         assert!(result.is_ok());
@@ -564,7 +612,7 @@ mod tests {
     async fn test_publish_entry_not_found() {
         let entry_repo = test_entry_repo();
         let file_repo = test_file_repo();
-        let service = EntryService::new(entry_repo, file_repo);
+        let service = EntryService::new(entry_repo, file_repo, test_collection_repo());
 
         let result = service.publish_entry("nonexistent", "site-123").await;
         assert!(matches!(result, Err(EntryError::NotFound)));
@@ -577,7 +625,7 @@ mod tests {
         entry.status = "published".to_string();
         entry_repo.add_entry(entry);
         let file_repo = test_file_repo();
-        let service = EntryService::new(entry_repo, file_repo);
+        let service = EntryService::new(entry_repo, file_repo, test_collection_repo());
 
         let result = service.unpublish_entry("entry-123", "site-123").await;
         assert!(result.is_ok());
@@ -588,7 +636,7 @@ mod tests {
     async fn test_unpublish_entry_not_found() {
         let entry_repo = test_entry_repo();
         let file_repo = test_file_repo();
-        let service = EntryService::new(entry_repo, file_repo);
+        let service = EntryService::new(entry_repo, file_repo, test_collection_repo());
 
         let result = service.unpublish_entry("nonexistent", "site-123").await;
         assert!(matches!(result, Err(EntryError::NotFound)));
@@ -598,7 +646,7 @@ mod tests {
     async fn test_resolve_entry_files_with_no_files() {
         let entry_repo = test_entry_repo();
         let file_repo = test_file_repo();
-        let service = EntryService::new(entry_repo, file_repo);
+        let service = EntryService::new(entry_repo, file_repo, test_collection_repo());
 
         let entry = create_test_entry();
         let storage = Arc::new(MockStorage::default());
@@ -610,7 +658,7 @@ mod tests {
     async fn test_resolve_entries_list_files() {
         let entry_repo = test_entry_repo();
         let file_repo = test_file_repo();
-        let service = EntryService::new(entry_repo, file_repo);
+        let service = EntryService::new(entry_repo, file_repo, test_collection_repo());
 
         let entries = vec![create_test_entry()];
         let result = service.resolve_entries_list_files(&entries).await;
@@ -621,7 +669,7 @@ mod tests {
     fn test_extract_file_ids_from_value() {
         let entry_repo = test_entry_repo();
         let file_repo = test_file_repo();
-        let service = EntryService::new(entry_repo, file_repo);
+        let service = EntryService::new(entry_repo, file_repo, test_collection_repo());
 
         let data = json!({
             "title": "Test",
@@ -635,7 +683,7 @@ mod tests {
     fn test_extract_file_ids_multiple() {
         let entry_repo = test_entry_repo();
         let file_repo = test_file_repo();
-        let service = EntryService::new(entry_repo, file_repo);
+        let service = EntryService::new(entry_repo, file_repo, test_collection_repo());
 
         let data = json!({
             "images": ["/api/files/abc-123-def/image.png", "/api/files/456-789-abc/image.png"]
@@ -648,7 +696,7 @@ mod tests {
     fn test_extract_file_ids_no_matches() {
         let entry_repo = test_entry_repo();
         let file_repo = test_file_repo();
-        let service = EntryService::new(entry_repo, file_repo);
+        let service = EntryService::new(entry_repo, file_repo, test_collection_repo());
 
         let data = json!({"title": "No files here"});
         let ids = service.extract_file_ids_from_value(&data);
@@ -659,7 +707,7 @@ mod tests {
     fn test_extract_file_ids_invalid_format() {
         let entry_repo = test_entry_repo();
         let file_repo = test_file_repo();
-        let service = EntryService::new(entry_repo, file_repo);
+        let service = EntryService::new(entry_repo, file_repo, test_collection_repo());
 
         let data = json!({"url": "/api/files/not-a-uuid"});
         let ids = service.extract_file_ids_from_value(&data);
