@@ -95,7 +95,8 @@ async fn test_entries_query() {
     let created = create_entry(&server, &token, &col_id, "entry-1", json!({"title": "First"})).await;
     let entry_id = created["data"]["createEntry"]["id"].as_str().unwrap();
 
-    gql(&server, &token, &format!(r#"mutation {{ publishEntry(id: "{}") {{ id }} }}"#, entry_id)).await;
+    let pub_body = gql(&server, &token, &format!(r#"mutation {{ publishEntry(id: "{}") {{ id }} }}"#, entry_id)).await;
+    assert!(pub_body["errors"].is_null(), "publishEntry should succeed: {:?}", pub_body["errors"]);
 
     let body = gql(&server, &token, "{ entries { id slug status } }").await;
     assert!(body["errors"].is_null(), "errors: {:?}", body["errors"]);
@@ -141,7 +142,8 @@ async fn test_entries_with_search() {
     let created = create_entry(&server, &token, &col_id, "searchable", json!({"title": "Unique Title"})).await;
     let entry_id = created["data"]["createEntry"]["id"].as_str().unwrap();
 
-    gql(&server, &token, &format!(r#"mutation {{ publishEntry(id: "{}") {{ id }} }}"#, entry_id)).await;
+    let pub_body = gql(&server, &token, &format!(r#"mutation {{ publishEntry(id: "{}") {{ id }} }}"#, entry_id)).await;
+    assert!(pub_body["errors"].is_null(), "publishEntry should succeed: {:?}", pub_body["errors"]);
 
     let body = gql(&server, &token, r#"{ entries(search: "Unique") { id slug } }"#).await;
     assert!(body["errors"].is_null(), "errors: {:?}", body["errors"]);
@@ -268,7 +270,8 @@ async fn test_unpublish_entry_mutation() {
     let created = create_entry(&server, &token, &col_id, "to-unpublish", json!({"title": "Published"})).await;
     let entry_id = created["data"]["createEntry"]["id"].as_str().unwrap();
 
-    gql(&server, &token, &format!(r#"mutation {{ publishEntry(id: "{}") {{ status }} }}"#, entry_id)).await;
+    let pub_body = gql(&server, &token, &format!(r#"mutation {{ publishEntry(id: "{}") {{ status }} }}"#, entry_id)).await;
+    assert!(pub_body["errors"].is_null(), "publishEntry should succeed: {:?}", pub_body["errors"]);
 
     let query = format!(r#"mutation {{ unpublishEntry(id: "{}") {{ id status }} }}"#, entry_id);
     let body = gql(&server, &token, &query).await;
@@ -309,7 +312,8 @@ async fn test_entry_revisions_query() {
 
     let update_query = r#"mutation { updateEntry(id: "%ID%", input: {data: {title: "V2"}}) { id } }"#;
     let update_query = update_query.replace("%ID%", entry_id);
-    gql(&server, &token, &update_query).await;
+    let update_body = gql(&server, &token, &update_query).await;
+    assert!(update_body["errors"].is_null(), "updateEntry should succeed: {:?}", update_body["errors"]);
 
     let query = format!(r#"{{ entryRevisions(entryId: "{}") {{ items {{ revisionNumber data }} total }} }}"#, entry_id);
     let body = gql(&server, &token, &query).await;
@@ -344,7 +348,8 @@ async fn test_entry_revision_with_diff() {
 
     let update_query = r#"mutation { updateEntry(id: "%ID%", input: {data: {title: "V2"}}) { id } }"#;
     let update_query = update_query.replace("%ID%", entry_id);
-    gql(&server, &token, &update_query).await;
+    let update_body = gql(&server, &token, &update_query).await;
+    assert!(update_body["errors"].is_null(), "updateEntry should succeed: {:?}", update_body["errors"]);
 
     let query = format!(r#"{{ entryRevision(entryId: "{}", revisionNumber: 2, diff: true) {{ revisionNumber diffFromPrevious }} }}"#, entry_id);
     let body = gql(&server, &token, &query).await;

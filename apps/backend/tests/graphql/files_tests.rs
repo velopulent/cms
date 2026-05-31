@@ -137,6 +137,9 @@ async fn test_file_references_query() {
     let body = gql(&server, &token, &query).await;
     assert!(body["errors"].is_null());
     let _ = body["data"]["fileReferences"].as_array().unwrap();
+    // TODO: we should create some entries that reference the file and verify they are returned here, but for now just check the structure of the response
+    // let refs = body["data"]["fileReferences"].as_array().unwrap();
+    // assert!(!refs.is_empty(), "expected file references");
 }
 
 #[tokio::test]
@@ -159,7 +162,8 @@ async fn test_restore_file_mutation() {
 
     let file_id = upload_file_via_rest(&server, &token).await;
 
-    gql(&server, &token, &format!(r#"mutation {{ deleteFile(id: "{}") }}"#, file_id)).await;
+    let del_body = gql(&server, &token, &format!(r#"mutation {{ deleteFile(id: "{}") }}"#, file_id)).await;
+    assert!(del_body["errors"].is_null(), "deleteFile should succeed: {:?}", del_body["errors"]);
 
     let query = format!(r#"mutation {{ restoreFile(id: "{}") }}"#, file_id);
     let body = gql(&server, &token, &query).await;
@@ -195,7 +199,8 @@ async fn test_batch_restore_files_mutation() {
     }
 
     for id in &ids {
-        gql(&server, &token, &format!(r#"mutation {{ deleteFile(id: "{}") }}"#, id)).await;
+        let del_body = gql(&server, &token, &format!(r#"mutation {{ deleteFile(id: "{}") }}"#, id)).await;
+        assert!(del_body["errors"].is_null(), "deleteFile should succeed: {:?}", del_body["errors"]);
     }
 
     let query = r#"mutation BatchRestore($ids: [String!]!) { batchRestoreFiles(ids: $ids) }"#;

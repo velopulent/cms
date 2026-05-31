@@ -74,7 +74,7 @@ async fn test_list_webhooks() {
     let channel = ctx.connect().await;
     let mut client = WebhookServiceClient::with_interceptor(channel, auth_interceptor(&token));
 
-    client
+    let _created = client
         .create_webhook(tonic::Request::new(CreateWebhookRequest {
             site_id: site_id.clone(),
             label: "Hook 1".into(),
@@ -84,7 +84,7 @@ async fn test_list_webhooks() {
         .await
         .unwrap();
 
-    client
+    let _created = client
         .create_webhook(tonic::Request::new(CreateWebhookRequest {
             site_id: site_id.clone(),
             label: "Hook 2".into(),
@@ -243,7 +243,7 @@ async fn test_list_webhook_deliveries() {
         .unwrap()
         .into_inner();
 
-    client
+    let _triggered = client
         .trigger_webhook(tonic::Request::new(TriggerWebhookRequest {
             site_id: site_id.clone(),
             webhook_id: created.id.clone(),

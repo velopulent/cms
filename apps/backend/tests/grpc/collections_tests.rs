@@ -72,7 +72,7 @@ async fn test_list_collections() {
     let channel = ctx.connect().await;
     let mut client = CollectionServiceClient::with_interceptor(channel, auth_interceptor(&token));
 
-    client
+    let _created = client
         .create_collection(tonic::Request::new(CreateCollectionRequest {
             name: "Posts".into(),
             slug: "posts".into(),
@@ -82,7 +82,7 @@ async fn test_list_collections() {
         .await
         .unwrap();
 
-    client
+    let _created = client
         .create_collection(tonic::Request::new(CreateCollectionRequest {
             name: "Pages".into(),
             slug: "pages".into(),

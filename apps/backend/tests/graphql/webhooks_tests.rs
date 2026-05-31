@@ -195,10 +195,12 @@ async fn test_webhook_deliveries_query() {
     let hook_id = created["data"]["createWebhook"]["id"].as_str().unwrap();
 
     let query = format!(r#"mutation {{ triggerWebhook(siteId: "{}", webhookId: "{}") {{ id status }} }}"#, site_id, hook_id);
-    gql(&server, &token, &query).await;
+    let trigger_body = gql(&server, &token, &query).await;
+    assert!(trigger_body["errors"].is_null(), "triggerWebhook should succeed: {:?}", trigger_body["errors"]);
 
     let query = format!(r#"{{ webhookDeliveries(siteId: "{}", webhookId: "{}") {{ id status }} }}"#, site_id, hook_id);
     let body = gql(&server, &token, &query).await;
     assert!(body["errors"].is_null());
-    let _ = body["data"]["webhookDeliveries"].as_array().unwrap();
+    let deliveries = body["data"]["webhookDeliveries"].as_array().unwrap();
+    assert!(!deliveries.is_empty(), "expected webhook deliveries");
 }

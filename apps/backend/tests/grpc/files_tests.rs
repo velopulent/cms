@@ -188,7 +188,7 @@ async fn test_restore_file() {
 
     let file_id = seed_file(&ctx, &site_id, "restore-me").await;
 
-    client
+    let _deleted = client
         .delete_file(tonic::Request::new(DeleteFileRequest { id: file_id.clone() }))
         .await
         .unwrap();
@@ -230,7 +230,7 @@ async fn test_batch_restore_files() {
     let id1 = seed_file(&ctx, &site_id, "batch-r1").await;
     let id2 = seed_file(&ctx, &site_id, "batch-r2").await;
 
-    client
+    let _deleted = client
         .batch_delete_files(tonic::Request::new(BatchDeleteFilesRequest {
             ids: vec![id1.clone(), id2.clone()],
         }))

@@ -84,7 +84,7 @@ async fn test_list_entries() {
     let mut client = EntryServiceClient::with_interceptor(channel, auth_interceptor(&token));
 
     for i in 0..3 {
-        client
+        let _created = client
             .create_entry(tonic::Request::new(CreateEntryRequest {
                 collection_id: collection_id.clone(),
                 data: format!(r#"{{"title":"Entry {}"}}"#, i),
@@ -217,7 +217,7 @@ async fn test_unpublish_entry() {
         .unwrap()
         .into_inner();
 
-    client
+    let _published = client
         .publish_entry(tonic::Request::new(PublishEntryRequest { id: created.id.clone() }))
         .await
         .unwrap();
@@ -248,7 +248,7 @@ async fn test_list_entry_revisions() {
         .unwrap()
         .into_inner();
 
-    client
+    let _updated = client
         .update_entry(tonic::Request::new(UpdateEntryRequest {
             id: created.id.clone(),
             data: Some(r#"{"title":"V2"}"#.into()),
@@ -289,7 +289,7 @@ async fn test_get_entry_revision() {
         .unwrap()
         .into_inner();
 
-    client
+    let _updated = client
         .update_entry(tonic::Request::new(UpdateEntryRequest {
             id: created.id.clone(),
             data: Some(r#"{"title":"V2"}"#.into()),
@@ -329,7 +329,7 @@ async fn test_restore_entry_revision() {
         .unwrap()
         .into_inner();
 
-    client
+    let _updated = client
         .update_entry(tonic::Request::new(UpdateEntryRequest {
             id: created.id.clone(),
             data: Some(r#"{"title":"Changed"}"#.into()),
