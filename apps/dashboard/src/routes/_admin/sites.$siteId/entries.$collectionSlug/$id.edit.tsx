@@ -166,13 +166,15 @@ function EditEntryPage() {
           <ArrowLeft />
         </Link>
         <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2 flex-wrap">
-            <h1 className="text-2xl font-semibold">Edit {collection.name}</h1>
-            <Badge
-              variant={entry.status === "published" ? "default" : "secondary"}
-            >
-              {entry.status}
-            </Badge>
+          <div className="flex items-center gap-2 flex-wrap justify-between">
+            <div className="flex items-center gap-2">
+              <h1 className="text-2xl font-semibold">Edit {collection.name}</h1>
+              <Badge
+                variant={entry.status === "published" ? "default" : "secondary"}
+              >
+                {entry.status}
+              </Badge>
+            </div>
             <Button
               variant="outline"
               size="sm"
@@ -183,9 +185,7 @@ function EditEntryPage() {
               History
             </Button>
           </div>
-          <p className="text-sm text-muted-foreground">
-            Edit {collection.name.toLowerCase()} #{entry.id.slice(0, 8)}
-          </p>
+          <p className="text-sm text-muted-foreground">{entry.slug}</p>
         </div>
       </div>
 
