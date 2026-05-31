@@ -427,9 +427,383 @@ fn decrypt_headers(encrypted: &str, key: &[u8; 32]) -> HashMap<String, String> {
 }
 
 fn truncate_str(s: &str, max_chars: usize) -> String {
-    if s.len() <= max_chars {
+    if s.chars().count() <= max_chars {
         s.to_string()
     } else {
-        s[..max_chars].to_string()
+        s.char_indices()
+            .nth(max_chars)
+            .map(|(i, _)| s[..i].to_string())
+            .unwrap_or_else(|| s.to_string())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::models::webhook::SiteWebhook;
+    use crate::repository::error::RepositoryError;
+    use crate::test_helpers::InMemoryWebhookRepository;
+    use std::collections::HashMap;
+    use std::sync::Arc;
+
+    fn test_webhook_repo() -> Arc<InMemoryWebhookRepository> {
+        Arc::new(InMemoryWebhookRepository::new())
+    }
+
+    fn test_service(repo: Arc<InMemoryWebhookRepository>) -> WebhookService {
+        WebhookService::new(repo, "test-secret-key-for-webhooks")
+    }
+
+    fn make_webhook(id: &str, site_id: &str) -> SiteWebhook {
+        SiteWebhook {
+            id: id.to_string(),
+            site_id: site_id.to_string(),
+            label: "Test Hook".to_string(),
+            url: "https://example.com/hook".to_string(),
+            headers_encrypted: String::new(),
+            created_by: None,
+            created_at: "2024-01-01 00:00:00".to_string(),
+            updated_at: "2024-01-01 00:00:00".to_string(),
+        }
+    }
+
+    // ── Free function tests ──
+
+    #[test]
+    fn test_validate_url_valid() {
+        assert!(validate_url("https://example.com/hook").is_ok());
+        assert!(validate_url("http://localhost:8080/webhook").is_ok());
+    }
+
+    #[test]
+    fn test_validate_url_empty() {
+        assert!(validate_url("").is_err());
+        assert!(validate_url("   ").is_err());
+    }
+
+    #[test]
+    fn test_validate_url_no_scheme() {
+        assert!(validate_url("example.com/hook").is_err());
+    }
+
+    #[test]
+    fn test_validate_url_ftp_scheme() {
+        assert!(validate_url("ftp://example.com/hook").is_err());
+    }
+
+    #[test]
+    fn test_sanitize_url_for_logging() {
+        assert_eq!(sanitize_url_for_logging("https://example.com/path?q=1"), "https://example.com/path");
+        assert_eq!(sanitize_url_for_logging("not-a-url"), "[invalid URL]");
+    }
+
+    #[test]
+    fn test_derive_encryption_key() {
+        let key1 = derive_encryption_key("secret");
+        let key2 = derive_encryption_key("secret");
+        let key3 = derive_encryption_key("different");
+        assert_eq!(key1, key2);
+        assert_ne!(key1, key3);
+    }
+
+    #[test]
+    fn test_encrypt_decrypt_roundtrip() {
+        let key = derive_encryption_key("test-key");
+        let mut headers = HashMap::new();
+        headers.insert("X-Custom".to_string(), "value1".to_string());
+        headers.insert("Authorization".to_string(), "Bearer token123".to_string());
+
+        let encrypted = encrypt_headers(&headers, &key);
+        let decrypted = decrypt_headers(&encrypted, &key);
+        assert_eq!(headers, decrypted);
+    }
+
+    #[test]
+    fn test_decrypt_invalid_base64() {
+        let key = derive_encryption_key("test-key");
+        let result = decrypt_headers("not-valid-base64!@#", &key);
+        assert!(result.is_empty());
+    }
+
+    #[test]
+    fn test_decrypt_wrong_key() {
+        let key1 = derive_encryption_key("secret1");
+        let key2 = derive_encryption_key("secret2");
+        let mut headers = HashMap::new();
+        headers.insert("X-Header".to_string(), "secret-value".to_string());
+
+        let encrypted = encrypt_headers(&headers, &key1);
+        let decrypted = decrypt_headers(&encrypted, &key2);
+        assert!(decrypted.is_empty() || decrypted != headers);
+    }
+
+    #[test]
+    fn test_truncate_str_short() {
+        assert_eq!(truncate_str("hello", 10), "hello");
+    }
+
+    #[test]
+    fn test_truncate_str_exact() {
+        assert_eq!(truncate_str("hello", 5), "hello");
+    }
+
+    #[test]
+    fn test_truncate_str_long() {
+        assert_eq!(truncate_str("hello world", 5), "hello");
+    }
+
+    #[test]
+    fn test_truncate_str_empty() {
+        assert_eq!(truncate_str("", 5), "");
+    }
+
+    #[test]
+    fn test_truncate_str_multibyte_boundary() {
+        // 'é' is 2 bytes in UTF-8; old byte-slice would panic here.
+        assert_eq!(truncate_str("éééé", 3), "ééé");
+    }
+
+    #[test]
+    fn test_truncate_str_multibyte_exact() {
+        assert_eq!(truncate_str("日本語", 3), "日本語");
+    }
+
+    #[test]
+    fn test_truncate_str_multibyte_short() {
+        assert_eq!(truncate_str("日本語", 2), "日本");
+    }
+
+    #[test]
+    fn test_truncate_str_emoji() {
+        // Emoji can be 4 bytes
+        assert_eq!(truncate_str("🦀🦞🐙", 2), "🦀🦞");
+    }
+
+    // ── WebhookError tests ──
+
+    #[test]
+    fn test_webhook_error_status_codes() {
+        assert_eq!(WebhookError::NotFound.into_response().status(), StatusCode::NOT_FOUND);
+        assert_eq!(
+            WebhookError::InvalidUrl("bad".into()).into_response().status(),
+            StatusCode::BAD_REQUEST
+        );
+        assert_eq!(
+            WebhookError::InvalidLabel("bad".into()).into_response().status(),
+            StatusCode::BAD_REQUEST
+        );
+        assert_eq!(
+            WebhookError::DatabaseError("bad".into()).into_response().status(),
+            StatusCode::INTERNAL_SERVER_ERROR
+        );
+        assert_eq!(
+            WebhookError::DeliveryFailed("bad".into()).into_response().status(),
+            StatusCode::BAD_GATEWAY
+        );
+    }
+
+    #[test]
+    fn test_webhook_error_from_repository_error() {
+        let err: WebhookError = RepositoryError::NotFound.into();
+        assert!(matches!(err, WebhookError::NotFound));
+
+        let err: WebhookError = RepositoryError::Database("bad".into()).into();
+        assert!(matches!(err, WebhookError::DatabaseError(_)));
+    }
+
+    // ── Service method tests ──
+
+    #[tokio::test]
+    async fn test_list_webhooks() {
+        let repo = test_webhook_repo();
+        repo.add_webhook(make_webhook("w1", "site-1"));
+        repo.add_webhook(make_webhook("w2", "site-1"));
+        repo.add_webhook(make_webhook("w3", "site-2"));
+        let service = test_service(repo);
+
+        let result = service.list_webhooks("site-1").await;
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap().len(), 2);
+    }
+
+    #[tokio::test]
+    async fn test_list_webhooks_empty() {
+        let service = test_service(test_webhook_repo());
+        let result = service.list_webhooks("site-1").await;
+        assert!(result.is_ok());
+        assert!(result.unwrap().is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_get_webhook_found() {
+        let repo = test_webhook_repo();
+        repo.add_webhook(make_webhook("w1", "site-1"));
+        let service = test_service(repo);
+
+        let result = service.get_webhook("w1", "site-1").await;
+        assert!(result.is_ok());
+        assert!(result.unwrap().is_some());
+    }
+
+    #[tokio::test]
+    async fn test_get_webhook_not_found() {
+        let service = test_service(test_webhook_repo());
+        let result = service.get_webhook("nonexistent", "site-1").await;
+        assert!(result.is_ok());
+        assert!(result.unwrap().is_none());
+    }
+
+    #[tokio::test]
+    async fn test_create_webhook_success() {
+        let service = test_service(test_webhook_repo());
+        let mut headers = HashMap::new();
+        headers.insert("X-Custom".to_string(), "value".to_string());
+
+        let result = service
+            .create_webhook("site-1", "My Hook", "https://example.com/hook", &headers, Some("user-1"))
+            .await;
+        assert!(result.is_ok());
+        let webhook = result.unwrap();
+        assert_eq!(webhook.label, "My Hook");
+        assert_eq!(webhook.url, "https://example.com/hook");
+        assert_eq!(webhook.site_id, "site-1");
+    }
+
+    #[tokio::test]
+    async fn test_create_webhook_empty_label() {
+        let service = test_service(test_webhook_repo());
+        let result = service
+            .create_webhook("site-1", "  ", "https://example.com/hook", &HashMap::new(), None)
+            .await;
+        assert!(matches!(result, Err(WebhookError::InvalidLabel(_))));
+    }
+
+    #[tokio::test]
+    async fn test_create_webhook_invalid_url() {
+        let service = test_service(test_webhook_repo());
+        let result = service
+            .create_webhook("site-1", "Hook", "not-a-url", &HashMap::new(), None)
+            .await;
+        assert!(matches!(result, Err(WebhookError::InvalidUrl(_))));
+    }
+
+    #[tokio::test]
+    async fn test_create_webhook_ftp_url() {
+        let service = test_service(test_webhook_repo());
+        let result = service
+            .create_webhook("site-1", "Hook", "ftp://example.com/file", &HashMap::new(), None)
+            .await;
+        assert!(matches!(result, Err(WebhookError::InvalidUrl(_))));
+    }
+
+    #[tokio::test]
+    async fn test_update_webhook_success() {
+        let repo = test_webhook_repo();
+        repo.add_webhook(make_webhook("w1", "site-1"));
+        let service = test_service(repo);
+
+        let result = service
+            .update_webhook("w1", "site-1", Some("New Label"), Some("https://new.com/hook"), None)
+            .await;
+        assert!(result.is_ok());
+        let webhook = result.unwrap();
+        assert_eq!(webhook.label, "New Label");
+        assert_eq!(webhook.url, "https://new.com/hook");
+    }
+
+    #[tokio::test]
+    async fn test_update_webhook_not_found() {
+        let service = test_service(test_webhook_repo());
+        let result = service
+            .update_webhook("nonexistent", "site-1", Some("Label"), None, None)
+            .await;
+        assert!(matches!(result, Err(WebhookError::NotFound)));
+    }
+
+    #[tokio::test]
+    async fn test_update_webhook_empty_label() {
+        let repo = test_webhook_repo();
+        repo.add_webhook(make_webhook("w1", "site-1"));
+        let service = test_service(repo);
+
+        let result = service
+            .update_webhook("w1", "site-1", Some("  "), None, None)
+            .await;
+        assert!(matches!(result, Err(WebhookError::InvalidLabel(_))));
+    }
+
+    #[tokio::test]
+    async fn test_update_webhook_invalid_url() {
+        let repo = test_webhook_repo();
+        repo.add_webhook(make_webhook("w1", "site-1"));
+        let service = test_service(repo);
+
+        let result = service
+            .update_webhook("w1", "site-1", None, Some("not-a-url"), None)
+            .await;
+        assert!(matches!(result, Err(WebhookError::InvalidUrl(_))));
+    }
+
+    #[tokio::test]
+    async fn test_delete_webhook_success() {
+        let repo = test_webhook_repo();
+        repo.add_webhook(make_webhook("w1", "site-1"));
+        let service = test_service(repo);
+
+        let result = service.delete_webhook("w1", "site-1").await;
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), 1);
+    }
+
+    #[tokio::test]
+    async fn test_delete_webhook_not_found() {
+        let service = test_service(test_webhook_repo());
+        let result = service.delete_webhook("nonexistent", "site-1").await;
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), 0);
+    }
+
+    #[tokio::test]
+    async fn test_list_deliveries() {
+        let repo = test_webhook_repo();
+        repo.add_webhook(make_webhook("w1", "site-1"));
+        let service = test_service(repo);
+
+        let result = service.list_deliveries("w1", "site-1", 1, 10).await;
+        assert!(result.is_ok());
+        let (items, total) = result.unwrap();
+        assert!(items.is_empty());
+        assert_eq!(total, 0);
+    }
+
+    #[tokio::test]
+    async fn test_list_deliveries_webhook_not_found() {
+        let service = test_service(test_webhook_repo());
+        let result = service.list_deliveries("nonexistent", "site-1", 1, 10).await;
+        assert!(matches!(result, Err(WebhookError::NotFound)));
+    }
+
+    #[tokio::test]
+    async fn test_decrypt_webhook_headers() {
+        let repo = test_webhook_repo();
+        let service = test_service(repo);
+
+        let mut headers = HashMap::new();
+        headers.insert("X-Auth".to_string(), "token123".to_string());
+        let encrypted = encrypt_headers(&headers, &service.encryption_key);
+
+        let webhook = SiteWebhook {
+            id: "w1".to_string(),
+            site_id: "site-1".to_string(),
+            label: "Hook".to_string(),
+            url: "https://example.com".to_string(),
+            headers_encrypted: encrypted,
+            created_by: None,
+            created_at: "2024-01-01 00:00:00".to_string(),
+            updated_at: "2024-01-01 00:00:00".to_string(),
+        };
+
+        let decrypted = service.decrypt_webhook_headers(&webhook);
+        assert_eq!(decrypted, headers);
     }
 }
