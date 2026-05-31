@@ -170,3 +170,47 @@ async fn test_create_singleton_collection() {
     assert_eq!(body["data"]["createCollection"]["isSingleton"].as_bool().unwrap(), true);
     assert!(body["data"]["createCollection"]["singletonData"].is_null());
 }
+
+#[tokio::test]
+async fn test_create_collection_invalid_field_type() {
+    let server = TestServer::start().await;
+    let (_, token) = setup(&server).await;
+
+    let query = r#"mutation CreateCollection($input: CreateCollectionInput!) {
+        createCollection(input: $input) { id name }
+    }"#;
+    let vars = json!({"input": {"name": "Bad", "slug": "bad", "definition": json!({"fields": [{"name": "title", "type": "string"}]})}});
+    let body = gql_with_vars(&server, &token, query, vars).await;
+
+    assert!(body["errors"].is_array());
+    let msg = body["errors"][0]["message"].as_str().unwrap();
+    assert!(msg.contains("Invalid definition") || msg.contains("invalid type"), "Expected validation error: {}", msg);
+}
+
+#[tokio::test]
+async fn test_create_collection_duplicate_slug() {
+    let server = TestServer::start().await;
+    let (_, token) = setup(&server).await;
+
+    create_collection(&server, &token, "Posts", "dup-slug").await;
+
+    let query = r#"mutation CreateCollection($input: CreateCollectionInput!) {
+        createCollection(input: $input) { id }
+    }"#;
+    let vars = json!({"input": {"name": "Posts Again", "slug": "dup-slug", "definition": json!({"fields": [{"name": "title", "type": "text"}]})}});
+    let body = gql_with_vars(&server, &token, query, vars).await;
+
+    assert!(body["errors"].is_array());
+}
+
+#[tokio::test]
+async fn test_collection_not_singleton() {
+    let server = TestServer::start().await;
+    let (_, token) = setup(&server).await;
+
+    create_collection(&server, &token, "Regular", "regular").await;
+
+    let body = gql(&server, &token, r#"{ collection(slug: "regular") { id isSingleton } }"#).await;
+    assert!(body["errors"].is_null(), "errors: {:?}", body["errors"]);
+    assert_eq!(body["data"]["collection"]["isSingleton"].as_bool().unwrap(), false);
+}

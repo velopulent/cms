@@ -351,3 +351,17 @@ async fn test_entry_revision_with_diff() {
     assert!(body["errors"].is_null(), "errors: {:?}", body["errors"]);
     assert_eq!(body["data"]["entryRevision"]["revisionNumber"].as_i64().unwrap(), 2);
 }
+
+#[tokio::test]
+async fn test_create_entry_with_invalid_collection_id() {
+    let server = TestServer::start().await;
+    let (_, token) = setup(&server).await;
+
+    let query = r#"mutation CreateEntry($input: CreateEntryInput!) {
+        createEntry(input: $input) { id }
+    }"#;
+    let vars = json!({"input": {"collectionId": "nonexistent", "slug": "orphan", "data": json!({"title": "Hello"})}});
+    let body = gql_with_vars(&server, &token, query, vars).await;
+
+    assert!(body["errors"].is_array());
+}
