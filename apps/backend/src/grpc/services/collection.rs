@@ -164,7 +164,6 @@ impl CollectionServiceImpl {
             slug: c.slug,
             definition: c.definition,
             is_singleton: c.is_singleton,
-            singleton_data: c.singleton_data,
             created_at: c.created_at,
             updated_at: c.updated_at,
         }
