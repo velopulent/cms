@@ -10,7 +10,6 @@ pub struct Collection {
     pub slug: String,
     pub definition: String,
     pub is_singleton: bool,
-    pub singleton_data: Option<String>,
     pub created_at: String,
     pub updated_at: String,
 }
@@ -33,6 +32,7 @@ pub struct UpdateCollection {
 #[derive(Deserialize, ToSchema)]
 pub struct UpdateSingletonData {
     pub data: serde_json::Value,
+    pub change_summary: Option<String>,
 }
 
 #[derive(Serialize, ToSchema)]
@@ -43,6 +43,7 @@ pub struct SingletonResponse {
     pub slug: String,
     pub definition: serde_json::Value,
     pub data: Option<serde_json::Value>,
+    pub entry_id: Option<String>,
     pub created_at: String,
     pub updated_at: String,
 }

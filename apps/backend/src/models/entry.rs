@@ -10,6 +10,7 @@ pub struct Entry {
     pub data: String,
     pub slug: String,
     pub status: String,
+    pub singleton_collection_id: Option<String>,
     pub created_at: String,
     pub updated_at: String,
     pub published_at: Option<String>,
