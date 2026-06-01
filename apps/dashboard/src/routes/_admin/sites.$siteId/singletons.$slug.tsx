@@ -1,13 +1,15 @@
 import { useForm } from "@tanstack/react-form";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, History } from "lucide-react";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { z } from "zod";
 import { DynamicForm } from "@/components/dynamic-form";
+import { RevisionsPanel } from "@/components/revisions-panel";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   getSingleton,
@@ -44,6 +46,8 @@ function SingletonEditPage() {
   const { siteId, slug } = Route.useParams();
   const queryClient = useQueryClient();
   const [initialized, setInitialized] = useState(false);
+  const [changeSummary, setChangeSummary] = useState("");
+  const [historyOpen, setHistoryOpen] = useState(false);
 
   const { data: singleton, isLoading } = useQuery({
     queryKey: ["singleton", siteId, slug],
@@ -75,13 +79,14 @@ function SingletonEditPage() {
       onSubmit: dataSchema,
     },
     onSubmit: async ({ value }) => {
-      saveMutation.mutate(value.data);
+      saveMutation.mutate({ data: value.data, changeSummary: changeSummary.trim() || undefined });
+      setChangeSummary("");
     },
   });
 
   const saveMutation = useMutation({
-    mutationFn: (data: Record<string, unknown>) =>
-      updateSingletonData(siteId, slug, data),
+    mutationFn: (args: { data: Record<string, unknown>; changeSummary?: string }) =>
+      updateSingletonData(siteId, slug, args.data, args.changeSummary),
     onSuccess: () => {
       queryClient.invalidateQueries({
         queryKey: ["singleton", siteId, slug],
@@ -160,10 +165,34 @@ function SingletonEditPage() {
           </CardContent>
         </Card>
 
+        <Card>
+          <CardHeader>
+            <CardTitle>Change Summary</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <Input
+              value={changeSummary}
+              onChange={(e) => setChangeSummary(e.target.value)}
+              placeholder="Optional message describing this change"
+              disabled={saveMutation.isPending}
+            />
+          </CardContent>
+        </Card>
+
         <div className="flex gap-2">
           <Button type="submit" disabled={saveMutation.isPending}>
             {saveMutation.isPending ? "Saving..." : "Save"}
           </Button>
+          {singleton.entry_id ? (
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setHistoryOpen(true)}
+            >
+              <History className="mr-2 h-4 w-4" />
+              History
+            </Button>
+          ) : null}
           <Link
             to="/sites/$siteId/collections"
             params={{ siteId }}
@@ -173,6 +202,21 @@ function SingletonEditPage() {
           </Link>
         </div>
       </form>
+
+      {singleton.entry_id ? (
+        <RevisionsPanel
+          entryId={singleton.entry_id}
+          siteId={siteId}
+          open={historyOpen}
+          onOpenChange={setHistoryOpen}
+          collectionDef={definition}
+          onRestore={() => {
+            queryClient.invalidateQueries({ queryKey: ["singleton", siteId, slug] });
+            setInitialized(false);
+            toast.success("Singleton restored to previous version");
+          }}
+        />
+      ) : null}
     </div>
   );
 }
