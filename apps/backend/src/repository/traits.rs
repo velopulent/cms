@@ -69,17 +69,11 @@ pub trait CollectionRepository: Send + Sync {
         is_singleton: bool,
     ) -> Result<Collection, RepositoryError>;
     async fn update(&self, id: &str, name: &str, slug: &str, definition: &str) -> Result<Collection, RepositoryError>;
-    async fn update_singleton_data(&self, id: &str, data: &str) -> Result<Collection, RepositoryError>;
     async fn delete(&self, site_id: &str, slug: &str) -> Result<u64, RepositoryError>;
     async fn get_content_for_migration(&self, collection_id: &str) -> Result<Vec<Entry>, RepositoryError>;
     async fn migrate_content_field_renames(
         &self,
         content_items: &[Entry],
-        rename_map: &std::collections::HashMap<String, String>,
-    ) -> Result<(), RepositoryError>;
-    async fn migrate_singleton_field_renames(
-        &self,
-        collection: &Collection,
         rename_map: &std::collections::HashMap<String, String>,
     ) -> Result<(), RepositoryError>;
 }
@@ -103,6 +97,20 @@ pub trait EntryRepository: Send + Sync {
         data: &str,
         slug: &str,
         created_by: Option<&str>,
+    ) -> Result<Entry, RepositoryError>;
+    async fn get_singleton_entry(
+        &self,
+        site_id: &str,
+        slug: &str,
+    ) -> Result<Option<Entry>, RepositoryError>;
+    async fn upsert_singleton_entry(
+        &self,
+        site_id: &str,
+        collection_id: &str,
+        slug: &str,
+        data: &str,
+        created_by: Option<&str>,
+        change_summary: Option<&str>,
     ) -> Result<Entry, RepositoryError>;
     async fn update(
         &self,
@@ -137,6 +145,12 @@ pub trait EntryRepository: Send + Sync {
         revision_number: i64,
         created_by: Option<&str>,
     ) -> Result<Entry, RepositoryError>;
+    async fn migrate_singleton_field_renames(
+        &self,
+        site_id: &str,
+        collection_id: &str,
+        rename_map: &std::collections::HashMap<String, String>,
+    ) -> Result<(), RepositoryError>;
 }
 
 #[derive(Clone)]
