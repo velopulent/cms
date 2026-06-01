@@ -113,6 +113,20 @@ async fn test_update_singleton() {
         .unwrap();
 
     assert_eq!(resp.status(), 200);
+    let body: Value = resp.json().await.unwrap();
+    let entry_id = body["entry_id"].as_str().expect("entry_id should be present on singleton response");
+    assert!(!entry_id.is_empty(), "entry_id should not be empty");
+
+    let resp = client
+        .get(format!("{}/api/dashboard/sites/{}/entries/{}/revisions", server.base_url, site_id, entry_id))
+        .headers(auth_header(&jwt, &csrf))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), 200);
+    let revisions: Value = resp.json().await.unwrap();
+    let revs = revisions["items"].as_array().expect("revisions.items should be an array");
+    assert!(!revs.is_empty(), "singleton upsert should produce at least one revision");
 }
 
 #[tokio::test]
