@@ -109,7 +109,6 @@ export interface Collection {
   slug: string;
   definition: string;
   is_singleton: boolean;
-  singleton_data: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -121,6 +120,7 @@ export interface SingletonResponse {
   slug: string;
   definition: SchemaDefinition;
   data: Record<string, unknown> | null;
+  entry_id: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -737,9 +737,10 @@ export async function updateSingletonData(
   siteId: string,
   slug: string,
   data: Record<string, unknown>,
+  changeSummary?: string,
 ) {
   return api<SingletonResponse>(`/sites/${siteId}/singletons/${slug}`, {
     method: "PUT",
-    body: JSON.stringify({ data }),
+    body: JSON.stringify({ data, change_summary: changeSummary }),
   });
 }
