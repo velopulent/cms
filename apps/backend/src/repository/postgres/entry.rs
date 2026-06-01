@@ -220,7 +220,7 @@ impl EntryRepository for PostgresEntryRepository {
         .await?;
 
         let next_number: i64 =
-            sqlx::query_scalar("SELECT COALESCE(MAX(revision_number), 0) + 1 FROM entry_revisions WHERE entry_id = $1")
+            sqlx::query_scalar("SELECT (COALESCE(MAX(revision_number), 0) + 1)::BIGINT FROM entry_revisions WHERE entry_id = $1")
                 .bind(id)
                 .fetch_one(&mut *tx)
                 .await?;
@@ -397,7 +397,7 @@ impl EntryRepository for PostgresEntryRepository {
         let revision = revision.ok_or(RepositoryError::NotFound)?;
 
         let next_number: i64 =
-            sqlx::query_scalar("SELECT COALESCE(MAX(revision_number), 0) + 1 FROM entry_revisions WHERE entry_id = $1")
+            sqlx::query_scalar("SELECT (COALESCE(MAX(revision_number), 0) + 1)::BIGINT FROM entry_revisions WHERE entry_id = $1")
                 .bind(entry_id)
                 .fetch_one(&mut *tx)
                 .await?;
