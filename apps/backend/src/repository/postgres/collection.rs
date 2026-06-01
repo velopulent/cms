@@ -20,7 +20,7 @@ impl PostgresCollectionRepository {
 impl CollectionRepository for PostgresCollectionRepository {
     async fn list(&self, site_id: &str) -> Result<Vec<Collection>, RepositoryError> {
         let result = sqlx::query_as::<_, Collection>(
-            "SELECT id, site_id, name, slug, definition::text as definition, is_singleton, singleton_data::text as singleton_data, created_at::text as created_at, updated_at::text as updated_at FROM collections WHERE site_id = $1 ORDER BY name",
+            "SELECT id, site_id, name, slug, definition::text as definition, is_singleton, created_at::text as created_at, updated_at::text as updated_at FROM collections WHERE site_id = $1 ORDER BY name",
         )
         .bind(site_id)
         .fetch_all(&self.pool)
@@ -31,7 +31,7 @@ impl CollectionRepository for PostgresCollectionRepository {
 
     async fn list_singletons_only(&self, site_id: &str) -> Result<Vec<Collection>, RepositoryError> {
         let result = sqlx::query_as::<_, Collection>(
-            "SELECT id, site_id, name, slug, definition::text as definition, is_singleton, singleton_data::text as singleton_data, created_at::text as created_at, updated_at::text as updated_at FROM collections WHERE site_id = $1 AND is_singleton = true ORDER BY name",
+            "SELECT id, site_id, name, slug, definition::text as definition, is_singleton, created_at::text as created_at, updated_at::text as updated_at FROM collections WHERE site_id = $1 AND is_singleton = true ORDER BY name",
         )
         .bind(site_id)
         .fetch_all(&self.pool)
@@ -42,7 +42,7 @@ impl CollectionRepository for PostgresCollectionRepository {
 
     async fn get_by_slug(&self, site_id: &str, slug: &str) -> Result<Option<Collection>, RepositoryError> {
         let result = sqlx::query_as::<_, Collection>(
-            "SELECT id, site_id, name, slug, definition::text as definition, is_singleton, singleton_data::text as singleton_data, created_at::text as created_at, updated_at::text as updated_at FROM collections WHERE site_id = $1 AND slug = $2",
+            "SELECT id, site_id, name, slug, definition::text as definition, is_singleton, created_at::text as created_at, updated_at::text as updated_at FROM collections WHERE site_id = $1 AND slug = $2",
         )
         .bind(site_id)
         .bind(slug)
@@ -54,7 +54,7 @@ impl CollectionRepository for PostgresCollectionRepository {
 
     async fn get_by_id(&self, id: &str) -> Result<Option<Collection>, RepositoryError> {
         let result = sqlx::query_as::<_, Collection>(
-            "SELECT id, site_id, name, slug, definition::text as definition, is_singleton, singleton_data::text as singleton_data, created_at::text as created_at, updated_at::text as updated_at FROM collections WHERE id = $1",
+            "SELECT id, site_id, name, slug, definition::text as definition, is_singleton, created_at::text as created_at, updated_at::text as updated_at FROM collections WHERE id = $1",
         )
         .bind(id)
         .fetch_optional(&self.pool)
@@ -101,16 +101,6 @@ impl CollectionRepository for PostgresCollectionRepository {
         self.get_by_id(id).await?.ok_or(RepositoryError::NotFound)
     }
 
-    async fn update_singleton_data(&self, id: &str, data: &str) -> Result<Collection, RepositoryError> {
-        sqlx::query("UPDATE collections SET singleton_data = $1::jsonb, updated_at = NOW() WHERE id = $2")
-            .bind(data)
-            .bind(id)
-            .execute(&self.pool)
-            .await?;
-
-        self.get_by_id(id).await?.ok_or(RepositoryError::NotFound)
-    }
-
     async fn delete(&self, site_id: &str, slug: &str) -> Result<u64, RepositoryError> {
         let result = sqlx::query("DELETE FROM collections WHERE site_id = $1 AND slug = $2")
             .bind(site_id)
@@ -123,7 +113,7 @@ impl CollectionRepository for PostgresCollectionRepository {
 
     async fn get_content_for_migration(&self, collection_id: &str) -> Result<Vec<Entry>, RepositoryError> {
         let result = sqlx::query_as::<_, Entry>(
-            "SELECT id, site_id, collection_id, data::text as data, slug, status, created_at::text as created_at, updated_at::text as updated_at, published_at::text as published_at FROM entries WHERE collection_id = $1",
+            "SELECT id, site_id, collection_id, data::text as data, slug, status, singleton_collection_id, created_at::text as created_at, updated_at::text as updated_at, published_at::text as published_at FROM entries WHERE collection_id = $1",
         )
         .bind(collection_id)
         .fetch_all(&self.pool)
@@ -155,31 +145,6 @@ impl CollectionRepository for PostgresCollectionRepository {
                         .await?;
                 }
         }
-        Ok(())
-    }
-
-    async fn migrate_singleton_field_renames(
-        &self,
-        collection: &Collection,
-        rename_map: &std::collections::HashMap<String, String>,
-    ) -> Result<(), RepositoryError> {
-        if let Some(ref data_str) = collection.singleton_data
-            && let Ok(mut data) = serde_json::from_str::<serde_json::Value>(data_str)
-                && let Some(obj) = data.as_object_mut() {
-                    let mut renamed = serde_json::Map::new();
-                    for (key, value) in obj.iter() {
-                        let new_key = rename_map.get(key).cloned().unwrap_or_else(|| key.clone());
-                        renamed.insert(new_key, value.clone());
-                    }
-                    let new_data_str =
-                        serde_json::to_string(&serde_json::Value::Object(renamed)).unwrap_or_else(|_| data_str.clone());
-
-                    sqlx::query("UPDATE collections SET singleton_data = $1::jsonb, updated_at = NOW() WHERE id = $2")
-                        .bind(&new_data_str)
-                        .bind(&collection.id)
-                        .execute(&self.pool)
-                        .await?;
-                }
         Ok(())
     }
 }
