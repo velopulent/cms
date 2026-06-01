@@ -97,9 +97,26 @@ impl EntryService {
             created_by.is_some()
         );
 
-        // Validate entry data against collection definition
-        if let Ok(Some(collection)) = self.collection_repo.get_by_id(collection_id).await
-            && let Ok(definition) = serde_json::from_str::<Value>(&collection.definition)
+        let collection = self
+            .collection_repo
+            .get_by_id(collection_id)
+            .await
+            .map_err(|e| EntryError::DatabaseError(e.to_string()))?;
+
+        if let Some(ref c) = collection
+            && c.is_singleton
+        {
+            warn!(
+                "Attempted to create entry for singleton collection: id={}, slug={}",
+                collection_id, c.slug
+            );
+            return Err(EntryError::ValidationFailed(
+                "Cannot create entries for singleton collections via /entries; use /singletons/{slug}".into(),
+            ));
+        }
+
+        if let Some(ref c) = collection
+            && let Ok(definition) = serde_json::from_str::<Value>(&c.definition)
                 && let Some(fields) = definition.get("fields").and_then(|f| f.as_array())
                     && let Some(err) =
                         super::definition_validation::validate_entry_data(data, fields)
@@ -448,6 +465,7 @@ mod tests {
             data: r#"{"title": "Test Entry"}"#.to_string(),
             slug: "test-entry".to_string(),
             status: "draft".to_string(),
+            singleton_collection_id: None,
             created_at: "2024-01-01 00:00:00".to_string(),
             updated_at: "2024-01-01 00:00:00".to_string(),
             published_at: None,
@@ -854,7 +872,6 @@ mod tests {
             slug: "posts".to_string(),
             definition: r#"{"fields":[{"name":"title","type":"number","required":true}]}"#.to_string(),
             is_singleton: false,
-            singleton_data: None,
             created_at: "2024-01-01 00:00:00".to_string(),
             updated_at: "2024-01-01 00:00:00".to_string(),
         };
@@ -882,7 +899,6 @@ mod tests {
             slug: "posts".to_string(),
             definition: r#"{"fields":[{"name":"title","type":"number","required":true}]}"#.to_string(),
             is_singleton: false,
-            singleton_data: None,
             created_at: "2024-01-01 00:00:00".to_string(),
             updated_at: "2024-01-01 00:00:00".to_string(),
         };
