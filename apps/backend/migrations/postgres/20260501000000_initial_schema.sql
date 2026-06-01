@@ -113,7 +113,7 @@ CREATE INDEX IF NOT EXISTS idx_efr_entry ON entry_file_references(entry_id);
 CREATE TABLE IF NOT EXISTS entry_revisions (
     id TEXT PRIMARY KEY NOT NULL,
     entry_id TEXT NOT NULL REFERENCES entries(id) ON DELETE CASCADE,
-    revision_number INTEGER NOT NULL,
+    revision_number BIGINT NOT NULL,
     data JSONB NOT NULL,
     created_by TEXT REFERENCES users(id),
     created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
@@ -142,7 +142,7 @@ CREATE TABLE IF NOT EXISTS site_webhook_deliveries (
     status VARCHAR(20) NOT NULL CHECK(status IN ('success', 'failed')),
     status_code INTEGER,
     response_body TEXT,
-    duration_ms INTEGER,
+    duration_ms BIGINT,
     triggered_by VARCHAR(36) REFERENCES users(id) ON DELETE SET NULL,
     triggered_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
 );
