@@ -9,11 +9,12 @@ use uuid::Uuid;
 
 use crate::models::collection::Collection;
 use crate::repository::error::RepositoryError;
-use crate::repository::traits::CollectionRepository;
+use crate::repository::traits::{CollectionRepository, EntryRepository};
 
 #[derive(Clone)]
 pub struct CollectionService {
     collection_repo: Arc<dyn CollectionRepository>,
+    entry_repo: Arc<dyn EntryRepository>,
 }
 
 #[derive(Error, Debug)]
@@ -47,8 +48,11 @@ impl CollectionError {
 }
 
 impl CollectionService {
-    pub fn new(collection_repo: Arc<dyn CollectionRepository>) -> Self {
-        Self { collection_repo }
+    pub fn new(collection_repo: Arc<dyn CollectionRepository>, entry_repo: Arc<dyn EntryRepository>) -> Self {
+        Self {
+            collection_repo,
+            entry_repo,
+        }
     }
 
     pub async fn list_collections(&self, site_id: &str) -> Result<Vec<Collection>, CollectionError> {
@@ -197,10 +201,10 @@ impl CollectionService {
                 if !rename_map.is_empty() {
                     info!("Field renames detected: {:?}", rename_map);
                     if existing.is_singleton {
-                        debug!("Migrating singleton field renames");
+                        debug!("Migrating singleton field renames via entry repo");
                         match self
-                            .collection_repo
-                            .migrate_singleton_field_renames(&existing, &rename_map)
+                            .entry_repo
+                            .migrate_singleton_field_renames(&existing.site_id, &existing.id, &rename_map)
                             .await
                         {
                             Ok(_) => debug!("Singleton field renames completed"),
@@ -270,13 +274,6 @@ impl CollectionService {
             }
         }
     }
-
-    pub async fn update_singleton_data(&self, id: &str, data: &str) -> Result<Collection, CollectionError> {
-        self.collection_repo
-            .update_singleton_data(id, data)
-            .await
-            .map_err(|e| CollectionError::DatabaseError(e.to_string()))
-    }
 }
 
 pub fn compute_field_rename_map(old_def: &serde_json::Value, new_def: &serde_json::Value) -> HashMap<String, String> {
@@ -330,11 +327,19 @@ pub fn compute_field_rename_map(old_def: &serde_json::Value, new_def: &serde_jso
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::test_helpers::InMemoryCollectionRepository;
+    use crate::test_helpers::{InMemoryCollectionRepository, InMemoryEntryRepository};
     use std::sync::Arc;
 
     fn test_repo() -> Arc<InMemoryCollectionRepository> {
         Arc::new(InMemoryCollectionRepository::new())
+    }
+
+    fn test_entry_repo() -> Arc<InMemoryEntryRepository> {
+        Arc::new(InMemoryEntryRepository::new())
+    }
+
+    fn make_service() -> CollectionService {
+        CollectionService::new(test_repo(), test_entry_repo())
     }
 
     fn create_test_collection() -> Collection {
@@ -345,7 +350,6 @@ mod tests {
             slug: "test-collection".to_string(),
             definition: r#"{"fields": [{"name": "title", "type": "text"}]}"#.to_string(),
             is_singleton: false,
-            singleton_data: None,
             created_at: "2024-01-01 00:00:00".to_string(),
             updated_at: "2024-01-01 00:00:00".to_string(),
         }
@@ -353,8 +357,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_list_collections() {
-        let repo = test_repo();
-        let service = CollectionService::new(repo);
+        let service = make_service();
 
         let result = service.list_collections("site-123").await;
         assert!(result.is_ok());
@@ -363,8 +366,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_list_singletons_only() {
-        let repo = test_repo();
-        let service = CollectionService::new(repo);
+        let service = make_service();
 
         let result = service.list_singletons_only("site-123").await;
         assert!(result.is_ok());
@@ -372,8 +374,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_get_collection_not_found() {
-        let repo = test_repo();
-        let service = CollectionService::new(repo);
+        let service = make_service();
 
         let result = service.get_collection("site-123", "nonexistent").await;
         assert!(result.is_ok());
@@ -382,8 +383,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_get_by_id_not_found() {
-        let repo = test_repo();
-        let service = CollectionService::new(repo);
+        let service = make_service();
 
         let result = service.get_by_id("nonexistent").await;
         assert!(result.is_ok());
@@ -392,8 +392,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_create_collection_success() {
-        let repo = test_repo();
-        let service = CollectionService::new(repo);
+        let service = make_service();
 
         let result = service
             .create_collection("site-123", "My Collection", "my-collection", "{}", false)
@@ -406,8 +405,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_create_singleton_collection() {
-        let repo = test_repo();
-        let service = CollectionService::new(repo);
+        let service = make_service();
 
         let result = service
             .create_collection("site-123", "My Singleton", "my-singleton", "{}", true)
@@ -421,7 +419,7 @@ mod tests {
     async fn test_update_collection_success() {
         let repo = test_repo();
         repo.add_collection(create_test_collection());
-        let service = CollectionService::new(repo);
+        let service = CollectionService::new(repo, test_entry_repo());
 
         let result = service
             .update_collection("site-123", "test-collection", Some("Updated"), None, None)
@@ -432,8 +430,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_update_collection_not_found() {
-        let repo = test_repo();
-        let service = CollectionService::new(repo);
+        let service = make_service();
 
         let result = service
             .update_collection("site-123", "nonexistent", Some("Updated"), None, None)
@@ -445,7 +442,7 @@ mod tests {
     async fn test_update_collection_with_slug_change() {
         let repo = test_repo();
         repo.add_collection(create_test_collection());
-        let service = CollectionService::new(repo);
+        let service = CollectionService::new(repo, test_entry_repo());
 
         let result = service
             .update_collection("site-123", "test-collection", None, Some("new-slug"), None)
@@ -458,7 +455,7 @@ mod tests {
     async fn test_update_collection_with_definition_change() {
         let repo = test_repo();
         repo.add_collection(create_test_collection());
-        let service = CollectionService::new(repo);
+        let service = CollectionService::new(repo, test_entry_repo());
 
         let new_def = r#"{"fields": [{"name": "new_title", "type": "text"}]}"#;
         let result = service
@@ -471,7 +468,7 @@ mod tests {
     async fn test_delete_collection_success() {
         let repo = test_repo();
         repo.add_collection(create_test_collection());
-        let service = CollectionService::new(repo);
+        let service = CollectionService::new(repo, test_entry_repo());
 
         let result = service.delete_collection("site-123", "test-collection").await;
         assert!(result.is_ok());
@@ -480,8 +477,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_delete_collection_not_found() {
-        let repo = test_repo();
-        let service = CollectionService::new(repo);
+        let service = make_service();
 
         let result = service.delete_collection("site-123", "nonexistent").await;
         assert!(result.is_ok());
@@ -491,24 +487,26 @@ mod tests {
     #[tokio::test]
     async fn test_update_singleton_data_success() {
         let repo = test_repo();
+        let entry_repo = test_entry_repo();
         let mut collection = create_test_collection();
         collection.is_singleton = true;
-        repo.add_collection(collection);
-        let service = CollectionService::new(repo);
+        repo.add_collection(collection.clone());
+        let service = CollectionService::new(repo, entry_repo);
 
-        let result = service.update_singleton_data("col-123", r#"{"title": "Hello"}"#).await;
+        let result = service
+            .entry_repo
+            .upsert_singleton_entry("site-123", &collection.id, "test-collection", r#"{"title":"Hello"}"#, None, None)
+            .await;
         assert!(result.is_ok());
     }
 
     #[tokio::test]
-    async fn test_update_singleton_data_not_found() {
-        let repo = test_repo();
-        let service = CollectionService::new(repo);
-
-        let result = service
-            .update_singleton_data("nonexistent", r#"{"title": "Hello"}"#)
+    async fn test_update_singleton_data_creates_entry() {
+        let entry_repo = test_entry_repo();
+        let result = entry_repo
+            .upsert_singleton_entry("site-123", "col-123", "x", r#"{"title":"Hello"}"#, None, None)
             .await;
-        assert!(result.is_err());
+        assert!(result.is_ok());
     }
 
     #[test]
