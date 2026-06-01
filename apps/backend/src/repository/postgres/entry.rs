@@ -94,8 +94,8 @@ impl EntryRepository for PostgresEntryRepository {
         }
 
         if let Some(search) = params.search {
-            query.push_str(&format!(" AND e.data LIKE ${}", param_index));
-            count_query.push_str(&format!(" AND e.data LIKE ${}", param_index));
+            query.push_str(&format!(" AND e.data::text LIKE ${}", param_index));
+            count_query.push_str(&format!(" AND e.data::text LIKE ${}", param_index));
             bindings.push(format!("%{}%", search));
             param_index += 1;
         }
