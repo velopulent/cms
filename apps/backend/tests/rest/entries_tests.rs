@@ -106,6 +106,50 @@ async fn test_list_entries() {
 }
 
 #[tokio::test]
+async fn test_list_entries_with_search() {
+    let server = TestServer::start().await;
+    let (jwt, csrf, site_id) = setup(&server).await;
+    let col_id = create_collection_and_get_id(&server, &jwt, &csrf, &site_id).await;
+    let client = reqwest::Client::builder().build().unwrap();
+
+    let entry = create_entry(
+        &server,
+        &jwt,
+        &csrf,
+        &site_id,
+        &col_id,
+        "searchable",
+        json!({"title": "Unique Title"}),
+    )
+    .await;
+    let entry_id = entry["id"].as_str().unwrap();
+
+    let resp = client
+        .post(format!("{}/api/dashboard/sites/{}/entries/{}/publish", server.base_url, site_id, entry_id))
+        .headers(auth_header(&jwt, &csrf))
+        .send()
+        .await
+        .unwrap();
+    assert!(resp.status().is_success(), "publish entry failed: {} {}", resp.status(), resp.text().await.unwrap_or_default());
+
+    let resp = client
+        .get(format!(
+            "{}/api/dashboard/sites/{}/entries?search=Unique",
+            server.base_url, site_id
+        ))
+        .headers(auth_header(&jwt, &csrf))
+        .send()
+        .await
+        .unwrap();
+
+    assert_eq!(resp.status(), 200);
+    let body: Value = resp.json().await.unwrap();
+    let items = body["items"].as_array().expect("items array");
+    let slugs: Vec<&str> = items.iter().filter_map(|i| i["slug"].as_str()).collect();
+    assert!(slugs.contains(&"searchable"), "expected slug 'searchable' in search results, got: {:?}", slugs);
+}
+
+#[tokio::test]
 async fn test_create_entry_validation_failed_missing_required() {
     let server = TestServer::start().await;
     let (jwt, csrf, site_id) = setup(&server).await;
