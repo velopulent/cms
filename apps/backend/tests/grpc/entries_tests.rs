@@ -111,6 +111,43 @@ async fn test_list_entries() {
 }
 
 #[tokio::test]
+async fn test_list_entries_with_search() {
+    let (ctx, _site_id, token, collection_id) = setup().await;
+    let channel = ctx.connect().await;
+    let mut client = EntryServiceClient::with_interceptor(channel, auth_interceptor(&token));
+
+    let created = client
+        .create_entry(tonic::Request::new(CreateEntryRequest {
+            collection_id: collection_id.clone(),
+            data: r#"{"title":"Unique Title"}"#.into(),
+            slug: "searchable".into(),
+        }))
+        .await
+        .unwrap()
+        .into_inner();
+
+    let _published = client
+        .publish_entry(tonic::Request::new(PublishEntryRequest { id: created.id.clone() }))
+        .await
+        .unwrap();
+
+    let resp = client
+        .list_entries(tonic::Request::new(ListEntriesRequest {
+            collection_id: Some(collection_id),
+            status: None,
+            search: Some("Unique".into()),
+            page: 1,
+            per_page: 10,
+        }))
+        .await
+        .unwrap()
+        .into_inner();
+
+    let slugs: Vec<&str> = resp.items.iter().map(|i| i.slug.as_str()).collect();
+    assert!(slugs.contains(&"searchable"), "expected slug 'searchable' in search results, got: {:?}", slugs);
+}
+
+#[tokio::test]
 async fn test_update_entry() {
     let (ctx, _site_id, token, collection_id) = setup().await;
     let channel = ctx.connect().await;
