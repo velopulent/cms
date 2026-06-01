@@ -17,13 +17,13 @@ import {
 import { CSS } from "@dnd-kit/utilities";
 import { useForm } from "@tanstack/react-form";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { createFileRoute, Link } from "@tanstack/react-router";
+import { createFileRoute } from "@tanstack/react-router";
 import { GripVertical, Layers, Pencil, Plus, Trash2 } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 import { z } from "zod";
 import { Badge } from "@/components/ui/badge";
-import { Button, buttonVariants } from "@/components/ui/button";
+import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
@@ -139,6 +139,7 @@ function CollectionsPage() {
   const queryClient = useQueryClient();
   const [createOpen, setCreateOpen] = useState(false);
   const [editCollection, setEditCollection] = useState<Collection | null>(null);
+  const [pendingIsSingleton, setPendingIsSingleton] = useState(false);
 
   const { data: collections, isLoading } = useQuery({
     queryKey: ["collections", siteId],
@@ -158,12 +159,18 @@ function CollectionsPage() {
     <div className="flex flex-col gap-6 p-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-semibold">Content Types</h1>
+          <h1 className="text-2xl font-semibold">Collections</h1>
           <p className="text-sm text-muted-foreground">
             Define the structure of your content
           </p>
         </div>
-        <Sheet open={createOpen} onOpenChange={setCreateOpen}>
+        <Sheet
+          open={createOpen}
+          onOpenChange={(open) => {
+            setCreateOpen(open);
+            if (!open) setPendingIsSingleton(false);
+          }}
+        >
           <SheetTrigger render={<Button />}>
             <Plus data-icon="inline-start" />
             New
@@ -172,13 +179,18 @@ function CollectionsPage() {
             className={"data-[side=right]:w-full data-[side=right]:sm:max-w-xl"}
           >
             <SheetHeader>
-              <SheetTitle>Create Content Type</SheetTitle>
+              <SheetTitle>
+                {pendingIsSingleton ? "Create Singleton" : "Create Collection"}
+              </SheetTitle>
               <SheetDescription>
-                Define a new content type with custom fields.
+                {pendingIsSingleton
+                  ? "Define a new singleton with custom fields."
+                  : "Define a new collection with custom fields."}
               </SheetDescription>
             </SheetHeader>
             <div className="flex-1 overflow-y-auto px-4">
               <CollectionForm
+                onIsSingletonChange={setPendingIsSingleton}
                 onSubmit={(data) => {
                   createCollection(siteId, data)
                     .then(() => {
@@ -186,6 +198,7 @@ function CollectionsPage() {
                         queryKey: ["collections", siteId],
                       });
                       setCreateOpen(false);
+                      setPendingIsSingleton(false);
                       toast.success(
                         data.is_singleton
                           ? "Singleton created"
@@ -202,7 +215,7 @@ function CollectionsPage() {
                 form="collection-form-create"
                 disabled={false}
               >
-                Create
+                {pendingIsSingleton ? "Create Singleton" : "Create Collection"}
               </Button>
               <SheetClose
                 render={
@@ -225,7 +238,7 @@ function CollectionsPage() {
         <Card>
           <CardContent className="flex flex-col items-center justify-center py-12">
             <Layers className="mb-4 size-10 text-muted-foreground" />
-            <p className="text-lg font-medium">No content types yet</p>
+            <p className="text-lg font-medium">No collections yet</p>
             <p className="text-sm text-muted-foreground">
               Create your first collection or singleton to get started.
             </p>
@@ -266,81 +279,13 @@ function CollectionsPage() {
                     <TableCell>{fieldCount} fields</TableCell>
                     <TableCell className="text-right">
                       <div className="flex justify-end gap-1">
-                        {c.is_singleton ? (
-                          <Link
-                            to="/sites/$siteId/singletons/$slug"
-                            params={{ siteId, slug: c.slug }}
-                            className={buttonVariants({
-                              variant: "ghost",
-                              size: "icon",
-                            })}
-                          >
-                            <Pencil />
-                          </Link>
-                        ) : (
-                          <Sheet
-                            open={editCollection?.id === c.id}
-                            onOpenChange={(open) =>
-                              setEditCollection(open ? c : null)
-                            }
-                          >
-                            <SheetTrigger
-                              render={<Button variant="ghost" size="icon" />}
-                            >
-                              <Pencil />
-                            </SheetTrigger>
-                            <SheetContent
-                              className={
-                                "data-[side=right]:w-full data-[side=right]:sm:max-w-xl"
-                              }
-                            >
-                              <SheetHeader>
-                                <SheetTitle>Edit Collection</SheetTitle>
-                                <SheetDescription>
-                                  Update the collection definition.
-                                </SheetDescription>
-                              </SheetHeader>
-                              <div className="flex-1 overflow-y-auto px-4">
-                                <CollectionForm
-                                  initialData={c}
-                                  onSubmit={(data) => {
-                                    updateCollection(siteId, c.slug, {
-                                      name: data.name,
-                                      slug: data.slug,
-                                      definition: data.definition,
-                                    })
-                                      .then(() => {
-                                        queryClient.invalidateQueries({
-                                          queryKey: ["collections", siteId],
-                                        });
-                                        setEditCollection(null);
-                                        toast.success("Collection updated");
-                                      })
-                                      .catch((err: Error) =>
-                                        toast.error(err.message),
-                                      );
-                                  }}
-                                />
-                              </div>
-                              <SheetFooter>
-                                <Button
-                                  type="submit"
-                                  form="collection-form-edit"
-                                  disabled={false}
-                                >
-                                  Update Collection
-                                </Button>
-                                <SheetClose
-                                  render={
-                                    <Button type="button" variant="outline">
-                                      Cancel
-                                    </Button>
-                                  }
-                                />
-                              </SheetFooter>
-                            </SheetContent>
-                          </Sheet>
-                        )}
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => setEditCollection(c)}
+                        >
+                          <Pencil />
+                        </Button>
                         <Button
                           variant="ghost"
                           size="icon"
@@ -358,6 +303,70 @@ function CollectionsPage() {
           </Table>
         </Card>
       )}
+
+      <Sheet
+        open={editCollection !== null}
+        onOpenChange={(open) => !open && setEditCollection(null)}
+      >
+        <SheetContent
+          className={"data-[side=right]:w-full data-[side=right]:sm:max-w-xl"}
+        >
+          <SheetHeader>
+            <SheetTitle>
+              {editCollection?.is_singleton
+                ? "Edit Singleton"
+                : "Edit Collection"}
+            </SheetTitle>
+            <SheetDescription>
+              {editCollection?.is_singleton
+                ? "Update the singleton definition."
+                : "Update the collection definition."}
+            </SheetDescription>
+          </SheetHeader>
+          <div className="flex-1 overflow-y-auto px-4">
+            {editCollection && (
+              <CollectionForm
+                key={editCollection.id}
+                initialData={editCollection}
+                onSubmit={(data) => {
+                  updateCollection(siteId, editCollection.slug, {
+                    name: data.name,
+                    slug: data.slug,
+                    definition: data.definition,
+                  })
+                    .then(() => {
+                      queryClient.invalidateQueries({
+                        queryKey: ["collections", siteId],
+                      });
+                      const wasSingleton = editCollection.is_singleton;
+                      setEditCollection(null);
+                      toast.success(
+                        wasSingleton
+                          ? "Singleton updated"
+                          : "Collection updated",
+                      );
+                    })
+                    .catch((err: Error) => toast.error(err.message));
+                }}
+              />
+            )}
+          </div>
+          <SheetFooter>
+            <Button type="submit" form="collection-form-edit" disabled={false}>
+              {editCollection?.is_singleton
+                ? "Update Singleton"
+                : "Update Collection"}
+            </Button>
+            <SheetClose
+              render={
+                <Button type="button" variant="outline">
+                  Cancel
+                </Button>
+              }
+            />
+          </SheetFooter>
+        </SheetContent>
+      </Sheet>
     </div>
   );
 }
@@ -599,6 +608,7 @@ type CollectionFormValues = {
 function CollectionForm({
   initialData,
   onSubmit,
+  onIsSingletonChange,
 }: {
   initialData?: Collection;
   onSubmit: (data: {
@@ -607,6 +617,7 @@ function CollectionForm({
     definition: SchemaDefinition;
     is_singleton?: boolean;
   }) => void;
+  onIsSingletonChange?: (isSingleton: boolean) => void;
 }) {
   const [slugManuallyEdited, setSlugManuallyEdited] = useState(!!initialData);
   const isEdit = !!initialData;
@@ -766,7 +777,11 @@ function CollectionForm({
                   { label: "Singleton (single entry)", value: "true" },
                 ]}
                 value={field.state.value ? "true" : "false"}
-                onValueChange={(val) => field.handleChange(val === "true")}
+                onValueChange={(val) => {
+                  const next = val === "true";
+                  field.handleChange(next);
+                  onIsSingletonChange?.(next);
+                }}
               >
                 <SelectTrigger className="w-full">
                   <SelectValue />
