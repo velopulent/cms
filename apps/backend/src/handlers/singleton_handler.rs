@@ -127,7 +127,13 @@ pub async fn update_singleton(
 
     match services
         .singleton
-        .update_singleton(&ctx.site_id, &slug, &payload.data)
+        .update_singleton(
+            &ctx.site_id,
+            &slug,
+            &payload.data,
+            ctx.auth.actor.user_id(),
+            payload.change_summary.as_deref(),
+        )
         .await
     {
         Ok(response) => (StatusCode::OK, Json(response)).into_response(),
