@@ -7,12 +7,13 @@ use thiserror::Error;
 use tracing::{debug, error, info, warn};
 
 use crate::models::collection::{Collection, SingletonResponse};
-use crate::repository::traits::{CollectionRepository, FileRepository};
+use crate::repository::traits::{CollectionRepository, EntryRepository, FileRepository};
 use crate::storage::StorageProvider;
 
 #[derive(Clone)]
 pub struct SingletonService {
     collection_repo: Arc<dyn CollectionRepository>,
+    entry_repo: Arc<dyn EntryRepository>,
     file_repo: Arc<dyn FileRepository>,
 }
 
@@ -56,16 +57,21 @@ impl SingletonError {
 }
 
 impl SingletonService {
-    pub fn new(collection_repo: Arc<dyn CollectionRepository>, file_repo: Arc<dyn FileRepository>) -> Self {
+    pub fn new(
+        collection_repo: Arc<dyn CollectionRepository>,
+        entry_repo: Arc<dyn EntryRepository>,
+        file_repo: Arc<dyn FileRepository>,
+    ) -> Self {
         Self {
             collection_repo,
+            entry_repo,
             file_repo,
         }
     }
 
-    fn collection_to_response(c: &Collection) -> SingletonResponse {
+    fn build_response(c: &Collection, entry: Option<&crate::models::entry::Entry>) -> SingletonResponse {
         let definition: Value = serde_json::from_str(&c.definition).unwrap_or(json!({"fields": []}));
-        let data = c.singleton_data.as_ref().and_then(|d| serde_json::from_str(d).ok());
+        let data = entry.and_then(|e| serde_json::from_str(&e.data).ok());
 
         SingletonResponse {
             id: c.id.clone(),
@@ -74,19 +80,29 @@ impl SingletonService {
             slug: c.slug.clone(),
             definition,
             data,
+            entry_id: entry.map(|e| e.id.clone()),
             created_at: c.created_at.clone(),
-            updated_at: c.updated_at.clone(),
+            updated_at: entry.map(|e| e.updated_at.clone()).unwrap_or_else(|| c.updated_at.clone()),
         }
     }
 
     pub async fn list_singletons(&self, site_id: &str) -> Result<Vec<SingletonResponse>, SingletonError> {
-        let items = self
+        let collections = self
             .collection_repo
             .list_singletons_only(site_id)
             .await
             .map_err(|e| SingletonError::DatabaseError(e.to_string()))?;
 
-        Ok(items.iter().map(Self::collection_to_response).collect())
+        let mut out = Vec::with_capacity(collections.len());
+        for c in &collections {
+            let entry = self
+                .entry_repo
+                .get_singleton_entry(site_id, &c.slug)
+                .await
+                .map_err(|e| SingletonError::DatabaseError(e.to_string()))?;
+            out.push(Self::build_response(c, entry.as_ref()));
+        }
+        Ok(out)
     }
 
     pub async fn get_singleton(
@@ -97,44 +113,44 @@ impl SingletonService {
     ) -> Result<SingletonResponse, SingletonError> {
         debug!("Fetching singleton: site_id={}, slug={}", site_id, slug);
 
-        let item = self
+        let collection = self
             .collection_repo
             .get_by_slug(site_id, slug)
             .await
             .map_err(|e| {
                 error!(
-                    "Failed to fetch singleton from repository: site_id={}, slug={}, error={}",
+                    "Failed to fetch singleton collection: site_id={}, slug={}, error={}",
                     site_id, slug, e
                 );
                 SingletonError::DatabaseError(e.to_string())
             })?
             .ok_or(SingletonError::NotFound)?;
 
-        debug!(
-            "Fetched collection item: id={}, is_singleton={}",
-            item.id, item.is_singleton
-        );
-
-        if !item.is_singleton {
+        if !collection.is_singleton {
             warn!(
                 "Collection is not a singleton: id={}, site_id={}, slug={}",
-                item.id, site_id, slug
+                collection.id, site_id, slug
             );
             return Err(SingletonError::NotASingleton);
         }
 
-        debug!("Collection is a singleton, building response: id={}", item.id);
-        let mut response = Self::collection_to_response(&item);
+        let entry = self
+            .entry_repo
+            .get_singleton_entry(site_id, slug)
+            .await
+            .map_err(|e| SingletonError::DatabaseError(e.to_string()))?;
 
-        if let Some(ref data) = response.data {
+        let mut response = Self::build_response(&collection, entry.as_ref());
+
+        if let (Some(entry), Some(data)) = (entry.as_ref(), response.data.as_ref()) {
             debug!("Resolving file references in singleton data");
-            let resolved = self.resolve_files_from_value(data, &item.site_id, storage).await;
+            let resolved = self.resolve_files_from_value(data, &entry.site_id, storage).await;
             response.data = Some(resolved);
         }
 
         info!(
             "Singleton retrieved successfully: id={}, site_id={}, slug={}",
-            item.id, site_id, slug
+            collection.id, site_id, slug
         );
         Ok(response)
     }
@@ -144,10 +160,12 @@ impl SingletonService {
         site_id: &str,
         slug: &str,
         data: &Value,
+        created_by: Option<&str>,
+        change_summary: Option<&str>,
     ) -> Result<SingletonResponse, SingletonError> {
         debug!("Updating singleton: site_id={}, slug={}", site_id, slug);
 
-        let item = self
+        let collection = self
             .collection_repo
             .get_by_slug(site_id, slug)
             .await
@@ -160,16 +178,15 @@ impl SingletonService {
             })?
             .ok_or(SingletonError::NotFound)?;
 
-        if !item.is_singleton {
+        if !collection.is_singleton {
             warn!(
                 "Collection is not a singleton: id={}, site_id={}, slug={}",
-                item.id, site_id, slug
+                collection.id, site_id, slug
             );
             return Err(SingletonError::NotASingleton);
         }
 
-        // Validate singleton data against collection definition
-        if let Ok(definition) = serde_json::from_str::<Value>(&item.definition)
+        if let Ok(definition) = serde_json::from_str::<Value>(&collection.definition)
             && let Some(fields) = definition.get("fields").and_then(|f| f.as_array())
                 && let Some(err) =
                     super::definition_validation::validate_entry_data(data, fields)
@@ -178,22 +195,22 @@ impl SingletonService {
                 }
 
         let data_str = data.to_string();
-        debug!("Updating singleton data for item: id={}", item.id);
+        debug!("Upserting singleton entry for collection: id={}", collection.id);
 
-        let updated = self
-            .collection_repo
-            .update_singleton_data(&item.id, &data_str)
+        let entry = self
+            .entry_repo
+            .upsert_singleton_entry(site_id, &collection.id, slug, &data_str, created_by, change_summary)
             .await
             .map_err(|e| {
                 error!(
-                    "Failed to update singleton data in repository: id={}, error={}",
-                    item.id, e
+                    "Failed to upsert singleton entry: id={}, error={}",
+                    collection.id, e
                 );
                 SingletonError::DatabaseError(e.to_string())
             })?;
 
-        info!("Singleton updated successfully: id={}", item.id);
-        Ok(Self::collection_to_response(&updated))
+        info!("Singleton updated successfully: id={}", collection.id);
+        Ok(Self::build_response(&collection, Some(&entry)))
     }
 
     async fn resolve_files_from_value(&self, data: &Value, site_id: &str, storage: Arc<dyn StorageProvider>) -> Value {
@@ -243,15 +260,23 @@ impl SingletonService {
 mod tests {
     use super::*;
     use crate::storage::MockStorage;
-    use crate::test_helpers::{InMemoryCollectionRepository, InMemoryFileRepository};
+    use crate::test_helpers::{InMemoryCollectionRepository, InMemoryEntryRepository, InMemoryFileRepository};
     use std::sync::Arc;
 
     fn test_collection_repo() -> Arc<InMemoryCollectionRepository> {
         Arc::new(InMemoryCollectionRepository::new())
     }
 
+    fn test_entry_repo() -> Arc<InMemoryEntryRepository> {
+        Arc::new(InMemoryEntryRepository::new())
+    }
+
     fn test_file_repo() -> Arc<InMemoryFileRepository> {
         Arc::new(InMemoryFileRepository::new())
+    }
+
+    fn make_service() -> SingletonService {
+        SingletonService::new(test_collection_repo(), test_entry_repo(), test_file_repo())
     }
 
     fn create_test_collection() -> Collection {
@@ -262,7 +287,6 @@ mod tests {
             slug: "test-singleton".to_string(),
             definition: r#"{"fields": [{"name": "title", "type": "text"}]}"#.to_string(),
             is_singleton: true,
-            singleton_data: Some(r#"{"title": "Hello"}"#.to_string()),
             created_at: "2024-01-01 00:00:00".to_string(),
             updated_at: "2024-01-01 00:00:00".to_string(),
         }
@@ -276,7 +300,6 @@ mod tests {
             slug: "regular".to_string(),
             definition: r#"{"fields": []}"#.to_string(),
             is_singleton: false,
-            singleton_data: None,
             created_at: "2024-01-01 00:00:00".to_string(),
             updated_at: "2024-01-01 00:00:00".to_string(),
         }
@@ -284,20 +307,14 @@ mod tests {
 
     #[tokio::test]
     async fn test_list_singletons() {
-        let collection_repo = test_collection_repo();
-        let file_repo = test_file_repo();
-        let service = SingletonService::new(collection_repo, file_repo);
-
+        let service = make_service();
         let result = service.list_singletons("site-123").await;
         assert!(result.is_ok());
     }
 
     #[tokio::test]
     async fn test_get_singleton_not_found() {
-        let collection_repo = test_collection_repo();
-        let file_repo = test_file_repo();
-        let service = SingletonService::new(collection_repo, file_repo);
-
+        let service = make_service();
         let storage = Arc::new(MockStorage::default());
         let result = service.get_singleton("site-123", "nonexistent", storage).await;
         assert!(matches!(result, Err(SingletonError::NotFound)));
@@ -307,8 +324,7 @@ mod tests {
     async fn test_get_singleton_not_a_singleton() {
         let collection_repo = test_collection_repo();
         collection_repo.add_collection(create_non_singleton_collection());
-        let file_repo = test_file_repo();
-        let service = SingletonService::new(collection_repo, file_repo);
+        let service = SingletonService::new(collection_repo, test_entry_repo(), test_file_repo());
 
         let storage = Arc::new(MockStorage::default());
         let result = service.get_singleton("site-123", "regular", storage).await;
@@ -318,26 +334,36 @@ mod tests {
     #[tokio::test]
     async fn test_get_singleton_success() {
         let collection_repo = test_collection_repo();
-        collection_repo.add_collection(create_test_collection());
-        let file_repo = test_file_repo();
-        let service = SingletonService::new(collection_repo, file_repo);
+        let entry_repo = test_entry_repo();
+        let coll = create_test_collection();
+        collection_repo.add_collection(coll.clone());
+        entry_repo
+            .upsert_singleton_entry(
+                "site-123",
+                &coll.id,
+                &coll.slug,
+                r#"{"title":"Hello"}"#,
+                None,
+                None,
+            )
+            .await
+            .unwrap();
 
+        let service = SingletonService::new(collection_repo, entry_repo, test_file_repo());
         let storage = Arc::new(MockStorage::default());
         let result = service.get_singleton("site-123", "test-singleton", storage).await;
         assert!(result.is_ok());
         let response = result.unwrap();
         assert_eq!(response.name, "Test Singleton");
         assert!(response.data.is_some());
+        assert!(response.entry_id.is_some());
     }
 
     #[tokio::test]
     async fn test_update_singleton_not_found() {
-        let collection_repo = test_collection_repo();
-        let file_repo = test_file_repo();
-        let service = SingletonService::new(collection_repo, file_repo);
-
+        let service = make_service();
         let result = service
-            .update_singleton("site-123", "nonexistent", &json!({"title": "Updated"}))
+            .update_singleton("site-123", "nonexistent", &json!({"title": "Updated"}), None, None)
             .await;
         assert!(matches!(result, Err(SingletonError::NotFound)));
     }
@@ -346,34 +372,91 @@ mod tests {
     async fn test_update_singleton_not_a_singleton() {
         let collection_repo = test_collection_repo();
         collection_repo.add_collection(create_non_singleton_collection());
-        let file_repo = test_file_repo();
-        let service = SingletonService::new(collection_repo, file_repo);
+        let service = SingletonService::new(collection_repo, test_entry_repo(), test_file_repo());
 
         let result = service
-            .update_singleton("site-123", "regular", &json!({"title": "Updated"}))
+            .update_singleton("site-123", "regular", &json!({"title": "Updated"}), None, None)
             .await;
         assert!(matches!(result, Err(SingletonError::NotASingleton)));
     }
 
     #[tokio::test]
-    async fn test_update_singleton_success() {
+    async fn test_update_singleton_creates_entry() {
         let collection_repo = test_collection_repo();
+        let entry_repo = test_entry_repo();
         collection_repo.add_collection(create_test_collection());
-        let file_repo = test_file_repo();
-        let service = SingletonService::new(collection_repo, file_repo);
+        let service = SingletonService::new(collection_repo.clone(), entry_repo.clone(), test_file_repo());
 
         let result = service
-            .update_singleton("site-123", "test-singleton", &json!({"title": "Updated Title"}))
+            .update_singleton(
+                "site-123",
+                "test-singleton",
+                &json!({"title": "Updated Title"}),
+                Some("user-1"),
+                Some("initial write"),
+            )
+            .await;
+        assert!(result.is_ok());
+        let response = result.unwrap();
+        assert!(response.entry_id.is_some());
+    }
+
+    #[tokio::test]
+    async fn test_update_singleton_upserts_existing() {
+        let collection_repo = test_collection_repo();
+        let entry_repo = test_entry_repo();
+        let coll = create_test_collection();
+        collection_repo.add_collection(coll.clone());
+        entry_repo
+            .upsert_singleton_entry(
+                "site-123",
+                &coll.id,
+                &coll.slug,
+                r#"{"title":"v1"}"#,
+                Some("user-1"),
+                Some("v1"),
+            )
+            .await
+            .unwrap();
+
+        let service = SingletonService::new(collection_repo, entry_repo.clone(), test_file_repo());
+        let result = service
+            .update_singleton("site-123", "test-singleton", &json!({"title": "v2"}), Some("user-1"), Some("v2"))
             .await;
         assert!(result.is_ok());
     }
 
+    #[tokio::test]
+    async fn test_update_singleton_revision_count_inline() {
+        let collection_repo = test_collection_repo();
+        let entry_repo = test_entry_repo();
+        let coll = create_test_collection();
+        collection_repo.add_collection(coll.clone());
+        let service = SingletonService::new(collection_repo, entry_repo.clone(), test_file_repo());
+
+        service
+            .update_singleton("site-123", "test-singleton", &json!({"title": "v1"}), Some("user-1"), Some("v1"))
+            .await
+            .unwrap();
+        let entry = entry_repo
+            .get_singleton_entry("site-123", "test-singleton")
+            .await
+            .unwrap()
+            .unwrap();
+        let revisions = entry_repo.list_revisions(&entry.id, 1, 10).await.unwrap();
+        assert_eq!(revisions.total, 1);
+
+        service
+            .update_singleton("site-123", "test-singleton", &json!({"title": "v2"}), Some("user-1"), Some("v2"))
+            .await
+            .unwrap();
+        let revisions = entry_repo.list_revisions(&entry.id, 1, 10).await.unwrap();
+        assert_eq!(revisions.total, 2);
+    }
+
     #[test]
     fn test_extract_file_ids() {
-        let collection_repo = test_collection_repo();
-        let file_repo = test_file_repo();
-        let service = SingletonService::new(collection_repo, file_repo);
-
+        let service = make_service();
         let data = json!({
             "title": "Test",
             "image": "/api/files/abc-123-def/test.jpg"
@@ -384,10 +467,7 @@ mod tests {
 
     #[test]
     fn test_extract_file_ids_multiple() {
-        let collection_repo = test_collection_repo();
-        let file_repo = test_file_repo();
-        let service = SingletonService::new(collection_repo, file_repo);
-
+        let service = make_service();
         let data = json!({
             "images": ["/api/files/abc-123-def/image.png", "/api/files/456-789-abc/image.png"]
         });
@@ -397,10 +477,7 @@ mod tests {
 
     #[test]
     fn test_extract_file_ids_none() {
-        let collection_repo = test_collection_repo();
-        let file_repo = test_file_repo();
-        let service = SingletonService::new(collection_repo, file_repo);
-
+        let service = make_service();
         let data = json!({"title": "No files here"});
         let ids = service.extract_file_ids_from_value(&data);
         assert!(ids.is_empty());
@@ -420,16 +497,5 @@ mod tests {
             SingletonError::DatabaseError("bad".into()).into_response().status(),
             axum::http::StatusCode::INTERNAL_SERVER_ERROR
         );
-    }
-
-    #[test]
-    fn test_collection_to_response() {
-        let collection = create_test_collection();
-        let response = SingletonService::collection_to_response(&collection);
-
-        assert_eq!(response.id, "col-123");
-        assert_eq!(response.name, "Test Singleton");
-        assert_eq!(response.slug, "test-singleton");
-        assert!(response.data.is_some());
     }
 }

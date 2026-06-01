@@ -42,7 +42,10 @@ impl Services {
                 repository.access_token.clone(),
                 config.hmac_secret.clone(),
             )),
-            collection: Arc::new(collection::CollectionService::new(repository.collection.clone())),
+            collection: Arc::new(collection::CollectionService::new(
+                repository.collection.clone(),
+                repository.entry.clone(),
+            )),
             entry: Arc::new(entry::EntryService::new(
                 repository.entry.clone(),
                 repository.file.clone(),
@@ -51,6 +54,7 @@ impl Services {
             file: Arc::new(file::FileService::new(repository.file.clone(), config.clone())),
             singleton: Arc::new(singleton::SingletonService::new(
                 repository.collection.clone(),
+                repository.entry.clone(),
                 repository.file.clone(),
             )),
             webhook: Arc::new(webhook::WebhookService::new(
