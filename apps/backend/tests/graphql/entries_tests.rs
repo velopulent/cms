@@ -148,7 +148,8 @@ async fn test_entries_with_search() {
     let body = gql(&server, &token, r#"{ entries(search: "Unique") { id slug } }"#).await;
     assert!(body["errors"].is_null(), "errors: {:?}", body["errors"]);
     let entries = body["data"]["entries"].as_array().unwrap();
-    assert!(!entries.is_empty());
+    let slugs: Vec<&str> = entries.iter().filter_map(|e| e["slug"].as_str()).collect();
+    assert!(slugs.contains(&"searchable"), "expected slug 'searchable' in search results, got: {:?}", slugs);
 }
 
 #[tokio::test]
