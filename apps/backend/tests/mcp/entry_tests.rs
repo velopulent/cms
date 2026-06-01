@@ -381,3 +381,43 @@ async fn test_list_entries_filter_by_collection() {
     let data = mcp_tool_json(&result);
     assert_eq!(data["items"].as_array().unwrap().len(), 1);
 }
+
+#[tokio::test]
+async fn test_list_entries_with_search() {
+    let server = start_mcp_server().await;
+    let (_, token) = setup_site_token(&server).await;
+    let col_id = setup_collection(&server.base_url, &token).await;
+
+    let created = create_test_entry(
+        &server.base_url,
+        &token,
+        &col_id,
+        "searchable",
+        serde_json::json!({"title": "Unique Title"}),
+    )
+    .await;
+    let entry = mcp_tool_json(&created);
+    let entry_id = entry["id"].as_str().unwrap().to_string();
+
+    let publish_result = mcp_call_tool(
+        &server.base_url,
+        &token,
+        "publish_entry",
+        serde_json::json!({"id": entry_id}),
+    )
+    .await;
+    let wrapped = serde_json::json!({"result": publish_result});
+    assert!(!mcp_is_error(&wrapped), "publish_entry should succeed");
+
+    let result = mcp_call_tool(
+        &server.base_url,
+        &token,
+        "list_entries",
+        serde_json::json!({"search": "Unique", "published_only": false}),
+    )
+    .await;
+    let data = mcp_tool_json(&result);
+    let items = data["items"].as_array().expect("items array");
+    let slugs: Vec<&str> = items.iter().filter_map(|i| i["slug"].as_str()).collect();
+    assert!(slugs.contains(&"searchable"), "expected slug 'searchable' in search results, got: {:?}", slugs);
+}
