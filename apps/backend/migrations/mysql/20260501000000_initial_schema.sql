@@ -130,7 +130,7 @@ CREATE INDEX idx_efr_entry ON entry_file_references(entry_id);
 CREATE TABLE IF NOT EXISTS entry_revisions (
     id VARCHAR(36) PRIMARY KEY NOT NULL,
     entry_id VARCHAR(36) NOT NULL,
-    revision_number INTEGER NOT NULL,
+    revision_number BIGINT NOT NULL,
     data JSON NOT NULL,
     created_by VARCHAR(36),
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -163,7 +163,7 @@ CREATE TABLE IF NOT EXISTS site_webhook_deliveries (
     status VARCHAR(20) NOT NULL,
     status_code INTEGER,
     response_body TEXT,
-    duration_ms INTEGER,
+    duration_ms BIGINT,
     triggered_by VARCHAR(36) NULL,
     triggered_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (webhook_id) REFERENCES site_webhooks(id) ON DELETE CASCADE,
