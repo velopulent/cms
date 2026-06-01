@@ -284,6 +284,7 @@ impl From<Entry> for ProtoEntry {
             data: e.data,
             slug: e.slug,
             status: e.status,
+            singleton_collection_id: e.singleton_collection_id,
             created_at: e.created_at,
             updated_at: e.updated_at,
             published_at: e.published_at,
