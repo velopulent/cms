@@ -43,7 +43,7 @@ const breadcrumbConfigs: BreadcrumbConfig[] = [
   },
   {
     routeId: "/_admin/sites/$siteId/collections",
-    crumbs: [{ labelFrom: "site" }, { label: "Content Types" }],
+    crumbs: [{ labelFrom: "site" }, { label: "Collections" }],
   },
   {
     routeId: "/_admin/sites/$siteId/files",
