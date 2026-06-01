@@ -69,7 +69,7 @@ impl SingletonService for SingletonServiceImpl {
 
         let singleton = self
             .app_singleton_service
-            .update_singleton(&site_id, &req.slug, &data)
+            .update_singleton(&site_id, &req.slug, &data, None, req.change_summary.as_deref())
             .await
             .map_err(|e| Status::internal(format!("Error: {}", e)))?;
 
@@ -86,6 +86,7 @@ impl From<crate::models::collection::SingletonResponse> for ProtoSingleton {
             slug: c.slug,
             definition: c.definition.to_string(),
             data: c.data.map(|d| d.to_string()),
+            entry_id: c.entry_id,
             created_at: c.created_at,
             updated_at: c.updated_at,
         }
