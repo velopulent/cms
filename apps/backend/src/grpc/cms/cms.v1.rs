@@ -25,11 +25,9 @@ pub struct Collection {
     pub definition: ::prost::alloc::string::String,
     #[prost(bool, tag = "6")]
     pub is_singleton: bool,
-    #[prost(string, optional, tag = "7")]
-    pub singleton_data: ::core::option::Option<::prost::alloc::string::String>,
-    #[prost(string, tag = "8")]
+    #[prost(string, tag = "7")]
     pub created_at: ::prost::alloc::string::String,
-    #[prost(string, tag = "9")]
+    #[prost(string, tag = "8")]
     pub updated_at: ::prost::alloc::string::String,
 }
 #[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
@@ -87,11 +85,13 @@ pub struct Entry {
     pub slug: ::prost::alloc::string::String,
     #[prost(string, tag = "6")]
     pub status: ::prost::alloc::string::String,
-    #[prost(string, tag = "7")]
-    pub created_at: ::prost::alloc::string::String,
+    #[prost(string, optional, tag = "7")]
+    pub singleton_collection_id: ::core::option::Option<::prost::alloc::string::String>,
     #[prost(string, tag = "8")]
+    pub created_at: ::prost::alloc::string::String,
+    #[prost(string, tag = "9")]
     pub updated_at: ::prost::alloc::string::String,
-    #[prost(string, optional, tag = "9")]
+    #[prost(string, optional, tag = "10")]
     pub published_at: ::core::option::Option<::prost::alloc::string::String>,
 }
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
@@ -225,9 +225,11 @@ pub struct Singleton {
     pub definition: ::prost::alloc::string::String,
     #[prost(string, optional, tag = "6")]
     pub data: ::core::option::Option<::prost::alloc::string::String>,
-    #[prost(string, tag = "7")]
-    pub created_at: ::prost::alloc::string::String,
+    #[prost(string, optional, tag = "7")]
+    pub entry_id: ::core::option::Option<::prost::alloc::string::String>,
     #[prost(string, tag = "8")]
+    pub created_at: ::prost::alloc::string::String,
+    #[prost(string, tag = "9")]
     pub updated_at: ::prost::alloc::string::String,
 }
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
@@ -241,6 +243,8 @@ pub struct UpdateSingletonRequest {
     pub slug: ::prost::alloc::string::String,
     #[prost(string, tag = "2")]
     pub data: ::prost::alloc::string::String,
+    #[prost(string, optional, tag = "3")]
+    pub change_summary: ::core::option::Option<::prost::alloc::string::String>,
 }
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct File {
