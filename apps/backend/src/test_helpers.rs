@@ -325,7 +325,6 @@ impl CollectionRepository for InMemoryCollectionRepository {
             slug: slug.to_string(),
             definition: definition.to_string(),
             is_singleton,
-            singleton_data: None,
             created_at: now_timestamp(),
             updated_at: now_timestamp(),
         };
@@ -339,16 +338,6 @@ impl CollectionRepository for InMemoryCollectionRepository {
             col.name = name.to_string();
             col.slug = slug.to_string();
             col.definition = definition.to_string();
-            col.updated_at = now_timestamp();
-            return Ok(col.clone());
-        }
-        Err(RepositoryError::NotFound)
-    }
-
-    async fn update_singleton_data(&self, id: &str, data: &str) -> Result<Collection, RepositoryError> {
-        let mut collections = self.collections.lock().unwrap();
-        if let Some(col) = collections.iter_mut().find(|c| c.id == id) {
-            col.singleton_data = Some(data.to_string());
             col.updated_at = now_timestamp();
             return Ok(col.clone());
         }
@@ -369,14 +358,6 @@ impl CollectionRepository for InMemoryCollectionRepository {
     async fn migrate_content_field_renames(
         &self,
         _content_items: &[Entry],
-        _rename_map: &std::collections::HashMap<String, String>,
-    ) -> Result<(), RepositoryError> {
-        Ok(())
-    }
-
-    async fn migrate_singleton_field_renames(
-        &self,
-        _collection: &Collection,
         _rename_map: &std::collections::HashMap<String, String>,
     ) -> Result<(), RepositoryError> {
         Ok(())
@@ -485,6 +466,7 @@ impl EntryRepository for InMemoryEntryRepository {
             data: data.to_string(),
             slug: slug.to_string(),
             status: "draft".to_string(),
+            singleton_collection_id: None,
             created_at: now_timestamp(),
             updated_at: now_timestamp(),
             published_at: None,
@@ -660,6 +642,96 @@ impl EntryRepository for InMemoryEntryRepository {
             return Ok(entry.clone());
         }
         Err(RepositoryError::NotFound)
+    }
+
+    async fn get_singleton_entry(
+        &self,
+        site_id: &str,
+        slug: &str,
+    ) -> Result<Option<Entry>, RepositoryError> {
+        let entries = self.entries.lock().unwrap();
+        Ok(entries
+            .iter()
+            .find(|e| e.site_id == site_id && e.singleton_collection_id.is_some() && e.slug == slug)
+            .cloned())
+    }
+
+    async fn upsert_singleton_entry(
+        &self,
+        site_id: &str,
+        collection_id: &str,
+        slug: &str,
+        data: &str,
+        created_by: Option<&str>,
+        change_summary: Option<&str>,
+    ) -> Result<Entry, RepositoryError> {
+        let mut entries = self.entries.lock().unwrap();
+        if let Some(entry) = entries
+            .iter_mut()
+            .find(|e| e.singleton_collection_id.as_deref() == Some(collection_id))
+        {
+            entry.data = data.to_string();
+            entry.updated_at = now_timestamp();
+
+            let mut revisions = self.revisions.lock().unwrap();
+            let next_number = revisions
+                .iter()
+                .filter(|r| r.entry_id == entry.id)
+                .map(|r| r.revision_number)
+                .max()
+                .unwrap_or(0)
+                + 1;
+            let data_json: serde_json::Value = serde_json::from_str(data).unwrap_or(serde_json::Value::Null);
+            let revision = EntryRevision {
+                id: uuid::Uuid::now_v7().to_string(),
+                entry_id: entry.id.clone(),
+                revision_number: next_number,
+                data: sqlx::types::Json(data_json),
+                created_by: created_by.map(|s| s.to_string()),
+                created_at: now_timestamp(),
+                change_summary: change_summary.map(|s| s.to_string()),
+            };
+            revisions.push(revision);
+
+            return Ok(entry.clone());
+        }
+        let id = uuid::Uuid::now_v7().to_string();
+        let entry = Entry {
+            id: id.clone(),
+            site_id: site_id.to_string(),
+            collection_id: collection_id.to_string(),
+            data: data.to_string(),
+            slug: slug.to_string(),
+            status: "draft".to_string(),
+            singleton_collection_id: Some(collection_id.to_string()),
+            created_at: now_timestamp(),
+            updated_at: now_timestamp(),
+            published_at: None,
+        };
+        entries.push(entry.clone());
+
+        let data_json: serde_json::Value = serde_json::from_str(data).unwrap_or(serde_json::Value::Null);
+        let revision = EntryRevision {
+            id: uuid::Uuid::now_v7().to_string(),
+            entry_id: id,
+            revision_number: 1,
+            data: sqlx::types::Json(data_json),
+            created_by: created_by.map(|s| s.to_string()),
+            created_at: now_timestamp(),
+            change_summary: change_summary.map(|s| s.to_string()),
+        };
+        self.revisions.lock().unwrap().push(revision);
+
+        Ok(entry)
+    }
+
+    async fn migrate_singleton_field_renames(
+        &self,
+        _site_id: &str,
+        _collection_id: &str,
+        _rename_map: &std::collections::HashMap<String, String>,
+    ) -> Result<(), RepositoryError> {
+        Ok(())
     }
 }
 
