@@ -43,10 +43,6 @@ fn make_resource(uri: &str, name: &str, title: &str, description: &str) -> Resou
 fn collection_to_schema_value(c: &Collection) -> serde_json::Value {
     let definition: serde_json::Value =
         serde_json::from_str(&c.definition).unwrap_or(serde_json::json!({"fields": []}));
-    let singleton_data: Option<serde_json::Value> = c
-        .singleton_data
-        .as_ref()
-        .and_then(|d| serde_json::from_str(d).ok());
     serde_json::json!({
         "id": c.id,
         "site_id": c.site_id,
@@ -54,7 +50,6 @@ fn collection_to_schema_value(c: &Collection) -> serde_json::Value {
         "slug": c.slug,
         "definition": definition,
         "is_singleton": c.is_singleton,
-        "singleton_data": singleton_data,
         "created_at": c.created_at,
         "updated_at": c.updated_at,
     })
@@ -272,7 +267,7 @@ mod tests {
     use super::*;
     use crate::models::collection::Collection;
 
-    fn make_collection(definition: &str, singleton_data: Option<&str>) -> Collection {
+    fn make_collection(definition: &str) -> Collection {
         Collection {
             id: "col-1".into(),
             site_id: "site-1".into(),
@@ -280,7 +275,6 @@ mod tests {
             slug: "blog".into(),
             definition: definition.into(),
             is_singleton: false,
-            singleton_data: singleton_data.map(|s| s.into()),
             created_at: "2025-01-01T00:00:00Z".into(),
             updated_at: "2025-01-02T00:00:00Z".into(),
         }
@@ -289,7 +283,7 @@ mod tests {
     #[test]
     fn definition_is_object_not_string() {
         let def_json = r#"{"fields":[{"name":"title","type":"text","required":true}]}"#;
-        let c = make_collection(def_json, None);
+        let c = make_collection(def_json);
         let value = collection_to_schema_value(&c);
 
         let def = value.get("definition").expect("definition missing");
@@ -304,24 +298,8 @@ mod tests {
     }
 
     #[test]
-    fn singleton_data_is_structured() {
-        let data_json = r#"{"title":"Hello","count":42}"#;
-        let c = make_collection(r#"{"fields":[]}"#, Some(data_json));
-        let value = collection_to_schema_value(&c);
-
-        let data = value.get("singleton_data").expect("singleton_data missing");
-        assert!(
-            data.is_object(),
-            "singleton_data should be a JSON object, got: {}",
-            data
-        );
-        assert_eq!(data["title"], "Hello");
-        assert_eq!(data["count"], 42);
-    }
-
-    #[test]
     fn invalid_json_definition_falls_back_to_empty_fields() {
-        let c = make_collection("not-valid-json{{", None);
+        let c = make_collection("not-valid-json{{");
         let value = collection_to_schema_value(&c);
 
         let def = value.get("definition").expect("definition missing");
@@ -332,18 +310,9 @@ mod tests {
     }
 
     #[test]
-    fn invalid_json_singleton_data_becomes_null() {
-        let c = make_collection(r#"{"fields":[]}"#, Some("not-json"));
-        let value = collection_to_schema_value(&c);
-
-        let data = value.get("singleton_data").expect("singleton_data key missing");
-        assert!(data.is_null(), "singleton_data should be null for invalid JSON");
-    }
-
-    #[test]
     fn schema_output_is_valid_json() {
         let def_json = r#"{"fields":[{"name":"title","type":"text","required":true}]}"#;
-        let c = make_collection(def_json, None);
+        let c = make_collection(def_json);
         let collections_json = vec![collection_to_schema_value(&c)];
 
         let schema = serde_json::json!({
@@ -363,7 +332,7 @@ mod tests {
     #[test]
     fn no_escaped_json_in_schema_output() {
         let def_json = r#"{"fields":[{"name":"title","type":"text","required":true}]}"#;
-        let c = make_collection(def_json, None);
+        let c = make_collection(def_json);
         let collections_json = vec![collection_to_schema_value(&c)];
 
         let schema = serde_json::json!({
