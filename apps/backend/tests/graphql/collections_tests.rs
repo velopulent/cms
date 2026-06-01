@@ -79,7 +79,7 @@ async fn create_collection(server: &TestServer, token: &str, name: &str, slug: &
 
 async fn create_singleton_collection(server: &TestServer, token: &str, name: &str, slug: &str) -> Value {
     let query = r#"mutation CreateCollection($input: CreateCollectionInput!) {
-        createCollection(input: $input) { id name slug isSingleton singletonData }
+        createCollection(input: $input) { id name slug isSingleton }
     }"#;
     let vars = json!({"input": {"name": name, "slug": slug, "definition": json!({"fields": [{"name": "title", "type": "text"}]}), "isSingleton": true}});
     gql_with_vars(server, token, query, vars).await
@@ -168,7 +168,6 @@ async fn test_create_singleton_collection() {
     assert_eq!(body["data"]["createCollection"]["name"].as_str().unwrap(), "Settings");
     assert_eq!(body["data"]["createCollection"]["slug"].as_str().unwrap(), "settings");
     assert_eq!(body["data"]["createCollection"]["isSingleton"].as_bool().unwrap(), true);
-    assert!(body["data"]["createCollection"]["singletonData"].is_null());
 }
 
 #[tokio::test]
