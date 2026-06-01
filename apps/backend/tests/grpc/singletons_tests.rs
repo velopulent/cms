@@ -53,6 +53,7 @@ async fn test_update_singleton() {
         .update_singleton(tonic::Request::new(UpdateSingletonRequest {
             slug: "settings".into(),
             data: r#"{"site_name":"My Site"}"#.into(),
+            change_summary: None,
         }))
         .await
         .unwrap()
