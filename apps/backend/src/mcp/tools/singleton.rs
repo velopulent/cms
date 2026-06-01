@@ -86,6 +86,7 @@ pub struct UpdateSingletonParams {
     pub slug: String,
     #[schemars(with = "ArbitraryJson")]
     pub data: serde_json::Value,
+    pub change_summary: Option<String>,
 }
 
 pub async fn update_singleton(
@@ -102,9 +103,16 @@ pub async fn update_singleton(
         return Ok(tool_error(e));
     }
 
+    let created_by = actor.user_id();
     match services
         .singleton
-        .update_singleton(&site_id, &params.0.slug, &params.0.data)
+        .update_singleton(
+            &site_id,
+            &params.0.slug,
+            &params.0.data,
+            created_by,
+            params.0.change_summary.as_deref(),
+        )
         .await
     {
         Ok(singleton) => ok_result(&singleton),
