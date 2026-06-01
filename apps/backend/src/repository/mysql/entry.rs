@@ -23,7 +23,7 @@ impl MysqlEntryRepository {
 impl EntryRepository for MysqlEntryRepository {
     async fn get_by_id(&self, id: &str, site_id: &str, published_only: bool) -> Result<Option<Entry>, RepositoryError> {
         let mut query = String::from(
-            "SELECT id, site_id, collection_id, data, slug, status, created_at, updated_at, published_at
+            "SELECT id, site_id, collection_id, data, slug, status, singleton_collection_id, created_at, updated_at, published_at
              FROM entries WHERE id = ? AND site_id = ?",
         );
 
@@ -42,7 +42,7 @@ impl EntryRepository for MysqlEntryRepository {
 
     async fn get_by_id_any_site(&self, id: &str) -> Result<Option<Entry>, RepositoryError> {
         let result = sqlx::query_as::<_, Entry>(
-            "SELECT id, site_id, collection_id, data, slug, status, created_at, updated_at, published_at
+            "SELECT id, site_id, collection_id, data, slug, status, singleton_collection_id, created_at, updated_at, published_at
              FROM entries WHERE id = ?",
         )
         .bind(id)
@@ -59,7 +59,7 @@ impl EntryRepository for MysqlEntryRepository {
              WHERE e.site_id = ?",
         );
         let mut query = String::from(
-            "SELECT e.id, e.site_id, e.collection_id, e.data, e.slug, e.status, e.created_at, e.updated_at, e.published_at
+            "SELECT e.id, e.site_id, e.collection_id, e.data, e.slug, e.status, e.singleton_collection_id, e.created_at, e.updated_at, e.published_at
              FROM entries e
              JOIN collections col ON e.collection_id = col.id
              WHERE e.site_id = ?",
@@ -130,7 +130,7 @@ impl EntryRepository for MysqlEntryRepository {
         published_only: bool,
     ) -> Result<Vec<Entry>, RepositoryError> {
         let mut query = String::from(
-            "SELECT id, site_id, collection_id, data, slug, status, created_at, updated_at, published_at
+            "SELECT id, site_id, collection_id, data, slug, status, singleton_collection_id, created_at, updated_at, published_at
              FROM entries WHERE collection_id = ?",
         );
         let mut bindings: Vec<String> = vec![collection_id.to_string()];
@@ -420,6 +420,148 @@ impl EntryRepository for MysqlEntryRepository {
         self.get_by_id_any_site(entry_id)
             .await?
             .ok_or(RepositoryError::NotFound)
+    }
+
+    async fn get_singleton_entry(
+        &self,
+        site_id: &str,
+        slug: &str,
+    ) -> Result<Option<Entry>, RepositoryError> {
+        let result = sqlx::query_as::<_, Entry>(
+            "SELECT e.id, e.site_id, e.collection_id, e.data, e.slug, e.status, e.singleton_collection_id, e.created_at, e.updated_at, e.published_at
+             FROM entries e
+             JOIN collections c ON c.id = e.singleton_collection_id
+             WHERE e.site_id = ? AND c.slug = ?",
+        )
+        .bind(site_id)
+        .bind(slug)
+        .fetch_optional(&self.pool)
+        .await?;
+
+        Ok(result)
+    }
+
+    async fn upsert_singleton_entry(
+        &self,
+        site_id: &str,
+        collection_id: &str,
+        slug: &str,
+        data: &str,
+        created_by: Option<&str>,
+        change_summary: Option<&str>,
+    ) -> Result<Entry, RepositoryError> {
+        let mut tx = self.pool.begin().await?;
+
+        let existing: Option<String> = sqlx::query_scalar(
+            "SELECT id FROM entries WHERE singleton_collection_id = ? AND site_id = ?",
+        )
+        .bind(collection_id)
+        .bind(site_id)
+        .fetch_optional(&mut *tx)
+        .await?;
+
+        let data_json: serde_json::Value = serde_json::from_str(data).unwrap_or(Value::Null);
+
+        if let Some(existing_id) = existing {
+            let next_number: i64 = sqlx::query_scalar(
+                "SELECT COALESCE(MAX(revision_number), 0) + 1 FROM entry_revisions WHERE entry_id = ?",
+            )
+            .bind(&existing_id)
+            .fetch_one(&mut *tx)
+            .await?;
+
+            sqlx::query("UPDATE entries SET data = ?, updated_at = NOW() WHERE id = ?")
+                .bind(data)
+                .bind(&existing_id)
+                .execute(&mut *tx)
+                .await?;
+
+            let revision_id = Uuid::now_v7().to_string();
+            sqlx::query(
+                "INSERT INTO entry_revisions (id, entry_id, revision_number, data, created_by, created_at, change_summary)
+                 VALUES (?, ?, ?, ?, ?, NOW(), ?)",
+            )
+            .bind(&revision_id)
+            .bind(&existing_id)
+            .bind(next_number)
+            .bind(sqlx::types::Json(data_json))
+            .bind(created_by)
+            .bind(change_summary)
+            .execute(&mut *tx)
+            .await?;
+
+            tx.commit().await?;
+            self.get_by_id_any_site(&existing_id)
+                .await?
+                .ok_or(RepositoryError::NotFound)
+        } else {
+            let id = Uuid::now_v7().to_string();
+            sqlx::query(
+                "INSERT INTO entries (id, site_id, collection_id, data, slug, singleton_collection_id) VALUES (?, ?, ?, ?, ?, ?)",
+            )
+            .bind(&id)
+            .bind(site_id)
+            .bind(collection_id)
+            .bind(data)
+            .bind(slug)
+            .bind(collection_id)
+            .execute(&mut *tx)
+            .await?;
+
+            let revision_id = Uuid::now_v7().to_string();
+            sqlx::query(
+                "INSERT INTO entry_revisions (id, entry_id, revision_number, data, created_by, created_at, change_summary)
+                 VALUES (?, ?, 1, ?, ?, NOW(), ?)",
+            )
+            .bind(&revision_id)
+            .bind(&id)
+            .bind(sqlx::types::Json(data_json))
+            .bind(created_by)
+            .bind(change_summary)
+            .execute(&mut *tx)
+            .await?;
+
+            tx.commit().await?;
+            self.get_by_id_any_site(&id).await?.ok_or(RepositoryError::NotFound)
+        }
+    }
+
+    async fn migrate_singleton_field_renames(
+        &self,
+        site_id: &str,
+        collection_id: &str,
+        rename_map: &std::collections::HashMap<String, String>,
+    ) -> Result<(), RepositoryError> {
+        let mut tx = self.pool.begin().await?;
+
+        let existing: Option<(String, String)> = sqlx::query_as(
+            "SELECT id, data FROM entries WHERE singleton_collection_id = ? AND site_id = ?",
+        )
+        .bind(collection_id)
+        .bind(site_id)
+        .fetch_optional(&mut *tx)
+        .await?;
+
+        if let Some((id, data_str)) = existing
+            && let Ok(mut data) = serde_json::from_str::<serde_json::Value>(&data_str)
+                && let Some(obj) = data.as_object_mut() {
+                    let mut renamed = serde_json::Map::new();
+                    for (key, value) in obj.iter() {
+                        let new_key = rename_map.get(key).cloned().unwrap_or_else(|| key.clone());
+                        renamed.insert(new_key, value.clone());
+                    }
+                    let new_data_str = serde_json::to_string(&serde_json::Value::Object(renamed))
+                        .unwrap_or_else(|_| data_str.clone());
+
+                    sqlx::query("UPDATE entries SET data = ?, updated_at = NOW() WHERE id = ?")
+                        .bind(&new_data_str)
+                        .bind(&id)
+                        .execute(&mut *tx)
+                        .await?;
+                }
+
+        tx.commit().await?;
+        Ok(())
     }
 }
 
