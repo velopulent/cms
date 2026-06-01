@@ -38,7 +38,6 @@ CREATE TABLE IF NOT EXISTS collections (
     slug VARCHAR(255) NOT NULL,
     definition JSON NOT NULL,
     is_singleton TINYINT(1) NOT NULL DEFAULT 0,
-    singleton_data TEXT,
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     FOREIGN KEY (site_id) REFERENCES sites(id) ON DELETE CASCADE
@@ -51,12 +50,15 @@ CREATE TABLE IF NOT EXISTS entries (
     data JSON NOT NULL,
     slug VARCHAR(255) NOT NULL,
     status VARCHAR(20) NOT NULL DEFAULT 'draft',
+    singleton_collection_id VARCHAR(36) NULL,
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     published_at DATETIME,
     FOREIGN KEY (site_id) REFERENCES sites(id) ON DELETE CASCADE,
     FOREIGN KEY (collection_id) REFERENCES collections(id) ON DELETE CASCADE,
-    CHECK (status IN ('draft', 'published'))
+    FOREIGN KEY (singleton_collection_id) REFERENCES collections(id) ON DELETE CASCADE,
+    CHECK (status IN ('draft', 'published')),
+    CONSTRAINT entries_singleton_consistency CHECK (singleton_collection_id IS NULL OR singleton_collection_id = collection_id)
 );
 
 CREATE INDEX idx_site_members_user ON site_members(user_id);
@@ -69,6 +71,7 @@ CREATE INDEX idx_entries_slug ON entries(slug);
 CREATE INDEX idx_entries_collection ON entries(collection_id);
 CREATE INDEX idx_entries_status ON entries(status);
 CREATE UNIQUE INDEX idx_entries_collection_slug ON entries(collection_id, slug);
+CREATE UNIQUE INDEX uniq_singleton_entry ON entries(singleton_collection_id);
 
 CREATE TABLE IF NOT EXISTS access_tokens (
     id VARCHAR(36) PRIMARY KEY NOT NULL,

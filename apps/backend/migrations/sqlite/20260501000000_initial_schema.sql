@@ -34,7 +34,6 @@ CREATE TABLE IF NOT EXISTS collections (
     slug TEXT NOT NULL,
     definition JSON NOT NULL,
     is_singleton INTEGER NOT NULL DEFAULT 0,
-    singleton_data TEXT,
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
     updated_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
@@ -46,9 +45,11 @@ CREATE TABLE IF NOT EXISTS entries (
     data JSON NOT NULL,
     slug TEXT NOT NULL,
     status TEXT NOT NULL DEFAULT 'draft' CHECK(status IN ('draft', 'published')),
+    singleton_collection_id TEXT REFERENCES collections(id) ON DELETE CASCADE,
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
     updated_at TEXT NOT NULL DEFAULT (datetime('now')),
-    published_at TEXT
+    published_at TEXT,
+    CHECK (singleton_collection_id IS NULL OR singleton_collection_id = collection_id)
 );
 
 CREATE INDEX IF NOT EXISTS idx_site_members_user ON site_members(user_id);
@@ -61,6 +62,7 @@ CREATE INDEX IF NOT EXISTS idx_entries_slug ON entries(slug);
 CREATE INDEX IF NOT EXISTS idx_entries_collection ON entries(collection_id);
 CREATE INDEX IF NOT EXISTS idx_entries_status ON entries(status);
 CREATE UNIQUE INDEX IF NOT EXISTS idx_entries_collection_slug ON entries(collection_id, slug);
+CREATE UNIQUE INDEX IF NOT EXISTS uniq_singleton_entry ON entries(singleton_collection_id) WHERE singleton_collection_id IS NOT NULL;
 
 CREATE TABLE IF NOT EXISTS access_tokens (
     id TEXT PRIMARY KEY NOT NULL,
