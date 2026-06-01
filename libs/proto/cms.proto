@@ -67,9 +67,8 @@ message Collection {
   string slug = 4;
   string definition = 5;
   bool is_singleton = 6;
-  optional string singleton_data = 7;
-  string created_at = 8;
-  string updated_at = 9;
+  string created_at = 7;
+  string updated_at = 8;
 }
 
 message ListCollectionsRequest {}
@@ -110,9 +109,10 @@ message Entry {
   string data = 4;
   string slug = 5;
   string status = 6;
-  string created_at = 7;
-  string updated_at = 8;
-  optional string published_at = 9;
+  optional string singleton_collection_id = 7;
+  string created_at = 8;
+  string updated_at = 9;
+  optional string published_at = 10;
 }
 
 message ListEntriesRequest {
@@ -202,8 +202,9 @@ message Singleton {
   string slug = 4;
   string definition = 5;
   optional string data = 6;
-  string created_at = 7;
-  string updated_at = 8;
+  optional string entry_id = 7;
+  string created_at = 8;
+  string updated_at = 9;
 }
 
 message GetSingletonRequest {
@@ -213,6 +214,7 @@ message GetSingletonRequest {
 message UpdateSingletonRequest {
   string slug = 1;
   string data = 2;
+  optional string change_summary = 3;
 }
 
 // File Messages
