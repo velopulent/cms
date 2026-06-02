@@ -607,41 +607,41 @@ impl EntryRepository for InMemoryEntryRepository {
         revision_number: i64,
         created_by: Option<&str>,
     ) -> Result<Entry, RepositoryError> {
-        let revisions = self.revisions.lock().unwrap();
+        let mut entries = self.entries.lock().unwrap();
+        let entry = match entries.iter_mut().find(|e| e.id == entry_id) {
+            Some(entry) => entry,
+            None => return Err(RepositoryError::NotFound),
+        };
+
+        let mut revisions = self.revisions.lock().unwrap();
         let revision = revisions
             .iter()
             .find(|r| r.entry_id == entry_id && r.revision_number == revision_number)
             .cloned()
             .ok_or(RepositoryError::NotFound)?;
-        drop(revisions);
 
-        let mut entries = self.entries.lock().unwrap();
-        if let Some(entry) = entries.iter_mut().find(|e| e.id == entry_id) {
-            entry.data = serde_json::to_string(&revision.data.0).unwrap_or_default();
-            entry.updated_at = now_timestamp();
+        entry.data = serde_json::to_string(&revision.data.0).unwrap_or_default();
+        entry.updated_at = now_timestamp();
 
-            let mut revisions = self.revisions.lock().unwrap();
-            let next_number = revisions
-                .iter()
-                .filter(|r| r.entry_id == entry_id)
-                .map(|r| r.revision_number)
-                .max()
-                .unwrap_or(0)
-                + 1;
-            let new_revision = EntryRevision {
-                id: uuid::Uuid::now_v7().to_string(),
-                entry_id: entry_id.to_string(),
-                revision_number: next_number,
-                data: revision.data,
-                created_by: created_by.map(|s| s.to_string()),
-                created_at: now_timestamp(),
-                change_summary: Some(format!("Restored from revision {}", revision_number)),
-            };
-            revisions.push(new_revision);
+        let next_number = revisions
+            .iter()
+            .filter(|r| r.entry_id == entry_id)
+            .map(|r| r.revision_number)
+            .max()
+            .unwrap_or(0)
+            + 1;
+        let new_revision = EntryRevision {
+            id: uuid::Uuid::now_v7().to_string(),
+            entry_id: entry_id.to_string(),
+            revision_number: next_number,
+            data: revision.data,
+            created_by: created_by.map(|s| s.to_string()),
+            created_at: now_timestamp(),
+            change_summary: Some(format!("Restored from revision {}", revision_number)),
+        };
+        revisions.push(new_revision);
 
-            return Ok(entry.clone());
-        }
-        Err(RepositoryError::NotFound)
+        Ok(entry.clone())
     }
 
     async fn get_singleton_entry(
