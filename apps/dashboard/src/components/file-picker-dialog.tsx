@@ -423,10 +423,13 @@ export function FilePickerDialog({
                   </p>
                 </div>
                 <Button
+                  type="button"
                   variant="outline"
-                  // Prevent the label's click from firing twice (once from the
-                  // button, once bubbling up to the label → input).
-                  onClick={(e) => e.preventDefault()}
+                  onClick={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    fileInputRef.current?.click();
+                  }}
                   disabled={uploadMutation.isPending}
                 >
                   {uploadIcon}
