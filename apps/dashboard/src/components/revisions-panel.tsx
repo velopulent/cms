@@ -57,6 +57,7 @@ import { DynamicForm } from "@/components/dynamic-form";
 import {
   getEntryRevisions,
   restoreEntryRevision,
+  type Entry,
   type EntryRevision,
   type SchemaDefinition,
 } from "@/lib/api";
@@ -77,7 +78,7 @@ interface RevisionsPanelProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   collectionDef: SchemaDefinition | null;
-  onRestore: () => void;
+  onRestore: (restored: Entry) => void;
 }
 
 // ---------------------------------------------------------------------------
@@ -157,13 +158,13 @@ export function RevisionsPanel({
   const restoreMutation = useMutation({
     mutationFn: (revisionNumber: number) =>
       restoreEntryRevision(siteId, entryId, revisionNumber),
-    onSuccess: () => {
+    onSuccess: (restored) => {
       toast.success("Entry restored to previous version");
       queryClient.invalidateQueries({
         queryKey: ["entry-revisions", siteId, entryId],
       });
       setRestoreTarget(null);
-      onRestore();
+      onRestore(restored);
     },
     onError: (err: Error) => toast.error(err.message),
   });

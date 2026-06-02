@@ -2,7 +2,7 @@ import { useForm } from "@tanstack/react-form";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { ArrowLeft, History } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { z } from "zod";
 import { DynamicForm } from "@/components/dynamic-form";
@@ -45,9 +45,10 @@ export const Route = createFileRoute("/_admin/sites/$siteId/singletons/$slug")({
 function SingletonEditPage() {
   const { siteId, slug } = Route.useParams();
   const queryClient = useQueryClient();
-  const [initialized, setInitialized] = useState(false);
+  const [hasLoadedOnce, setHasLoadedOnce] = useState(false);
   const [changeSummary, setChangeSummary] = useState("");
   const [historyOpen, setHistoryOpen] = useState(false);
+  const lastHydratedRef = useRef<string | null>(null);
 
   const { data: singleton, isLoading } = useQuery({
     queryKey: ["singleton", siteId, slug],
@@ -79,14 +80,19 @@ function SingletonEditPage() {
       onSubmit: dataSchema,
     },
     onSubmit: async ({ value }) => {
-      saveMutation.mutate({ data: value.data, changeSummary: changeSummary.trim() || undefined });
+      saveMutation.mutate({
+        data: value.data,
+        changeSummary: changeSummary.trim() || undefined,
+      });
       setChangeSummary("");
     },
   });
 
   const saveMutation = useMutation({
-    mutationFn: (args: { data: Record<string, unknown>; changeSummary?: string }) =>
-      updateSingletonData(siteId, slug, args.data, args.changeSummary),
+    mutationFn: (args: {
+      data: Record<string, unknown>;
+      changeSummary?: string;
+    }) => updateSingletonData(siteId, slug, args.data, args.changeSummary),
     onSuccess: () => {
       queryClient.invalidateQueries({
         queryKey: ["singleton", siteId, slug],
@@ -97,15 +103,21 @@ function SingletonEditPage() {
   });
 
   useEffect(() => {
-    if (singleton && !initialized) {
+    if (singleton && singleton.updated_at !== lastHydratedRef.current) {
       if (singleton.data) {
         form.setFieldValue("data", singleton.data);
       }
-      setInitialized(true);
+      lastHydratedRef.current = singleton.updated_at;
     }
-  }, [singleton, initialized, form]);
+  }, [singleton, form]);
 
-  if (isLoading || !initialized) {
+  useEffect(() => {
+    if (singleton && !hasLoadedOnce) {
+      setHasLoadedOnce(true);
+    }
+  }, [singleton, hasLoadedOnce]);
+
+  if (isLoading || !hasLoadedOnce) {
     return (
       <div className="flex flex-col gap-6 p-6">
         <Skeleton className="h-8 w-48" />
@@ -124,17 +136,22 @@ function SingletonEditPage() {
 
   return (
     <div className="flex flex-col gap-6 p-6">
-      <div className="flex items-center gap-3">
-        <Link
-          to="/sites/$siteId/collections"
-          params={{ siteId }}
-          className={buttonVariants({ variant: "ghost", size: "icon" })}
-        >
-          <ArrowLeft />
-        </Link>
+      <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-semibold">{singleton.name}</h1>
           <p className="text-sm text-muted-foreground">Singleton · {slug}</p>
+        </div>
+        <div>
+          {singleton.entry_id ? (
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setHistoryOpen(true)}
+            >
+              <History className="size-4" />
+              History
+            </Button>
+          ) : null}
         </div>
       </div>
 
@@ -183,16 +200,6 @@ function SingletonEditPage() {
           <Button type="submit" disabled={saveMutation.isPending}>
             {saveMutation.isPending ? "Saving..." : "Save"}
           </Button>
-          {singleton.entry_id ? (
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => setHistoryOpen(true)}
-            >
-              <History className="mr-2 h-4 w-4" />
-              History
-            </Button>
-          ) : null}
           <Link
             to="/sites/$siteId/collections"
             params={{ siteId }}
@@ -210,10 +217,21 @@ function SingletonEditPage() {
           open={historyOpen}
           onOpenChange={setHistoryOpen}
           collectionDef={definition}
-          onRestore={() => {
-            queryClient.invalidateQueries({ queryKey: ["singleton", siteId, slug] });
-            setInitialized(false);
-            toast.success("Singleton restored to previous version");
+          onRestore={(restored) => {
+            queryClient.setQueryData(
+              ["singleton", siteId, slug],
+              (prev: typeof singleton | undefined) => {
+                if (!prev) return prev;
+                return {
+                  ...prev,
+                  data:
+                    typeof restored.data === "string"
+                      ? (JSON.parse(restored.data) as Record<string, unknown>)
+                      : restored.data,
+                  updated_at: restored.updated_at,
+                };
+              },
+            );
           }}
         />
       ) : null}

@@ -2,7 +2,7 @@ import { useForm } from "@tanstack/react-form";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { ArrowLeft, History } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { z } from "zod";
 import { DynamicForm } from "@/components/dynamic-form";
@@ -56,9 +56,10 @@ function EditEntryPage() {
   const { siteId, collectionSlug, id } = Route.useParams();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const [initialized, setInitialized] = useState(false);
+  const [hasLoadedOnce, setHasLoadedOnce] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [changeSummary, setChangeSummary] = useState("");
+  const lastHydratedRef = useRef<string | null>(null);
 
   const { data: collection, isLoading: collectionLoading } = useQuery({
     queryKey: ["collection", siteId, collectionSlug],
@@ -127,18 +128,24 @@ function EditEntryPage() {
   });
 
   useEffect(() => {
-    if (entry && !initialized) {
+    if (entry && entry.updated_at !== lastHydratedRef.current) {
       const parsedData =
         typeof entry.data === "string" ? JSON.parse(entry.data) : entry.data;
       form.setFieldValue("data", parsedData as Record<string, unknown>);
       form.setFieldValue("slug", entry.slug);
-      setInitialized(true);
+      lastHydratedRef.current = entry.updated_at;
     }
-  }, [entry, initialized, form]);
+  }, [entry, form]);
+
+  useEffect(() => {
+    if (entry && !hasLoadedOnce) {
+      setHasLoadedOnce(true);
+    }
+  }, [entry, hasLoadedOnce]);
 
   const isLoading = collectionLoading || entryLoading;
 
-  if (isLoading || !initialized) {
+  if (isLoading || !hasLoadedOnce) {
     return (
       <div className="flex flex-col gap-6 p-6">
         <Skeleton className="h-8 w-48" />
@@ -279,10 +286,8 @@ function EditEntryPage() {
         open={historyOpen}
         onOpenChange={setHistoryOpen}
         collectionDef={collectionDef}
-        onRestore={() => {
-          queryClient.invalidateQueries({ queryKey: ["entry", siteId, id] });
-          setInitialized(false);
-          toast.success("Entry restored to previous version");
+        onRestore={(restored) => {
+          queryClient.setQueryData(["entry", siteId, id], restored);
         }}
       />
     </div>
