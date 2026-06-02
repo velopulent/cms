@@ -513,10 +513,17 @@ function FileGridItem({ file, onSelect, onDelete }: FileGridItemProps) {
   const hasPreview = isImage || (isVideo && !!file.thumbnail_url);
 
   return (
-    <button
-      type="button"
+    <div
+      role="button"
+      tabIndex={0}
       className="group relative aspect-square cursor-pointer overflow-hidden rounded-lg border text-left transition-shadow hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
       onClick={onSelect}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          onSelect();
+        }
+      }}
     >
       {hasPreview ? (
         <img
@@ -557,6 +564,6 @@ function FileGridItem({ file, onSelect, onDelete }: FileGridItemProps) {
         <p className="truncate text-xs text-white">{file.original_name}</p>
         <p className="text-[10px] text-white/70">{formatFileSize(file.size)}</p>
       </div>
-    </button>
+    </div>
   );
 }
