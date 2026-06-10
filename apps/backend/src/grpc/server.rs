@@ -64,7 +64,8 @@ pub async fn start_grpc_server(
 
     let (health_reporter, health_service) = tonic_health::server::health_reporter();
     health_reporter
-        .set_serving::<crate::grpc::cms::v1::collection_service_server::CollectionServiceServer<CollectionServiceImpl>>()
+        .set_serving::<crate::grpc::cms::v1::collection_service_server::CollectionServiceServer<CollectionServiceImpl>>(
+        )
         .await;
     health_reporter
         .set_serving::<crate::grpc::cms::v1::entry_service_server::EntryServiceServer<EntryServiceImpl>>()

@@ -12,25 +12,10 @@ use crate::repository::Repository;
 
 pub type HmacSha256 = Hmac<Sha256>;
 
-// Local scope constants for gRPC auth checks
-const SCOPE_CONTENT_READ: &str = "content:read";
-const SCOPE_CONTENT_WRITE: &str = "content:write";
-const SCOPE_SCHEMA_READ: &str = "schema:read";
-const SCOPE_SCHEMA_WRITE: &str = "schema:write";
-const SCOPE_ASSETS_READ: &str = "assets:read";
-const SCOPE_ASSETS_WRITE: &str = "assets:write";
-
 pub fn compute_key_hmac(key: &str, hmac_secret: &str) -> String {
     let mut mac = HmacSha256::new_from_slice(hmac_secret.as_bytes()).expect("HMAC can take key of any size");
     mac.update(key.as_bytes());
     hex::encode(mac.finalize().into_bytes())
-}
-
-fn permission_allows(permission: &AccessTokenPermission, scope: &str) -> bool {
-    match permission {
-        AccessTokenPermission::Read => scope.ends_with(":read"),
-        AccessTokenPermission::Write => true,
-    }
 }
 
 #[derive(Clone, Debug)]
@@ -41,26 +26,19 @@ pub struct GrpcAuthContext {
 }
 
 impl GrpcAuthContext {
-    pub fn has_scope(&self, scope: &str) -> bool {
-        permission_allows(&self.permission, scope)
-    }
-
     pub fn can_write(&self) -> bool {
-        self.has_scope(SCOPE_CONTENT_WRITE) || self.has_scope(SCOPE_SCHEMA_WRITE) || self.has_scope(SCOPE_ASSETS_WRITE)
+        self.permission.can_write()
     }
 
     pub fn can_read(&self) -> bool {
-        self.has_scope(SCOPE_CONTENT_READ) || self.has_scope(SCOPE_SCHEMA_READ) || self.has_scope(SCOPE_ASSETS_READ)
+        true
     }
 
-    pub fn require_scope(&self, scope: &str, resource: &str) -> Result<(), tonic::Status> {
-        if self.has_scope(scope) {
+    pub fn require_read(&self) -> Result<(), tonic::Status> {
+        if self.can_read() {
             Ok(())
         } else {
-            Err(tonic::Status::permission_denied(format!(
-                "Missing required permission '{}' for {}",
-                scope, resource
-            )))
+            Err(tonic::Status::permission_denied("Read permission required"))
         }
     }
 
@@ -68,8 +46,12 @@ impl GrpcAuthContext {
         Ok(&self.site_id)
     }
 
-    pub fn require_site_scope(&self, scope: &str) -> Result<(), tonic::Status> {
-        self.require_scope(scope, "site operations")
+    pub fn require_write(&self) -> Result<(), tonic::Status> {
+        if self.can_write() {
+            Ok(())
+        } else {
+            Err(tonic::Status::permission_denied("Write permission required"))
+        }
     }
 }
 
@@ -124,9 +106,10 @@ async fn validate_auth(ctx: &AuthContext, repository: &Repository) -> Result<Grp
 
         if let Some(exp) = expires_at
             && let Ok(expiry) = chrono::NaiveDateTime::parse_from_str(&exp, "%Y-%m-%d %H:%M:%S")
-                && expiry < chrono::Utc::now().naive_utc() {
-                    return Err(tonic::Status::unauthenticated("Access token has expired"));
-                }
+            && expiry < chrono::Utc::now().naive_utc()
+        {
+            return Err(tonic::Status::unauthenticated("Access token has expired"));
+        }
 
         if let Err(e) = repository.access_token.update_last_used(&key_id).await {
             tracing::warn!(error = ?e, key_id = %key_id, "Failed to update last_used");
@@ -198,8 +181,6 @@ mod tests {
             permission: AccessTokenPermission::Write,
         };
 
-        assert!(ctx.has_scope("content:read"));
-        assert!(ctx.has_scope("content:write"));
         assert!(ctx.can_write());
         assert!(ctx.can_read());
     }
