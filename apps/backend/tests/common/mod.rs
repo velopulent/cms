@@ -9,7 +9,7 @@ use cms::database::init_db_with_config;
 use cms::repository::Repository;
 use cms::router::create_router;
 use cms::services::Services;
-use cms::storage::{StorageRegistry, STORAGE_KIND_FILESYSTEM};
+use cms::storage::{STORAGE_KIND_FILESYSTEM, StorageRegistry};
 use tokio::net::TcpListener;
 
 pub struct TestServer {
@@ -44,6 +44,7 @@ impl TestServer {
         config.db_acquire_timeout_secs = 30;
         config.db_idle_timeout_secs = 600;
         config.max_upload_size_bytes = 50 * 1024 * 1024;
+        config.public_registration_enabled = true;
 
         let pool = init_db_with_config(&config)
             .await
@@ -54,8 +55,8 @@ impl TestServer {
         seed_admin(&repository).await;
 
         let mut storage_registry = StorageRegistry::new();
-        let fs_storage = cms::storage::FileSystemStorage::new(&storage_path)
-            .expect("Failed to init filesystem storage");
+        let fs_storage =
+            cms::storage::FileSystemStorage::new(&storage_path).expect("Failed to init filesystem storage");
         storage_registry.register(STORAGE_KIND_FILESYSTEM, Arc::new(fs_storage));
         let storage_registry = Arc::new(storage_registry);
 
@@ -83,12 +84,7 @@ impl TestServer {
         }
     }
 
-    pub async fn login_user(
-        &self,
-        client: &reqwest::Client,
-        username: &str,
-        password: &str,
-    ) -> reqwest::Response {
+    pub async fn login_user(&self, client: &reqwest::Client, username: &str, password: &str) -> reqwest::Response {
         client
             .post(format!("{}/api/auth/login", self.base_url))
             .json(&serde_json::json!({
@@ -104,13 +100,17 @@ impl TestServer {
 async fn seed_admin(repository: &Repository) {
     if !repository.user.exists("admin").await.unwrap_or(false) {
         let id = uuid::Uuid::now_v7().to_string();
-        let password_hash =
-            bcrypt::hash("admin", bcrypt::DEFAULT_COST).expect("Failed to hash password");
+        let password_hash = bcrypt::hash("admin", bcrypt::DEFAULT_COST).expect("Failed to hash password");
         repository
             .user
             .create(&id, "admin", "admin@cms.local", &password_hash)
             .await
             .expect("Failed to seed admin user");
+        repository
+            .user
+            .set_instance_role(&id, Some("instance_owner"))
+            .await
+            .expect("Failed to promote test admin");
     }
 }
 

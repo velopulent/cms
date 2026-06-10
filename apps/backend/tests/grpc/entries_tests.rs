@@ -144,7 +144,11 @@ async fn test_list_entries_with_search() {
         .into_inner();
 
     let slugs: Vec<&str> = resp.items.iter().map(|i| i.slug.as_str()).collect();
-    assert!(slugs.contains(&"searchable"), "expected slug 'searchable' in search results, got: {:?}", slugs);
+    assert!(
+        slugs.contains(&"searchable"),
+        "expected slug 'searchable' in search results, got: {:?}",
+        slugs
+    );
 }
 
 #[tokio::test]

@@ -14,11 +14,11 @@ use cms::grpc::services::singleton::SingletonServiceImpl;
 use cms::repository::Repository;
 use cms::router::create_router;
 use cms::services::Services;
-use cms::storage::{StorageRegistry, STORAGE_KIND_FILESYSTEM};
+use cms::storage::{STORAGE_KIND_FILESYSTEM, StorageRegistry};
 use tokio::net::TcpListener;
 use tokio_stream::wrappers::TcpListenerStream;
-use tonic::transport::Channel;
 use tonic::Request;
+use tonic::transport::Channel;
 
 pub struct GrpcTestContext {
     pub grpc_addr: SocketAddr,
@@ -47,6 +47,7 @@ impl GrpcTestContext {
         config.db_acquire_timeout_secs = 30;
         config.db_idle_timeout_secs = 600;
         config.max_upload_size_bytes = 50 * 1024 * 1024;
+        config.public_registration_enabled = true;
 
         let pool = init_db_with_config(&config)
             .await
@@ -57,8 +58,8 @@ impl GrpcTestContext {
         seed_admin(&repository).await;
 
         let mut storage_registry = StorageRegistry::new();
-        let fs_storage = cms::storage::FileSystemStorage::new(&storage_path)
-            .expect("Failed to init filesystem storage");
+        let fs_storage =
+            cms::storage::FileSystemStorage::new(&storage_path).expect("Failed to init filesystem storage");
         storage_registry.register(STORAGE_KIND_FILESYSTEM, Arc::new(fs_storage));
         let storage_registry = Arc::new(storage_registry);
 
@@ -99,8 +100,11 @@ impl GrpcTestContext {
 
         let collection_svc = CollectionServiceImpl::new(services.collection.clone(), repository_arc.clone());
         let entry_svc = EntryServiceImpl::new(services.entry.clone(), repository_arc.clone());
-        let singleton_svc =
-            SingletonServiceImpl::new(services.singleton.clone(), storage_registry.clone(), repository_arc.clone());
+        let singleton_svc = SingletonServiceImpl::new(
+            services.singleton.clone(),
+            storage_registry.clone(),
+            repository_arc.clone(),
+        );
         let file_svc = FileServiceImpl::new(services.file.clone(), repository_arc.clone());
         let site_svc = SiteServiceImpl::new(services.site.clone(), repository_arc.clone());
         let webhook_svc = WebhookServiceImpl::new(services.webhook.clone(), repository_arc);
@@ -116,19 +120,14 @@ impl GrpcTestContext {
             entry_svc,
             interceptor.clone(),
         );
-        let singleton_server =
-            cms::grpc::cms::v1::singleton_service_server::SingletonServiceServer::with_interceptor(
-                singleton_svc,
-                interceptor.clone(),
-            );
-        let file_server = cms::grpc::cms::v1::file_service_server::FileServiceServer::with_interceptor(
-            file_svc,
+        let singleton_server = cms::grpc::cms::v1::singleton_service_server::SingletonServiceServer::with_interceptor(
+            singleton_svc,
             interceptor.clone(),
         );
-        let site_server = cms::grpc::cms::v1::site_service_server::SiteServiceServer::with_interceptor(
-            site_svc,
-            interceptor.clone(),
-        );
+        let file_server =
+            cms::grpc::cms::v1::file_service_server::FileServiceServer::with_interceptor(file_svc, interceptor.clone());
+        let site_server =
+            cms::grpc::cms::v1::site_service_server::SiteServiceServer::with_interceptor(site_svc, interceptor.clone());
         let webhook_server = cms::grpc::cms::v1::webhook_service_server::WebhookServiceServer::with_interceptor(
             webhook_svc,
             interceptor,
@@ -199,10 +198,7 @@ impl GrpcTestContext {
 
         // Create access token
         let resp = client
-            .post(format!(
-                "{}/api/dashboard/sites/{}/tokens",
-                self.rest_base_url, site_id
-            ))
+            .post(format!("{}/api/dashboard/sites/{}/tokens", self.rest_base_url, site_id))
             .header("Cookie", format!("token={}; csrf={}", jwt, csrf))
             .header("X-CSRF-Token", &csrf)
             .json(&serde_json::json!({"name": "Test Token", "permission": "write"}))
@@ -215,7 +211,13 @@ impl GrpcTestContext {
         (site_id, token)
     }
 
-    pub async fn upload_file(&self, site_id: &str, filename: &str, content: &[u8], mime_type: &str) -> serde_json::Value {
+    pub async fn upload_file(
+        &self,
+        site_id: &str,
+        filename: &str,
+        content: &[u8],
+        mime_type: &str,
+    ) -> serde_json::Value {
         let client = reqwest::Client::builder().build().unwrap();
 
         let resp = client
@@ -235,13 +237,12 @@ impl GrpcTestContext {
             .mime_str(mime_type)
             .unwrap();
 
-        let form = reqwest::multipart::Form::new().text("site_id", site_id.to_string()).part("file", part);
+        let form = reqwest::multipart::Form::new()
+            .text("site_id", site_id.to_string())
+            .part("file", part);
 
         let resp = client
-            .post(format!(
-                "{}/api/dashboard/sites/{}/files",
-                self.rest_base_url, site_id
-            ))
+            .post(format!("{}/api/dashboard/sites/{}/files", self.rest_base_url, site_id))
             .header("Cookie", format!("token={}; csrf={}", jwt, csrf))
             .header("X-CSRF-Token", &csrf)
             .multipart(form)
@@ -294,11 +295,14 @@ pub fn auth_interceptor(token: &str) -> impl tonic::service::Interceptor + Clone
 async fn seed_admin(repo: &Repository) {
     if !repo.user.exists("admin").await.unwrap_or(false) {
         let id = uuid::Uuid::now_v7().to_string();
-        let password_hash =
-            bcrypt::hash("admin", bcrypt::DEFAULT_COST).expect("Failed to hash password");
+        let password_hash = bcrypt::hash("admin", bcrypt::DEFAULT_COST).expect("Failed to hash password");
         repo.user
             .create(&id, "admin", "admin@cms.local", &password_hash)
             .await
             .expect("Failed to seed admin user");
+        repo.user
+            .set_instance_role(&id, Some("instance_owner"))
+            .await
+            .expect("Failed to promote test admin");
     }
 }

@@ -5,8 +5,7 @@ async fn test_list_collections_empty() {
     let server = start_mcp_server().await;
     let (_, token) = setup_site_token(&server).await;
 
-    let result =
-        mcp_call_tool(&server.base_url, &token, "list_collections", serde_json::json!({})).await;
+    let result = mcp_call_tool(&server.base_url, &token, "list_collections", serde_json::json!({})).await;
     let data = mcp_tool_json(&result);
 
     assert!(data.is_array(), "Expected array, got: {}", data);
@@ -88,7 +87,10 @@ async fn test_get_collection_not_found() {
         serde_json::json!({"slug": "nonexistent"}),
     )
     .await;
-    assert!(mcp_is_error(&result), "Should return isError for non-existent collection");
+    assert!(
+        mcp_is_error(&result),
+        "Should return isError for non-existent collection"
+    );
 }
 
 #[tokio::test]
@@ -169,7 +171,10 @@ async fn test_delete_collection_not_found() {
         serde_json::json!({"slug": "nonexistent"}),
     )
     .await;
-    assert!(mcp_is_error(&result), "Should return isError for non-existent collection");
+    assert!(
+        mcp_is_error(&result),
+        "Should return isError for non-existent collection"
+    );
 }
 
 #[tokio::test]
@@ -187,10 +192,7 @@ async fn test_create_collection_requires_admin() {
         }),
     )
     .await;
-    assert!(
-        mcp_is_error(&result),
-        "Viewer should not create collection"
-    );
+    assert!(mcp_is_error(&result), "Viewer should not create collection");
 }
 
 #[tokio::test]
@@ -223,8 +225,7 @@ async fn test_collection_full_lifecycle() {
     let updated = mcp_tool_json(&result);
     assert_eq!(updated["name"].as_str().unwrap(), "Articles");
 
-    let result =
-        mcp_call_tool(&server.base_url, &token, "list_collections", serde_json::json!({})).await;
+    let result = mcp_call_tool(&server.base_url, &token, "list_collections", serde_json::json!({})).await;
     let list = mcp_tool_json(&result);
     assert_eq!(list.as_array().unwrap().len(), 1);
 
@@ -238,8 +239,7 @@ async fn test_collection_full_lifecycle() {
     let data = mcp_tool_json(&result);
     assert!(data["deleted"].as_bool().unwrap());
 
-    let result =
-        mcp_call_tool(&server.base_url, &token, "list_collections", serde_json::json!({})).await;
+    let result = mcp_call_tool(&server.base_url, &token, "list_collections", serde_json::json!({})).await;
     let list = mcp_tool_json(&result);
     assert!(list.as_array().unwrap().is_empty());
 }

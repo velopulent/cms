@@ -1,4 +1,4 @@
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 use crate::common::TestServer;
 
@@ -11,10 +11,20 @@ async fn setup(server: &TestServer) -> (String, String, String) {
     for cookie in headers.get_all("set-cookie").iter() {
         if let Ok(val) = cookie.to_str() {
             if val.starts_with("token=") {
-                jwt = val.split(';').next().and_then(|c| c.strip_prefix("token=")).unwrap_or("").to_string();
+                jwt = val
+                    .split(';')
+                    .next()
+                    .and_then(|c| c.strip_prefix("token="))
+                    .unwrap_or("")
+                    .to_string();
             }
             if val.starts_with("csrf=") {
-                csrf = val.split(';').next().and_then(|c| c.strip_prefix("csrf=")).unwrap_or("").to_string();
+                csrf = val
+                    .split(';')
+                    .next()
+                    .and_then(|c| c.strip_prefix("csrf="))
+                    .unwrap_or("")
+                    .to_string();
             }
         }
     }
@@ -33,14 +43,20 @@ async fn setup(server: &TestServer) -> (String, String, String) {
 fn auth_header(jwt: &str, csrf: &str) -> reqwest::header::HeaderMap {
     let mut headers = reqwest::header::HeaderMap::new();
     let cookie_val = format!("token={}; csrf={}", jwt, csrf);
-    headers.insert(reqwest::header::COOKIE, reqwest::header::HeaderValue::from_str(&cookie_val).unwrap());
+    headers.insert(
+        reqwest::header::COOKIE,
+        reqwest::header::HeaderValue::from_str(&cookie_val).unwrap(),
+    );
     headers.insert("X-CSRF-Token", reqwest::header::HeaderValue::from_str(csrf).unwrap());
     headers
 }
 
 fn api_key_header(api_key: &str) -> reqwest::header::HeaderMap {
     let mut headers = reqwest::header::HeaderMap::new();
-    headers.insert(reqwest::header::AUTHORIZATION, reqwest::header::HeaderValue::from_str(&format!("Bearer {}", api_key)).unwrap());
+    headers.insert(
+        reqwest::header::AUTHORIZATION,
+        reqwest::header::HeaderValue::from_str(&format!("Bearer {}", api_key)).unwrap(),
+    );
     headers
 }
 
@@ -106,7 +122,12 @@ async fn test_list_files() {
         .send()
         .await
         .unwrap();
-    assert!(resp.status().is_success(), "upload file failed: {} {}", resp.status(), resp.text().await.unwrap_or_default());
+    assert!(
+        resp.status().is_success(),
+        "upload file failed: {} {}",
+        resp.status(),
+        resp.text().await.unwrap_or_default()
+    );
 
     let resp = client
         .get(format!("{}/files", server.base_url))
@@ -285,5 +306,9 @@ async fn test_upload_file_invalid_mime_type() {
     assert_eq!(resp.status(), 400);
     let body: Value = resp.json().await.unwrap();
     let error = body["error"].as_str().unwrap_or("");
-    assert!(error.contains("Content type") || error.contains("content type") || error.contains("Invalid"), "Expected MIME error, got: {}", error);
+    assert!(
+        error.contains("Content type") || error.contains("content type") || error.contains("Invalid"),
+        "Expected MIME error, got: {}",
+        error
+    );
 }

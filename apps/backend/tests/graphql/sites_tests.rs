@@ -1,4 +1,4 @@
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 use crate::common::TestServer;
 
@@ -12,10 +12,20 @@ async fn setup(server: &TestServer) -> (reqwest::Client, String, String) {
     for cookie in headers.get_all("set-cookie").iter() {
         if let Ok(val) = cookie.to_str() {
             if val.starts_with("token=") {
-                jwt = val.split(';').next().and_then(|c| c.strip_prefix("token=")).unwrap_or("").to_string();
+                jwt = val
+                    .split(';')
+                    .next()
+                    .and_then(|c| c.strip_prefix("token="))
+                    .unwrap_or("")
+                    .to_string();
             }
             if val.starts_with("csrf=") {
-                csrf = val.split(';').next().and_then(|c| c.strip_prefix("csrf=")).unwrap_or("").to_string();
+                csrf = val
+                    .split(';')
+                    .next()
+                    .and_then(|c| c.strip_prefix("csrf="))
+                    .unwrap_or("")
+                    .to_string();
             }
         }
     }
@@ -65,5 +75,8 @@ async fn test_current_site() {
     let body = gql(&server, &token, "{ currentSite { id name storageProvider } }").await;
     assert!(body["errors"].is_null());
     assert_eq!(body["data"]["currentSite"]["name"].as_str().unwrap(), "GQL Site");
-    assert_eq!(body["data"]["currentSite"]["storageProvider"].as_str().unwrap(), "filesystem");
+    assert_eq!(
+        body["data"]["currentSite"]["storageProvider"].as_str().unwrap(),
+        "filesystem"
+    );
 }

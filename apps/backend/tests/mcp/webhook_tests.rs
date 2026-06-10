@@ -5,8 +5,7 @@ async fn test_list_webhooks_empty() {
     let server = start_mcp_server().await;
     let (_, token) = setup_site_token(&server).await;
 
-    let result =
-        mcp_call_tool(&server.base_url, &token, "list_webhooks", serde_json::json!({})).await;
+    let result = mcp_call_tool(&server.base_url, &token, "list_webhooks", serde_json::json!({})).await;
     let data = mcp_tool_json(&result);
 
     assert!(data.is_array());
@@ -31,10 +30,7 @@ async fn test_create_webhook() {
     let webhook = mcp_tool_json(&result);
 
     assert_eq!(webhook["label"].as_str().unwrap(), "Test Hook");
-    assert_eq!(
-        webhook["url"].as_str().unwrap(),
-        "https://example.com/hook"
-    );
+    assert_eq!(webhook["url"].as_str().unwrap(), "https://example.com/hook");
     assert!(!webhook["id"].as_str().unwrap().is_empty());
 }
 

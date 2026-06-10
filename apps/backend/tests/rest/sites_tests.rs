@@ -1,4 +1,4 @@
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 use crate::common::TestServer;
 
@@ -52,10 +52,7 @@ fn auth_header(jwt: &str, csrf: &str) -> reqwest::header::HeaderMap {
         reqwest::header::COOKIE,
         reqwest::header::HeaderValue::from_str(&cookie_val).unwrap(),
     );
-    headers.insert(
-        "X-CSRF-Token",
-        reqwest::header::HeaderValue::from_str(csrf).unwrap(),
-    );
+    headers.insert("X-CSRF-Token", reqwest::header::HeaderValue::from_str(csrf).unwrap());
     headers
 }
 
@@ -189,10 +186,7 @@ async fn test_list_members() {
     let site_id = created["id"].as_str().unwrap();
 
     let resp = client
-        .get(format!(
-            "{}/api/dashboard/sites/{}/members",
-            server.base_url, site_id
-        ))
+        .get(format!("{}/api/dashboard/sites/{}/members", server.base_url, site_id))
         .headers(auth_header(&jwt, &csrf))
         .send()
         .await

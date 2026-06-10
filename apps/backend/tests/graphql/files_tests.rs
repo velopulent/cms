@@ -1,4 +1,4 @@
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 use crate::common::TestServer;
 
@@ -12,10 +12,20 @@ async fn setup(server: &TestServer) -> (String, String) {
     for cookie in headers.get_all("set-cookie").iter() {
         if let Ok(val) = cookie.to_str() {
             if val.starts_with("token=") {
-                jwt = val.split(';').next().and_then(|c| c.strip_prefix("token=")).unwrap_or("").to_string();
+                jwt = val
+                    .split(';')
+                    .next()
+                    .and_then(|c| c.strip_prefix("token="))
+                    .unwrap_or("")
+                    .to_string();
             }
             if val.starts_with("csrf=") {
-                csrf = val.split(';').next().and_then(|c| c.strip_prefix("csrf=")).unwrap_or("").to_string();
+                csrf = val
+                    .split(';')
+                    .next()
+                    .and_then(|c| c.strip_prefix("csrf="))
+                    .unwrap_or("")
+                    .to_string();
             }
         }
     }
@@ -95,7 +105,12 @@ async fn test_files_query() {
 
     upload_file_via_rest(&server, &token).await;
 
-    let body = gql(&server, &token, "{ files { id filename originalName mimeType size url } }").await;
+    let body = gql(
+        &server,
+        &token,
+        "{ files { id filename originalName mimeType size url } }",
+    )
+    .await;
     assert!(body["errors"].is_null());
     let files = body["data"]["files"].as_array().unwrap();
     assert!(!files.is_empty());
@@ -133,7 +148,10 @@ async fn test_file_references_query() {
 
     let file_id = upload_file_via_rest(&server, &token).await;
 
-    let query = format!(r#"{{ fileReferences(fileId: "{}") {{ entryId collectionName fieldName }} }}"#, file_id);
+    let query = format!(
+        r#"{{ fileReferences(fileId: "{}") {{ entryId collectionName fieldName }} }}"#,
+        file_id
+    );
     let body = gql(&server, &token, &query).await;
     assert!(body["errors"].is_null());
     let _ = body["data"]["fileReferences"].as_array().unwrap();
@@ -162,8 +180,17 @@ async fn test_restore_file_mutation() {
 
     let file_id = upload_file_via_rest(&server, &token).await;
 
-    let del_body = gql(&server, &token, &format!(r#"mutation {{ deleteFile(id: "{}") }}"#, file_id)).await;
-    assert!(del_body["errors"].is_null(), "deleteFile should succeed: {:?}", del_body["errors"]);
+    let del_body = gql(
+        &server,
+        &token,
+        &format!(r#"mutation {{ deleteFile(id: "{}") }}"#, file_id),
+    )
+    .await;
+    assert!(
+        del_body["errors"].is_null(),
+        "deleteFile should succeed: {:?}",
+        del_body["errors"]
+    );
 
     let query = format!(r#"mutation {{ restoreFile(id: "{}") }}"#, file_id);
     let body = gql(&server, &token, &query).await;
@@ -200,7 +227,11 @@ async fn test_batch_restore_files_mutation() {
 
     for id in &ids {
         let del_body = gql(&server, &token, &format!(r#"mutation {{ deleteFile(id: "{}") }}"#, id)).await;
-        assert!(del_body["errors"].is_null(), "deleteFile should succeed: {:?}", del_body["errors"]);
+        assert!(
+            del_body["errors"].is_null(),
+            "deleteFile should succeed: {:?}",
+            del_body["errors"]
+        );
     }
 
     let query = r#"mutation BatchRestore($ids: [String!]!) { batchRestoreFiles(ids: $ids) }"#;

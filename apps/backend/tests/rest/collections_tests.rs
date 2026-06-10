@@ -1,4 +1,4 @@
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 use crate::common::TestServer;
 
@@ -12,10 +12,20 @@ async fn setup(server: &TestServer) -> (String, String, String) {
     for cookie in cookies {
         if let Ok(val) = cookie.to_str() {
             if val.starts_with("token=") {
-                jwt = val.split(';').next().and_then(|c| c.strip_prefix("token=")).unwrap_or("").to_string();
+                jwt = val
+                    .split(';')
+                    .next()
+                    .and_then(|c| c.strip_prefix("token="))
+                    .unwrap_or("")
+                    .to_string();
             }
             if val.starts_with("csrf=") {
-                csrf = val.split(';').next().and_then(|c| c.strip_prefix("csrf=")).unwrap_or("").to_string();
+                csrf = val
+                    .split(';')
+                    .next()
+                    .and_then(|c| c.strip_prefix("csrf="))
+                    .unwrap_or("")
+                    .to_string();
             }
         }
     }
@@ -36,7 +46,10 @@ async fn setup(server: &TestServer) -> (String, String, String) {
 fn auth_header(jwt: &str, csrf: &str) -> reqwest::header::HeaderMap {
     let mut headers = reqwest::header::HeaderMap::new();
     let cookie_val = format!("token={}; csrf={}", jwt, csrf);
-    headers.insert(reqwest::header::COOKIE, reqwest::header::HeaderValue::from_str(&cookie_val).unwrap());
+    headers.insert(
+        reqwest::header::COOKIE,
+        reqwest::header::HeaderValue::from_str(&cookie_val).unwrap(),
+    );
     headers.insert("X-CSRF-Token", reqwest::header::HeaderValue::from_str(csrf).unwrap());
     headers
 }
@@ -44,7 +57,10 @@ fn auth_header(jwt: &str, csrf: &str) -> reqwest::header::HeaderMap {
 async fn create_collection(server: &TestServer, jwt: &str, csrf: &str, site_id: &str, name: &str, slug: &str) -> Value {
     let client = reqwest::Client::builder().build().unwrap();
     let resp = client
-        .post(format!("{}/api/dashboard/sites/{}/collections", server.base_url, site_id))
+        .post(format!(
+            "{}/api/dashboard/sites/{}/collections",
+            server.base_url, site_id
+        ))
         .headers(auth_header(jwt, csrf))
         .json(&json!({
             "name": name,
@@ -54,7 +70,12 @@ async fn create_collection(server: &TestServer, jwt: &str, csrf: &str, site_id: 
         .send()
         .await
         .unwrap();
-    assert!(resp.status().is_success(), "Create collection failed: {} {}", resp.status(), resp.text().await.unwrap_or_default());
+    assert!(
+        resp.status().is_success(),
+        "Create collection failed: {} {}",
+        resp.status(),
+        resp.text().await.unwrap_or_default()
+    );
     resp.json().await.unwrap()
 }
 
@@ -65,7 +86,10 @@ async fn test_create_collection() {
     let client = reqwest::Client::builder().build().unwrap();
 
     let resp = client
-        .post(format!("{}/api/dashboard/sites/{}/collections", server.base_url, site_id))
+        .post(format!(
+            "{}/api/dashboard/sites/{}/collections",
+            server.base_url, site_id
+        ))
         .headers(auth_header(&jwt, &csrf))
         .json(&json!({
             "name": "Posts",
@@ -92,7 +116,10 @@ async fn test_list_collections() {
     create_collection(&server, &jwt, &csrf, &site_id, "Posts", "posts").await;
 
     let resp = client
-        .get(format!("{}/api/dashboard/sites/{}/collections", server.base_url, site_id))
+        .get(format!(
+            "{}/api/dashboard/sites/{}/collections",
+            server.base_url, site_id
+        ))
         .headers(auth_header(&jwt, &csrf))
         .send()
         .await
@@ -113,7 +140,10 @@ async fn test_get_collection() {
     create_collection(&server, &jwt, &csrf, &site_id, "Pages", "pages").await;
 
     let resp = client
-        .get(format!("{}/api/dashboard/sites/{}/collections/pages", server.base_url, site_id))
+        .get(format!(
+            "{}/api/dashboard/sites/{}/collections/pages",
+            server.base_url, site_id
+        ))
         .headers(auth_header(&jwt, &csrf))
         .send()
         .await
@@ -131,7 +161,10 @@ async fn test_get_collection_not_found() {
     let client = reqwest::Client::builder().build().unwrap();
 
     let resp = client
-        .get(format!("{}/api/dashboard/sites/{}/collections/nonexistent", server.base_url, site_id))
+        .get(format!(
+            "{}/api/dashboard/sites/{}/collections/nonexistent",
+            server.base_url, site_id
+        ))
         .headers(auth_header(&jwt, &csrf))
         .send()
         .await
@@ -149,7 +182,10 @@ async fn test_update_collection() {
     create_collection(&server, &jwt, &csrf, &site_id, "Old Name", "old-name").await;
 
     let resp = client
-        .put(format!("{}/api/dashboard/sites/{}/collections/old-name", server.base_url, site_id))
+        .put(format!(
+            "{}/api/dashboard/sites/{}/collections/old-name",
+            server.base_url, site_id
+        ))
         .headers(auth_header(&jwt, &csrf))
         .json(&json!({
             "name": "New Name",
@@ -174,7 +210,10 @@ async fn test_delete_collection() {
     create_collection(&server, &jwt, &csrf, &site_id, "To Delete", "to-delete").await;
 
     let resp = client
-        .delete(format!("{}/api/dashboard/sites/{}/collections/to-delete", server.base_url, site_id))
+        .delete(format!(
+            "{}/api/dashboard/sites/{}/collections/to-delete",
+            server.base_url, site_id
+        ))
         .headers(auth_header(&jwt, &csrf))
         .send()
         .await
@@ -183,7 +222,10 @@ async fn test_delete_collection() {
     assert_eq!(resp.status(), 204);
 
     let get_resp = client
-        .get(format!("{}/api/dashboard/sites/{}/collections/to-delete", server.base_url, site_id))
+        .get(format!(
+            "{}/api/dashboard/sites/{}/collections/to-delete",
+            server.base_url, site_id
+        ))
         .headers(auth_header(&jwt, &csrf))
         .send()
         .await
@@ -228,7 +270,10 @@ async fn test_create_collection_invalid_field_type() {
     let client = reqwest::Client::builder().build().unwrap();
 
     let resp = client
-        .post(format!("{}/api/dashboard/sites/{}/collections", server.base_url, site_id))
+        .post(format!(
+            "{}/api/dashboard/sites/{}/collections",
+            server.base_url, site_id
+        ))
         .headers(auth_header(&jwt, &csrf))
         .json(&json!({
             "name": "Bad Def",
@@ -242,7 +287,11 @@ async fn test_create_collection_invalid_field_type() {
     assert_eq!(resp.status(), 400);
     let body: Value = resp.json().await.unwrap();
     let error = body["error"].as_str().unwrap_or("");
-    assert!(error.contains("Invalid definition") || error.contains("invalid type") || error.contains("field type"), "Expected validation error, got: {}", error);
+    assert!(
+        error.contains("Invalid definition") || error.contains("invalid type") || error.contains("field type"),
+        "Expected validation error, got: {}",
+        error
+    );
 }
 
 #[tokio::test]
@@ -254,7 +303,10 @@ async fn test_create_collection_duplicate_slug() {
 
     let client = reqwest::Client::builder().build().unwrap();
     let resp = client
-        .post(format!("{}/api/dashboard/sites/{}/collections", server.base_url, site_id))
+        .post(format!(
+            "{}/api/dashboard/sites/{}/collections",
+            server.base_url, site_id
+        ))
         .headers(auth_header(&jwt, &csrf))
         .json(&json!({
             "name": "Posts Again",

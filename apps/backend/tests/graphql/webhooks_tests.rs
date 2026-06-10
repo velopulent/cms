@@ -1,6 +1,6 @@
-use serde_json::{json, Value};
-use wiremock::{Mock, MockServer, ResponseTemplate};
+use serde_json::{Value, json};
 use wiremock::matchers::method;
+use wiremock::{Mock, MockServer, ResponseTemplate};
 
 use crate::common::TestServer;
 
@@ -14,10 +14,20 @@ async fn setup(server: &TestServer) -> (String, String) {
     for cookie in headers.get_all("set-cookie").iter() {
         if let Ok(val) = cookie.to_str() {
             if val.starts_with("token=") {
-                jwt = val.split(';').next().and_then(|c| c.strip_prefix("token=")).unwrap_or("").to_string();
+                jwt = val
+                    .split(';')
+                    .next()
+                    .and_then(|c| c.strip_prefix("token="))
+                    .unwrap_or("")
+                    .to_string();
             }
             if val.starts_with("csrf=") {
-                csrf = val.split(';').next().and_then(|c| c.strip_prefix("csrf=")).unwrap_or("").to_string();
+                csrf = val
+                    .split(';')
+                    .next()
+                    .and_then(|c| c.strip_prefix("csrf="))
+                    .unwrap_or("")
+                    .to_string();
             }
         }
     }
@@ -96,7 +106,10 @@ async fn test_webhook_not_found() {
     let server = TestServer::start().await;
     let (site_id, token) = setup(&server).await;
 
-    let query = format!(r#"{{ webhook(siteId: "{}", webhookId: "nonexistent") {{ id }} }}"#, site_id);
+    let query = format!(
+        r#"{{ webhook(siteId: "{}", webhookId: "nonexistent") {{ id }} }}"#,
+        site_id
+    );
     let body = gql(&server, &token, &query).await;
     assert!(body["errors"].is_array());
     let msg = body["errors"][0]["message"].as_str().unwrap();
@@ -119,10 +132,17 @@ async fn test_webhook_by_id() {
     let (site_id, token) = setup(&server).await;
 
     let created = create_webhook(&server, &token, &site_id, "My Hook", "https://example.com/hook").await;
-    assert!(created["errors"].is_null(), "create_webhook errors: {:?}", created["errors"]);
+    assert!(
+        created["errors"].is_null(),
+        "create_webhook errors: {:?}",
+        created["errors"]
+    );
     let hook_id = created["data"]["createWebhook"]["id"].as_str().unwrap();
 
-    let query = format!(r#"{{ webhook(siteId: "{}", webhookId: "{}") {{ id label }} }}"#, site_id, hook_id);
+    let query = format!(
+        r#"{{ webhook(siteId: "{}", webhookId: "{}") {{ id label }} }}"#,
+        site_id, hook_id
+    );
     let body = gql(&server, &token, &query).await;
     assert!(body["errors"].is_null());
     assert_eq!(body["data"]["webhook"]["label"].as_str().unwrap(), "My Hook");
@@ -136,7 +156,10 @@ async fn test_delete_webhook_mutation() {
     let created = create_webhook(&server, &token, &site_id, "Delete Me", "https://example.com/hook").await;
     let hook_id = created["data"]["createWebhook"]["id"].as_str().unwrap();
 
-    let query = format!(r#"mutation {{ deleteWebhook(siteId: "{}", webhookId: "{}") }}"#, site_id, hook_id);
+    let query = format!(
+        r#"mutation {{ deleteWebhook(siteId: "{}", webhookId: "{}") }}"#,
+        site_id, hook_id
+    );
     let body = gql(&server, &token, &query).await;
     assert!(body["errors"].is_null());
     assert_eq!(body["data"]["deleteWebhook"].as_bool().unwrap(), true);
@@ -174,7 +197,10 @@ async fn test_trigger_webhook_mutation() {
     let created = create_webhook(&server, &token, &site_id, "Trigger Me", &mock_server.uri()).await;
     let hook_id = created["data"]["createWebhook"]["id"].as_str().unwrap();
 
-    let query = format!(r#"mutation {{ triggerWebhook(siteId: "{}", webhookId: "{}") {{ id status }} }}"#, site_id, hook_id);
+    let query = format!(
+        r#"mutation {{ triggerWebhook(siteId: "{}", webhookId: "{}") {{ id status }} }}"#,
+        site_id, hook_id
+    );
     let body = gql(&server, &token, &query).await;
     assert!(body["errors"].is_null());
     assert_eq!(body["data"]["triggerWebhook"]["status"].as_str().unwrap(), "success");
@@ -194,11 +220,21 @@ async fn test_webhook_deliveries_query() {
     let created = create_webhook(&server, &token, &site_id, "Delivery Hook", &mock_server.uri()).await;
     let hook_id = created["data"]["createWebhook"]["id"].as_str().unwrap();
 
-    let query = format!(r#"mutation {{ triggerWebhook(siteId: "{}", webhookId: "{}") {{ id status }} }}"#, site_id, hook_id);
+    let query = format!(
+        r#"mutation {{ triggerWebhook(siteId: "{}", webhookId: "{}") {{ id status }} }}"#,
+        site_id, hook_id
+    );
     let trigger_body = gql(&server, &token, &query).await;
-    assert!(trigger_body["errors"].is_null(), "triggerWebhook should succeed: {:?}", trigger_body["errors"]);
+    assert!(
+        trigger_body["errors"].is_null(),
+        "triggerWebhook should succeed: {:?}",
+        trigger_body["errors"]
+    );
 
-    let query = format!(r#"{{ webhookDeliveries(siteId: "{}", webhookId: "{}") {{ id status }} }}"#, site_id, hook_id);
+    let query = format!(
+        r#"{{ webhookDeliveries(siteId: "{}", webhookId: "{}") {{ id status }} }}"#,
+        site_id, hook_id
+    );
     let body = gql(&server, &token, &query).await;
     assert!(body["errors"].is_null());
     let deliveries = body["data"]["webhookDeliveries"].as_array().unwrap();

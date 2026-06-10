@@ -54,9 +54,7 @@ async fn test_get_collection() {
         .into_inner();
 
     let fetched = client
-        .get_collection(tonic::Request::new(GetCollectionRequest {
-            slug: "pages".into(),
-        }))
+        .get_collection(tonic::Request::new(GetCollectionRequest { slug: "pages".into() }))
         .await
         .unwrap()
         .into_inner();

@@ -33,10 +33,7 @@ async fn test_initialize_reflects_protocol_version() {
     )
     .await;
     let result = mcp_result(&resp);
-    assert_eq!(
-        result["protocolVersion"].as_str().unwrap(),
-        "2024-11-05"
-    );
+    assert_eq!(result["protocolVersion"].as_str().unwrap(), "2024-11-05");
 }
 
 #[tokio::test]
@@ -106,11 +103,7 @@ async fn test_tool_schemas_are_valid() {
             "tool '{}' inputSchema has $schema",
             name
         );
-        assert!(
-            schema.get("title").is_none(),
-            "tool '{}' inputSchema has title",
-            name
-        );
+        assert!(schema.get("title").is_none(), "tool '{}' inputSchema has title", name);
 
         if let Some(props) = schema.get("properties").and_then(|p| p.as_object()) {
             for (key, prop) in props {
@@ -121,12 +114,7 @@ async fn test_tool_schemas_are_valid() {
                     key,
                     prop
                 );
-                assert!(
-                    !prop.is_boolean(),
-                    "tool '{}' property '{}' is boolean",
-                    name,
-                    key
-                );
+                assert!(!prop.is_boolean(), "tool '{}' property '{}' is boolean", name, key);
             }
         }
     }
@@ -139,10 +127,7 @@ async fn test_no_list_sites_tool() {
 
     let tools = mcp_list_tools(&server.base_url, &token).await;
     let names: Vec<&str> = tools.iter().filter_map(|t| t["name"].as_str()).collect();
-    assert!(
-        !names.contains(&"list_sites"),
-        "list_sites tool should not exist"
-    );
+    assert!(!names.contains(&"list_sites"), "list_sites tool should not exist");
 }
 
 #[tokio::test]
@@ -192,20 +177,10 @@ async fn test_auth_missing_token_returns_401() {
 async fn test_auth_wrong_token_type_returns_401() {
     let server = start_mcp_server().await;
 
-    let resp = mcp_request(
-        &server.base_url,
-        "not-a-cms-token",
-        "tools/list",
-        None,
-    )
-    .await;
+    let resp = mcp_request(&server.base_url, "not-a-cms-token", "tools/list", None).await;
 
     let error = resp.get("error");
-    assert!(
-        error.is_some(),
-        "Expected error for wrong token type, got: {}",
-        resp
-    );
+    assert!(error.is_some(), "Expected error for wrong token type, got: {}", resp);
     let error = error.unwrap();
     assert_eq!(
         error["code"].as_i64().unwrap(),
@@ -225,20 +200,10 @@ async fn test_auth_wrong_token_type_returns_401() {
 async fn test_auth_invalid_token_returns_401() {
     let server = start_mcp_server().await;
 
-    let resp = mcp_request(
-        &server.base_url,
-        "cms_site_invalid_token_abc123",
-        "tools/list",
-        None,
-    )
-    .await;
+    let resp = mcp_request(&server.base_url, "cms_site_invalid_token_abc123", "tools/list", None).await;
 
     let error = resp.get("error");
-    assert!(
-        error.is_some(),
-        "Expected error for invalid token, got: {}",
-        resp
-    );
+    assert!(error.is_some(), "Expected error for invalid token, got: {}", resp);
     let msg = error.unwrap()["message"].as_str().unwrap();
     assert!(
         msg.contains("Invalid access token") || msg.contains("error"),
@@ -260,11 +225,7 @@ async fn test_auth_instance_token_rejected() {
     .await;
 
     let error = resp.get("error");
-    assert!(
-        error.is_some(),
-        "Instance token should be rejected, got: {}",
-        resp
-    );
+    assert!(error.is_some(), "Instance token should be rejected, got: {}", resp);
     let msg = error.unwrap()["message"].as_str().unwrap();
     assert!(
         msg.contains("MCP requires a CMS access token"),

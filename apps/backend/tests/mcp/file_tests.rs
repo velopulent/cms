@@ -5,8 +5,7 @@ async fn test_list_files_empty() {
     let server = start_mcp_server().await;
     let (_, token) = setup_site_token(&server).await;
 
-    let result =
-        mcp_call_tool(&server.base_url, &token, "list_files", serde_json::json!({})).await;
+    let result = mcp_call_tool(&server.base_url, &token, "list_files", serde_json::json!({})).await;
     let data = mcp_tool_json(&result);
 
     assert!(data["items"].as_array().unwrap().is_empty());

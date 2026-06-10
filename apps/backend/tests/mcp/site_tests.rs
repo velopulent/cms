@@ -53,8 +53,5 @@ async fn test_update_site_requires_admin() {
         serde_json::json!({"name": "Should Fail"}),
     )
     .await;
-    assert!(
-        mcp_is_error(&result),
-        "update_site should fail with read-only token"
-    );
+    assert!(mcp_is_error(&result), "update_site should fail with read-only token");
 }

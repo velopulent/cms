@@ -2,8 +2,8 @@
 mod common;
 
 mod auth_tests;
-mod sites_tests;
 mod collections_tests;
 mod entries_tests;
 mod files_tests;
+mod sites_tests;
 mod webhooks_tests;

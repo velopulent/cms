@@ -8,10 +8,7 @@ async fn test_list_resources() {
     let resources = mcp_list_resources(&server.base_url, &token).await;
 
     assert!(!resources.is_empty(), "Should have at least the schema resource");
-    let uris: Vec<&str> = resources
-        .iter()
-        .filter_map(|r| r["uri"].as_str())
-        .collect();
+    let uris: Vec<&str> = resources.iter().filter_map(|r| r["uri"].as_str()).collect();
     assert!(
         uris.iter().any(|u| u.ends_with("/schema")),
         "Should have schema resource"
@@ -23,16 +20,9 @@ async fn test_read_schema_resource() {
     let server = start_mcp_server().await;
     let (site_id, token) = setup_site_token(&server).await;
 
-    let result = mcp_read_resource(
-        &server.base_url,
-        &token,
-        &format!("cms://{}/schema", site_id),
-    )
-    .await;
+    let result = mcp_read_resource(&server.base_url, &token, &format!("cms://{}/schema", site_id)).await;
 
-    let contents = result["contents"]
-        .as_array()
-        .expect("missing contents array");
+    let contents = result["contents"].as_array().expect("missing contents array");
     assert!(!contents.is_empty());
 
     let text = contents[0]["text"].as_str().expect("missing text");
@@ -57,9 +47,7 @@ async fn test_read_collection_resource() {
     )
     .await;
 
-    let contents = result["contents"]
-        .as_array()
-        .expect("missing contents array");
+    let contents = result["contents"].as_array().expect("missing contents array");
     let text = contents[0]["text"].as_str().expect("missing text");
     let data: serde_json::Value = serde_json::from_str(text).expect("invalid JSON");
 
@@ -80,10 +68,7 @@ async fn test_read_resource_invalid_uri() {
     )
     .await;
 
-    assert!(
-        resp.get("error").is_some(),
-        "Should error for invalid URI"
-    );
+    assert!(resp.get("error").is_some(), "Should error for invalid URI");
 }
 
 #[tokio::test]
@@ -138,10 +123,7 @@ async fn test_resources_reflect_created_collections() {
 
     let resources = mcp_list_resources(&server.base_url, &token).await;
 
-    let uris: Vec<&str> = resources
-        .iter()
-        .filter_map(|r| r["uri"].as_str())
-        .collect();
+    let uris: Vec<&str> = resources.iter().filter_map(|r| r["uri"].as_str()).collect();
     assert!(
         uris.iter().any(|u| u.contains("/collections/posts")),
         "Should list posts collection resource"

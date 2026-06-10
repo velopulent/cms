@@ -11,8 +11,7 @@ async fn test_list_entries_empty() {
     let server = start_mcp_server().await;
     let (_, token) = setup_site_token(&server).await;
 
-    let result =
-        mcp_call_tool(&server.base_url, &token, "list_entries", serde_json::json!({})).await;
+    let result = mcp_call_tool(&server.base_url, &token, "list_entries", serde_json::json!({})).await;
     let data = mcp_tool_json(&result);
 
     assert!(data["items"].as_array().unwrap().is_empty());
@@ -249,10 +248,7 @@ async fn test_list_revisions() {
     )
     .await;
     let data = mcp_tool_json(&result);
-    assert!(
-        data["total"].as_i64().unwrap() >= 2,
-        "Expected at least 2 revisions"
-    );
+    assert!(data["total"].as_i64().unwrap() >= 2, "Expected at least 2 revisions");
 }
 
 #[tokio::test]
@@ -419,5 +415,9 @@ async fn test_list_entries_with_search() {
     let data = mcp_tool_json(&result);
     let items = data["items"].as_array().expect("items array");
     let slugs: Vec<&str> = items.iter().filter_map(|i| i["slug"].as_str()).collect();
-    assert!(slugs.contains(&"searchable"), "expected slug 'searchable' in search results, got: {:?}", slugs);
+    assert!(
+        slugs.contains(&"searchable"),
+        "expected slug 'searchable' in search results, got: {:?}",
+        slugs
+    );
 }

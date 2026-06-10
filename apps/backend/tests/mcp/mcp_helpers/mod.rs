@@ -43,10 +43,7 @@ fn auth_header(jwt: &str, csrf: &str) -> reqwest::header::HeaderMap {
         reqwest::header::COOKIE,
         reqwest::header::HeaderValue::from_str(&cookie_val).unwrap(),
     );
-    headers.insert(
-        "X-CSRF-Token",
-        reqwest::header::HeaderValue::from_str(csrf).unwrap(),
-    );
+    headers.insert("X-CSRF-Token", reqwest::header::HeaderValue::from_str(csrf).unwrap());
     headers
 }
 
@@ -84,10 +81,7 @@ async fn create_site_and_token(server: &TestServer, permission: &str) -> (String
     let site_id = site["id"].as_str().unwrap().to_string();
 
     let resp = client
-        .post(format!(
-            "{}/api/dashboard/sites/{}/tokens",
-            server.base_url, site_id
-        ))
+        .post(format!("{}/api/dashboard/sites/{}/tokens", server.base_url, site_id))
         .headers(auth_header(&jwt, &csrf))
         .json(&serde_json::json!({"name": "Test Token", "permission": permission}))
         .send()
@@ -105,12 +99,7 @@ async fn create_site_and_token(server: &TestServer, permission: &str) -> (String
     (site_id, token)
 }
 
-pub async fn mcp_request(
-    base_url: &str,
-    token: &str,
-    method: &str,
-    params: Option<Value>,
-) -> Value {
+pub async fn mcp_request(base_url: &str, token: &str, method: &str, params: Option<Value>) -> Value {
     let client = reqwest::Client::builder().build().unwrap();
     let id = next_id();
     let mut body = serde_json::json!({
@@ -179,9 +168,7 @@ pub fn mcp_result(response: &Value) -> &Value {
     if let Some(err) = response.get("error") {
         panic!("MCP error: {}", err);
     }
-    response
-        .get("result")
-        .expect("MCP response missing 'result'")
+    response.get("result").expect("MCP response missing 'result'")
 }
 
 pub fn mcp_is_error(response: &Value) -> bool {
@@ -235,18 +222,10 @@ pub async fn mcp_initialize(base_url: &str, token: &str) -> Value {
 pub async fn mcp_list_tools(base_url: &str, token: &str) -> Vec<Value> {
     let resp = mcp_request(base_url, token, "tools/list", None).await;
     let result = mcp_result(&resp);
-    result["tools"]
-        .as_array()
-        .cloned()
-        .unwrap_or_default()
+    result["tools"].as_array().cloned().unwrap_or_default()
 }
 
-pub async fn mcp_call_tool(
-    base_url: &str,
-    token: &str,
-    tool_name: &str,
-    arguments: Value,
-) -> Value {
+pub async fn mcp_call_tool(base_url: &str, token: &str, tool_name: &str, arguments: Value) -> Value {
     let resp = mcp_request(
         base_url,
         token,
@@ -263,29 +242,15 @@ pub async fn mcp_call_tool(
 pub async fn mcp_list_resources(base_url: &str, token: &str) -> Vec<Value> {
     let resp = mcp_request(base_url, token, "resources/list", None).await;
     let result = mcp_result(&resp);
-    result["resources"]
-        .as_array()
-        .cloned()
-        .unwrap_or_default()
+    result["resources"].as_array().cloned().unwrap_or_default()
 }
 
 pub async fn mcp_read_resource(base_url: &str, token: &str, uri: &str) -> Value {
-    let resp = mcp_request(
-        base_url,
-        token,
-        "resources/read",
-        Some(serde_json::json!({"uri": uri})),
-    )
-    .await;
+    let resp = mcp_request(base_url, token, "resources/read", Some(serde_json::json!({"uri": uri}))).await;
     mcp_result(&resp).clone()
 }
 
-pub async fn create_test_collection(
-    base_url: &str,
-    token: &str,
-    name: &str,
-    slug: &str,
-) -> Value {
+pub async fn create_test_collection(base_url: &str, token: &str, name: &str, slug: &str) -> Value {
     let result = mcp_call_tool(
         base_url,
         token,
@@ -305,13 +270,7 @@ pub async fn create_test_collection(
     result
 }
 
-pub async fn create_test_entry(
-    base_url: &str,
-    token: &str,
-    collection_id: &str,
-    slug: &str,
-    data: Value,
-) -> Value {
+pub async fn create_test_entry(base_url: &str, token: &str, collection_id: &str, slug: &str, data: Value) -> Value {
     let result = mcp_call_tool(
         base_url,
         token,

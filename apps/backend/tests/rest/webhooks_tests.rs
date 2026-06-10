@@ -1,6 +1,6 @@
-use serde_json::{json, Value};
-use wiremock::{Mock, MockServer, ResponseTemplate};
+use serde_json::{Value, json};
 use wiremock::matchers::method;
+use wiremock::{Mock, MockServer, ResponseTemplate};
 
 use crate::common::TestServer;
 
@@ -13,10 +13,20 @@ async fn setup(server: &TestServer) -> (String, String, String) {
     for cookie in headers.get_all("set-cookie").iter() {
         if let Ok(val) = cookie.to_str() {
             if val.starts_with("token=") {
-                jwt = val.split(';').next().and_then(|c| c.strip_prefix("token=")).unwrap_or("").to_string();
+                jwt = val
+                    .split(';')
+                    .next()
+                    .and_then(|c| c.strip_prefix("token="))
+                    .unwrap_or("")
+                    .to_string();
             }
             if val.starts_with("csrf=") {
-                csrf = val.split(';').next().and_then(|c| c.strip_prefix("csrf=")).unwrap_or("").to_string();
+                csrf = val
+                    .split(';')
+                    .next()
+                    .and_then(|c| c.strip_prefix("csrf="))
+                    .unwrap_or("")
+                    .to_string();
             }
         }
     }
@@ -35,7 +45,10 @@ async fn setup(server: &TestServer) -> (String, String, String) {
 fn auth_header(jwt: &str, csrf: &str) -> reqwest::header::HeaderMap {
     let mut headers = reqwest::header::HeaderMap::new();
     let cookie_val = format!("token={}; csrf={}", jwt, csrf);
-    headers.insert(reqwest::header::COOKIE, reqwest::header::HeaderValue::from_str(&cookie_val).unwrap());
+    headers.insert(
+        reqwest::header::COOKIE,
+        reqwest::header::HeaderValue::from_str(&cookie_val).unwrap(),
+    );
     headers.insert("X-CSRF-Token", reqwest::header::HeaderValue::from_str(csrf).unwrap());
     headers
 }
@@ -75,7 +88,13 @@ async fn test_list_webhooks() {
         .send()
         .await
         .unwrap();
-    assert_eq!(resp.status(), 201, "create webhook failed: {} {}", resp.status(), resp.text().await.unwrap_or_default());
+    assert_eq!(
+        resp.status(),
+        201,
+        "create webhook failed: {} {}",
+        resp.status(),
+        resp.text().await.unwrap_or_default()
+    );
 
     let resp = client
         .get(format!("{}/api/dashboard/sites/{}/webhooks", server.base_url, site_id))
@@ -107,7 +126,10 @@ async fn test_get_webhook() {
     let hook_id = created["id"].as_str().unwrap();
 
     let resp = client
-        .get(format!("{}/api/dashboard/sites/{}/webhooks/{}", server.base_url, site_id, hook_id))
+        .get(format!(
+            "{}/api/dashboard/sites/{}/webhooks/{}",
+            server.base_url, site_id, hook_id
+        ))
         .headers(auth_header(&jwt, &csrf))
         .send()
         .await
@@ -133,7 +155,10 @@ async fn test_delete_webhook() {
     let hook_id = created["id"].as_str().unwrap();
 
     let resp = client
-        .delete(format!("{}/api/dashboard/sites/{}/webhooks/{}", server.base_url, site_id, hook_id))
+        .delete(format!(
+            "{}/api/dashboard/sites/{}/webhooks/{}",
+            server.base_url, site_id, hook_id
+        ))
         .headers(auth_header(&jwt, &csrf))
         .send()
         .await
@@ -159,7 +184,10 @@ async fn test_list_deliveries_empty() {
     let hook_id = created["id"].as_str().unwrap();
 
     let resp = client
-        .get(format!("{}/api/dashboard/sites/{}/webhooks/{}/deliveries", server.base_url, site_id, hook_id))
+        .get(format!(
+            "{}/api/dashboard/sites/{}/webhooks/{}/deliveries",
+            server.base_url, site_id, hook_id
+        ))
         .headers(auth_header(&jwt, &csrf))
         .send()
         .await

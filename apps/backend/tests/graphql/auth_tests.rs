@@ -1,4 +1,4 @@
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 use crate::common::TestServer;
 
@@ -25,10 +25,20 @@ async fn setup_site_token(server: &TestServer) -> (reqwest::Client, String) {
     for cookie in headers.get_all("set-cookie").iter() {
         if let Ok(val) = cookie.to_str() {
             if val.starts_with("token=") {
-                jwt = val.split(';').next().and_then(|c| c.strip_prefix("token=")).unwrap_or("").to_string();
+                jwt = val
+                    .split(';')
+                    .next()
+                    .and_then(|c| c.strip_prefix("token="))
+                    .unwrap_or("")
+                    .to_string();
             }
             if val.starts_with("csrf=") {
-                csrf = val.split(';').next().and_then(|c| c.strip_prefix("csrf=")).unwrap_or("").to_string();
+                csrf = val
+                    .split(';')
+                    .next()
+                    .and_then(|c| c.strip_prefix("csrf="))
+                    .unwrap_or("")
+                    .to_string();
             }
         }
     }
@@ -68,10 +78,20 @@ async fn setup_read_token(server: &TestServer) -> String {
     for cookie in headers.get_all("set-cookie").iter() {
         if let Ok(val) = cookie.to_str() {
             if val.starts_with("token=") {
-                jwt = val.split(';').next().and_then(|c| c.strip_prefix("token=")).unwrap_or("").to_string();
+                jwt = val
+                    .split(';')
+                    .next()
+                    .and_then(|c| c.strip_prefix("token="))
+                    .unwrap_or("")
+                    .to_string();
             }
             if val.starts_with("csrf=") {
-                csrf = val.split(';').next().and_then(|c| c.strip_prefix("csrf=")).unwrap_or("").to_string();
+                csrf = val
+                    .split(';')
+                    .next()
+                    .and_then(|c| c.strip_prefix("csrf="))
+                    .unwrap_or("")
+                    .to_string();
             }
         }
     }
@@ -122,7 +142,12 @@ async fn test_read_token_cannot_write() {
     let server = TestServer::start().await;
     let token = setup_read_token(&server).await;
 
-    let resp = gql(&server, Some(&token), r#"mutation { createCollection(input: {name: "Test", slug: "test", definition: "{}"}) { id } }"#).await;
+    let resp = gql(
+        &server,
+        Some(&token),
+        r#"mutation { createCollection(input: {name: "Test", slug: "test", definition: "{}"}) { id } }"#,
+    )
+    .await;
     let body: Value = resp.json().await.unwrap();
     assert!(body["errors"].is_array());
     let msg = body["errors"][0]["message"].as_str().unwrap();
@@ -141,10 +166,20 @@ async fn test_wrong_site_token() {
     for cookie in headers.get_all("set-cookie").iter() {
         if let Ok(val) = cookie.to_str() {
             if val.starts_with("token=") {
-                jwt = val.split(';').next().and_then(|c| c.strip_prefix("token=")).unwrap_or("").to_string();
+                jwt = val
+                    .split(';')
+                    .next()
+                    .and_then(|c| c.strip_prefix("token="))
+                    .unwrap_or("")
+                    .to_string();
             }
             if val.starts_with("csrf=") {
-                csrf = val.split(';').next().and_then(|c| c.strip_prefix("csrf=")).unwrap_or("").to_string();
+                csrf = val
+                    .split(';')
+                    .next()
+                    .and_then(|c| c.strip_prefix("csrf="))
+                    .unwrap_or("")
+                    .to_string();
             }
         }
     }
@@ -235,7 +270,12 @@ async fn test_valid_write_token_mutation() {
     let server = TestServer::start().await;
     let (_, token) = setup_site_token(&server).await;
 
-    let resp = gql(&server, Some(&token), r#"mutation { createCollection(input: {name: "Test", slug: "test-mut", definition: "{}"}) { id name } }"#).await;
+    let resp = gql(
+        &server,
+        Some(&token),
+        r#"mutation { createCollection(input: {name: "Test", slug: "test-mut", definition: "{}"}) { id name } }"#,
+    )
+    .await;
     let body: Value = resp.json().await.unwrap();
     assert!(body["data"].is_object());
     assert!(body["data"]["createCollection"]["name"].as_str().unwrap() == "Test");

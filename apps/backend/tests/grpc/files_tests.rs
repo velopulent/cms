@@ -177,7 +177,10 @@ async fn test_delete_file() {
         .into_inner();
 
     let remaining: Vec<&str> = list_resp.files.iter().map(|f| f.id.as_str()).collect();
-    assert!(!remaining.contains(&file_id.as_str()), "Deleted file should not appear in list");
+    assert!(
+        !remaining.contains(&file_id.as_str()),
+        "Deleted file should not appear in list"
+    );
 }
 
 #[tokio::test]

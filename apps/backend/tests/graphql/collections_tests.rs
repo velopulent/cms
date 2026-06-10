@@ -1,4 +1,4 @@
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 use crate::common::TestServer;
 
@@ -12,10 +12,20 @@ async fn setup(server: &TestServer) -> (String, String) {
     for cookie in headers.get_all("set-cookie").iter() {
         if let Ok(val) = cookie.to_str() {
             if val.starts_with("token=") {
-                jwt = val.split(';').next().and_then(|c| c.strip_prefix("token=")).unwrap_or("").to_string();
+                jwt = val
+                    .split(';')
+                    .next()
+                    .and_then(|c| c.strip_prefix("token="))
+                    .unwrap_or("")
+                    .to_string();
             }
             if val.starts_with("csrf=") {
-                csrf = val.split(';').next().and_then(|c| c.strip_prefix("csrf=")).unwrap_or("").to_string();
+                csrf = val
+                    .split(';')
+                    .next()
+                    .and_then(|c| c.strip_prefix("csrf="))
+                    .unwrap_or("")
+                    .to_string();
             }
         }
     }
@@ -183,7 +193,11 @@ async fn test_create_collection_invalid_field_type() {
 
     assert!(body["errors"].is_array());
     let msg = body["errors"][0]["message"].as_str().unwrap();
-    assert!(msg.contains("Invalid definition") || msg.contains("invalid type"), "Expected validation error: {}", msg);
+    assert!(
+        msg.contains("Invalid definition") || msg.contains("invalid type"),
+        "Expected validation error: {}",
+        msg
+    );
 }
 
 #[tokio::test]

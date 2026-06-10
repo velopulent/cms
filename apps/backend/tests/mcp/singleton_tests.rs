@@ -25,8 +25,7 @@ async fn test_list_singletons_empty() {
     let server = start_mcp_server().await;
     let (_, token) = setup_site_token(&server).await;
 
-    let result =
-        mcp_call_tool(&server.base_url, &token, "list_singletons", serde_json::json!({})).await;
+    let result = mcp_call_tool(&server.base_url, &token, "list_singletons", serde_json::json!({})).await;
     let data = mcp_tool_json(&result);
 
     assert!(data.is_array());
@@ -77,8 +76,7 @@ async fn test_list_singletons_after_create() {
 
     setup_singleton(&server.base_url, &token, "settings").await;
 
-    let result =
-        mcp_call_tool(&server.base_url, &token, "list_singletons", serde_json::json!({})).await;
+    let result = mcp_call_tool(&server.base_url, &token, "list_singletons", serde_json::json!({})).await;
     let data = mcp_tool_json(&result);
     assert_eq!(data.as_array().unwrap().len(), 1);
 }
