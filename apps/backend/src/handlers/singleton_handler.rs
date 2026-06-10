@@ -14,7 +14,8 @@ pub struct SingletonSlug {
     slug: String,
 }
 
-use crate::middleware::auth::{RequestContext, Scope, require_site_scope};
+use crate::middleware::auth::{RequestContext, require_site_action};
+use crate::models::authorization::Action;
 use crate::models::collection::{SingletonResponse, UpdateSingletonData};
 use crate::repository::Repository;
 use crate::services::Services;
@@ -49,7 +50,7 @@ pub async fn list_singletons(
     Extension(repository): Extension<Repository>,
     Extension(services): Extension<Services>,
 ) -> Response {
-    if let Err((status, err)) = require_site_scope(&ctx, &repository, &Scope::EntriesRead, "viewer").await {
+    if let Err((status, err)) = require_site_action(&ctx, &repository, Action::ContentRead).await {
         return (status, err).into_response();
     }
 
@@ -79,7 +80,7 @@ pub async fn get_singleton(
     Extension(services): Extension<Services>,
     Extension(storage_registry): Extension<Arc<StorageRegistry>>,
 ) -> Response {
-    if let Err((status, err)) = require_site_scope(&ctx, &repository, &Scope::EntriesRead, "viewer").await {
+    if let Err((status, err)) = require_site_action(&ctx, &repository, Action::ContentRead).await {
         return (status, err).into_response();
     }
 
@@ -121,7 +122,7 @@ pub async fn update_singleton(
     Extension(services): Extension<Services>,
     Json(payload): Json<UpdateSingletonData>,
 ) -> Response {
-    if let Err((status, err)) = require_site_scope(&ctx, &repository, &Scope::EntriesWrite, "editor").await {
+    if let Err((status, err)) = require_site_action(&ctx, &repository, Action::ContentWrite).await {
         return (status, err).into_response();
     }
 

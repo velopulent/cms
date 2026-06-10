@@ -13,7 +13,8 @@ pub struct WebhookId {
     webhook_id: String,
 }
 
-use crate::middleware::auth::{RequestContext, Scope, require_site_scope};
+use crate::middleware::auth::{RequestContext, require_site_action};
+use crate::models::authorization::Action;
 use crate::models::webhook::{CreateWebhook, UpdateWebhook};
 use crate::repository::Repository;
 use crate::services::Services;
@@ -41,7 +42,7 @@ pub async fn list_webhooks(
     Extension(repository): Extension<Repository>,
     Extension(services): Extension<Services>,
 ) -> Response {
-    if let Err((status, err)) = require_site_scope(&ctx, &repository, &Scope::WebhooksRead, "viewer").await {
+    if let Err((status, err)) = require_site_action(&ctx, &repository, Action::WebhooksRead).await {
         return (status, err).into_response();
     }
 
@@ -87,7 +88,7 @@ pub async fn create_webhook(
     Extension(services): Extension<Services>,
     Json(payload): Json<CreateWebhook>,
 ) -> Response {
-    if let Err((status, err)) = require_site_scope(&ctx, &repository, &Scope::WebhooksWrite, "admin").await {
+    if let Err((status, err)) = require_site_action(&ctx, &repository, Action::WebhooksWrite).await {
         return (status, err).into_response();
     }
 
@@ -121,7 +122,7 @@ pub async fn get_webhook(
     Extension(repository): Extension<Repository>,
     Extension(services): Extension<Services>,
 ) -> Response {
-    if let Err((status, err)) = require_site_scope(&ctx, &repository, &Scope::WebhooksRead, "viewer").await {
+    if let Err((status, err)) = require_site_action(&ctx, &repository, Action::WebhooksRead).await {
         return (status, err).into_response();
     }
 
@@ -154,13 +155,19 @@ pub async fn update_webhook(
     Extension(services): Extension<Services>,
     Json(payload): Json<UpdateWebhook>,
 ) -> Response {
-    if let Err((status, err)) = require_site_scope(&ctx, &repository, &Scope::WebhooksWrite, "admin").await {
+    if let Err((status, err)) = require_site_action(&ctx, &repository, Action::WebhooksWrite).await {
         return (status, err).into_response();
     }
 
     match services
         .webhook
-        .update_webhook(&webhook_id, &ctx.site_id, payload.label.as_deref(), payload.url.as_deref(), payload.headers.as_ref())
+        .update_webhook(
+            &webhook_id,
+            &ctx.site_id,
+            payload.label.as_deref(),
+            payload.url.as_deref(),
+            payload.headers.as_ref(),
+        )
         .await
     {
         Ok(webhook) => (StatusCode::OK, Json(webhook)).into_response(),
@@ -187,7 +194,7 @@ pub async fn delete_webhook(
     Extension(repository): Extension<Repository>,
     Extension(services): Extension<Services>,
 ) -> Response {
-    if let Err((status, err)) = require_site_scope(&ctx, &repository, &Scope::WebhooksWrite, "admin").await {
+    if let Err((status, err)) = require_site_action(&ctx, &repository, Action::WebhooksWrite).await {
         return (status, err).into_response();
     }
 
@@ -218,7 +225,7 @@ pub async fn trigger_webhook(
     Extension(repository): Extension<Repository>,
     Extension(services): Extension<Services>,
 ) -> Response {
-    if let Err((status, err)) = require_site_scope(&ctx, &repository, &Scope::WebhooksWrite, "editor").await {
+    if let Err((status, err)) = require_site_action(&ctx, &repository, Action::WebhooksWrite).await {
         return (status, err).into_response();
     }
 
@@ -257,7 +264,7 @@ pub async fn list_deliveries(
     Extension(repository): Extension<Repository>,
     Extension(services): Extension<Services>,
 ) -> Response {
-    if let Err((status, err)) = require_site_scope(&ctx, &repository, &Scope::WebhooksRead, "viewer").await {
+    if let Err((status, err)) = require_site_action(&ctx, &repository, Action::WebhooksRead).await {
         return (status, err).into_response();
     }
 
@@ -275,15 +282,16 @@ pub async fn list_deliveries(
         .list_deliveries(&webhook_id, &ctx.site_id, page, per_page)
         .await
     {
-        Ok((deliveries, total)) => {
-            (StatusCode::OK, Json(serde_json::json!({
+        Ok((deliveries, total)) => (
+            StatusCode::OK,
+            Json(serde_json::json!({
                 "items": deliveries,
                 "total": total,
                 "page": page,
                 "per_page": per_page,
-            })))
-                .into_response()
-        }
+            })),
+        )
+            .into_response(),
         Err(e) => e.into_response(),
     }
 }

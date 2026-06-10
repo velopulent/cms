@@ -8,8 +8,11 @@ use serde::Deserialize;
 use serde_json::json;
 use tracing::instrument;
 
-use crate::middleware::auth::{AuthContext, RequestContext, Scope, require_site_scope, require_user_role};
-use crate::models::site::{CreateSite, InviteMember, UpdateMemberRole, UpdateSite};
+use crate::middleware::auth::{
+    AuthContext, RequestContext, require_instance_action, require_site_action, require_user_action,
+};
+use crate::models::authorization::Action;
+use crate::models::site::{CreateSite, InviteMember, TransferOwnership, UpdateMemberRole, UpdateSite};
 use crate::repository::Repository;
 use crate::services::Services;
 
@@ -33,10 +36,7 @@ pub struct MemberPath {
     tag = "site"
 )]
 #[instrument(skip(services, ctx))]
-pub async fn get_current_site(
-    ctx: RequestContext,
-    Extension(services): Extension<Services>,
-) -> Response {
+pub async fn get_current_site(ctx: RequestContext, Extension(services): Extension<Services>) -> Response {
     match services.site.get_site(&ctx.site_id).await {
         Ok(Some(site)) => (StatusCode::OK, Json(site)).into_response(),
         Ok(None) => (StatusCode::NOT_FOUND, Json(json!({"error": "Site not found"}))).into_response(),
@@ -47,27 +47,28 @@ pub async fn get_current_site(
 // ── Dashboard: /api/dashboard/sites ──
 
 #[instrument(skip(services, ctx))]
-pub async fn list_sites(
-    ctx: AuthContext,
-    Extension(services): Extension<Services>,
-) -> Response {
+pub async fn list_sites(ctx: AuthContext, Extension(services): Extension<Services>) -> Response {
     match services.site.list_sites_for_actor(&ctx.actor).await {
         Ok(sites) => (StatusCode::OK, Json(sites)).into_response(),
         Err(e) => e.into_response(),
     }
 }
 
-#[instrument(skip(services, ctx, payload))]
+#[instrument(skip(repository, services, ctx, payload))]
 pub async fn create_site(
     ctx: AuthContext,
+    Extension(repository): Extension<Repository>,
     Extension(services): Extension<Services>,
     Json(payload): Json<CreateSite>,
 ) -> Response {
-    let created_by = ctx.actor.user_id().unwrap_or("system");
+    let created_by = match require_instance_action(&ctx, &repository, Action::SiteCreate).await {
+        Ok(user_id) => user_id,
+        Err((status, error)) => return (status, error).into_response(),
+    };
 
     match services
         .site
-        .create_site(&payload.name, Some(&payload.storage_provider), created_by)
+        .create_site(&payload.name, Some(&payload.storage_provider), &created_by)
         .await
     {
         Ok(site) => (StatusCode::CREATED, Json(site)).into_response(),
@@ -81,7 +82,7 @@ pub async fn get_site(
     Extension(repository): Extension<Repository>,
     Extension(services): Extension<Services>,
 ) -> Response {
-    if let Err((status, err)) = require_site_scope(&ctx, &repository, &Scope::SiteRead, "viewer").await {
+    if let Err((status, err)) = require_site_action(&ctx, &repository, Action::SiteRead).await {
         return (status, err).into_response();
     }
 
@@ -99,7 +100,7 @@ pub async fn update_site(
     Extension(services): Extension<Services>,
     Json(payload): Json<UpdateSite>,
 ) -> Response {
-    if let Err((status, err)) = require_site_scope(&ctx, &repository, &Scope::SiteRead, "admin").await {
+    if let Err((status, err)) = require_site_action(&ctx, &repository, Action::SiteManage).await {
         return (status, err).into_response();
     }
 
@@ -115,7 +116,7 @@ pub async fn delete_site(
     Extension(repository): Extension<Repository>,
     Extension(services): Extension<Services>,
 ) -> Response {
-    if let Err((status, err)) = require_site_scope(&ctx, &repository, &Scope::SiteRead, "admin").await {
+    if let Err((status, err)) = require_site_action(&ctx, &repository, Action::SiteDelete).await {
         return (status, err).into_response();
     }
 
@@ -134,7 +135,7 @@ pub async fn list_members(
     Extension(repository): Extension<Repository>,
     Extension(services): Extension<Services>,
 ) -> Response {
-    if let Err((status, err)) = require_user_role(&ctx, &repository, "viewer").await {
+    if let Err((status, err)) = require_user_action(&ctx, &repository, Action::MembersRead).await {
         return (status, err).into_response();
     }
 
@@ -152,13 +153,19 @@ pub async fn invite_member(
     Extension(services): Extension<Services>,
     Json(payload): Json<InviteMember>,
 ) -> Response {
-    if let Err((status, err)) = require_user_role(&ctx, &repository, "admin").await {
+    let actor_id = match require_user_action(&ctx, &repository, Action::MembersManage).await {
+        Ok(actor_id) => actor_id,
+        Err((status, err)) => return (status, err).into_response(),
+    };
+    if payload.role == "admin"
+        && let Err((status, err)) = require_user_action(&ctx, &repository, Action::AdminsManage).await
+    {
         return (status, err).into_response();
     }
 
     match services
         .site
-        .invite_member(&site_id, &payload.username, &payload.role)
+        .invite_member(&site_id, &payload.username, &payload.role, &actor_id)
         .await
     {
         Ok(member) => (StatusCode::CREATED, Json(member)).into_response(),
@@ -169,18 +176,27 @@ pub async fn invite_member(
 #[instrument(skip(repository, services, ctx, payload))]
 pub async fn update_member_role(
     ctx: RequestContext,
-    Path(MemberPath { site_id, member_user_id }): Path<MemberPath>,
+    Path(MemberPath {
+        site_id,
+        member_user_id,
+    }): Path<MemberPath>,
     Extension(repository): Extension<Repository>,
     Extension(services): Extension<Services>,
     Json(payload): Json<UpdateMemberRole>,
 ) -> Response {
-    if let Err((status, err)) = require_user_role(&ctx, &repository, "admin").await {
+    let actor_id = match require_user_action(&ctx, &repository, Action::MembersManage).await {
+        Ok(actor_id) => actor_id,
+        Err((status, err)) => return (status, err).into_response(),
+    };
+    if payload.role == "admin"
+        && let Err((status, err)) = require_user_action(&ctx, &repository, Action::AdminsManage).await
+    {
         return (status, err).into_response();
     }
 
     match services
         .site
-        .update_member_role(&site_id, &member_user_id, &payload.role)
+        .update_member_role(&site_id, &member_user_id, &payload.role, &actor_id)
         .await
     {
         Ok(Some(member)) => (StatusCode::OK, Json(member)).into_response(),
@@ -189,17 +205,50 @@ pub async fn update_member_role(
     }
 }
 
-#[instrument(skip(services, ctx))]
+#[instrument(skip(repository, services, ctx))]
 pub async fn remove_member(
     ctx: RequestContext,
-    Path(MemberPath { site_id, member_user_id }): Path<MemberPath>,
+    Path(MemberPath {
+        site_id,
+        member_user_id,
+    }): Path<MemberPath>,
+    Extension(repository): Extension<Repository>,
     Extension(services): Extension<Services>,
 ) -> Response {
-    let by_user_id = ctx.auth.actor.user_id().unwrap_or("unknown");
+    let by_user_id = match require_user_action(&ctx, &repository, Action::MembersManage).await {
+        Ok(user_id) => user_id,
+        Err((status, err)) => return (status, err).into_response(),
+    };
 
-    match services.site.remove_member(&site_id, &member_user_id, by_user_id).await {
+    match services
+        .site
+        .remove_member(&site_id, &member_user_id, &by_user_id)
+        .await
+    {
         Ok(0) => (StatusCode::NOT_FOUND, Json(json!({"error": "Member not found"}))).into_response(),
         Ok(_) => StatusCode::NO_CONTENT.into_response(),
         Err(e) => e.into_response(),
+    }
+}
+
+#[instrument(skip(repository, services, ctx, payload))]
+pub async fn transfer_ownership(
+    ctx: RequestContext,
+    Path(site_id): Path<String>,
+    Extension(repository): Extension<Repository>,
+    Extension(services): Extension<Services>,
+    Json(payload): Json<TransferOwnership>,
+) -> Response {
+    let current_owner_id = match require_user_action(&ctx, &repository, Action::OwnershipTransfer).await {
+        Ok(user_id) => user_id,
+        Err((status, error)) => return (status, error).into_response(),
+    };
+    match services
+        .site
+        .transfer_ownership(&site_id, &current_owner_id, &payload.new_owner_user_id)
+        .await
+    {
+        Ok(()) => StatusCode::NO_CONTENT.into_response(),
+        Err(error) => error.into_response(),
     }
 }

@@ -7,8 +7,9 @@ use axum::{
 use serde_json::json;
 use tracing::instrument;
 
-use crate::middleware::auth::{RequestContext, require_user_role};
+use crate::middleware::auth::{RequestContext, require_user_action};
 use crate::models::access_token::CreateSiteToken;
+use crate::models::authorization::Action;
 use crate::repository::Repository;
 use crate::services::Services;
 
@@ -19,7 +20,7 @@ pub async fn list_site_tokens(
     Extension(repository): Extension<Repository>,
     Extension(services): Extension<Services>,
 ) -> Response {
-    if let Err((status, err)) = require_user_role(&ctx, &repository, "admin").await {
+    if let Err((status, err)) = require_user_action(&ctx, &repository, Action::ApiKeysManage).await {
         return (status, err).into_response();
     }
 
@@ -37,7 +38,7 @@ pub async fn create_site_token(
     Extension(services): Extension<Services>,
     Json(payload): Json<CreateSiteToken>,
 ) -> Response {
-    if let Err((status, err)) = require_user_role(&ctx, &repository, "admin").await {
+    if let Err((status, err)) = require_user_action(&ctx, &repository, Action::ApiKeysManage).await {
         return (status, err).into_response();
     }
 
@@ -64,7 +65,7 @@ pub async fn delete_site_token(
     Extension(repository): Extension<Repository>,
     Extension(services): Extension<Services>,
 ) -> Response {
-    if let Err((status, err)) = require_user_role(&ctx, &repository, "admin").await {
+    if let Err((status, err)) = require_user_action(&ctx, &repository, Action::ApiKeysManage).await {
         return (status, err).into_response();
     }
 

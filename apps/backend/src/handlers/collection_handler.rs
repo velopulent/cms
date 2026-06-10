@@ -13,7 +13,8 @@ pub struct CollectionSlug {
     collection_slug: String,
 }
 
-use crate::middleware::auth::{RequestContext, Scope, require_site_scope};
+use crate::middleware::auth::{RequestContext, require_site_action};
+use crate::models::authorization::Action;
 use crate::models::collection::{Collection, CreateCollection, UpdateCollection};
 use crate::repository::Repository;
 use crate::services::Services;
@@ -34,7 +35,7 @@ pub async fn list_collections(
     Extension(repository): Extension<Repository>,
     Extension(services): Extension<Services>,
 ) -> Response {
-    if let Err((status, err)) = require_site_scope(&ctx, &repository, &Scope::CollectionsRead, "viewer").await {
+    if let Err((status, err)) = require_site_action(&ctx, &repository, Action::SchemaRead).await {
         return (status, err).into_response();
     }
 
@@ -63,15 +64,11 @@ pub async fn get_collection(
     Extension(repository): Extension<Repository>,
     Extension(services): Extension<Services>,
 ) -> Response {
-    if let Err((status, err)) = require_site_scope(&ctx, &repository, &Scope::CollectionsRead, "viewer").await {
+    if let Err((status, err)) = require_site_action(&ctx, &repository, Action::SchemaRead).await {
         return (status, err).into_response();
     }
 
-    match services
-        .collection
-        .get_collection(&ctx.site_id, &collection_slug)
-        .await
-    {
+    match services.collection.get_collection(&ctx.site_id, &collection_slug).await {
         Ok(Some(item)) => (StatusCode::OK, Json(item)).into_response(),
         Ok(None) => (StatusCode::NOT_FOUND, Json(json!({"error": "Collection not found"}))).into_response(),
         Err(e) => e.into_response(),
@@ -98,7 +95,7 @@ pub async fn create_collection(
     Extension(services): Extension<Services>,
     Json(payload): Json<CreateCollection>,
 ) -> Response {
-    if let Err((status, err)) = require_site_scope(&ctx, &repository, &Scope::CollectionsWrite, "editor").await {
+    if let Err((status, err)) = require_site_action(&ctx, &repository, Action::SchemaWrite).await {
         return (status, err).into_response();
     }
 
@@ -142,7 +139,7 @@ pub async fn update_collection(
     Extension(services): Extension<Services>,
     Json(payload): Json<UpdateCollection>,
 ) -> Response {
-    if let Err((status, err)) = require_site_scope(&ctx, &repository, &Scope::CollectionsWrite, "editor").await {
+    if let Err((status, err)) = require_site_action(&ctx, &repository, Action::SchemaWrite).await {
         return (status, err).into_response();
     }
 
@@ -183,7 +180,7 @@ pub async fn delete_collection(
     Extension(repository): Extension<Repository>,
     Extension(services): Extension<Services>,
 ) -> Response {
-    if let Err((status, err)) = require_site_scope(&ctx, &repository, &Scope::CollectionsWrite, "editor").await {
+    if let Err((status, err)) = require_site_action(&ctx, &repository, Action::SchemaWrite).await {
         return (status, err).into_response();
     }
 

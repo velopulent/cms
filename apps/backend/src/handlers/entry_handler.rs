@@ -20,7 +20,8 @@ pub struct RevisionId {
     number: i64,
 }
 
-use crate::middleware::auth::{Actor, RequestContext, Scope, require_site_scope};
+use crate::middleware::auth::{Actor, RequestContext, require_site_action};
+use crate::models::authorization::Action;
 use crate::models::entry::{CreateEntry, Entry, EntryRevisionResponse, RevisionsListResponse, UpdateEntry};
 use crate::repository::Repository;
 use crate::repository::traits::ListEntriesParams;
@@ -79,7 +80,7 @@ pub async fn list_entries(
     Extension(repository): Extension<Repository>,
     Extension(services): Extension<Services>,
 ) -> Response {
-    if let Err((status, err)) = require_site_scope(&ctx, &repository, &Scope::EntriesRead, "viewer").await {
+    if let Err((status, err)) = require_site_action(&ctx, &repository, Action::ContentRead).await {
         return (status, err).into_response();
     }
 
@@ -140,7 +141,7 @@ pub async fn get_entry(
     Extension(services): Extension<Services>,
     Extension(storage_registry): Extension<Arc<StorageRegistry>>,
 ) -> Response {
-    if let Err((status, err)) = require_site_scope(&ctx, &repository, &Scope::EntriesRead, "viewer").await {
+    if let Err((status, err)) = require_site_action(&ctx, &repository, Action::ContentRead).await {
         return (status, err).into_response();
     }
 
@@ -189,7 +190,7 @@ pub async fn create_entry(
     Extension(services): Extension<Services>,
     Json(payload): Json<CreateEntry>,
 ) -> Response {
-    if let Err((status, err)) = require_site_scope(&ctx, &repository, &Scope::EntriesWrite, "editor").await {
+    if let Err((status, err)) = require_site_action(&ctx, &repository, Action::ContentWrite).await {
         return (status, err).into_response();
     }
 
@@ -231,7 +232,7 @@ pub async fn update_entry(
     Extension(services): Extension<Services>,
     Json(payload): Json<UpdateEntry>,
 ) -> Response {
-    if let Err((status, err)) = require_site_scope(&ctx, &repository, &Scope::EntriesWrite, "editor").await {
+    if let Err((status, err)) = require_site_action(&ctx, &repository, Action::ContentWrite).await {
         return (status, err).into_response();
     }
 
@@ -273,7 +274,7 @@ pub async fn delete_entry(
     Extension(repository): Extension<Repository>,
     Extension(services): Extension<Services>,
 ) -> Response {
-    if let Err((status, err)) = require_site_scope(&ctx, &repository, &Scope::EntriesWrite, "editor").await {
+    if let Err((status, err)) = require_site_action(&ctx, &repository, Action::ContentWrite).await {
         return (status, err).into_response();
     }
 
@@ -303,7 +304,7 @@ pub async fn publish_entry(
     Extension(repository): Extension<Repository>,
     Extension(services): Extension<Services>,
 ) -> Response {
-    if let Err((status, err)) = require_site_scope(&ctx, &repository, &Scope::EntriesWrite, "editor").await {
+    if let Err((status, err)) = require_site_action(&ctx, &repository, Action::ContentWrite).await {
         return (status, err).into_response();
     }
 
@@ -333,7 +334,7 @@ pub async fn unpublish_entry(
     Extension(repository): Extension<Repository>,
     Extension(services): Extension<Services>,
 ) -> Response {
-    if let Err((status, err)) = require_site_scope(&ctx, &repository, &Scope::EntriesWrite, "editor").await {
+    if let Err((status, err)) = require_site_action(&ctx, &repository, Action::ContentWrite).await {
         return (status, err).into_response();
     }
 
@@ -363,7 +364,7 @@ pub async fn list_entry_revisions(
     Extension(repository): Extension<Repository>,
     Extension(services): Extension<Services>,
 ) -> Response {
-    if let Err((status, err)) = require_site_scope(&ctx, &repository, &Scope::EntriesRead, "viewer").await {
+    if let Err((status, err)) = require_site_action(&ctx, &repository, Action::ContentRead).await {
         return (status, err).into_response();
     }
 
@@ -415,7 +416,7 @@ pub async fn get_entry_revision(
     Extension(repository): Extension<Repository>,
     Extension(services): Extension<Services>,
 ) -> Response {
-    if let Err((status, err)) = require_site_scope(&ctx, &repository, &Scope::EntriesRead, "viewer").await {
+    if let Err((status, err)) = require_site_action(&ctx, &repository, Action::ContentRead).await {
         return (status, err).into_response();
     }
 
@@ -430,11 +431,13 @@ pub async fn get_entry_revision(
         Ok(Some(revision)) => {
             let mut response = EntryRevisionResponse::from(revision.clone());
 
-            if query.diff.unwrap_or(false) && number > 1
+            if query.diff.unwrap_or(false)
+                && number > 1
                 && let Ok(Some(prev)) = services.entry.get_revision(&id, &ctx.site_id, number - 1).await
-                    && let Some(diff) = compute_diff_for_revision(&revision, Some(&prev)) {
-                        response.diff_from_previous = Some(diff);
-                    }
+                && let Some(diff) = compute_diff_for_revision(&revision, Some(&prev))
+            {
+                response.diff_from_previous = Some(diff);
+            }
 
             (StatusCode::OK, Json(response)).into_response()
         }
@@ -466,7 +469,7 @@ pub async fn restore_entry_revision(
     Extension(repository): Extension<Repository>,
     Extension(services): Extension<Services>,
 ) -> Response {
-    if let Err((status, err)) = require_site_scope(&ctx, &repository, &Scope::EntriesWrite, "editor").await {
+    if let Err((status, err)) = require_site_action(&ctx, &repository, Action::ContentWrite).await {
         return (status, err).into_response();
     }
 

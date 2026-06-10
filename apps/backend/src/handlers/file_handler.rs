@@ -18,7 +18,8 @@ pub struct FileId {
 }
 
 use crate::config::Config;
-use crate::middleware::auth::{RequestContext, Scope, require_site_scope};
+use crate::middleware::auth::{RequestContext, require_site_action};
+use crate::models::authorization::Action;
 use crate::models::file::{BatchFileIds, FileWithUrl};
 use crate::repository::Repository;
 use crate::repository::traits::ListFilesParams;
@@ -61,7 +62,7 @@ pub async fn list_files(
     Extension(services): Extension<Services>,
     Extension(storage_registry): Extension<Arc<StorageRegistry>>,
 ) -> Response {
-    if let Err((status, err)) = require_site_scope(&ctx, &repository, &Scope::FilesRead, "viewer").await {
+    if let Err((status, err)) = require_site_action(&ctx, &repository, Action::FilesRead).await {
         return (status, err).into_response();
     }
 
@@ -131,7 +132,7 @@ pub async fn upload_file(
     Extension(storage_registry): Extension<Arc<StorageRegistry>>,
     mut multipart: Multipart,
 ) -> Response {
-    if let Err((status, err)) = require_site_scope(&ctx, &repository, &Scope::FilesWrite, "editor").await {
+    if let Err((status, err)) = require_site_action(&ctx, &repository, Action::FilesWrite).await {
         return (status, err).into_response();
     }
     let site_id = ctx.site_id.clone();
@@ -233,7 +234,7 @@ pub async fn get_file(
     Extension(services): Extension<Services>,
     Extension(storage_registry): Extension<Arc<StorageRegistry>>,
 ) -> Response {
-    if let Err((status, err)) = require_site_scope(&ctx, &repository, &Scope::FilesRead, "viewer").await {
+    if let Err((status, err)) = require_site_action(&ctx, &repository, Action::FilesRead).await {
         return (status, err).into_response();
     }
 
@@ -274,7 +275,7 @@ pub async fn delete_file_handler(
     Extension(repository): Extension<Repository>,
     Extension(services): Extension<Services>,
 ) -> Response {
-    if let Err((status, err)) = require_site_scope(&ctx, &repository, &Scope::FilesWrite, "editor").await {
+    if let Err((status, err)) = require_site_action(&ctx, &repository, Action::FilesWrite).await {
         return (status, err).into_response();
     }
 
@@ -302,7 +303,7 @@ pub async fn get_file_references(
     Extension(repository): Extension<Repository>,
     Extension(services): Extension<Services>,
 ) -> Response {
-    if let Err((status, err)) = require_site_scope(&ctx, &repository, &Scope::FilesRead, "viewer").await {
+    if let Err((status, err)) = require_site_action(&ctx, &repository, Action::FilesRead).await {
         return (status, err).into_response();
     }
 
@@ -330,7 +331,7 @@ pub async fn restore_file(
     Extension(repository): Extension<Repository>,
     Extension(services): Extension<Services>,
 ) -> Response {
-    if let Err((status, err)) = require_site_scope(&ctx, &repository, &Scope::FilesWrite, "editor").await {
+    if let Err((status, err)) = require_site_action(&ctx, &repository, Action::FilesWrite).await {
         return (status, err).into_response();
     }
 
@@ -363,7 +364,7 @@ pub async fn batch_delete_files(
     Extension(services): Extension<Services>,
     Json(body): Json<BatchFileIds>,
 ) -> Response {
-    if let Err((status, err)) = require_site_scope(&ctx, &repository, &Scope::FilesWrite, "editor").await {
+    if let Err((status, err)) = require_site_action(&ctx, &repository, Action::FilesWrite).await {
         return (status, err).into_response();
     }
 
@@ -395,7 +396,7 @@ pub async fn batch_restore_files(
     Extension(services): Extension<Services>,
     Json(body): Json<BatchFileIds>,
 ) -> Response {
-    if let Err((status, err)) = require_site_scope(&ctx, &repository, &Scope::FilesWrite, "editor").await {
+    if let Err((status, err)) = require_site_action(&ctx, &repository, Action::FilesWrite).await {
         return (status, err).into_response();
     }
 
@@ -428,7 +429,7 @@ pub async fn batch_permanent_delete_files(
     Extension(storage_registry): Extension<Arc<StorageRegistry>>,
     Json(body): Json<BatchFileIds>,
 ) -> Response {
-    if let Err((status, err)) = require_site_scope(&ctx, &repository, &Scope::FilesWrite, "editor").await {
+    if let Err((status, err)) = require_site_action(&ctx, &repository, Action::FilesWrite).await {
         return (status, err).into_response();
     }
 
@@ -462,9 +463,10 @@ pub async fn batch_permanent_delete_files(
             tracing::warn!("Failed to delete file {} from storage: {}", file.id, e);
         }
         if let Some(ref tk) = file.thumbnail_key
-            && let Err(e) = storage.delete(tk).await {
-                tracing::warn!("Failed to delete thumbnail {} from storage: {}", file.id, e);
-            }
+            && let Err(e) = storage.delete(tk).await
+        {
+            tracing::warn!("Failed to delete thumbnail {} from storage: {}", file.id, e);
+        }
     }
 
     match services.file.batch_permanent_delete(&ctx.site_id, &body.ids).await {
