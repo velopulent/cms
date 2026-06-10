@@ -2,10 +2,10 @@
   "version": 1,
   "skills": {
     "caveman": {
-      "source": "mattpocock/skills",
+      "source": "juliusbrussee/caveman",
       "sourceType": "github",
-      "skillPath": "skills/productivity/caveman/SKILL.md",
-      "computedHash": "934433479903febc585bf6deb5f0cebc63137e3f86b7babe0aab1ecb94d6d7a4"
+      "skillPath": "skills/caveman/SKILL.md",
+      "computedHash": "dfbf85749fd474feeb0bbe60c779795ecd5dbec0083299b56e68916bc3ddd8c9"
     },
     "grill-me": {
       "source": "mattpocock/skills",
