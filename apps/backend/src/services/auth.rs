@@ -11,10 +11,11 @@ use time::Duration;
 use tracing::{debug, error, info, warn};
 use uuid::Uuid;
 
-use crate::middleware::auth::create_token;
+use crate::middleware::auth::compute_key_hmac;
+use crate::models::session::SessionSummary;
 use crate::models::user::{AuthResponse, UserPublic};
 use crate::repository::error::RepositoryError;
-use crate::repository::traits::UserRepository;
+use crate::repository::traits::{SessionRepository, UserRepository};
 
 static EMAIL_RE: std::sync::LazyLock<regex::Regex> =
     std::sync::LazyLock::new(|| regex::Regex::new(r"^[^@\s]+@[^@\s]+\.[^@\s]+$").unwrap());
@@ -22,8 +23,11 @@ static EMAIL_RE: std::sync::LazyLock<regex::Regex> =
 #[derive(Clone)]
 pub struct AuthService {
     user_repo: Arc<dyn UserRepository>,
-    jwt_secret: String,
+    session_repo: Arc<dyn SessionRepository>,
+    hmac_secret: String,
     cookie_secure: bool,
+    session_lifetime_hours: i64,
+    public_registration_enabled: bool,
 }
 
 #[derive(Error, Debug)]
@@ -36,6 +40,8 @@ pub enum AuthError {
 
     #[error("Invalid credentials")]
     InvalidCredentials,
+    #[error("Public registration is disabled")]
+    RegistrationDisabled,
 
     #[error("User not found")]
     NotFound,
@@ -62,6 +68,10 @@ impl AuthError {
                 StatusCode::UNAUTHORIZED,
                 Json(json!({"error": "Invalid username or password"})),
             ),
+            AuthError::RegistrationDisabled => (
+                StatusCode::FORBIDDEN,
+                Json(json!({"error": "Public registration is disabled"})),
+            ),
             AuthError::NotFound => (StatusCode::NOT_FOUND, Json(json!({"error": "User not found"}))),
             AuthError::TokenError(msg) | AuthError::HashError(msg) | AuthError::DatabaseError(msg) => {
                 (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": msg})))
@@ -72,15 +82,33 @@ impl AuthError {
 }
 
 impl AuthService {
-    pub fn new(user_repo: Arc<dyn UserRepository>, jwt_secret: String, cookie_secure: bool) -> Self {
+    pub fn new(
+        user_repo: Arc<dyn UserRepository>,
+        session_repo: Arc<dyn SessionRepository>,
+        hmac_secret: String,
+        cookie_secure: bool,
+        session_lifetime_hours: i64,
+        public_registration_enabled: bool,
+    ) -> Self {
         Self {
             user_repo,
-            jwt_secret,
+            session_repo,
+            hmac_secret,
             cookie_secure,
+            session_lifetime_hours,
+            public_registration_enabled,
         }
     }
 
     pub async fn register(&self, username: &str, email: &str, password: &str) -> Result<UserPublic, AuthError> {
+        let user_count = self
+            .user_repo
+            .count()
+            .await
+            .map_err(|e| AuthError::DatabaseError(e.to_string()))?;
+        if user_count > 0 && !self.public_registration_enabled {
+            return Err(AuthError::RegistrationDisabled);
+        }
         let username = username.trim();
         let email = email.trim();
         let password = password.trim();
@@ -123,11 +151,22 @@ impl AuthService {
 
         match self.user_repo.create(&id, username, email, &password_hash).await {
             Ok(_) => {
+                let instance_role = if user_count == 0 {
+                    self.user_repo
+                        .set_instance_role(&id, Some("instance_owner"))
+                        .await
+                        .map_err(|e| AuthError::DatabaseError(e.to_string()))?;
+                    Some("instance_owner".to_string())
+                } else {
+                    None
+                };
                 info!("User registered successfully: id={}", id);
                 Ok(UserPublic {
                     id,
                     username: username.to_string(),
                     email: email.to_string(),
+                    instance_role,
+                    must_change_password: false,
                 })
             }
             Err(e) => {
@@ -140,7 +179,7 @@ impl AuthService {
         }
     }
 
-    pub async fn login(&self, username: &str, password: &str) -> Result<(UserPublic, String), AuthError> {
+    pub async fn login(&self, username: &str, password: &str) -> Result<(UserPublic, String, String), AuthError> {
         debug!("Attempting login for username={}", username);
 
         let user = self
@@ -155,15 +194,30 @@ impl AuthService {
         match verify(password, &user.password_hash) {
             Ok(true) => {
                 info!("Login successful for user: id={}, username={}", user.id, user.username);
-                let token = create_token(user.id.clone(), &self.jwt_secret)
-                    .map_err(|e| AuthError::TokenError(e.to_string()))?;
+                let token = format!("{}{}", Uuid::new_v4().simple(), Uuid::new_v4().simple());
+                let csrf_token = Uuid::new_v4().to_string();
+                let expires_at =
+                    (chrono::Utc::now() + chrono::Duration::hours(self.session_lifetime_hours)).to_rfc3339();
+                self.session_repo
+                    .create(
+                        &Uuid::now_v7().to_string(),
+                        &user.id,
+                        &compute_key_hmac(&token, &self.hmac_secret),
+                        &compute_key_hmac(&csrf_token, &self.hmac_secret),
+                        &expires_at,
+                    )
+                    .await
+                    .map_err(|e| AuthError::DatabaseError(e.to_string()))?;
                 Ok((
                     UserPublic {
                         id: user.id,
                         username: user.username,
                         email: user.email,
+                        instance_role: user.instance_role,
+                        must_change_password: user.must_change_password,
                     },
                     token,
+                    csrf_token,
                 ))
             }
             _ => {
@@ -182,6 +236,8 @@ impl AuthService {
                     id: user.id,
                     username: user.username,
                     email: user.email,
+                    instance_role: user.instance_role,
+                    must_change_password: user.must_change_password,
                 }))
             }
             Ok(None) => {
@@ -195,26 +251,114 @@ impl AuthService {
         }
     }
 
+    pub async fn list_users(&self) -> Result<Vec<UserPublic>, AuthError> {
+        let users = self
+            .user_repo
+            .list()
+            .await
+            .map_err(|e| AuthError::DatabaseError(e.to_string()))?;
+        Ok(users
+            .into_iter()
+            .map(|user| UserPublic {
+                id: user.id,
+                username: user.username,
+                email: user.email,
+                instance_role: user.instance_role,
+                must_change_password: user.must_change_password,
+            })
+            .collect())
+    }
+
+    pub async fn create_managed_user(
+        &self,
+        username: &str,
+        email: &str,
+        temporary_password: &str,
+        instance_owner: bool,
+    ) -> Result<UserPublic, AuthError> {
+        if temporary_password.len() < 8 {
+            return Err(AuthError::ValidationError(
+                "Temporary password must be at least 8 characters".into(),
+            ));
+        }
+        let username = username.trim();
+        let email = email.trim();
+        if username.len() < 3 || !EMAIL_RE.is_match(email) {
+            return Err(AuthError::ValidationError("Invalid username or email".into()));
+        }
+        let id = Uuid::now_v7().to_string();
+        let password_hash = hash(temporary_password, DEFAULT_COST).map_err(|e| AuthError::HashError(e.to_string()))?;
+        self.user_repo
+            .create(&id, username, email, &password_hash)
+            .await
+            .map_err(|error| match error {
+                RepositoryError::UniqueViolation(_) => AuthError::UserExists,
+                other => AuthError::DatabaseError(other.to_string()),
+            })?;
+        let instance_role = instance_owner.then_some("instance_owner");
+        self.user_repo
+            .set_instance_role(&id, instance_role)
+            .await
+            .map_err(|e| AuthError::DatabaseError(e.to_string()))?;
+        self.user_repo
+            .update_password(&id, &password_hash, true)
+            .await
+            .map_err(|e| AuthError::DatabaseError(e.to_string()))?;
+        Ok(UserPublic {
+            id,
+            username: username.to_string(),
+            email: email.to_string(),
+            instance_role: instance_role.map(ToString::to_string),
+            must_change_password: true,
+        })
+    }
+
+    pub async fn set_instance_owner(&self, user_id: &str, enabled: bool) -> Result<(), AuthError> {
+        let user = self
+            .user_repo
+            .find_by_id(user_id)
+            .await
+            .map_err(|e| AuthError::DatabaseError(e.to_string()))?
+            .ok_or(AuthError::NotFound)?;
+        if !enabled
+            && user.instance_role.as_deref() == Some("instance_owner")
+            && self
+                .user_repo
+                .count_instance_owners()
+                .await
+                .map_err(|e| AuthError::DatabaseError(e.to_string()))?
+                <= 1
+        {
+            return Err(AuthError::ValidationError(
+                "At least one instance owner is required".into(),
+            ));
+        }
+        self.user_repo
+            .set_instance_role(user_id, enabled.then_some("instance_owner"))
+            .await
+            .map_err(|e| AuthError::DatabaseError(e.to_string()))?;
+        Ok(())
+    }
+
     pub fn cookie_secure(&self) -> bool {
         self.cookie_secure
     }
 
-    pub fn build_auth_cookies_response(&self, user: UserPublic, jwt: &str) -> Response {
-        let token_cookie = Cookie::build(("token", jwt.to_string()))
+    pub fn build_auth_cookies_response(&self, user: UserPublic, token: &str, csrf_token: &str) -> Response {
+        let token_cookie = Cookie::build(("token", token.to_string()))
             .http_only(true)
             .secure(self.cookie_secure)
             .same_site(axum_extra::extract::cookie::SameSite::Strict)
             .path("/")
-            .max_age(Duration::hours(24))
+            .max_age(Duration::hours(self.session_lifetime_hours))
             .build();
 
-        let csrf_token = Uuid::now_v7().to_string();
-        let csrf_cookie = Cookie::build(("csrf", csrf_token.clone()))
+        let csrf_cookie = Cookie::build(("csrf", csrf_token.to_string()))
             .http_only(false)
             .secure(self.cookie_secure)
             .same_site(axum_extra::extract::cookie::SameSite::Strict)
             .path("/")
-            .max_age(Duration::hours(24))
+            .max_age(Duration::hours(self.session_lifetime_hours))
             .build();
 
         let mut response = (StatusCode::OK, Json(AuthResponse { user })).into_response();
@@ -254,10 +398,79 @@ impl AuthService {
         response
     }
 
-    pub fn build_register_response(&self, user: UserPublic, jwt: &str) -> Response {
-        let mut response = self.build_auth_cookies_response(user, jwt);
+    pub fn build_register_response(&self, user: UserPublic, token: &str, csrf_token: &str) -> Response {
+        let mut response = self.build_auth_cookies_response(user, token, csrf_token);
         *response.status_mut() = StatusCode::CREATED;
         response
+    }
+
+    pub async fn logout(&self, session_id: &str, user_id: &str) -> Result<(), AuthError> {
+        self.session_repo
+            .revoke(session_id, user_id)
+            .await
+            .map_err(|e| AuthError::DatabaseError(e.to_string()))?;
+        Ok(())
+    }
+
+    pub async fn revoke_all_sessions(&self, user_id: &str) -> Result<u64, AuthError> {
+        self.session_repo
+            .revoke_all(user_id)
+            .await
+            .map_err(|e| AuthError::DatabaseError(e.to_string()))
+    }
+
+    pub async fn list_sessions(
+        &self,
+        user_id: &str,
+        current_session_id: &str,
+    ) -> Result<Vec<SessionSummary>, AuthError> {
+        let sessions = self
+            .session_repo
+            .list(user_id)
+            .await
+            .map_err(|e| AuthError::DatabaseError(e.to_string()))?;
+        Ok(sessions
+            .into_iter()
+            .map(|session| SessionSummary {
+                current: session.id == current_session_id,
+                id: session.id,
+                created_at: session.created_at,
+                expires_at: session.expires_at,
+                last_seen_at: session.last_seen_at,
+            })
+            .collect())
+    }
+
+    pub async fn change_password(
+        &self,
+        user_id: &str,
+        current_password: &str,
+        new_password: &str,
+    ) -> Result<(), AuthError> {
+        if new_password.len() < 8 {
+            return Err(AuthError::ValidationError(
+                "Password must be at least 8 characters".into(),
+            ));
+        }
+        let user = self
+            .user_repo
+            .find_by_id(user_id)
+            .await
+            .map_err(|e| AuthError::DatabaseError(e.to_string()))?
+            .ok_or(AuthError::NotFound)?;
+        if !verify(current_password, &user.password_hash).unwrap_or(false) {
+            return Err(AuthError::InvalidCredentials);
+        }
+        let password_hash = hash(new_password, DEFAULT_COST).map_err(|e| AuthError::HashError(e.to_string()))?;
+        self.user_repo
+            .update_password(user_id, &password_hash, false)
+            .await
+            .map_err(|e| AuthError::DatabaseError(e.to_string()))?;
+        self.session_repo
+            .revoke_all(user_id)
+            .await
+            .map_err(|e| AuthError::DatabaseError(e.to_string()))?;
+        Ok(())
     }
 }
 
@@ -265,7 +478,7 @@ impl AuthService {
 mod tests {
     use super::*;
     use crate::models::user::User;
-    use crate::test_helpers::InMemoryUserRepository;
+    use crate::test_helpers::{InMemorySessionRepository, InMemoryUserRepository};
 
     fn create_test_user() -> User {
         User {
@@ -273,6 +486,8 @@ mod tests {
             username: "testuser".to_string(),
             email: "test@example.com".to_string(),
             password_hash: bcrypt::hash("password123", bcrypt::DEFAULT_COST).unwrap(),
+            instance_role: None,
+            must_change_password: false,
             created_at: "2024-01-01 00:00:00".to_string(),
             updated_at: "2024-01-01 00:00:00".to_string(),
         }
@@ -282,10 +497,21 @@ mod tests {
         Arc::new(InMemoryUserRepository::new())
     }
 
+    fn test_auth(user_repo: Arc<InMemoryUserRepository>, cookie_secure: bool) -> AuthService {
+        AuthService::new(
+            user_repo,
+            Arc::new(InMemorySessionRepository::new()),
+            "secret".to_string(),
+            cookie_secure,
+            24,
+            true,
+        )
+    }
+
     #[tokio::test]
     async fn test_register_success() {
         let user_repo = test_user_repo();
-        let auth = AuthService::new(user_repo, "secret".to_string(), false);
+        let auth = test_auth(user_repo, false);
 
         let result = auth.register("newuser", "new@example.com", "password123").await;
         assert!(result.is_ok());
@@ -298,7 +524,7 @@ mod tests {
     #[tokio::test]
     async fn test_register_trims_whitespace() {
         let user_repo = test_user_repo();
-        let auth = AuthService::new(user_repo, "secret".to_string(), false);
+        let auth = test_auth(user_repo, false);
 
         let result = auth
             .register("  newuser  ", "  new@example.com  ", "  password123  ")
@@ -312,7 +538,7 @@ mod tests {
     #[tokio::test]
     async fn test_register_empty_username() {
         let user_repo = test_user_repo();
-        let auth = AuthService::new(user_repo, "secret".to_string(), false);
+        let auth = test_auth(user_repo, false);
 
         let result = auth.register("", "test@example.com", "password123").await;
         assert!(matches!(result, Err(AuthError::ValidationError(msg)) if msg.contains("Username is required")));
@@ -321,7 +547,7 @@ mod tests {
     #[tokio::test]
     async fn test_register_username_too_short() {
         let user_repo = test_user_repo();
-        let auth = AuthService::new(user_repo, "secret".to_string(), false);
+        let auth = test_auth(user_repo, false);
 
         let result = auth.register("ab", "test@example.com", "password123").await;
         assert!(matches!(result, Err(AuthError::ValidationError(msg)) if msg.contains("at least 3 characters")));
@@ -330,7 +556,7 @@ mod tests {
     #[tokio::test]
     async fn test_register_empty_password() {
         let user_repo = test_user_repo();
-        let auth = AuthService::new(user_repo, "secret".to_string(), false);
+        let auth = test_auth(user_repo, false);
 
         let result = auth.register("validuser", "test@example.com", "").await;
         assert!(matches!(result, Err(AuthError::ValidationError(msg)) if msg.contains("Password is required")));
@@ -339,7 +565,7 @@ mod tests {
     #[tokio::test]
     async fn test_register_password_too_short() {
         let user_repo = test_user_repo();
-        let auth = AuthService::new(user_repo, "secret".to_string(), false);
+        let auth = test_auth(user_repo, false);
 
         let result = auth.register("validuser", "test@example.com", "short").await;
         assert!(matches!(result, Err(AuthError::ValidationError(msg)) if msg.contains("at least 8 characters")));
@@ -348,7 +574,7 @@ mod tests {
     #[tokio::test]
     async fn test_register_invalid_email_no_at() {
         let user_repo = test_user_repo();
-        let auth = AuthService::new(user_repo, "secret".to_string(), false);
+        let auth = test_auth(user_repo, false);
 
         let result = auth.register("validuser", "invalid-email", "password123").await;
         assert!(matches!(result, Err(AuthError::ValidationError(msg)) if msg.contains("Invalid email")));
@@ -357,7 +583,7 @@ mod tests {
     #[tokio::test]
     async fn test_register_invalid_email_no_domain() {
         let user_repo = test_user_repo();
-        let auth = AuthService::new(user_repo, "secret".to_string(), false);
+        let auth = test_auth(user_repo, false);
 
         let result = auth.register("validuser", "user@", "password123").await;
         assert!(matches!(result, Err(AuthError::ValidationError(msg)) if msg.contains("Invalid email")));
@@ -366,7 +592,7 @@ mod tests {
     #[tokio::test]
     async fn test_register_invalid_email_no_tld() {
         let user_repo = test_user_repo();
-        let auth = AuthService::new(user_repo, "secret".to_string(), false);
+        let auth = test_auth(user_repo, false);
 
         let result = auth.register("validuser", "user@example", "password123").await;
         assert!(matches!(result, Err(AuthError::ValidationError(msg)) if msg.contains("Invalid email")));
@@ -375,7 +601,7 @@ mod tests {
     #[tokio::test]
     async fn test_register_invalid_email_with_spaces() {
         let user_repo = test_user_repo();
-        let auth = AuthService::new(user_repo, "secret".to_string(), false);
+        let auth = test_auth(user_repo, false);
 
         let result = auth.register("validuser", "user@ example.com", "password123").await;
         assert!(matches!(result, Err(AuthError::ValidationError(msg)) if msg.contains("Invalid email")));
@@ -385,7 +611,7 @@ mod tests {
     async fn test_register_duplicate_username() {
         let user_repo = test_user_repo();
         user_repo.add_user(create_test_user());
-        let auth = AuthService::new(user_repo, "secret".to_string(), false);
+        let auth = test_auth(user_repo, false);
 
         let result = auth.register("testuser", "other@example.com", "password123").await;
         assert!(matches!(result, Err(AuthError::UserExists)));
@@ -395,20 +621,21 @@ mod tests {
     async fn test_login_success() {
         let user_repo = test_user_repo();
         user_repo.add_user(create_test_user());
-        let auth = AuthService::new(user_repo, "secret".to_string(), false);
+        let auth = test_auth(user_repo, false);
 
         let result = auth.login("testuser", "password123").await;
         assert!(result.is_ok());
-        let (user, token) = result.unwrap();
+        let (user, token, csrf_token) = result.unwrap();
         assert_eq!(user.username, "testuser");
         assert!(!token.is_empty());
+        assert!(!csrf_token.is_empty());
     }
 
     #[tokio::test]
     async fn test_login_wrong_password() {
         let user_repo = test_user_repo();
         user_repo.add_user(create_test_user());
-        let auth = AuthService::new(user_repo, "secret".to_string(), false);
+        let auth = test_auth(user_repo, false);
 
         let result = auth.login("testuser", "wrongpassword").await;
         assert!(matches!(result, Err(AuthError::InvalidCredentials)));
@@ -417,7 +644,7 @@ mod tests {
     #[tokio::test]
     async fn test_login_user_not_found() {
         let user_repo = test_user_repo();
-        let auth = AuthService::new(user_repo, "secret".to_string(), false);
+        let auth = test_auth(user_repo, false);
 
         let result = auth.login("nonexistent", "password123").await;
         assert!(matches!(result, Err(AuthError::InvalidCredentials)));
@@ -427,7 +654,7 @@ mod tests {
     async fn test_get_user_found() {
         let user_repo = test_user_repo();
         user_repo.add_user(create_test_user());
-        let auth = AuthService::new(user_repo, "secret".to_string(), false);
+        let auth = test_auth(user_repo, false);
 
         let result = auth.get_user("user-123").await;
         assert!(result.is_ok());
@@ -439,7 +666,7 @@ mod tests {
     #[tokio::test]
     async fn test_get_user_not_found() {
         let user_repo = test_user_repo();
-        let auth = AuthService::new(user_repo, "secret".to_string(), false);
+        let auth = test_auth(user_repo, false);
 
         let result = auth.get_user("nonexistent").await;
         assert!(result.is_ok());
@@ -449,8 +676,8 @@ mod tests {
     #[test]
     fn test_cookie_secure_getter() {
         let user_repo = test_user_repo();
-        let auth_secure = AuthService::new(user_repo.clone(), "secret".to_string(), true);
-        let auth_insecure = AuthService::new(user_repo, "secret".to_string(), false);
+        let auth_secure = test_auth(user_repo.clone(), true);
+        let auth_insecure = test_auth(user_repo, false);
 
         assert!(auth_secure.cookie_secure());
         assert!(!auth_insecure.cookie_secure());
@@ -491,15 +718,17 @@ mod tests {
     #[tokio::test]
     async fn test_build_auth_cookies_response() {
         let user_repo = test_user_repo();
-        let auth = AuthService::new(user_repo, "secret".to_string(), true);
+        let auth = test_auth(user_repo, true);
 
         let user = UserPublic {
             id: "user-123".to_string(),
             username: "testuser".to_string(),
             email: "test@example.com".to_string(),
+            instance_role: None,
+            must_change_password: false,
         };
 
-        let response = auth.build_auth_cookies_response(user, "jwt-token");
+        let response = auth.build_auth_cookies_response(user, "session-token", "csrf-token");
         assert_eq!(response.status(), axum::http::StatusCode::OK);
         assert!(response.headers().contains_key(axum::http::header::SET_COOKIE));
     }
@@ -507,7 +736,7 @@ mod tests {
     #[tokio::test]
     async fn test_build_logout_response() {
         let user_repo = test_user_repo();
-        let auth = AuthService::new(user_repo, "secret".to_string(), false);
+        let auth = test_auth(user_repo, false);
 
         let response = auth.build_logout_response();
         assert_eq!(response.status(), axum::http::StatusCode::OK);
@@ -517,22 +746,24 @@ mod tests {
     #[tokio::test]
     async fn test_build_register_response() {
         let user_repo = test_user_repo();
-        let auth = AuthService::new(user_repo, "secret".to_string(), false);
+        let auth = test_auth(user_repo, false);
 
         let user = UserPublic {
             id: "user-123".to_string(),
             username: "testuser".to_string(),
             email: "test@example.com".to_string(),
+            instance_role: None,
+            must_change_password: false,
         };
 
-        let response = auth.build_register_response(user, "jwt-token");
+        let response = auth.build_register_response(user, "session-token", "csrf-token");
         assert_eq!(response.status(), axum::http::StatusCode::CREATED);
     }
 
     #[tokio::test]
     async fn test_register_multiple_users() {
         let user_repo = test_user_repo();
-        let auth = AuthService::new(user_repo.clone(), "secret".to_string(), false);
+        let auth = test_auth(user_repo.clone(), false);
 
         let result1 = auth.register("user1", "user1@example.com", "password123").await;
         assert!(result1.is_ok());
