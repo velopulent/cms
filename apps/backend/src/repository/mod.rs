@@ -8,8 +8,8 @@ use std::sync::Arc;
 
 use crate::database::pool::DbPool;
 use crate::repository::traits::{
-    AccessTokenRepository, CollectionRepository, EntryRepository, FileRepository, SiteRepository, UserRepository,
-    WebhookRepository,
+    AccessTokenRepository, CollectionRepository, EntryRepository, FileRepository, SessionRepository, SiteRepository,
+    UserRepository, WebhookRepository,
 };
 
 #[derive(Clone)]
@@ -21,6 +21,7 @@ pub struct Repository {
     pub file: Arc<dyn FileRepository>,
     pub access_token: Arc<dyn AccessTokenRepository>,
     pub webhook: Arc<dyn WebhookRepository>,
+    pub session: Arc<dyn SessionRepository>,
 }
 
 impl Repository {
@@ -34,6 +35,7 @@ impl Repository {
                 file: Arc::new(postgres::PostgresFileRepository::new(pg_pool.clone())),
                 access_token: Arc::new(postgres::PostgresAccessTokenRepository::new(pg_pool.clone())),
                 webhook: Arc::new(postgres::PostgresWebhookRepository::new(pg_pool.clone())),
+                session: Arc::new(postgres::PostgresSessionRepository::new(pg_pool.clone())),
             },
             DbPool::MySql(mysql_pool) => Self {
                 user: Arc::new(mysql::MysqlUserRepository::new(mysql_pool.clone())),
@@ -43,6 +45,7 @@ impl Repository {
                 file: Arc::new(mysql::MysqlFileRepository::new(mysql_pool.clone())),
                 access_token: Arc::new(mysql::MysqlAccessTokenRepository::new(mysql_pool.clone())),
                 webhook: Arc::new(mysql::MysqlWebhookRepository::new(mysql_pool.clone())),
+                session: Arc::new(mysql::MysqlSessionRepository::new(mysql_pool.clone())),
             },
             DbPool::Sqlite(sqlite_pool) => Self {
                 user: Arc::new(sqlite::SqliteUserRepository::new(sqlite_pool.clone())),
@@ -52,6 +55,7 @@ impl Repository {
                 file: Arc::new(sqlite::SqliteFileRepository::new(sqlite_pool.clone())),
                 access_token: Arc::new(sqlite::SqliteAccessTokenRepository::new(sqlite_pool.clone())),
                 webhook: Arc::new(sqlite::SqliteWebhookRepository::new(sqlite_pool.clone())),
+                session: Arc::new(sqlite::SqliteSessionRepository::new(sqlite_pool.clone())),
             },
         }
     }

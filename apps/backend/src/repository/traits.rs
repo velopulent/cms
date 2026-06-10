@@ -6,6 +6,7 @@ use crate::models::{
     collection::Collection,
     entry::{Entry, EntryRevision},
     file::{File, FileReference},
+    session::Session,
     site::{Site, SiteMember, SiteWithRole},
     user::User,
     webhook::{SiteWebhook, WebhookDelivery},
@@ -16,10 +17,37 @@ use crate::repository::error::RepositoryError;
 pub trait UserRepository: Send + Sync {
     async fn find_by_username(&self, username: &str) -> Result<Option<User>, RepositoryError>;
     async fn find_by_id(&self, id: &str) -> Result<Option<User>, RepositoryError>;
+    async fn list(&self) -> Result<Vec<User>, RepositoryError>;
     async fn find_id_by_username(&self, username: &str) -> Result<Option<String>, RepositoryError>;
     async fn create(&self, id: &str, username: &str, email: &str, password_hash: &str) -> Result<(), RepositoryError>;
     async fn exists(&self, username: &str) -> Result<bool, RepositoryError>;
     async fn get_role(&self, user_id: &str, site_id: &str) -> Result<Option<String>, RepositoryError>;
+    async fn count(&self) -> Result<i64, RepositoryError>;
+    async fn count_instance_owners(&self) -> Result<i64, RepositoryError>;
+    async fn set_instance_role(&self, user_id: &str, role: Option<&str>) -> Result<u64, RepositoryError>;
+    async fn update_password(
+        &self,
+        user_id: &str,
+        password_hash: &str,
+        must_change: bool,
+    ) -> Result<u64, RepositoryError>;
+}
+
+#[async_trait]
+pub trait SessionRepository: Send + Sync {
+    async fn create(
+        &self,
+        id: &str,
+        user_id: &str,
+        token_hash: &str,
+        csrf_token_hash: &str,
+        expires_at: &str,
+    ) -> Result<(), RepositoryError>;
+    async fn find_active_by_hash(&self, token_hash: &str) -> Result<Option<Session>, RepositoryError>;
+    async fn touch(&self, id: &str) -> Result<(), RepositoryError>;
+    async fn revoke(&self, id: &str, user_id: &str) -> Result<u64, RepositoryError>;
+    async fn revoke_all(&self, user_id: &str) -> Result<u64, RepositoryError>;
+    async fn list(&self, user_id: &str) -> Result<Vec<Session>, RepositoryError>;
 }
 
 #[async_trait]
@@ -51,6 +79,12 @@ pub trait SiteRepository: Send + Sync {
         role: &str,
     ) -> Result<Option<SiteMember>, RepositoryError>;
     async fn remove_member(&self, site_id: &str, user_id: &str) -> Result<u64, RepositoryError>;
+    async fn transfer_ownership(
+        &self,
+        site_id: &str,
+        current_owner_id: &str,
+        new_owner_id: &str,
+    ) -> Result<(), RepositoryError>;
 }
 
 #[async_trait]
@@ -98,11 +132,7 @@ pub trait EntryRepository: Send + Sync {
         slug: &str,
         created_by: Option<&str>,
     ) -> Result<Entry, RepositoryError>;
-    async fn get_singleton_entry(
-        &self,
-        site_id: &str,
-        slug: &str,
-    ) -> Result<Option<Entry>, RepositoryError>;
+    async fn get_singleton_entry(&self, site_id: &str, slug: &str) -> Result<Option<Entry>, RepositoryError>;
     async fn upsert_singleton_entry(
         &self,
         site_id: &str,
