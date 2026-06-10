@@ -4,8 +4,8 @@ use axum::{
 };
 
 use crate::handlers::site_handler::{
-    create_site, delete_site, get_site, invite_member, list_members, list_sites, remove_member, update_member_role,
-    update_site,
+    create_site, delete_site, get_site, invite_member, list_members, list_sites, remove_member, transfer_ownership,
+    update_member_role, update_site,
 };
 
 /// Dashboard routes at /sites (nested under /api/dashboard)
@@ -25,4 +25,5 @@ pub fn dashboard_site_routes() -> Router {
         .route("/members", post(invite_member))
         .route("/members/{user_id}", put(update_member_role))
         .route("/members/{user_id}", delete(remove_member))
+        .route("/ownership", post(transfer_ownership))
 }

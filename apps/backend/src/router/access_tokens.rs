@@ -1,4 +1,7 @@
-use axum::{Router, routing::{delete, get, post}};
+use axum::{
+    Router,
+    routing::{delete, get, post},
+};
 
 use crate::handlers::access_token_handler::{create_site_token, delete_site_token, list_site_tokens};
 

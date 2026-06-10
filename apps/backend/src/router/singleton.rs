@@ -1,4 +1,7 @@
-use axum::{Router, routing::{get, put}};
+use axum::{
+    Router,
+    routing::{get, put},
+};
 
 use crate::handlers::singleton_handler::{get_singleton, list_singletons, update_singleton};
 

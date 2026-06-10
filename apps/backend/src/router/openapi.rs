@@ -10,7 +10,7 @@ use crate::models::site::Site;
     info(
         title = "CMS API",
         version = "1.0.0",
-        description = "Headless CMS unified API. Access requires a site-bound cms_site_* token or a JWT session token.",
+        description = "Headless CMS unified API. Consumer access uses site-bound cms_site_* tokens with read or write permission. Dashboard access uses revocable opaque sessions.",
         contact(name = "CMS", url = "https://cms.velopulent.com"),
         license(name = "MIT")
     ),
@@ -85,7 +85,7 @@ impl utoipa::Modify for SecurityAddon {
             utoipa::openapi::security::SecurityScheme::Http(
                 utoipa::openapi::security::HttpBuilder::new()
                     .scheme(utoipa::openapi::security::HttpAuthScheme::Bearer)
-                    .bearer_format("JWT")
+                    .bearer_format("Opaque dashboard session")
                     .build(),
             ),
         );
