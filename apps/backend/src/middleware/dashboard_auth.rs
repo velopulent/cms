@@ -7,7 +7,7 @@ use axum::{
 };
 
 use crate::config::Config;
-use crate::middleware::auth::{Actor, UserActor, verify_csrf, verify_token};
+use crate::middleware::auth::{Actor, compute_key_hmac, verify_csrf, verify_session};
 
 pub async fn dashboard_auth_middleware(mut request: Request, next: Next) -> Response {
     let config = match request.extensions().get::<Config>() {
@@ -43,29 +43,43 @@ pub async fn dashboard_auth_middleware(mut request: Request, next: Next) -> Resp
         }
     };
 
-    if matches!(request.method().as_str(), "POST" | "PUT" | "PATCH" | "DELETE") {
-        let (parts, _body) = request.into_parts();
-        if let Err((status, msg)) = verify_csrf(&parts, &config) {
-            return (status, Json(serde_json::json!({"error": "csrf_error", "message": msg})))
-                .into_response();
-        }
-        request = Request::from_parts(parts, _body);
-    }
-
-    let claims = match verify_token(&token, &config.jwt_secret) {
-        Ok(c) => c,
-        Err(_) => {
+    let repository = match request.extensions().get::<crate::repository::Repository>() {
+        Some(repository) => repository.clone(),
+        None => {
             return (
-                StatusCode::UNAUTHORIZED,
-                Json(serde_json::json!({"error": "unauthorized", "message": "Invalid or expired session"})),
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(serde_json::json!({"error": "internal_error", "message": "Repository not available"})),
             )
                 .into_response();
         }
     };
+    let user = match verify_session(&token, &repository, &config.hmac_secret).await {
+        Ok(user) => user,
+        Err((status, error)) => return (status, error).into_response(),
+    };
 
-    let actor = Actor::User(UserActor {
-        user_id: claims.sub,
-    });
+    if matches!(request.method().as_str(), "POST" | "PUT" | "PATCH" | "DELETE") {
+        let session = match repository
+            .session
+            .find_active_by_hash(&compute_key_hmac(&token, &config.hmac_secret))
+            .await
+        {
+            Ok(Some(session)) => session,
+            _ => {
+                return (
+                    StatusCode::UNAUTHORIZED,
+                    Json(serde_json::json!({"error": "unauthorized", "message": "Invalid session"})),
+                )
+                    .into_response();
+            }
+        };
+        let (parts, body) = request.into_parts();
+        if let Err((status, msg)) = verify_csrf(&parts, &config.hmac_secret, &session.csrf_token_hash) {
+            return (status, Json(serde_json::json!({"error": "csrf_error", "message": msg}))).into_response();
+        }
+        request = Request::from_parts(parts, body);
+    }
+    let actor = Actor::User(user);
 
     request.extensions_mut().insert(actor);
     next.run(request).await

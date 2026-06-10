@@ -8,9 +8,8 @@ use axum::{
 
 use serde::Deserialize;
 
-use crate::middleware::auth::{
-    Actor, AuthContext, AuthMethod, RequestContext, ScopeSet, check_site_access_repo,
-};
+use crate::middleware::auth::{Actor, AuthContext, AuthMethod, RequestContext};
+use crate::models::authorization::Action;
 use crate::repository::Repository;
 
 #[derive(Deserialize)]
@@ -44,15 +43,9 @@ pub async fn api_site_resolver(mut request: Request, next: Next) -> Response {
         }
     };
 
-    let scopes = match &actor {
-        Actor::ApiKey(k) => ScopeSet::from_permission(&k.permission),
-        _ => ScopeSet::all(),
-    };
-
     let auth = AuthContext {
         actor,
         auth_method: AuthMethod::ApiKey,
-        scopes,
     };
 
     let ctx = RequestContext { site_id, auth };
@@ -98,17 +91,16 @@ pub async fn dashboard_site_resolver(request: Request, next: Next) -> Response {
         };
 
         if let Err((status, err)) =
-            check_site_access_repo(&repository, &user.user_id, &site_id, "viewer").await
+            crate::middleware::auth::check_site_action_repo(&repository, &user.user_id, &site_id, Action::SiteRead)
+                .await
         {
             return (status, err).into_response();
         }
     }
 
-    let scopes = ScopeSet::all();
     let auth = AuthContext {
         actor,
         auth_method: AuthMethod::JwtSession,
-        scopes,
     };
 
     let ctx = RequestContext { site_id, auth };
