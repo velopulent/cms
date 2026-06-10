@@ -43,10 +43,7 @@ impl SingletonError {
                 axum::http::StatusCode::NOT_FOUND,
                 Json(json!({"error": "Singleton not found"})),
             ),
-            SingletonError::ValidationFailed(msg) => (
-                axum::http::StatusCode::BAD_REQUEST,
-                Json(json!({"error": msg})),
-            ),
+            SingletonError::ValidationFailed(msg) => (axum::http::StatusCode::BAD_REQUEST, Json(json!({"error": msg}))),
             SingletonError::DatabaseError(msg) => (
                 axum::http::StatusCode::INTERNAL_SERVER_ERROR,
                 Json(json!({"error": msg})),
@@ -82,7 +79,9 @@ impl SingletonService {
             data,
             entry_id: entry.map(|e| e.id.clone()),
             created_at: c.created_at.clone(),
-            updated_at: entry.map(|e| e.updated_at.clone()).unwrap_or_else(|| c.updated_at.clone()),
+            updated_at: entry
+                .map(|e| e.updated_at.clone())
+                .unwrap_or_else(|| c.updated_at.clone()),
         }
     }
 
@@ -188,11 +187,10 @@ impl SingletonService {
 
         if let Ok(definition) = serde_json::from_str::<Value>(&collection.definition)
             && let Some(fields) = definition.get("fields").and_then(|f| f.as_array())
-                && let Some(err) =
-                    super::definition_validation::validate_entry_data(data, fields)
-                {
-                    return Err(SingletonError::ValidationFailed(err));
-                }
+            && let Some(err) = super::definition_validation::validate_entry_data(data, fields)
+        {
+            return Err(SingletonError::ValidationFailed(err));
+        }
 
         let data_str = data.to_string();
         debug!("Upserting singleton entry for collection: id={}", collection.id);
@@ -202,10 +200,7 @@ impl SingletonService {
             .upsert_singleton_entry(site_id, &collection.id, slug, &data_str, created_by, change_summary)
             .await
             .map_err(|e| {
-                error!(
-                    "Failed to upsert singleton entry: id={}, error={}",
-                    collection.id, e
-                );
+                error!("Failed to upsert singleton entry: id={}, error={}", collection.id, e);
                 SingletonError::DatabaseError(e.to_string())
             })?;
 
@@ -219,26 +214,27 @@ impl SingletonService {
         let mut file_map = serde_json::Map::new();
 
         if !file_ids.is_empty()
-            && let Ok(file_items) = self.file_repo.get_by_ids(site_id, &file_ids).await {
-                for f in file_items {
-                    let url = storage.url(&f.storage_key, &f.id);
+            && let Ok(file_items) = self.file_repo.get_by_ids(site_id, &file_ids).await
+        {
+            for f in file_items {
+                let url = storage.url(&f.storage_key, &f.id);
 
-                    file_map.insert(
-                        f.id.clone(),
-                        json!({
-                            "id": f.id,
-                            "url": url,
-                            "thumbnail_url": f.thumbnail_key.as_ref().map(|_| format!("/api/files/{}/thumbnail", f.id)),
-                            "filename": f.filename,
-                            "original_name": f.original_name,
-                            "mime_type": f.mime_type,
-                            "size": f.size,
-                            "width": f.width,
-                            "height": f.height,
-                        }),
-                    );
-                }
+                file_map.insert(
+                    f.id.clone(),
+                    json!({
+                        "id": f.id,
+                        "url": url,
+                        "thumbnail_url": f.thumbnail_key.as_ref().map(|_| format!("/api/files/{}/thumbnail", f.id)),
+                        "filename": f.filename,
+                        "original_name": f.original_name,
+                        "mime_type": f.mime_type,
+                        "size": f.size,
+                        "width": f.width,
+                        "height": f.height,
+                    }),
+                );
             }
+        }
 
         let mut result = data.clone();
         if let serde_json::Value::Object(ref mut obj) = result {
@@ -338,14 +334,7 @@ mod tests {
         let coll = create_test_collection();
         collection_repo.add_collection(coll.clone());
         entry_repo
-            .upsert_singleton_entry(
-                "site-123",
-                &coll.id,
-                &coll.slug,
-                r#"{"title":"Hello"}"#,
-                None,
-                None,
-            )
+            .upsert_singleton_entry("site-123", &coll.id, &coll.slug, r#"{"title":"Hello"}"#, None, None)
             .await
             .unwrap();
 
@@ -421,7 +410,13 @@ mod tests {
 
         let service = SingletonService::new(collection_repo, entry_repo.clone(), test_file_repo());
         let result = service
-            .update_singleton("site-123", "test-singleton", &json!({"title": "v2"}), Some("user-1"), Some("v2"))
+            .update_singleton(
+                "site-123",
+                "test-singleton",
+                &json!({"title": "v2"}),
+                Some("user-1"),
+                Some("v2"),
+            )
             .await;
         assert!(result.is_ok());
     }
@@ -435,7 +430,13 @@ mod tests {
         let service = SingletonService::new(collection_repo, entry_repo.clone(), test_file_repo());
 
         service
-            .update_singleton("site-123", "test-singleton", &json!({"title": "v1"}), Some("user-1"), Some("v1"))
+            .update_singleton(
+                "site-123",
+                "test-singleton",
+                &json!({"title": "v1"}),
+                Some("user-1"),
+                Some("v1"),
+            )
             .await
             .unwrap();
         let entry = entry_repo
@@ -447,7 +448,13 @@ mod tests {
         assert_eq!(revisions.total, 1);
 
         service
-            .update_singleton("site-123", "test-singleton", &json!({"title": "v2"}), Some("user-1"), Some("v2"))
+            .update_singleton(
+                "site-123",
+                "test-singleton",
+                &json!({"title": "v2"}),
+                Some("user-1"),
+                Some("v2"),
+            )
             .await
             .unwrap();
         let revisions = entry_repo.list_revisions(&entry.id, 1, 10).await.unwrap();

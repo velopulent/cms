@@ -27,9 +27,6 @@ pub enum ServiceError {
     #[error("Conflict: {0}")]
     Conflict(String),
 
-    #[error("Insufficient scope: {0}")]
-    InsufficientScope(String),
-
     #[error("Insufficient permission: {0}")]
     InsufficientPermission(String),
 
@@ -72,7 +69,6 @@ impl ServiceError {
             ServiceError::NotFound(_) => StatusCode::NOT_FOUND,
             ServiceError::BadRequest(_) => StatusCode::BAD_REQUEST,
             ServiceError::Conflict(_) => StatusCode::CONFLICT,
-            ServiceError::InsufficientScope(_) => StatusCode::FORBIDDEN,
             ServiceError::InsufficientPermission(_) => StatusCode::FORBIDDEN,
             ServiceError::SiteTokenDenied => StatusCode::FORBIDDEN,
             ServiceError::MissingSiteContext => StatusCode::BAD_REQUEST,
@@ -83,6 +79,7 @@ impl ServiceError {
                     StatusCode::BAD_REQUEST
                 }
                 SiteError::CannotRemoveSelf => StatusCode::BAD_REQUEST,
+                SiteError::OwnerProtected | SiteError::AdminProtected => StatusCode::FORBIDDEN,
                 SiteError::UserNotFound => StatusCode::NOT_FOUND,
                 SiteError::AlreadyMember => StatusCode::CONFLICT,
                 SiteError::MemberNotFound => StatusCode::NOT_FOUND,
@@ -137,7 +134,6 @@ impl ServiceError {
             ServiceError::NotFound(msg) => msg.clone(),
             ServiceError::BadRequest(msg) => msg.clone(),
             ServiceError::Conflict(msg) => msg.clone(),
-            ServiceError::InsufficientScope(scope) => format!("Insufficient scope: {}", scope),
             ServiceError::InsufficientPermission(permission) => format!("Insufficient permission: {}", permission),
             ServiceError::SiteTokenDenied => "Site token denied".to_string(),
             ServiceError::MissingSiteContext => "Missing site context".to_string(),
@@ -171,16 +167,27 @@ mod tests {
 
     #[test]
     fn test_status_code_mapping() {
-        assert_eq!(ServiceError::Unauthorized("".into()).status_code(), StatusCode::UNAUTHORIZED);
+        assert_eq!(
+            ServiceError::Unauthorized("".into()).status_code(),
+            StatusCode::UNAUTHORIZED
+        );
         assert_eq!(ServiceError::Forbidden("".into()).status_code(), StatusCode::FORBIDDEN);
         assert_eq!(ServiceError::NotFound("".into()).status_code(), StatusCode::NOT_FOUND);
-        assert_eq!(ServiceError::BadRequest("".into()).status_code(), StatusCode::BAD_REQUEST);
+        assert_eq!(
+            ServiceError::BadRequest("".into()).status_code(),
+            StatusCode::BAD_REQUEST
+        );
         assert_eq!(ServiceError::Conflict("".into()).status_code(), StatusCode::CONFLICT);
-        assert_eq!(ServiceError::InsufficientScope("".into()).status_code(), StatusCode::FORBIDDEN);
-        assert_eq!(ServiceError::InsufficientPermission("".into()).status_code(), StatusCode::FORBIDDEN);
+        assert_eq!(
+            ServiceError::InsufficientPermission("".into()).status_code(),
+            StatusCode::FORBIDDEN
+        );
         assert_eq!(ServiceError::SiteTokenDenied.status_code(), StatusCode::FORBIDDEN);
         assert_eq!(ServiceError::MissingSiteContext.status_code(), StatusCode::BAD_REQUEST);
-        assert_eq!(ServiceError::Internal("".into()).status_code(), StatusCode::INTERNAL_SERVER_ERROR);
+        assert_eq!(
+            ServiceError::Internal("".into()).status_code(),
+            StatusCode::INTERNAL_SERVER_ERROR
+        );
     }
 
     #[test]
@@ -190,14 +197,16 @@ mod tests {
         assert_eq!(ServiceError::NotFound("msg".into()).error_message(), "msg");
         assert_eq!(ServiceError::BadRequest("msg".into()).error_message(), "msg");
         assert_eq!(ServiceError::Conflict("msg".into()).error_message(), "msg");
-        assert_eq!(ServiceError::InsufficientScope("write".into()).error_message(), "Insufficient scope: write");
         assert_eq!(
             ServiceError::InsufficientPermission("admin".into()).error_message(),
             "Insufficient permission: admin"
         );
         assert_eq!(ServiceError::SiteTokenDenied.error_message(), "Site token denied");
         assert_eq!(ServiceError::MissingSiteContext.error_message(), "Missing site context");
-        assert_eq!(ServiceError::Internal("secret".into()).error_message(), "Internal server error");
+        assert_eq!(
+            ServiceError::Internal("secret".into()).error_message(),
+            "Internal server error"
+        );
     }
 
     #[test]

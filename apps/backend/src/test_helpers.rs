@@ -6,13 +6,14 @@ use crate::models::access_token::AccessToken;
 use crate::models::collection::Collection;
 use crate::models::entry::{Entry, EntryRevision};
 use crate::models::file::{File, FileReference};
+use crate::models::session::Session;
 use crate::models::site::{Site, SiteMember, SiteWithRole};
 use crate::models::user::User;
 use crate::repository::error::RepositoryError;
 use crate::repository::traits::{
     AccessTokenLookupRow, AccessTokenRepository, CollectionRepository, EntriesListResult, EntryRepository,
-    FileListResult, FileRepository, ListEntriesParams, ListFilesParams, RevisionsListResult, SiteRepository,
-    UserRepository,
+    FileListResult, FileRepository, ListEntriesParams, ListFilesParams, RevisionsListResult, SessionRepository,
+    SiteRepository, UserRepository,
 };
 
 pub fn now_timestamp() -> String {
@@ -69,6 +70,10 @@ impl UserRepository for InMemoryUserRepository {
         Ok(users.iter().find(|u| u.id == id).cloned())
     }
 
+    async fn list(&self) -> Result<Vec<User>, RepositoryError> {
+        Ok(self.users.lock().unwrap().clone())
+    }
+
     async fn find_id_by_username(&self, username: &str) -> Result<Option<String>, RepositoryError> {
         let users = self.users.lock().unwrap();
         Ok(users.iter().find(|u| u.username == username).map(|u| u.id.clone()))
@@ -88,6 +93,8 @@ impl UserRepository for InMemoryUserRepository {
             username: username.to_string(),
             email: email.to_string(),
             password_hash: password_hash.to_string(),
+            instance_role: None,
+            must_change_password: false,
             created_at: now_timestamp(),
             updated_at: now_timestamp(),
         };
@@ -103,8 +110,145 @@ impl UserRepository for InMemoryUserRepository {
         Ok(users.iter().any(|u| u.username == username))
     }
 
-    async fn get_role(&self, _user_id: &str, _site_id: &str) -> Result<Option<String>, RepositoryError> {
-        Ok(Some("owner".to_string()))
+    async fn get_role(&self, user_id: &str, _site_id: &str) -> Result<Option<String>, RepositoryError> {
+        let role = if matches!(user_id, "user-123" | "user-1") {
+            "owner"
+        } else {
+            "editor"
+        };
+        Ok(Some(role.to_string()))
+    }
+
+    async fn count(&self) -> Result<i64, RepositoryError> {
+        Ok(self.users.lock().unwrap().len() as i64)
+    }
+
+    async fn count_instance_owners(&self) -> Result<i64, RepositoryError> {
+        Ok(self
+            .users
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|user| user.instance_role.as_deref() == Some("instance_owner"))
+            .count() as i64)
+    }
+
+    async fn set_instance_role(&self, user_id: &str, role: Option<&str>) -> Result<u64, RepositoryError> {
+        let mut users = self.users.lock().unwrap();
+        if let Some(user) = users.iter_mut().find(|user| user.id == user_id) {
+            user.instance_role = role.map(ToString::to_string);
+            return Ok(1);
+        }
+        Ok(0)
+    }
+
+    async fn update_password(
+        &self,
+        user_id: &str,
+        password_hash: &str,
+        must_change: bool,
+    ) -> Result<u64, RepositoryError> {
+        let mut users = self.users.lock().unwrap();
+        if let Some(user) = users.iter_mut().find(|user| user.id == user_id) {
+            user.password_hash = password_hash.to_string();
+            user.must_change_password = must_change;
+            return Ok(1);
+        }
+        Ok(0)
+    }
+}
+
+#[derive(Clone, Default)]
+pub struct InMemorySessionRepository {
+    sessions: Arc<Mutex<Vec<Session>>>,
+}
+
+impl InMemorySessionRepository {
+    pub fn new() -> Self {
+        Self::default()
+    }
+}
+
+#[async_trait]
+impl SessionRepository for InMemorySessionRepository {
+    async fn create(
+        &self,
+        id: &str,
+        user_id: &str,
+        token_hash: &str,
+        csrf_token_hash: &str,
+        expires_at: &str,
+    ) -> Result<(), RepositoryError> {
+        self.sessions.lock().unwrap().push(Session {
+            id: id.to_string(),
+            user_id: user_id.to_string(),
+            token_hash: token_hash.to_string(),
+            csrf_token_hash: csrf_token_hash.to_string(),
+            created_at: now_timestamp(),
+            expires_at: expires_at.to_string(),
+            last_seen_at: now_timestamp(),
+            revoked_at: None,
+        });
+        Ok(())
+    }
+
+    async fn find_active_by_hash(&self, token_hash: &str) -> Result<Option<Session>, RepositoryError> {
+        Ok(self
+            .sessions
+            .lock()
+            .unwrap()
+            .iter()
+            .find(|session| session.token_hash == token_hash && session.revoked_at.is_none())
+            .cloned())
+    }
+
+    async fn touch(&self, id: &str) -> Result<(), RepositoryError> {
+        if let Some(session) = self
+            .sessions
+            .lock()
+            .unwrap()
+            .iter_mut()
+            .find(|session| session.id == id)
+        {
+            session.last_seen_at = now_timestamp();
+        }
+        Ok(())
+    }
+
+    async fn revoke(&self, id: &str, user_id: &str) -> Result<u64, RepositoryError> {
+        let mut sessions = self.sessions.lock().unwrap();
+        if let Some(session) = sessions
+            .iter_mut()
+            .find(|session| session.id == id && session.user_id == user_id && session.revoked_at.is_none())
+        {
+            session.revoked_at = Some(now_timestamp());
+            return Ok(1);
+        }
+        Ok(0)
+    }
+
+    async fn revoke_all(&self, user_id: &str) -> Result<u64, RepositoryError> {
+        let mut sessions = self.sessions.lock().unwrap();
+        let mut count = 0;
+        for session in sessions
+            .iter_mut()
+            .filter(|session| session.user_id == user_id && session.revoked_at.is_none())
+        {
+            session.revoked_at = Some(now_timestamp());
+            count += 1;
+        }
+        Ok(count)
+    }
+
+    async fn list(&self, user_id: &str) -> Result<Vec<Session>, RepositoryError> {
+        Ok(self
+            .sessions
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|session| session.user_id == user_id && session.revoked_at.is_none())
+            .cloned()
+            .collect())
     }
 }
 
@@ -252,6 +396,26 @@ impl SiteRepository for InMemorySiteRepository {
         let len = members.len();
         members.retain(|m| !(m.site_id == site_id && m.user_id == user_id));
         Ok((len - members.len()) as u64)
+    }
+
+    async fn transfer_ownership(
+        &self,
+        site_id: &str,
+        current_owner_id: &str,
+        new_owner_id: &str,
+    ) -> Result<(), RepositoryError> {
+        let mut members = self.members.lock().unwrap();
+        let new_owner = members
+            .iter_mut()
+            .find(|member| member.site_id == site_id && member.user_id == new_owner_id)
+            .ok_or(RepositoryError::NotFound)?;
+        new_owner.role = "owner".to_string();
+        let old_owner = members
+            .iter_mut()
+            .find(|member| member.site_id == site_id && member.user_id == current_owner_id)
+            .ok_or(RepositoryError::NotFound)?;
+        old_owner.role = "admin".to_string();
+        Ok(())
     }
 }
 
@@ -644,11 +808,7 @@ impl EntryRepository for InMemoryEntryRepository {
         Ok(entry.clone())
     }
 
-    async fn get_singleton_entry(
-        &self,
-        site_id: &str,
-        slug: &str,
-    ) -> Result<Option<Entry>, RepositoryError> {
+    async fn get_singleton_entry(&self, site_id: &str, slug: &str) -> Result<Option<Entry>, RepositoryError> {
         let entries = self.entries.lock().unwrap();
         Ok(entries
             .iter()
@@ -946,11 +1106,7 @@ impl Default for InMemoryAccessTokenRepository {
 impl AccessTokenRepository for InMemoryAccessTokenRepository {
     async fn list(&self, site_id: &str) -> Result<Vec<AccessToken>, RepositoryError> {
         let tokens = self.tokens.lock().unwrap();
-        Ok(tokens
-            .iter()
-            .filter(|t| t.site_id == site_id)
-            .cloned()
-            .collect())
+        Ok(tokens.iter().filter(|t| t.site_id == site_id).cloned().collect())
     }
 
     async fn create(
@@ -1046,7 +1202,11 @@ impl crate::repository::traits::WebhookRepository for InMemoryWebhookRepository 
         Ok(webhooks.iter().filter(|w| w.site_id == site_id).cloned().collect())
     }
 
-    async fn get_by_id(&self, id: &str, site_id: &str) -> Result<Option<crate::models::webhook::SiteWebhook>, RepositoryError> {
+    async fn get_by_id(
+        &self,
+        id: &str,
+        site_id: &str,
+    ) -> Result<Option<crate::models::webhook::SiteWebhook>, RepositoryError> {
         let webhooks = self.webhooks.lock().unwrap();
         Ok(webhooks.iter().find(|w| w.id == id && w.site_id == site_id).cloned())
     }

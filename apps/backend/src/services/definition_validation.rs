@@ -103,14 +103,8 @@ pub fn validate_entry_data(data: &Value, fields: &[Value]) -> Option<String> {
             Some(n) => n,
             None => continue,
         };
-        let field_type = field_def
-            .get("type")
-            .and_then(|t| t.as_str())
-            .unwrap_or("text");
-        let required = field_def
-            .get("required")
-            .and_then(|r| r.as_bool())
-            .unwrap_or(false);
+        let field_type = field_def.get("type").and_then(|t| t.as_str()).unwrap_or("text");
+        let required = field_def.get("required").and_then(|r| r.as_bool()).unwrap_or(false);
 
         let value = obj.get(name);
 
@@ -130,48 +124,45 @@ pub fn validate_entry_data(data: &Value, fields: &[Value]) -> Option<String> {
         }
 
         if let Some(v) = value
-            && !v.is_null() {
-                match field_type {
-                    "number" => {
-                        if !v.is_number() {
-                            return Some(format!("Field '{}' must be a number", name));
-                        }
+            && !v.is_null()
+        {
+            match field_type {
+                "number" => {
+                    if !v.is_number() {
+                        return Some(format!("Field '{}' must be a number", name));
                     }
-                    "boolean" => {
-                        if !v.is_boolean() {
-                            return Some(format!("Field '{}' must be a boolean", name));
-                        }
-                    }
-                    "select" => {
-                        if let Some(options) =
-                            field_def.get("options").and_then(|o| o.as_array())
-                        {
-                            let valid: Vec<&str> =
-                                options.iter().filter_map(|o| o.as_str()).collect();
-                            if let Some(s) = v.as_str()
-                                && !valid.is_empty() && !valid.contains(&s) {
-                                    return Some(format!(
-                                        "Field '{}' value '{}' is not in allowed options: {:?}",
-                                        name, s, valid
-                                    ));
-                                }
-                        }
-                    }
-                    "image" | "video" | "audio" | "document" | "archive" => {
-                        if let Some(s) = v.as_str()
-                            && !s.is_empty()
-                                && !s.starts_with("/api/files/")
-                                && !s.starts_with("http")
-                            {
-                                return Some(format!(
-                                    "Field '{}' must be a valid file URL, got '{}'",
-                                    name, s
-                                ));
-                            }
-                    }
-                    _ => {}
                 }
+                "boolean" => {
+                    if !v.is_boolean() {
+                        return Some(format!("Field '{}' must be a boolean", name));
+                    }
+                }
+                "select" => {
+                    if let Some(options) = field_def.get("options").and_then(|o| o.as_array()) {
+                        let valid: Vec<&str> = options.iter().filter_map(|o| o.as_str()).collect();
+                        if let Some(s) = v.as_str()
+                            && !valid.is_empty()
+                            && !valid.contains(&s)
+                        {
+                            return Some(format!(
+                                "Field '{}' value '{}' is not in allowed options: {:?}",
+                                name, s, valid
+                            ));
+                        }
+                    }
+                }
+                "image" | "video" | "audio" | "document" | "archive" => {
+                    if let Some(s) = v.as_str()
+                        && !s.is_empty()
+                        && !s.starts_with("/api/files/")
+                        && !s.starts_with("http")
+                    {
+                        return Some(format!("Field '{}' must be a valid file URL, got '{}'", name, s));
+                    }
+                }
+                _ => {}
             }
+        }
     }
 
     None

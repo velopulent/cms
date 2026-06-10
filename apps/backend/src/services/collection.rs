@@ -97,11 +97,10 @@ impl CollectionService {
             site_id, name, slug, is_singleton
         );
 
-        let definition_value: serde_json::Value = serde_json::from_str(definition)
-            .unwrap_or(serde_json::json!({"fields": []}));
-        let normalized =
-            super::definition_validation::normalize_definition(&definition_value)
-                .map_err(CollectionError::InvalidDefinition)?;
+        let definition_value: serde_json::Value =
+            serde_json::from_str(definition).unwrap_or(serde_json::json!({"fields": []}));
+        let normalized = super::definition_validation::normalize_definition(&definition_value)
+            .map_err(CollectionError::InvalidDefinition)?;
         let definition_str = normalized.to_string();
 
         self.collection_repo
@@ -172,8 +171,7 @@ impl CollectionService {
         let new_slug = new_slug.unwrap_or(&existing.slug);
         let definition_str = match definition {
             Some(d) => {
-                let value: serde_json::Value = serde_json::from_str(d)
-                    .unwrap_or(serde_json::json!({"fields": []}));
+                let value: serde_json::Value = serde_json::from_str(d).unwrap_or(serde_json::json!({"fields": []}));
                 let normalized = super::definition_validation::normalize_definition(&value)
                     .map_err(CollectionError::InvalidDefinition)?;
                 normalized.to_string()
@@ -291,11 +289,12 @@ pub fn compute_field_rename_map(old_def: &serde_json::Value, new_def: &serde_jso
             && of["type"] == nf["type"]
             && of.get("required") == nf.get("required")
             && of.get("options") == nf.get("options")
-            && let (Some(on), Some(nn)) = (of["name"].as_str(), nf["name"].as_str()) {
-                rename_map.insert(on.to_string(), nn.to_string());
-                used_old[i] = true;
-                used_new[i] = true;
-            }
+            && let (Some(on), Some(nn)) = (of["name"].as_str(), nf["name"].as_str())
+        {
+            rename_map.insert(on.to_string(), nn.to_string());
+            used_old[i] = true;
+            used_new[i] = true;
+        }
     }
 
     for (i, of) in old_fields.iter().enumerate() {
@@ -495,7 +494,14 @@ mod tests {
 
         let result = service
             .entry_repo
-            .upsert_singleton_entry("site-123", &collection.id, "test-collection", r#"{"title":"Hello"}"#, None, None)
+            .upsert_singleton_entry(
+                "site-123",
+                &collection.id,
+                "test-collection",
+                r#"{"title":"Hello"}"#,
+                None,
+                None,
+            )
             .await;
         assert!(result.is_ok());
     }

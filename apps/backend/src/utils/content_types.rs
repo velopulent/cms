@@ -101,10 +101,7 @@ pub fn is_file_type_category(category: &str) -> bool {
 }
 
 pub fn filter_for_category(category: &str) -> Vec<String> {
-    types_for_category(category)
-        .iter()
-        .map(|s| s.to_string())
-        .collect()
+    types_for_category(category).iter().map(|s| s.to_string()).collect()
 }
 
 #[cfg(test)]

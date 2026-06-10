@@ -34,6 +34,12 @@ pub enum SiteError {
     #[error("Cannot remove yourself from the site")]
     CannotRemoveSelf,
 
+    #[error("Site ownership must be transferred explicitly")]
+    OwnerProtected,
+
+    #[error("Only the site owner can manage administrators")]
+    AdminProtected,
+
     #[error("User not found")]
     UserNotFound,
 
@@ -57,6 +63,14 @@ impl SiteError {
             SiteError::CannotRemoveSelf => (
                 StatusCode::BAD_REQUEST,
                 Json(json!({"error": "Cannot remove yourself from the site"})),
+            ),
+            SiteError::OwnerProtected => (
+                StatusCode::FORBIDDEN,
+                Json(json!({"error": "Site ownership must be transferred explicitly"})),
+            ),
+            SiteError::AdminProtected => (
+                StatusCode::FORBIDDEN,
+                Json(json!({"error": "Only the site owner can manage administrators"})),
             ),
             SiteError::UserNotFound => (StatusCode::NOT_FOUND, Json(json!({"error": "User not found"}))),
             SiteError::AlreadyMember => (
@@ -158,10 +172,11 @@ impl SiteService {
 
         let name = name.map(|n| n.trim());
         if let Some(n) = name
-            && n.is_empty() {
-                warn!("Site update failed: name is empty");
-                return Err(SiteError::InvalidName("Name is required".into()));
-            }
+            && n.is_empty()
+        {
+            warn!("Site update failed: name is empty");
+            return Err(SiteError::InvalidName("Name is required".into()));
+        }
 
         let existing = self
             .site_repo
@@ -215,17 +230,31 @@ impl SiteService {
             .map_err(|e| SiteError::DatabaseError(e.to_string()))
     }
 
-    pub async fn invite_member(&self, site_id: &str, username: &str, role: &str) -> Result<SiteMember, SiteError> {
+    pub async fn invite_member(
+        &self,
+        site_id: &str,
+        username: &str,
+        role: &str,
+        actor_user_id: &str,
+    ) -> Result<SiteMember, SiteError> {
         debug!(
             "Inviting member to site: site_id={}, username={}, role={}",
             site_id, username, role
         );
 
-        if !VALID_ROLES.contains(&role) {
+        if !VALID_ROLES.contains(&role) || role == "owner" {
             warn!("Invite member failed: invalid role={}", role);
             return Err(SiteError::InvalidRole(
                 "Invalid role. Must be owner, admin, editor, or viewer".into(),
             ));
+        }
+        let actor_role = self
+            .user_repo
+            .get_role(actor_user_id, site_id)
+            .await
+            .map_err(|e| SiteError::DatabaseError(e.to_string()))?;
+        if role == "admin" && actor_role.as_deref() != Some("owner") {
+            return Err(SiteError::AdminProtected);
         }
 
         debug!("Looking up user by username: {}", username);
@@ -272,15 +301,32 @@ impl SiteService {
         site_id: &str,
         user_id: &str,
         role: &str,
+        actor_user_id: &str,
     ) -> Result<Option<SiteMember>, SiteError> {
         debug!(
             "Updating member role: site_id={}, user_id={}, role={}",
             site_id, user_id, role
         );
 
-        if !VALID_ROLES.contains(&role) {
+        if !VALID_ROLES.contains(&role) || role == "owner" {
             warn!("Update member role failed: invalid role={}", role);
             return Err(SiteError::InvalidRole("Invalid role".into()));
+        }
+        let actor_role = self
+            .user_repo
+            .get_role(actor_user_id, site_id)
+            .await
+            .map_err(|e| SiteError::DatabaseError(e.to_string()))?;
+        let target_role = self
+            .user_repo
+            .get_role(user_id, site_id)
+            .await
+            .map_err(|e| SiteError::DatabaseError(e.to_string()))?;
+        if target_role.as_deref() == Some("owner") {
+            return Err(SiteError::OwnerProtected);
+        }
+        if (role == "admin" || target_role.as_deref() == Some("admin")) && actor_role.as_deref() != Some("owner") {
+            return Err(SiteError::AdminProtected);
         }
 
         match self.site_repo.update_member_role(site_id, user_id, role).await {
@@ -321,6 +367,26 @@ impl SiteService {
             );
             return Err(SiteError::CannotRemoveSelf);
         }
+        match self
+            .user_repo
+            .get_role(user_id, site_id)
+            .await
+            .map_err(|e| SiteError::DatabaseError(e.to_string()))?
+            .as_deref()
+        {
+            Some("owner") => return Err(SiteError::OwnerProtected),
+            Some("admin") => {
+                let actor_role = self
+                    .user_repo
+                    .get_role(by_user_id, site_id)
+                    .await
+                    .map_err(|e| SiteError::DatabaseError(e.to_string()))?;
+                if actor_role.as_deref() != Some("owner") {
+                    return Err(SiteError::AdminProtected);
+                }
+            }
+            _ => {}
+        }
 
         match self.site_repo.remove_member(site_id, user_id).await {
             Ok(removed_count) => {
@@ -338,6 +404,24 @@ impl SiteService {
                 Err(SiteError::DatabaseError(e.to_string()))
             }
         }
+    }
+
+    pub async fn transfer_ownership(
+        &self,
+        site_id: &str,
+        current_owner_id: &str,
+        new_owner_id: &str,
+    ) -> Result<(), SiteError> {
+        if current_owner_id == new_owner_id {
+            return Err(SiteError::InvalidRole("New owner must be a different member".into()));
+        }
+        self.site_repo
+            .transfer_ownership(site_id, current_owner_id, new_owner_id)
+            .await
+            .map_err(|error| match error {
+                RepositoryError::NotFound => SiteError::MemberNotFound,
+                other => SiteError::DatabaseError(other.to_string()),
+            })
     }
 }
 
@@ -376,6 +460,7 @@ mod tests {
 
         let actor = Actor::User(UserActor {
             user_id: "user-123".to_string(),
+            session_id: "session-123".to_string(),
         });
         let result = service.list_sites_for_actor(&actor).await;
         assert!(result.is_ok());
@@ -570,7 +655,9 @@ mod tests {
         let user_repo = test_user_repo();
         let service = SiteService::new(site_repo, user_repo);
 
-        let result = service.invite_member("site-123", "username", "invalid_role").await;
+        let result = service
+            .invite_member("site-123", "username", "invalid_role", "user-123")
+            .await;
         assert!(matches!(result, Err(SiteError::InvalidRole(msg)) if msg.contains("owner, admin, editor, or viewer")));
     }
 
@@ -580,7 +667,9 @@ mod tests {
         let user_repo = test_user_repo();
         let service = SiteService::new(site_repo, user_repo);
 
-        let result = service.invite_member("site-123", "nonexistent_user", "viewer").await;
+        let result = service
+            .invite_member("site-123", "nonexistent_user", "viewer", "user-123")
+            .await;
         assert!(matches!(result, Err(SiteError::UserNotFound)));
     }
 
@@ -594,13 +683,15 @@ mod tests {
             username: "newuser".to_string(),
             email: "new@example.com".to_string(),
             password_hash: "hash".to_string(),
+            instance_role: None,
+            must_change_password: false,
             created_at: "2024-01-01 00:00:00".to_string(),
             updated_at: "2024-01-01 00:00:00".to_string(),
         });
 
         let service = SiteService::new(site_repo, user_repo.clone());
 
-        let result = service.invite_member("site-123", "newuser", "editor").await;
+        let result = service.invite_member("site-123", "newuser", "editor", "user-123").await;
         assert!(result.is_ok());
         let member = result.unwrap();
         assert_eq!(member.role, "editor");
@@ -611,12 +702,14 @@ mod tests {
         let site_repo = test_site_repo();
         let user_repo = test_user_repo();
 
-        for role in ["owner", "admin", "editor", "viewer"] {
+        for role in ["admin", "editor", "viewer"] {
             user_repo.add_user(crate::models::user::User {
                 id: format!("user-{}", role),
                 username: format!("user_{}", role),
                 email: format!("{}@example.com", role),
                 password_hash: "hash".to_string(),
+                instance_role: None,
+                must_change_password: false,
                 created_at: "2024-01-01 00:00:00".to_string(),
                 updated_at: "2024-01-01 00:00:00".to_string(),
             });
@@ -624,8 +717,10 @@ mod tests {
 
         let service = SiteService::new(site_repo, user_repo.clone());
 
-        for role in ["owner", "admin", "editor", "viewer"] {
-            let result = service.invite_member("site-123", &format!("user_{}", role), role).await;
+        for role in ["admin", "editor", "viewer"] {
+            let result = service
+                .invite_member("site-123", &format!("user_{}", role), role, "user-123")
+                .await;
             assert!(result.is_ok(), "Failed for role: {}", role);
         }
     }
@@ -636,7 +731,9 @@ mod tests {
         let user_repo = test_user_repo();
         let service = SiteService::new(site_repo, user_repo);
 
-        let result = service.update_member_role("site-123", "user-456", "invalid").await;
+        let result = service
+            .update_member_role("site-123", "user-456", "invalid", "user-123")
+            .await;
         assert!(matches!(result, Err(SiteError::InvalidRole(msg)) if msg.contains("Invalid role")));
     }
 
@@ -646,7 +743,9 @@ mod tests {
         let user_repo = test_user_repo();
         let service = SiteService::new(site_repo, user_repo);
 
-        let result = service.update_member_role("site-123", "user-456", "admin").await;
+        let result = service
+            .update_member_role("site-123", "user-456", "admin", "user-123")
+            .await;
         assert!(result.is_ok());
     }
 

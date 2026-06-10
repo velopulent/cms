@@ -12,8 +12,7 @@ pub use s3::S3Storage;
 pub const STORAGE_KIND_FILESYSTEM: &str = "filesystem";
 pub const STORAGE_KIND_S3: &str = "s3";
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-#[derive(Default)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
 pub enum StorageKind {
     #[default]
     Filesystem,
@@ -36,7 +35,6 @@ impl StorageKind {
         }
     }
 }
-
 
 #[derive(Clone)]
 pub struct StorageRegistry {

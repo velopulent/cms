@@ -125,7 +125,11 @@ impl WebhookService {
         }
 
         if let Err(e) = validate_url(url) {
-            warn!("Webhook creation failed: invalid url_pattern={}, error={}", sanitize_url_for_logging(url), e);
+            warn!(
+                "Webhook creation failed: invalid url_pattern={}, error={}",
+                sanitize_url_for_logging(url),
+                e
+            );
             return Err(WebhookError::InvalidUrl(format!("Invalid URL: {}", e)));
         }
 
@@ -171,19 +175,21 @@ impl WebhookService {
         );
 
         if let Some(url_val) = url
-            && let Err(e) = validate_url(url_val) {
-                warn!(
-                    "Webhook update failed: invalid url_pattern={}, error={}",
-                    sanitize_url_for_logging(url_val),
-                    e
-                );
-                return Err(WebhookError::InvalidUrl(format!("Invalid URL: {}", e)));
-            }
+            && let Err(e) = validate_url(url_val)
+        {
+            warn!(
+                "Webhook update failed: invalid url_pattern={}, error={}",
+                sanitize_url_for_logging(url_val),
+                e
+            );
+            return Err(WebhookError::InvalidUrl(format!("Invalid URL: {}", e)));
+        }
         if let Some(label_val) = label
-            && label_val.trim().is_empty() {
-                warn!("Webhook update failed: label is empty");
-                return Err(WebhookError::InvalidLabel("Label cannot be empty".into()));
-            }
+            && label_val.trim().is_empty()
+        {
+            warn!("Webhook update failed: label is empty");
+            return Err(WebhookError::InvalidLabel("Label cannot be empty".into()));
+        }
 
         let headers_encrypted = headers.map(|h| {
             debug!("Encrypting headers for webhook update");
@@ -487,7 +493,10 @@ mod tests {
 
     #[test]
     fn test_sanitize_url_for_logging() {
-        assert_eq!(sanitize_url_for_logging("https://example.com/path?q=1"), "https://example.com/path");
+        assert_eq!(
+            sanitize_url_for_logging("https://example.com/path?q=1"),
+            "https://example.com/path"
+        );
         assert_eq!(sanitize_url_for_logging("not-a-url"), "[invalid URL]");
     }
 
@@ -654,7 +663,13 @@ mod tests {
         headers.insert("X-Custom".to_string(), "value".to_string());
 
         let result = service
-            .create_webhook("site-1", "My Hook", "https://example.com/hook", &headers, Some("user-1"))
+            .create_webhook(
+                "site-1",
+                "My Hook",
+                "https://example.com/hook",
+                &headers,
+                Some("user-1"),
+            )
             .await;
         assert!(result.is_ok());
         let webhook = result.unwrap();
@@ -720,9 +735,7 @@ mod tests {
         repo.add_webhook(make_webhook("w1", "site-1"));
         let service = test_service(repo);
 
-        let result = service
-            .update_webhook("w1", "site-1", Some("  "), None, None)
-            .await;
+        let result = service.update_webhook("w1", "site-1", Some("  "), None, None).await;
         assert!(matches!(result, Err(WebhookError::InvalidLabel(_))));
     }
 

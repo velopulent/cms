@@ -74,10 +74,7 @@ impl AccessTokenService {
         permission: AccessTokenPermission,
         created_by: Option<&str>,
     ) -> Result<AccessTokenResponse, TokenError> {
-        debug!(
-            "Creating site token: site_id={}, permission={}",
-            site_id, permission
-        );
+        debug!("Creating site token: site_id={}, permission={}", site_id, permission);
 
         let name = name.trim();
         if name.is_empty() {
@@ -159,12 +156,7 @@ mod tests {
         let service = test_service(test_repo());
 
         let result = service
-            .create_site_token(
-                "site-123",
-                "Test Token".to_string(),
-                AccessTokenPermission::Read,
-                None,
-            )
+            .create_site_token("site-123", "Test Token".to_string(), AccessTokenPermission::Read, None)
             .await;
 
         assert!(result.is_ok());
@@ -200,12 +192,7 @@ mod tests {
         let service = test_service(test_repo());
 
         let create_result = service
-            .create_site_token(
-                "site-123",
-                "To Delete".to_string(),
-                AccessTokenPermission::Write,
-                None,
-            )
+            .create_site_token("site-123", "To Delete".to_string(), AccessTokenPermission::Write, None)
             .await
             .unwrap();
 

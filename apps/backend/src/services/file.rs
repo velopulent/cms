@@ -173,20 +173,21 @@ impl FileService {
                 let mut tkey: Option<String> = None;
 
                 if let Ok(reader) = ImageReader::new(std::io::Cursor::new(&data_clone)).with_guessed_format()
-                    && let Ok(img) = reader.decode() {
-                        w = Some(img.width() as i32);
-                        h = Some(img.height() as i32);
+                    && let Ok(img) = reader.decode()
+                {
+                    w = Some(img.width() as i32);
+                    h = Some(img.height() as i32);
 
-                        if let Some((thumb_bytes, thumb_mime)) = generate_thumbnail(&img) {
-                            tkey = Some(format!(
-                                "s_{}/f_{}/thumb_{}.avif",
-                                site_id_owned,
-                                file_id_owned,
-                                &file_id_owned[..8]
-                            ));
-                            tdata = Some((thumb_bytes, thumb_mime));
-                        }
+                    if let Some((thumb_bytes, thumb_mime)) = generate_thumbnail(&img) {
+                        tkey = Some(format!(
+                            "s_{}/f_{}/thumb_{}.avif",
+                            site_id_owned,
+                            file_id_owned,
+                            &file_id_owned[..8]
+                        ));
+                        tdata = Some((thumb_bytes, thumb_mime));
                     }
+                }
 
                 (w, h, tdata, tkey)
             })
