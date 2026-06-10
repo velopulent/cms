@@ -9,6 +9,8 @@ pub struct User {
     pub email: String,
     #[serde(skip_serializing)]
     pub password_hash: String,
+    pub instance_role: Option<String>,
+    pub must_change_password: bool,
     pub created_at: String,
     pub updated_at: String,
 }
@@ -24,6 +26,25 @@ pub struct CreateUser {
 pub struct LoginRequest {
     pub username: String,
     pub password: String,
+}
+
+#[derive(Deserialize, ToSchema)]
+pub struct ChangePasswordRequest {
+    pub current_password: String,
+    pub new_password: String,
+}
+
+#[derive(Deserialize, ToSchema)]
+pub struct CreateManagedUser {
+    pub username: String,
+    pub email: String,
+    pub temporary_password: String,
+    pub instance_owner: bool,
+}
+
+#[derive(Deserialize, ToSchema)]
+pub struct UpdateInstanceRole {
+    pub instance_owner: bool,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -42,4 +63,6 @@ pub struct UserPublic {
     pub id: String,
     pub username: String,
     pub email: String,
+    pub instance_role: Option<String>,
+    pub must_change_password: bool,
 }

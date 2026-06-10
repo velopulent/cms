@@ -9,6 +9,8 @@ pub enum AccessTokenPermission {
     Write,
 }
 
+pub type ApiKeyPermission = AccessTokenPermission;
+
 impl AccessTokenPermission {
     pub fn as_str(&self) -> &'static str {
         match self {
