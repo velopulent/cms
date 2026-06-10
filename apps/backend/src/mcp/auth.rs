@@ -12,7 +12,7 @@ use serde_json::json;
 use std::sync::Arc;
 
 use crate::config::Config;
-use crate::middleware::auth::{Actor, ScopeSet, verify_access_token};
+use crate::middleware::auth::{Actor, verify_access_token};
 use crate::repository::Repository;
 
 pub fn mcp_error(code: ErrorCode, message: impl Into<String>) -> ErrorData {
@@ -44,8 +44,7 @@ pub fn tool_error(e: impl Into<crate::services::error::ServiceError>) -> CallToo
     CallToolResult::error(vec![Content::text(error.error_message())])
 }
 
-/// Resolve authenticated Actor + ScopeSet from the MCP request context.
-pub fn resolve_actor(ctx: &RequestContext<RoleServer>) -> Result<(Actor, ScopeSet), ErrorData> {
+pub fn resolve_actor(ctx: &RequestContext<RoleServer>) -> Result<Actor, ErrorData> {
     let parts = ctx
         .extensions
         .get::<http::request::Parts>()
@@ -57,13 +56,7 @@ pub fn resolve_actor(ctx: &RequestContext<RoleServer>) -> Result<(Actor, ScopeSe
         .cloned()
         .ok_or_else(|| mcp_error(ErrorCode::INVALID_REQUEST, "Missing MCP authentication"))?;
 
-    let scopes = parts
-        .extensions
-        .get::<ScopeSet>()
-        .cloned()
-        .unwrap_or_else(ScopeSet::all);
-
-    Ok((actor, scopes))
+    Ok(actor)
 }
 
 pub async fn authenticate_mcp_request(mut request: Request<Body>, next: Next) -> Response {
@@ -85,12 +78,7 @@ pub async fn authenticate_mcp_request(mut request: Request<Body>, next: Next) ->
 
     match verify_access_token(&token, &repository, &config.hmac_secret).await {
         Ok(actor) => {
-            let scopes = match &actor {
-                Actor::ApiKey(k) => ScopeSet::from_permission(&k.permission),
-                _ => ScopeSet::all(),
-            };
             request.extensions_mut().insert(actor);
-            request.extensions_mut().insert(scopes);
             next.run(request).await
         }
         Err((status, Json(error))) => auth_response(status, &error.message),
@@ -112,7 +100,6 @@ pub fn service_error_to_mcp(error: crate::services::error::ServiceError) -> Erro
     let code = match &error {
         crate::services::error::ServiceError::Unauthorized(_) => ErrorCode::INVALID_REQUEST,
         crate::services::error::ServiceError::Forbidden(_)
-        | crate::services::error::ServiceError::InsufficientScope(_)
         | crate::services::error::ServiceError::InsufficientPermission(_)
         | crate::services::error::ServiceError::SiteTokenDenied => ErrorCode::INVALID_REQUEST,
         crate::services::error::ServiceError::NotFound(_) => ErrorCode::RESOURCE_NOT_FOUND,
@@ -128,7 +115,7 @@ pub fn service_error_to_mcp(error: crate::services::error::ServiceError) -> Erro
 #[cfg(test)]
 mod tests {
     use crate::database::init_db;
-    use crate::middleware::auth::{Actor, create_token, is_token_not_expired, verify_access_token};
+    use crate::middleware::auth::{Actor, is_token_not_expired, verify_access_token};
     use crate::models::access_token::AccessTokenPermission;
     use crate::repository::Repository;
     use crate::services::access_token::AccessTokenService;
@@ -202,12 +189,15 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_jwt_is_not_a_valid_access_token() {
+    async fn test_dashboard_session_is_not_a_valid_access_token() {
         let hmac_secret = "test-hmac-secret";
         let pool = init_db("sqlite::memory:").await.expect("db should initialize");
         let repository = Repository::new(&pool);
-        let jwt = create_token("user-123".to_string(), "jwt-secret").expect("jwt should be created");
 
-        assert!(verify_access_token(&jwt, &repository, hmac_secret).await.is_err());
+        assert!(
+            verify_access_token("opaque-dashboard-session", &repository, hmac_secret)
+                .await
+                .is_err()
+        );
     }
 }

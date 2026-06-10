@@ -8,8 +8,9 @@ use serde::Deserialize;
 
 use crate::mcp::auth::{ok_result, tool_error};
 use crate::mcp::schema::ArbitraryJson;
-use crate::middleware::auth::{Actor, Scope};
-use crate::services::{Services, scope::ScopeChecker};
+use crate::middleware::auth::Actor;
+use crate::models::authorization::Action;
+use crate::services::{Services, authorization::AuthorizationService};
 use crate::storage::StorageRegistry;
 
 fn require_site_id(actor: &Actor) -> Result<String, McpError> {
@@ -23,14 +24,14 @@ fn require_site_id(actor: &Actor) -> Result<String, McpError> {
 pub struct ListSingletonsParams {}
 
 pub async fn list_singletons(
-    scope: &Arc<ScopeChecker>,
+    authorization: &Arc<AuthorizationService>,
     services: &Arc<Services>,
     actor: &Actor,
     _params: Parameters<ListSingletonsParams>,
 ) -> Result<CallToolResult, McpError> {
     let site_id = require_site_id(actor)?;
-    if let Err(e) = scope
-        .require_site_scope(actor, &site_id, &Scope::EntriesRead, "viewer")
+    if let Err(e) = authorization
+        .require_site_action(actor, &site_id, Action::ContentRead)
         .await
     {
         return Ok(tool_error(e));
@@ -47,15 +48,15 @@ pub struct GetSingletonParams {
 }
 
 pub async fn get_singleton(
-    scope: &Arc<ScopeChecker>,
+    authorization: &Arc<AuthorizationService>,
     services: &Arc<Services>,
     storage_registry: &Arc<StorageRegistry>,
     actor: &Actor,
     params: Parameters<GetSingletonParams>,
 ) -> Result<CallToolResult, McpError> {
     let site_id = require_site_id(actor)?;
-    if let Err(e) = scope
-        .require_site_scope(actor, &site_id, &Scope::EntriesRead, "viewer")
+    if let Err(e) = authorization
+        .require_site_action(actor, &site_id, Action::ContentRead)
         .await
     {
         return Ok(tool_error(e));
@@ -68,7 +69,11 @@ pub async fn get_singleton(
     };
     let storage = match storage_registry.get(&storage_provider) {
         Some(s) => s,
-        None => return Ok(tool_error(crate::services::error::ServiceError::Internal("Storage not configured".into()))),
+        None => {
+            return Ok(tool_error(crate::services::error::ServiceError::Internal(
+                "Storage not configured".into(),
+            )));
+        }
     };
 
     match services
@@ -90,14 +95,14 @@ pub struct UpdateSingletonParams {
 }
 
 pub async fn update_singleton(
-    scope: &Arc<ScopeChecker>,
+    authorization: &Arc<AuthorizationService>,
     services: &Arc<Services>,
     actor: &Actor,
     params: Parameters<UpdateSingletonParams>,
 ) -> Result<CallToolResult, McpError> {
     let site_id = require_site_id(actor)?;
-    if let Err(e) = scope
-        .require_site_scope(actor, &site_id, &Scope::EntriesWrite, "editor")
+    if let Err(e) = authorization
+        .require_site_action(actor, &site_id, Action::ContentWrite)
         .await
     {
         return Ok(tool_error(e));

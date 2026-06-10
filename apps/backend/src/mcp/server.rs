@@ -11,10 +11,10 @@ use rmcp::service::RoleServer;
 use rmcp::{ErrorData as McpError, ServerHandler, tool, tool_handler, tool_router};
 
 use crate::config::Config;
-use crate::middleware::auth::{Actor, ScopeSet};
+use crate::middleware::auth::Actor;
 use crate::repository::Repository;
 use crate::services::Services;
-use crate::services::scope::ScopeChecker;
+use crate::services::authorization::AuthorizationService;
 use crate::storage::StorageRegistry;
 
 use crate::mcp::resources::site_schema;
@@ -26,7 +26,7 @@ pub struct CmsServer {
     pub repository: Arc<Repository>,
     pub storage_registry: Arc<StorageRegistry>,
     pub config: Arc<Config>,
-    pub scope_checker: Arc<ScopeChecker>,
+    pub authorizer: Arc<AuthorizationService>,
 }
 
 #[tool_router]
@@ -37,13 +37,13 @@ impl CmsServer {
         storage_registry: Arc<StorageRegistry>,
         config: Arc<Config>,
     ) -> Self {
-        let scope_checker = Arc::new(ScopeChecker::new(repository.user.clone()));
+        let authorizer = Arc::new(AuthorizationService::new(repository.user.clone()));
         Self {
             services,
             repository,
             storage_registry,
             config,
-            scope_checker,
+            authorizer,
         }
     }
 
@@ -53,8 +53,8 @@ impl CmsServer {
         ctx: RequestContext<RoleServer>,
         params: Parameters<site::GetSiteParams>,
     ) -> Result<CallToolResult, McpError> {
-        let (actor, _scopes) = self.resolve_actor(&ctx)?;
-        site::get_site(&self.scope_checker, &self.services, &actor, params).await
+        let actor = self.resolve_actor(&ctx)?;
+        site::get_site(&self.authorizer, &self.services, &actor, params).await
     }
 
     #[tool(description = "Update a site's name")]
@@ -63,8 +63,8 @@ impl CmsServer {
         ctx: RequestContext<RoleServer>,
         params: Parameters<site::UpdateSiteParams>,
     ) -> Result<CallToolResult, McpError> {
-        let (actor, _scopes) = self.resolve_actor(&ctx)?;
-        site::update_site(&self.scope_checker, &self.services, &actor, params).await
+        let actor = self.resolve_actor(&ctx)?;
+        site::update_site(&self.authorizer, &self.services, &actor, params).await
     }
 
     #[tool(description = "List collections in a site")]
@@ -73,8 +73,8 @@ impl CmsServer {
         ctx: RequestContext<RoleServer>,
         params: Parameters<collection::ListCollectionsParams>,
     ) -> Result<CallToolResult, McpError> {
-        let (actor, _scopes) = self.resolve_actor(&ctx)?;
-        collection::list_collections(&self.scope_checker, &self.services, &actor, params).await
+        let actor = self.resolve_actor(&ctx)?;
+        collection::list_collections(&self.authorizer, &self.services, &actor, params).await
     }
 
     #[tool(description = "Get a collection by slug")]
@@ -83,8 +83,8 @@ impl CmsServer {
         ctx: RequestContext<RoleServer>,
         params: Parameters<collection::GetCollectionParams>,
     ) -> Result<CallToolResult, McpError> {
-        let (actor, _scopes) = self.resolve_actor(&ctx)?;
-        collection::get_collection(&self.scope_checker, &self.services, &actor, params).await
+        let actor = self.resolve_actor(&ctx)?;
+        collection::get_collection(&self.authorizer, &self.services, &actor, params).await
     }
 
     #[tool(description = "Create a new collection")]
@@ -93,8 +93,8 @@ impl CmsServer {
         ctx: RequestContext<RoleServer>,
         params: Parameters<collection::CreateCollectionParams>,
     ) -> Result<CallToolResult, McpError> {
-        let (actor, _scopes) = self.resolve_actor(&ctx)?;
-        collection::create_collection(&self.scope_checker, &self.services, &actor, params).await
+        let actor = self.resolve_actor(&ctx)?;
+        collection::create_collection(&self.authorizer, &self.services, &actor, params).await
     }
 
     #[tool(description = "Update a collection's definition")]
@@ -103,8 +103,8 @@ impl CmsServer {
         ctx: RequestContext<RoleServer>,
         params: Parameters<collection::UpdateCollectionParams>,
     ) -> Result<CallToolResult, McpError> {
-        let (actor, _scopes) = self.resolve_actor(&ctx)?;
-        collection::update_collection(&self.scope_checker, &self.services, &actor, params).await
+        let actor = self.resolve_actor(&ctx)?;
+        collection::update_collection(&self.authorizer, &self.services, &actor, params).await
     }
 
     #[tool(description = "Delete a collection")]
@@ -113,8 +113,8 @@ impl CmsServer {
         ctx: RequestContext<RoleServer>,
         params: Parameters<collection::DeleteCollectionParams>,
     ) -> Result<CallToolResult, McpError> {
-        let (actor, _scopes) = self.resolve_actor(&ctx)?;
-        collection::delete_collection(&self.scope_checker, &self.services, &actor, params).await
+        let actor = self.resolve_actor(&ctx)?;
+        collection::delete_collection(&self.authorizer, &self.services, &actor, params).await
     }
 
     #[tool(description = "List entries in a site, optionally filtered by collection and status")]
@@ -123,8 +123,8 @@ impl CmsServer {
         ctx: RequestContext<RoleServer>,
         params: Parameters<entry::ListEntriesParams>,
     ) -> Result<CallToolResult, McpError> {
-        let (actor, _scopes) = self.resolve_actor(&ctx)?;
-        entry::list_entries(&self.scope_checker, &self.services, &actor, params).await
+        let actor = self.resolve_actor(&ctx)?;
+        entry::list_entries(&self.authorizer, &self.services, &actor, params).await
     }
 
     #[tool(description = "Get an entry by ID")]
@@ -133,8 +133,8 @@ impl CmsServer {
         ctx: RequestContext<RoleServer>,
         params: Parameters<entry::GetEntryParams>,
     ) -> Result<CallToolResult, McpError> {
-        let (actor, _scopes) = self.resolve_actor(&ctx)?;
-        entry::get_entry(&self.scope_checker, &self.services, &self.storage_registry, &actor, params).await
+        let actor = self.resolve_actor(&ctx)?;
+        entry::get_entry(&self.authorizer, &self.services, &self.storage_registry, &actor, params).await
     }
 
     #[tool(description = "Create a new entry")]
@@ -143,8 +143,8 @@ impl CmsServer {
         ctx: RequestContext<RoleServer>,
         params: Parameters<entry::CreateEntryParams>,
     ) -> Result<CallToolResult, McpError> {
-        let (actor, _scopes) = self.resolve_actor(&ctx)?;
-        entry::create_entry(&self.scope_checker, &self.services, &actor, params).await
+        let actor = self.resolve_actor(&ctx)?;
+        entry::create_entry(&self.authorizer, &self.services, &actor, params).await
     }
 
     #[tool(description = "Update an entry")]
@@ -153,8 +153,8 @@ impl CmsServer {
         ctx: RequestContext<RoleServer>,
         params: Parameters<entry::UpdateEntryParams>,
     ) -> Result<CallToolResult, McpError> {
-        let (actor, _scopes) = self.resolve_actor(&ctx)?;
-        entry::update_entry(&self.scope_checker, &self.services, &actor, params).await
+        let actor = self.resolve_actor(&ctx)?;
+        entry::update_entry(&self.authorizer, &self.services, &actor, params).await
     }
 
     #[tool(description = "Delete an entry")]
@@ -163,8 +163,8 @@ impl CmsServer {
         ctx: RequestContext<RoleServer>,
         params: Parameters<entry::DeleteEntryParams>,
     ) -> Result<CallToolResult, McpError> {
-        let (actor, _scopes) = self.resolve_actor(&ctx)?;
-        entry::delete_entry(&self.scope_checker, &self.services, &actor, params).await
+        let actor = self.resolve_actor(&ctx)?;
+        entry::delete_entry(&self.authorizer, &self.services, &actor, params).await
     }
 
     #[tool(description = "Publish an entry")]
@@ -173,8 +173,8 @@ impl CmsServer {
         ctx: RequestContext<RoleServer>,
         params: Parameters<entry::PublishEntryParams>,
     ) -> Result<CallToolResult, McpError> {
-        let (actor, _scopes) = self.resolve_actor(&ctx)?;
-        entry::publish_entry(&self.scope_checker, &self.services, &actor, params).await
+        let actor = self.resolve_actor(&ctx)?;
+        entry::publish_entry(&self.authorizer, &self.services, &actor, params).await
     }
 
     #[tool(description = "Unpublish an entry")]
@@ -183,8 +183,8 @@ impl CmsServer {
         ctx: RequestContext<RoleServer>,
         params: Parameters<entry::UnpublishEntryParams>,
     ) -> Result<CallToolResult, McpError> {
-        let (actor, _scopes) = self.resolve_actor(&ctx)?;
-        entry::unpublish_entry(&self.scope_checker, &self.services, &actor, params).await
+        let actor = self.resolve_actor(&ctx)?;
+        entry::unpublish_entry(&self.authorizer, &self.services, &actor, params).await
     }
 
     #[tool(description = "List singletons in a site")]
@@ -193,8 +193,8 @@ impl CmsServer {
         ctx: RequestContext<RoleServer>,
         params: Parameters<singleton::ListSingletonsParams>,
     ) -> Result<CallToolResult, McpError> {
-        let (actor, _scopes) = self.resolve_actor(&ctx)?;
-        singleton::list_singletons(&self.scope_checker, &self.services, &actor, params).await
+        let actor = self.resolve_actor(&ctx)?;
+        singleton::list_singletons(&self.authorizer, &self.services, &actor, params).await
     }
 
     #[tool(description = "Get a singleton by slug")]
@@ -203,8 +203,8 @@ impl CmsServer {
         ctx: RequestContext<RoleServer>,
         params: Parameters<singleton::GetSingletonParams>,
     ) -> Result<CallToolResult, McpError> {
-        let (actor, _scopes) = self.resolve_actor(&ctx)?;
-        singleton::get_singleton(&self.scope_checker, &self.services, &self.storage_registry, &actor, params).await
+        let actor = self.resolve_actor(&ctx)?;
+        singleton::get_singleton(&self.authorizer, &self.services, &self.storage_registry, &actor, params).await
     }
 
     #[tool(description = "Update a singleton's data")]
@@ -213,8 +213,8 @@ impl CmsServer {
         ctx: RequestContext<RoleServer>,
         params: Parameters<singleton::UpdateSingletonParams>,
     ) -> Result<CallToolResult, McpError> {
-        let (actor, _scopes) = self.resolve_actor(&ctx)?;
-        singleton::update_singleton(&self.scope_checker, &self.services, &actor, params).await
+        let actor = self.resolve_actor(&ctx)?;
+        singleton::update_singleton(&self.authorizer, &self.services, &actor, params).await
     }
 
     #[tool(description = "List files in a site")]
@@ -223,8 +223,8 @@ impl CmsServer {
         ctx: RequestContext<RoleServer>,
         params: Parameters<file::ListFilesParams>,
     ) -> Result<CallToolResult, McpError> {
-        let (actor, _scopes) = self.resolve_actor(&ctx)?;
-        file::list_files(&self.scope_checker, &self.services, &actor, params).await
+        let actor = self.resolve_actor(&ctx)?;
+        file::list_files(&self.authorizer, &self.services, &actor, params).await
     }
 
     #[tool(description = "Get file details by ID")]
@@ -233,8 +233,8 @@ impl CmsServer {
         ctx: RequestContext<RoleServer>,
         params: Parameters<file::GetFileParams>,
     ) -> Result<CallToolResult, McpError> {
-        let (actor, _scopes) = self.resolve_actor(&ctx)?;
-        file::get_file(&self.scope_checker, &self.services, &actor, params).await
+        let actor = self.resolve_actor(&ctx)?;
+        file::get_file(&self.authorizer, &self.services, &actor, params).await
     }
 
     #[tool(description = "Create a signed upload URL for uploading a file")]
@@ -243,9 +243,9 @@ impl CmsServer {
         ctx: RequestContext<RoleServer>,
         params: Parameters<file::CreateUploadUrlParams>,
     ) -> Result<CallToolResult, McpError> {
-        let (actor, _scopes) = self.resolve_actor(&ctx)?;
+        let actor = self.resolve_actor(&ctx)?;
         let public_base_url = self.public_base_url(&ctx);
-        file::create_upload_url(&self.scope_checker, &self.config, &actor, public_base_url, params).await
+        file::create_upload_url(&self.authorizer, &self.config, &actor, public_base_url, params).await
     }
 
     #[tool(description = "Delete a file (soft delete)")]
@@ -254,8 +254,8 @@ impl CmsServer {
         ctx: RequestContext<RoleServer>,
         params: Parameters<file::DeleteFileParams>,
     ) -> Result<CallToolResult, McpError> {
-        let (actor, _scopes) = self.resolve_actor(&ctx)?;
-        file::delete_file(&self.scope_checker, &self.services, &actor, params).await
+        let actor = self.resolve_actor(&ctx)?;
+        file::delete_file(&self.authorizer, &self.services, &actor, params).await
     }
 
     #[tool(description = "List webhooks for a site")]
@@ -264,8 +264,8 @@ impl CmsServer {
         ctx: RequestContext<RoleServer>,
         params: Parameters<webhook::ListWebhooksParams>,
     ) -> Result<CallToolResult, McpError> {
-        let (actor, _scopes) = self.resolve_actor(&ctx)?;
-        webhook::list_webhooks(&self.scope_checker, &self.services, &actor, params).await
+        let actor = self.resolve_actor(&ctx)?;
+        webhook::list_webhooks(&self.authorizer, &self.services, &actor, params).await
     }
 
     #[tool(description = "Create a webhook")]
@@ -274,8 +274,8 @@ impl CmsServer {
         ctx: RequestContext<RoleServer>,
         params: Parameters<webhook::CreateWebhookParams>,
     ) -> Result<CallToolResult, McpError> {
-        let (actor, _scopes) = self.resolve_actor(&ctx)?;
-        webhook::create_webhook(&self.scope_checker, &self.services, &actor, params).await
+        let actor = self.resolve_actor(&ctx)?;
+        webhook::create_webhook(&self.authorizer, &self.services, &actor, params).await
     }
 
     #[tool(description = "Trigger a webhook")]
@@ -284,8 +284,8 @@ impl CmsServer {
         ctx: RequestContext<RoleServer>,
         params: Parameters<webhook::TriggerWebhookParams>,
     ) -> Result<CallToolResult, McpError> {
-        let (actor, _scopes) = self.resolve_actor(&ctx)?;
-        webhook::trigger_webhook(&self.scope_checker, &self.services, &actor, params).await
+        let actor = self.resolve_actor(&ctx)?;
+        webhook::trigger_webhook(&self.authorizer, &self.services, &actor, params).await
     }
 
     #[tool(description = "Delete a webhook")]
@@ -294,8 +294,8 @@ impl CmsServer {
         ctx: RequestContext<RoleServer>,
         params: Parameters<webhook::DeleteWebhookParams>,
     ) -> Result<CallToolResult, McpError> {
-        let (actor, _scopes) = self.resolve_actor(&ctx)?;
-        webhook::delete_webhook(&self.scope_checker, &self.services, &actor, params).await
+        let actor = self.resolve_actor(&ctx)?;
+        webhook::delete_webhook(&self.authorizer, &self.services, &actor, params).await
     }
 
     #[tool(description = "Get a webhook by ID")]
@@ -304,8 +304,8 @@ impl CmsServer {
         ctx: RequestContext<RoleServer>,
         params: Parameters<webhook::GetWebhookParams>,
     ) -> Result<CallToolResult, McpError> {
-        let (actor, _scopes) = self.resolve_actor(&ctx)?;
-        webhook::get_webhook(&self.scope_checker, &self.services, &actor, params).await
+        let actor = self.resolve_actor(&ctx)?;
+        webhook::get_webhook(&self.authorizer, &self.services, &actor, params).await
     }
 
     #[tool(description = "Update a webhook")]
@@ -314,8 +314,8 @@ impl CmsServer {
         ctx: RequestContext<RoleServer>,
         params: Parameters<webhook::UpdateWebhookParams>,
     ) -> Result<CallToolResult, McpError> {
-        let (actor, _scopes) = self.resolve_actor(&ctx)?;
-        webhook::update_webhook(&self.scope_checker, &self.services, &actor, params).await
+        let actor = self.resolve_actor(&ctx)?;
+        webhook::update_webhook(&self.authorizer, &self.services, &actor, params).await
     }
 
     #[tool(description = "List delivery attempts for a webhook")]
@@ -324,8 +324,8 @@ impl CmsServer {
         ctx: RequestContext<RoleServer>,
         params: Parameters<webhook::ListWebhookDeliveriesParams>,
     ) -> Result<CallToolResult, McpError> {
-        let (actor, _scopes) = self.resolve_actor(&ctx)?;
-        webhook::list_webhook_deliveries(&self.scope_checker, &self.services, &actor, params).await
+        let actor = self.resolve_actor(&ctx)?;
+        webhook::list_webhook_deliveries(&self.authorizer, &self.services, &actor, params).await
     }
 
     #[tool(description = "Restore a soft-deleted file")]
@@ -334,8 +334,8 @@ impl CmsServer {
         ctx: RequestContext<RoleServer>,
         params: Parameters<file::RestoreFileParams>,
     ) -> Result<CallToolResult, McpError> {
-        let (actor, _scopes) = self.resolve_actor(&ctx)?;
-        file::restore_file(&self.scope_checker, &self.services, &actor, params).await
+        let actor = self.resolve_actor(&ctx)?;
+        file::restore_file(&self.authorizer, &self.services, &actor, params).await
     }
 
     #[tool(description = "List revisions of an entry")]
@@ -344,8 +344,8 @@ impl CmsServer {
         ctx: RequestContext<RoleServer>,
         params: Parameters<entry::ListRevisionsParams>,
     ) -> Result<CallToolResult, McpError> {
-        let (actor, _scopes) = self.resolve_actor(&ctx)?;
-        entry::list_revisions(&self.scope_checker, &self.services, &actor, params).await
+        let actor = self.resolve_actor(&ctx)?;
+        entry::list_revisions(&self.authorizer, &self.services, &actor, params).await
     }
 
     #[tool(description = "Restore an entry to a previous revision")]
@@ -354,8 +354,8 @@ impl CmsServer {
         ctx: RequestContext<RoleServer>,
         params: Parameters<entry::RestoreRevisionParams>,
     ) -> Result<CallToolResult, McpError> {
-        let (actor, _scopes) = self.resolve_actor(&ctx)?;
-        entry::restore_revision(&self.scope_checker, &self.services, &actor, params).await
+        let actor = self.resolve_actor(&ctx)?;
+        entry::restore_revision(&self.authorizer, &self.services, &actor, params).await
     }
 }
 
@@ -434,10 +434,7 @@ mod tests {
         for tool in all_tools() {
             let schema_str = serde_json::to_string(&*tool.input_schema).unwrap();
             if schema_str.contains(r#""type":"null""#) {
-                panic!(
-                    "tool '{}' still contains \"type\":\"null\"",
-                    tool.name,
-                );
+                panic!("tool '{}' still contains \"type\":\"null\"", tool.name,);
             }
         }
     }
@@ -448,10 +445,7 @@ mod tests {
             if let Some(props) = tool.input_schema.get("properties").and_then(|v| v.as_object()) {
                 for (key, value) in props {
                     if value.is_boolean() {
-                        panic!(
-                            "tool '{}' property '{}' is boolean {:?}",
-                            tool.name, key, value
-                        );
+                        panic!("tool '{}' property '{}' is boolean {:?}", tool.name, key, value);
                     }
                 }
             }
@@ -467,11 +461,7 @@ mod tests {
                 "tool '{}' still has $schema",
                 tool.name
             );
-            assert!(
-                !cleaned.contains_key("title"),
-                "tool '{}' still has title",
-                tool.name
-            );
+            assert!(!cleaned.contains_key("title"), "tool '{}' still has title", tool.name);
         }
     }
 
@@ -553,8 +543,8 @@ impl ServerHandler for CmsServer {
         request: Option<PaginatedRequestParams>,
         ctx: RequestContext<RoleServer>,
     ) -> Result<ListResourcesResult, McpError> {
-        let (actor, _scopes) = self.resolve_actor(&ctx)?;
-        site_schema::list_resources(&self.scope_checker, &self.services, &actor, request).await
+        let actor = self.resolve_actor(&ctx)?;
+        site_schema::list_resources(&self.authorizer, &self.services, &actor, request).await
     }
 
     async fn read_resource(
@@ -562,13 +552,13 @@ impl ServerHandler for CmsServer {
         request: ReadResourceRequestParams,
         ctx: RequestContext<RoleServer>,
     ) -> Result<ReadResourceResult, McpError> {
-        let (actor, _scopes) = self.resolve_actor(&ctx)?;
-        site_schema::read_resource(&self.scope_checker, &self.services, &actor, &request.uri).await
+        let actor = self.resolve_actor(&ctx)?;
+        site_schema::read_resource(&self.authorizer, &self.services, &actor, &request.uri).await
     }
 }
 
 impl CmsServer {
-    fn resolve_actor(&self, ctx: &RequestContext<RoleServer>) -> Result<(Actor, ScopeSet), McpError> {
+    fn resolve_actor(&self, ctx: &RequestContext<RoleServer>) -> Result<Actor, McpError> {
         crate::mcp::auth::resolve_actor(ctx)
     }
 

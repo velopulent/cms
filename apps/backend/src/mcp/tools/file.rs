@@ -8,8 +8,9 @@ use serde::Deserialize;
 
 use crate::config::Config;
 use crate::mcp::auth::{ok_result, text_result, tool_error};
-use crate::middleware::auth::{Actor, Scope};
-use crate::services::{Services, scope::ScopeChecker};
+use crate::middleware::auth::Actor;
+use crate::models::authorization::Action;
+use crate::services::{Services, authorization::AuthorizationService};
 use crate::signed_upload::SignedUploadToken;
 
 fn require_site_id(actor: &Actor) -> Result<String, McpError> {
@@ -34,14 +35,14 @@ pub struct ListFilesParams {
 }
 
 pub async fn list_files(
-    scope: &Arc<ScopeChecker>,
+    authorization: &Arc<AuthorizationService>,
     services: &Arc<Services>,
     actor: &Actor,
     params: Parameters<ListFilesParams>,
 ) -> Result<CallToolResult, McpError> {
     let site_id = require_site_id(actor)?;
-    if let Err(e) = scope
-        .require_site_scope(actor, &site_id, &Scope::FilesRead, "viewer")
+    if let Err(e) = authorization
+        .require_site_action(actor, &site_id, Action::FilesRead)
         .await
     {
         return Ok(tool_error(e));
@@ -77,14 +78,14 @@ pub struct GetFileParams {
 }
 
 pub async fn get_file(
-    scope: &Arc<ScopeChecker>,
+    authorization: &Arc<AuthorizationService>,
     services: &Arc<Services>,
     actor: &Actor,
     params: Parameters<GetFileParams>,
 ) -> Result<CallToolResult, McpError> {
     let site_id = require_site_id(actor)?;
-    if let Err(e) = scope
-        .require_site_scope(actor, &site_id, &Scope::FilesRead, "viewer")
+    if let Err(e) = authorization
+        .require_site_action(actor, &site_id, Action::FilesRead)
         .await
     {
         return Ok(tool_error(e));
@@ -111,21 +112,26 @@ fn default_content_type() -> String {
 }
 
 pub async fn create_upload_url(
-    scope: &Arc<ScopeChecker>,
+    authorization: &Arc<AuthorizationService>,
     config: &Arc<Config>,
     actor: &Actor,
     public_base_url: Option<String>,
     params: Parameters<CreateUploadUrlParams>,
 ) -> Result<CallToolResult, McpError> {
     let site_id = require_site_id(actor)?;
-    if let Err(e) = scope
-        .require_site_scope(actor, &site_id, &Scope::FilesWrite, "editor")
+    if let Err(e) = authorization
+        .require_site_action(actor, &site_id, Action::FilesWrite)
         .await
     {
         return Ok(tool_error(e));
     }
 
-    let (token, upload_path) = SignedUploadToken::generate(&site_id, &params.0.filename, &params.0.content_type, &config.hmac_secret);
+    let (token, upload_path) = SignedUploadToken::generate(
+        &site_id,
+        &params.0.filename,
+        &params.0.content_type,
+        &config.hmac_secret,
+    );
 
     let fallback_base_url = format!("http://{}", config.bind_address);
     let base_url = public_base_url
@@ -151,14 +157,14 @@ pub struct DeleteFileParams {
 }
 
 pub async fn delete_file(
-    scope: &Arc<ScopeChecker>,
+    authorization: &Arc<AuthorizationService>,
     services: &Arc<Services>,
     actor: &Actor,
     params: Parameters<DeleteFileParams>,
 ) -> Result<CallToolResult, McpError> {
     let site_id = require_site_id(actor)?;
-    if let Err(e) = scope
-        .require_site_scope(actor, &site_id, &Scope::FilesWrite, "editor")
+    if let Err(e) = authorization
+        .require_site_action(actor, &site_id, Action::FilesWrite)
         .await
     {
         return Ok(tool_error(e));
@@ -176,14 +182,14 @@ pub struct RestoreFileParams {
 }
 
 pub async fn restore_file(
-    scope: &Arc<ScopeChecker>,
+    authorization: &Arc<AuthorizationService>,
     services: &Arc<Services>,
     actor: &Actor,
     params: Parameters<RestoreFileParams>,
 ) -> Result<CallToolResult, McpError> {
     let site_id = require_site_id(actor)?;
-    if let Err(e) = scope
-        .require_site_scope(actor, &site_id, &Scope::FilesWrite, "editor")
+    if let Err(e) = authorization
+        .require_site_action(actor, &site_id, Action::FilesWrite)
         .await
     {
         return Ok(tool_error(e));

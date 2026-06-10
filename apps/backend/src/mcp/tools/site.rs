@@ -7,8 +7,9 @@ use schemars::JsonSchema;
 use serde::Deserialize;
 
 use crate::mcp::auth::{ok_result, tool_error};
-use crate::middleware::auth::{Actor, Scope};
-use crate::services::{Services, scope::ScopeChecker};
+use crate::middleware::auth::Actor;
+use crate::models::authorization::Action;
+use crate::services::{Services, authorization::AuthorizationService};
 
 fn require_site_id(actor: &Actor) -> Result<String, McpError> {
     actor
@@ -21,14 +22,14 @@ fn require_site_id(actor: &Actor) -> Result<String, McpError> {
 pub struct GetSiteParams {}
 
 pub async fn get_site(
-    scope: &Arc<ScopeChecker>,
+    authorization: &Arc<AuthorizationService>,
     services: &Arc<Services>,
     actor: &Actor,
     _params: Parameters<GetSiteParams>,
 ) -> Result<CallToolResult, McpError> {
     let site_id = require_site_id(actor)?;
-    if let Err(e) = scope
-        .require_site_scope(actor, &site_id, &Scope::SiteRead, "viewer")
+    if let Err(e) = authorization
+        .require_site_action(actor, &site_id, Action::SiteRead)
         .await
     {
         return Ok(tool_error(e));
@@ -48,23 +49,19 @@ pub struct UpdateSiteParams {
 }
 
 pub async fn update_site(
-    scope: &Arc<ScopeChecker>,
+    authorization: &Arc<AuthorizationService>,
     services: &Arc<Services>,
     actor: &Actor,
     params: Parameters<UpdateSiteParams>,
 ) -> Result<CallToolResult, McpError> {
     let site_id = require_site_id(actor)?;
-    if let Err(e) = scope
-        .require_site_scope(actor, &site_id, &Scope::SiteRead, "admin")
+    if let Err(e) = authorization
+        .require_site_action(actor, &site_id, Action::SiteManage)
         .await
     {
         return Ok(tool_error(e));
     }
-    match services
-        .site
-        .update_site(&site_id, params.0.name.as_deref())
-        .await
-    {
+    match services.site.update_site(&site_id, params.0.name.as_deref()).await {
         Ok(site) => ok_result(&site),
         Err(e) => Ok(tool_error(e)),
     }

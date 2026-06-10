@@ -1,8 +1,8 @@
 use std::borrow::Cow;
 use std::sync::Arc;
 
-use schemars::{generate::SchemaGenerator, JsonSchema, Schema};
 use schemars::json_schema;
+use schemars::{JsonSchema, Schema, generate::SchemaGenerator};
 
 use rmcp::model::JsonObject;
 
@@ -39,10 +39,7 @@ pub fn clean_input_schema(schema: Arc<JsonObject>) -> Arc<JsonObject> {
     map.remove("$schema");
     map.remove("title");
 
-    if let Some(properties) = map
-        .get_mut("properties")
-        .and_then(|v| v.as_object_mut())
-    {
+    if let Some(properties) = map.get_mut("properties").and_then(|v| v.as_object_mut()) {
         for value in properties.values_mut() {
             match value {
                 serde_json::Value::Object(obj) => {
@@ -66,15 +63,13 @@ pub fn clean_input_schema(schema: Arc<JsonObject>) -> Arc<JsonObject> {
 
 fn simplify_nullable_type(obj: &mut serde_json::Map<String, serde_json::Value>) {
     if let Some(type_val) = obj.get("type")
-        && let Some(types) = type_val.as_array() {
-            let non_null: Vec<&serde_json::Value> = types
-                .iter()
-                .filter(|v| v.as_str() != Some("null"))
-                .collect();
-            if non_null.len() == 1 {
-                obj.insert("type".to_string(), non_null[0].clone());
-            }
+        && let Some(types) = type_val.as_array()
+    {
+        let non_null: Vec<&serde_json::Value> = types.iter().filter(|v| v.as_str() != Some("null")).collect();
+        if non_null.len() == 1 {
+            obj.insert("type".to_string(), non_null[0].clone());
         }
+    }
 }
 
 #[cfg(test)]

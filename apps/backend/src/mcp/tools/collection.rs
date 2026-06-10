@@ -8,8 +8,9 @@ use serde::Deserialize;
 
 use crate::mcp::auth::{ok_result, tool_error};
 use crate::mcp::schema::ArbitraryJson;
-use crate::middleware::auth::{Actor, Scope};
-use crate::services::{Services, scope::ScopeChecker};
+use crate::middleware::auth::Actor;
+use crate::models::authorization::Action;
+use crate::services::{Services, authorization::AuthorizationService};
 
 fn require_site_id(actor: &Actor) -> Result<String, McpError> {
     actor
@@ -22,14 +23,14 @@ fn require_site_id(actor: &Actor) -> Result<String, McpError> {
 pub struct ListCollectionsParams {}
 
 pub async fn list_collections(
-    scope: &Arc<ScopeChecker>,
+    authorization: &Arc<AuthorizationService>,
     services: &Arc<Services>,
     actor: &Actor,
     _params: Parameters<ListCollectionsParams>,
 ) -> Result<CallToolResult, McpError> {
     let site_id = require_site_id(actor)?;
-    if let Err(e) = scope
-        .require_site_scope(actor, &site_id, &Scope::CollectionsRead, "viewer")
+    if let Err(e) = authorization
+        .require_site_action(actor, &site_id, Action::SchemaRead)
         .await
     {
         return Ok(tool_error(e));
@@ -46,23 +47,19 @@ pub struct GetCollectionParams {
 }
 
 pub async fn get_collection(
-    scope: &Arc<ScopeChecker>,
+    authorization: &Arc<AuthorizationService>,
     services: &Arc<Services>,
     actor: &Actor,
     params: Parameters<GetCollectionParams>,
 ) -> Result<CallToolResult, McpError> {
     let site_id = require_site_id(actor)?;
-    if let Err(e) = scope
-        .require_site_scope(actor, &site_id, &Scope::CollectionsRead, "viewer")
+    if let Err(e) = authorization
+        .require_site_action(actor, &site_id, Action::SchemaRead)
         .await
     {
         return Ok(tool_error(e));
     }
-    match services
-        .collection
-        .get_collection(&site_id, &params.0.slug)
-        .await
-    {
+    match services.collection.get_collection(&site_id, &params.0.slug).await {
         Ok(Some(collection)) => ok_result(&collection),
         Ok(None) => Ok(tool_error(crate::services::error::ServiceError::NotFound(
             "Collection not found".into(),
@@ -81,14 +78,14 @@ pub struct CreateCollectionParams {
 }
 
 pub async fn create_collection(
-    scope: &Arc<ScopeChecker>,
+    authorization: &Arc<AuthorizationService>,
     services: &Arc<Services>,
     actor: &Actor,
     params: Parameters<CreateCollectionParams>,
 ) -> Result<CallToolResult, McpError> {
     let site_id = require_site_id(actor)?;
-    if let Err(e) = scope
-        .require_site_scope(actor, &site_id, &Scope::CollectionsWrite, "admin")
+    if let Err(e) = authorization
+        .require_site_action(actor, &site_id, Action::SchemaWrite)
         .await
     {
         return Ok(tool_error(e));
@@ -121,14 +118,14 @@ pub struct UpdateCollectionParams {
 }
 
 pub async fn update_collection(
-    scope: &Arc<ScopeChecker>,
+    authorization: &Arc<AuthorizationService>,
     services: &Arc<Services>,
     actor: &Actor,
     params: Parameters<UpdateCollectionParams>,
 ) -> Result<CallToolResult, McpError> {
     let site_id = require_site_id(actor)?;
-    if let Err(e) = scope
-        .require_site_scope(actor, &site_id, &Scope::CollectionsWrite, "admin")
+    if let Err(e) = authorization
+        .require_site_action(actor, &site_id, Action::SchemaWrite)
         .await
     {
         return Ok(tool_error(e));
@@ -163,23 +160,19 @@ pub struct DeleteCollectionParams {
 }
 
 pub async fn delete_collection(
-    scope: &Arc<ScopeChecker>,
+    authorization: &Arc<AuthorizationService>,
     services: &Arc<Services>,
     actor: &Actor,
     params: Parameters<DeleteCollectionParams>,
 ) -> Result<CallToolResult, McpError> {
     let site_id = require_site_id(actor)?;
-    if let Err(e) = scope
-        .require_site_scope(actor, &site_id, &Scope::CollectionsWrite, "admin")
+    if let Err(e) = authorization
+        .require_site_action(actor, &site_id, Action::SchemaWrite)
         .await
     {
         return Ok(tool_error(e));
     }
-    match services
-        .collection
-        .delete_collection(&site_id, &params.0.slug)
-        .await
-    {
+    match services.collection.delete_collection(&site_id, &params.0.slug).await {
         Ok(n) => {
             if n > 0 {
                 ok_result(&serde_json::json!({"deleted": true}))

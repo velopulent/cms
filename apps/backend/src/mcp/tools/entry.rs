@@ -8,9 +8,10 @@ use serde::Deserialize;
 
 use crate::mcp::auth::{ok_result, tool_error};
 use crate::mcp::schema::ArbitraryJson;
-use crate::middleware::auth::{Actor, Scope};
+use crate::middleware::auth::Actor;
+use crate::models::authorization::Action;
 use crate::repository::traits::ListEntriesParams as RepoListEntriesParams;
-use crate::services::{Services, scope::ScopeChecker};
+use crate::services::{Services, authorization::AuthorizationService};
 use crate::storage::StorageRegistry;
 
 fn require_site_id(actor: &Actor) -> Result<String, McpError> {
@@ -30,14 +31,14 @@ pub struct ListEntriesParams {
 }
 
 pub async fn list_entries(
-    scope: &Arc<ScopeChecker>,
+    authorization: &Arc<AuthorizationService>,
     services: &Arc<Services>,
     actor: &Actor,
     params: Parameters<ListEntriesParams>,
 ) -> Result<CallToolResult, McpError> {
     let site_id = require_site_id(actor)?;
-    if let Err(e) = scope
-        .require_site_scope(actor, &site_id, &Scope::EntriesRead, "viewer")
+    if let Err(e) = authorization
+        .require_site_action(actor, &site_id, Action::ContentRead)
         .await
     {
         return Ok(tool_error(e));
@@ -75,15 +76,15 @@ pub struct GetEntryParams {
 }
 
 pub async fn get_entry(
-    scope: &Arc<ScopeChecker>,
+    authorization: &Arc<AuthorizationService>,
     services: &Arc<Services>,
     _storage_registry: &Arc<StorageRegistry>,
     actor: &Actor,
     params: Parameters<GetEntryParams>,
 ) -> Result<CallToolResult, McpError> {
     let site_id = require_site_id(actor)?;
-    if let Err(e) = scope
-        .require_site_scope(actor, &site_id, &Scope::EntriesRead, "viewer")
+    if let Err(e) = authorization
+        .require_site_action(actor, &site_id, Action::ContentRead)
         .await
     {
         return Ok(tool_error(e));
@@ -107,34 +108,29 @@ pub struct CreateEntryParams {
 }
 
 pub async fn create_entry(
-    scope: &Arc<ScopeChecker>,
+    authorization: &Arc<AuthorizationService>,
     services: &Arc<Services>,
     actor: &Actor,
     params: Parameters<CreateEntryParams>,
 ) -> Result<CallToolResult, McpError> {
     let site_id = require_site_id(actor)?;
-    if let Err(e) = scope
-        .require_site_scope(actor, &site_id, &Scope::EntriesWrite, "editor")
+    if let Err(e) = authorization
+        .require_site_action(actor, &site_id, Action::ContentWrite)
         .await
     {
         return Ok(tool_error(e));
     }
 
     // Validate entry data against collection definition
-    if let Ok(Some(collection)) = services
-        .collection
-        .get_by_id(&params.0.collection_id)
-        .await
+    if let Ok(Some(collection)) = services.collection.get_by_id(&params.0.collection_id).await
         && let Ok(definition) = serde_json::from_str::<serde_json::Value>(&collection.definition)
-            && let Some(fields) = definition.get("fields").and_then(|f| f.as_array())
-                && let Some(err) = crate::services::definition_validation::validate_entry_data(&params.0.values, fields) {
-                    return Ok(tool_error(crate::services::error::ServiceError::BadRequest(err)));
-                }
+        && let Some(fields) = definition.get("fields").and_then(|f| f.as_array())
+        && let Some(err) = crate::services::definition_validation::validate_entry_data(&params.0.values, fields)
+    {
+        return Ok(tool_error(crate::services::error::ServiceError::BadRequest(err)));
+    }
 
-    let slug = params
-        .0
-        .slug
-        .unwrap_or_else(|| uuid::Uuid::now_v7().to_string());
+    let slug = params.0.slug.unwrap_or_else(|| uuid::Uuid::now_v7().to_string());
     match services
         .entry
         .create_entry(&site_id, &params.0.collection_id, &params.0.values, &slug, None)
@@ -156,14 +152,14 @@ pub struct UpdateEntryParams {
 }
 
 pub async fn update_entry(
-    scope: &Arc<ScopeChecker>,
+    authorization: &Arc<AuthorizationService>,
     services: &Arc<Services>,
     actor: &Actor,
     params: Parameters<UpdateEntryParams>,
 ) -> Result<CallToolResult, McpError> {
     let site_id = require_site_id(actor)?;
-    if let Err(e) = scope
-        .require_site_scope(actor, &site_id, &Scope::EntriesWrite, "editor")
+    if let Err(e) = authorization
+        .require_site_action(actor, &site_id, Action::ContentWrite)
         .await
     {
         return Ok(tool_error(e));
@@ -192,14 +188,14 @@ pub struct DeleteEntryParams {
 }
 
 pub async fn delete_entry(
-    scope: &Arc<ScopeChecker>,
+    authorization: &Arc<AuthorizationService>,
     services: &Arc<Services>,
     actor: &Actor,
     params: Parameters<DeleteEntryParams>,
 ) -> Result<CallToolResult, McpError> {
     let site_id = require_site_id(actor)?;
-    if let Err(e) = scope
-        .require_site_scope(actor, &site_id, &Scope::EntriesWrite, "editor")
+    if let Err(e) = authorization
+        .require_site_action(actor, &site_id, Action::ContentWrite)
         .await
     {
         return Ok(tool_error(e));
@@ -224,14 +220,14 @@ pub struct PublishEntryParams {
 }
 
 pub async fn publish_entry(
-    scope: &Arc<ScopeChecker>,
+    authorization: &Arc<AuthorizationService>,
     services: &Arc<Services>,
     actor: &Actor,
     params: Parameters<PublishEntryParams>,
 ) -> Result<CallToolResult, McpError> {
     let site_id = require_site_id(actor)?;
-    if let Err(e) = scope
-        .require_site_scope(actor, &site_id, &Scope::EntriesWrite, "editor")
+    if let Err(e) = authorization
+        .require_site_action(actor, &site_id, Action::ContentWrite)
         .await
     {
         return Ok(tool_error(e));
@@ -248,14 +244,14 @@ pub struct UnpublishEntryParams {
 }
 
 pub async fn unpublish_entry(
-    scope: &Arc<ScopeChecker>,
+    authorization: &Arc<AuthorizationService>,
     services: &Arc<Services>,
     actor: &Actor,
     params: Parameters<UnpublishEntryParams>,
 ) -> Result<CallToolResult, McpError> {
     let site_id = require_site_id(actor)?;
-    if let Err(e) = scope
-        .require_site_scope(actor, &site_id, &Scope::EntriesWrite, "editor")
+    if let Err(e) = authorization
+        .require_site_action(actor, &site_id, Action::ContentWrite)
         .await
     {
         return Ok(tool_error(e));
@@ -274,14 +270,14 @@ pub struct ListRevisionsParams {
 }
 
 pub async fn list_revisions(
-    scope: &Arc<ScopeChecker>,
+    authorization: &Arc<AuthorizationService>,
     services: &Arc<Services>,
     actor: &Actor,
     params: Parameters<ListRevisionsParams>,
 ) -> Result<CallToolResult, McpError> {
     let site_id = require_site_id(actor)?;
-    if let Err(e) = scope
-        .require_site_scope(actor, &site_id, &Scope::EntriesRead, "viewer")
+    if let Err(e) = authorization
+        .require_site_action(actor, &site_id, Action::ContentRead)
         .await
     {
         return Ok(tool_error(e));
@@ -313,14 +309,14 @@ pub struct RestoreRevisionParams {
 }
 
 pub async fn restore_revision(
-    scope: &Arc<ScopeChecker>,
+    authorization: &Arc<AuthorizationService>,
     services: &Arc<Services>,
     actor: &Actor,
     params: Parameters<RestoreRevisionParams>,
 ) -> Result<CallToolResult, McpError> {
     let site_id = require_site_id(actor)?;
-    if let Err(e) = scope
-        .require_site_scope(actor, &site_id, &Scope::EntriesWrite, "editor")
+    if let Err(e) = authorization
+        .require_site_action(actor, &site_id, Action::ContentWrite)
         .await
     {
         return Ok(tool_error(e));

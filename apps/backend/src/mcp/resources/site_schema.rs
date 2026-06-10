@@ -1,13 +1,14 @@
 use std::sync::Arc;
 
-use rmcp::model::{ListResourcesResult, ReadResourceResult, Resource, ResourceContents, Annotations, Annotated};
-use rmcp::model::RawResource;
-use rmcp::ErrorData as McpError;
 use chrono::Utc;
+use rmcp::ErrorData as McpError;
+use rmcp::model::RawResource;
+use rmcp::model::{Annotated, Annotations, ListResourcesResult, ReadResourceResult, Resource, ResourceContents};
 
-use crate::middleware::auth::{Actor, Scope};
+use crate::middleware::auth::Actor;
+use crate::models::authorization::Action;
 use crate::models::collection::Collection;
-use crate::services::{Services, scope::ScopeChecker};
+use crate::services::{Services, authorization::AuthorizationService};
 
 fn map_err(e: impl Into<crate::services::error::ServiceError>) -> McpError {
     crate::mcp::auth::service_error_to_mcp(e.into())
@@ -56,15 +57,15 @@ fn collection_to_schema_value(c: &Collection) -> serde_json::Value {
 }
 
 pub async fn list_resources(
-    scope: &Arc<ScopeChecker>,
+    authorization: &Arc<AuthorizationService>,
     services: &Arc<Services>,
     actor: &Actor,
     _request: Option<rmcp::model::PaginatedRequestParams>,
 ) -> Result<ListResourcesResult, McpError> {
     let site_id = require_site_id(actor)?;
 
-    scope
-        .require_site_scope(actor, &site_id, &Scope::SiteRead, "viewer")
+    authorization
+        .require_site_action(actor, &site_id, Action::SiteRead)
         .await
         .map_err(map_err)?;
 
@@ -84,11 +85,7 @@ pub async fn list_resources(
         &format!("Full content schema for {}", site_name),
     )];
 
-    let collections = services
-        .collection
-        .list_collections(&site_id)
-        .await
-        .map_err(map_err)?;
+    let collections = services.collection.list_collections(&site_id).await.map_err(map_err)?;
 
     for c in &collections {
         resources.push(make_resource(
@@ -99,11 +96,7 @@ pub async fn list_resources(
         ));
     }
 
-    let singletons = services
-        .singleton
-        .list_singletons(&site_id)
-        .await
-        .map_err(map_err)?;
+    let singletons = services.singleton.list_singletons(&site_id).await.map_err(map_err)?;
 
     for s in &singletons {
         resources.push(make_resource(
@@ -118,7 +111,7 @@ pub async fn list_resources(
 }
 
 pub async fn read_resource(
-    scope: &Arc<ScopeChecker>,
+    authorization: &Arc<AuthorizationService>,
     services: &Arc<Services>,
     actor: &Actor,
     uri: &str,
@@ -131,8 +124,8 @@ pub async fn read_resource(
         .split_once('/')
         .ok_or_else(|| McpError::invalid_request("Invalid resource URI", None))?;
 
-    scope
-        .require_site_scope(actor, site_id, &Scope::SiteRead, "viewer")
+    authorization
+        .require_site_action(actor, site_id, Action::SiteRead)
         .await
         .map_err(map_err)?;
 
@@ -165,8 +158,7 @@ async fn read_schema_resource(
     let collections = services.collection.list_collections(site_id).await.map_err(map_err)?;
     let singletons = services.singleton.list_singletons(site_id).await.map_err(map_err)?;
 
-    let collections_json: Vec<serde_json::Value> =
-        collections.iter().map(collection_to_schema_value).collect();
+    let collections_json: Vec<serde_json::Value> = collections.iter().map(collection_to_schema_value).collect();
 
     let schema = serde_json::json!({
         "site": {
@@ -287,11 +279,7 @@ mod tests {
         let value = collection_to_schema_value(&c);
 
         let def = value.get("definition").expect("definition missing");
-        assert!(
-            def.is_object(),
-            "definition should be a JSON object, got: {}",
-            def
-        );
+        assert!(def.is_object(), "definition should be a JSON object, got: {}", def);
         let fields = def.get("fields").expect("fields missing");
         assert!(fields.is_array(), "fields should be an array");
         assert_eq!(fields.as_array().unwrap().len(), 1);
@@ -322,8 +310,7 @@ mod tests {
         });
 
         let pretty = serde_json::to_string_pretty(&schema).expect("serialization failed");
-        let parsed: serde_json::Value =
-            serde_json::from_str(&pretty).expect("output is not valid JSON");
+        let parsed: serde_json::Value = serde_json::from_str(&pretty).expect("output is not valid JSON");
 
         assert_eq!(parsed["site"]["id"], "site-1");
         assert_eq!(parsed["collections"][0]["name"], "Blog");
@@ -347,14 +334,8 @@ mod tests {
             !pretty.contains(r#""definition":"{"#),
             "definition should not be a stringified JSON blob"
         );
-        assert!(
-            !pretty.contains(r#""{\"fields\""#),
-            "no escaped JSON fields allowed"
-        );
-        assert!(
-            !pretty.contains(r#"\"fields\""#),
-            "no escaped field names allowed"
-        );
+        assert!(!pretty.contains(r#""{\"fields\""#), "no escaped JSON fields allowed");
+        assert!(!pretty.contains(r#"\"fields\""#), "no escaped field names allowed");
     }
 
     #[test]
