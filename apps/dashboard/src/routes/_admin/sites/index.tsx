@@ -40,6 +40,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
+import { useAuth } from "@/contexts/auth-context";
 import { createSite, getSites, type SiteWithRole } from "@/lib/api";
 
 export const Route = createFileRoute("/_admin/sites/")({
@@ -288,9 +289,11 @@ function CreateSiteDialog({
 }
 
 function SitesPage() {
+  const { user } = useAuth();
   const navigate = useNavigate();
   const search = useSearch({ from: "/_admin/sites/" });
   const [createOpen, setCreateOpen] = useState(false);
+  const canCreateSite = user?.instance_role === "instance_owner";
 
   const { data: sites, isLoading } = useQuery({
     queryKey: ["sites"],
@@ -298,11 +301,11 @@ function SitesPage() {
   });
 
   useEffect(() => {
-    if (search.create) {
+    if (search.create && canCreateSite) {
       setCreateOpen(true);
       navigate({ to: "/sites", search: {}, replace: true });
     }
-  }, [search.create, navigate]);
+  }, [search.create, canCreateSite, navigate]);
 
   if (isLoading) {
     return (
@@ -332,10 +335,12 @@ function SitesPage() {
               Manage your sites and their content
             </p>
           </div>
-          <Button onClick={() => setCreateOpen(true)} className="gap-2">
-            <Plus className="size-4" />
-            Create Site
-          </Button>
+          {canCreateSite ? (
+            <Button onClick={() => setCreateOpen(true)} className="gap-2">
+              <Plus className="size-4" />
+              Create Site
+            </Button>
+          ) : null}
         </div>
 
         {sites && sites.length > 0 ? (
@@ -350,18 +355,27 @@ function SitesPage() {
               <Globe className="size-8 text-muted-foreground" />
             </div>
             <h3 className="mt-4 text-lg font-semibold">No sites yet</h3>
-            <p className="mt-1 text-center text-muted-foreground">
-              Create your first site to start managing content
+            <p className="mt-1 max-w-sm text-center text-muted-foreground">
+              {canCreateSite
+                ? "Create your first site to start managing content"
+                : "An instance owner must create a site before you can access it."}
             </p>
-            <Button onClick={() => setCreateOpen(true)} className="mt-6 gap-2">
-              <Plus className="size-4" />
-              Create Site
-            </Button>
+            {canCreateSite ? (
+              <Button
+                onClick={() => setCreateOpen(true)}
+                className="mt-6 gap-2"
+              >
+                <Plus className="size-4" />
+                Create Site
+              </Button>
+            ) : null}
           </div>
         )}
       </div>
 
-      <CreateSiteDialog open={createOpen} onOpenChange={setCreateOpen} />
+      {canCreateSite ? (
+        <CreateSiteDialog open={createOpen} onOpenChange={setCreateOpen} />
+      ) : null}
     </>
   );
 }

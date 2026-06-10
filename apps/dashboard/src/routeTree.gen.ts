@@ -14,6 +14,8 @@ import { Route as LoginRouteImport } from './routes/login'
 import { Route as AdminRouteImport } from './routes/_admin'
 import { Route as AdminIndexRouteImport } from './routes/_admin/index'
 import { Route as AdminSitesRouteImport } from './routes/_admin/sites'
+import { Route as AdminInstanceRouteImport } from './routes/_admin/instance'
+import { Route as AdminAccountRouteImport } from './routes/_admin/account'
 import { Route as AdminSitesIndexRouteImport } from './routes/_admin/sites/index'
 import { Route as AdminSitesSiteIdRouteImport } from './routes/_admin/sites.$siteId'
 import { Route as AdminSitesSiteIdIndexRouteImport } from './routes/_admin/sites.$siteId/index'
@@ -48,6 +50,16 @@ const AdminIndexRoute = AdminIndexRouteImport.update({
 const AdminSitesRoute = AdminSitesRouteImport.update({
   id: '/sites',
   path: '/sites',
+  getParentRoute: () => AdminRoute,
+} as any)
+const AdminInstanceRoute = AdminInstanceRouteImport.update({
+  id: '/instance',
+  path: '/instance',
+  getParentRoute: () => AdminRoute,
+} as any)
+const AdminAccountRoute = AdminAccountRouteImport.update({
+  id: '/account',
+  path: '/account',
   getParentRoute: () => AdminRoute,
 } as any)
 const AdminSitesIndexRoute = AdminSitesIndexRouteImport.update({
@@ -117,6 +129,8 @@ export interface FileRoutesByFullPath {
   '/': typeof AdminIndexRoute
   '/login': typeof LoginRoute
   '/register': typeof RegisterRoute
+  '/account': typeof AdminAccountRoute
+  '/instance': typeof AdminInstanceRoute
   '/sites': typeof AdminSitesRouteWithChildren
   '/sites/$siteId': typeof AdminSitesSiteIdRouteWithChildren
   '/sites/': typeof AdminSitesIndexRoute
@@ -133,6 +147,8 @@ export interface FileRoutesByFullPath {
 export interface FileRoutesByTo {
   '/login': typeof LoginRoute
   '/register': typeof RegisterRoute
+  '/account': typeof AdminAccountRoute
+  '/instance': typeof AdminInstanceRoute
   '/': typeof AdminIndexRoute
   '/sites': typeof AdminSitesIndexRoute
   '/sites/$siteId/collections': typeof AdminSitesSiteIdCollectionsRoute
@@ -149,6 +165,8 @@ export interface FileRoutesById {
   '/_admin': typeof AdminRouteWithChildren
   '/login': typeof LoginRoute
   '/register': typeof RegisterRoute
+  '/_admin/account': typeof AdminAccountRoute
+  '/_admin/instance': typeof AdminInstanceRoute
   '/_admin/sites': typeof AdminSitesRouteWithChildren
   '/_admin/': typeof AdminIndexRoute
   '/_admin/sites/$siteId': typeof AdminSitesSiteIdRouteWithChildren
@@ -169,6 +187,8 @@ export interface FileRouteTypes {
     | '/'
     | '/login'
     | '/register'
+    | '/account'
+    | '/instance'
     | '/sites'
     | '/sites/$siteId'
     | '/sites/'
@@ -185,6 +205,8 @@ export interface FileRouteTypes {
   to:
     | '/login'
     | '/register'
+    | '/account'
+    | '/instance'
     | '/'
     | '/sites'
     | '/sites/$siteId/collections'
@@ -200,6 +222,8 @@ export interface FileRouteTypes {
     | '/_admin'
     | '/login'
     | '/register'
+    | '/_admin/account'
+    | '/_admin/instance'
     | '/_admin/sites'
     | '/_admin/'
     | '/_admin/sites/$siteId'
@@ -256,6 +280,20 @@ declare module '@tanstack/react-router' {
       path: '/sites'
       fullPath: '/sites'
       preLoaderRoute: typeof AdminSitesRouteImport
+      parentRoute: typeof AdminRoute
+    }
+    '/_admin/instance': {
+      id: '/_admin/instance'
+      path: '/instance'
+      fullPath: '/instance'
+      preLoaderRoute: typeof AdminInstanceRouteImport
+      parentRoute: typeof AdminRoute
+    }
+    '/_admin/account': {
+      id: '/_admin/account'
+      path: '/account'
+      fullPath: '/account'
+      preLoaderRoute: typeof AdminAccountRouteImport
       parentRoute: typeof AdminRoute
     }
     '/_admin/sites/': {
@@ -396,11 +434,15 @@ const AdminSitesRouteWithChildren = AdminSitesRoute._addFileChildren(
 )
 
 interface AdminRouteChildren {
+  AdminAccountRoute: typeof AdminAccountRoute
+  AdminInstanceRoute: typeof AdminInstanceRoute
   AdminSitesRoute: typeof AdminSitesRouteWithChildren
   AdminIndexRoute: typeof AdminIndexRoute
 }
 
 const AdminRouteChildren: AdminRouteChildren = {
+  AdminAccountRoute: AdminAccountRoute,
+  AdminInstanceRoute: AdminInstanceRoute,
   AdminSitesRoute: AdminSitesRouteWithChildren,
   AdminIndexRoute: AdminIndexRoute,
 }

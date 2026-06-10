@@ -16,8 +16,10 @@ export async function api<T>(
   path: string,
   options: RequestInit = {},
 ): Promise<T> {
+  const csrfToken = getCsrfToken();
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
+    ...(csrfToken ? { "X-CSRF-Token": csrfToken } : {}),
     ...(options.headers as Record<string, string>),
   };
 
@@ -44,8 +46,10 @@ export async function authApi<T>(
   path: string,
   options: RequestInit = {},
 ): Promise<T> {
+  const csrfToken = getCsrfToken();
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
+    ...(csrfToken ? { "X-CSRF-Token": csrfToken } : {}),
     ...(options.headers as Record<string, string>),
   };
 
@@ -73,6 +77,8 @@ export interface UserPublic {
   id: string;
   username: string;
   email: string;
+  instance_role: "instance_owner" | null;
+  must_change_password: boolean;
 }
 
 export interface AuthResponse {
@@ -98,8 +104,27 @@ export interface SiteMember {
   user_id: string;
   username: string;
   email: string;
-  role: string;
+  role: "owner" | "admin" | "editor" | "viewer";
   created_at: string;
+}
+
+export interface SessionSummary {
+  id: string;
+  created_at: string;
+  expires_at: string;
+  last_seen_at: string;
+  current: boolean;
+}
+
+function getCsrfToken() {
+  if (typeof document === "undefined") return null;
+  return (
+    document.cookie
+      .split(";")
+      .map((part) => part.trim())
+      .find((part) => part.startsWith("csrf="))
+      ?.slice("csrf=".length) ?? null
+  );
 }
 
 export interface Collection {
@@ -401,6 +426,53 @@ export async function logoutApi() {
   return authApi<void>("/logout", { method: "POST" });
 }
 
+export async function getSessions() {
+  return authApi<SessionSummary[]>("/sessions");
+}
+
+export async function revokeAllSessions() {
+  return authApi<void>("/sessions/revoke-all", { method: "POST" });
+}
+
+export async function changePassword(
+  currentPassword: string,
+  newPassword: string,
+) {
+  return authApi<void>("/change-password", {
+    method: "POST",
+    body: JSON.stringify({
+      current_password: currentPassword,
+      new_password: newPassword,
+    }),
+  });
+}
+
+export async function getInstanceUsers() {
+  return api<UserPublic[]>("/instance/users");
+}
+
+export async function createManagedUser(data: {
+  username: string;
+  email: string;
+  temporary_password: string;
+  instance_owner: boolean;
+}) {
+  return api<UserPublic>("/instance/users", {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
+}
+
+export async function updateInstanceRole(
+  userId: string,
+  instanceOwner: boolean,
+) {
+  return api<void>(`/instance/users/${userId}/role`, {
+    method: "PUT",
+    body: JSON.stringify({ instance_owner: instanceOwner }),
+  });
+}
+
 // --- Sites API ---
 
 export async function getSites() {
@@ -460,6 +532,16 @@ export async function updateMemberRole(
 export async function removeMember(siteId: string, userId: string) {
   return api<void>(`/sites/${siteId}/members/${userId}`, {
     method: "DELETE",
+  });
+}
+
+export async function transferOwnership(
+  siteId: string,
+  newOwnerUserId: string,
+) {
+  return api<void>(`/sites/${siteId}/ownership`, {
+    method: "POST",
+    body: JSON.stringify({ new_owner_user_id: newOwnerUserId }),
   });
 }
 
@@ -549,7 +631,9 @@ export async function getEntries(
   if (params.page) query.set("page", String(params.page));
   if (params.pageSize) query.set("per_page", String(params.pageSize));
   const qs = query.toString();
-  return api<EntryListResponse>(`/sites/${siteId}/entries${qs ? `?${qs}` : ""}`);
+  return api<EntryListResponse>(
+    `/sites/${siteId}/entries${qs ? `?${qs}` : ""}`,
+  );
 }
 
 export async function getEntryById(siteId: string, id: string) {
@@ -671,11 +755,13 @@ export async function uploadFile(
   const formData = new FormData();
   formData.append("file", file);
   formData.append("storage_provider", provider);
+  const csrfToken = getCsrfToken();
 
   const res = await fetch(`${BASE_URL}/sites/${siteId}/files`, {
     method: "POST",
     credentials: "include",
     body: formData,
+    headers: csrfToken ? { "X-CSRF-Token": csrfToken } : undefined,
   });
 
   if (!res.ok) {
@@ -717,10 +803,13 @@ export async function batchRestoreFiles(siteId: string, ids: string[]) {
 }
 
 export async function batchPermanentDeleteFiles(siteId: string, ids: string[]) {
-  return api<{ deleted: number }>(`/sites/${siteId}/files/batch-permanent-delete`, {
-    method: "POST",
-    body: JSON.stringify({ ids }),
-  });
+  return api<{ deleted: number }>(
+    `/sites/${siteId}/files/batch-permanent-delete`,
+    {
+      method: "POST",
+      body: JSON.stringify({ ids }),
+    },
+  );
 }
 
 // --- Singletons API (site-scoped) ---
