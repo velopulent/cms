@@ -23,6 +23,10 @@ pub struct Config {
 
     // Cookie security
     pub cookie_secure: bool,
+    pub session_lifetime_hours: i64,
+    pub public_registration_enabled: bool,
+    pub allowed_origins: Vec<String>,
+    pub production: bool,
 
     // Database pool
     pub db_max_connections: u32,
@@ -45,6 +49,7 @@ pub struct Config {
 }
 
 static DEFAULT_JWT_SECRET: &str = "cms-jwt-secret-change-in-production";
+static DEFAULT_HMAC_SECRET: &str = "cms-hmac-secret-change-in-production";
 
 impl Config {
     pub fn from_env() -> Self {
@@ -79,6 +84,17 @@ impl Config {
             cookie_secure: env::var("COOKIE_SECURE")
                 .map(|v| v == "true" || v == "1")
                 .unwrap_or(false),
+            session_lifetime_hours: env::var("SESSION_LIFETIME_HOURS")
+                .ok()
+                .and_then(|v| v.parse().ok())
+                .unwrap_or(24),
+            public_registration_enabled: env::var("PUBLIC_REGISTRATION_ENABLED")
+                .map(|v| v == "true" || v == "1")
+                .unwrap_or(false),
+            allowed_origins: parse_csv_env("ALLOWED_ORIGINS").unwrap_or_default(),
+            production: env::var("CMS_ENV")
+                .map(|value| value.eq_ignore_ascii_case("production"))
+                .unwrap_or(false),
             db_max_connections: env::var("DB_MAX_CONNECTIONS")
                 .ok()
                 .and_then(|v| v.parse().ok())
@@ -105,7 +121,7 @@ impl Config {
                 .unwrap_or(60),
             hmac_secret: env::var("HMAC_SECRET").unwrap_or_else(|_| {
                 eprintln!("WARNING: Using default HMAC secret. Set HMAC_SECRET environment variable in production!");
-                "cms-hmac-secret-change-in-production".to_string()
+                DEFAULT_HMAC_SECRET.to_string()
             }),
             mcp_enabled: env::var("MCP_ENABLED").map(|v| v == "true" || v == "1").unwrap_or(true),
             mcp_allowed_hosts: parse_csv_env("MCP_ALLOWED_HOSTS").unwrap_or_else(default_mcp_allowed_hosts),
@@ -116,6 +132,19 @@ impl Config {
 
     pub fn has_s3(&self) -> bool {
         self.s3_access_key_id.is_some() && self.s3_secret_access_key.is_some() && self.s3_bucket.is_some()
+    }
+
+    pub fn validate_security(&self) -> Result<(), String> {
+        if self.production && self.jwt_secret == DEFAULT_JWT_SECRET {
+            return Err("JWT_SECRET must be changed in production".into());
+        }
+        if self.production && self.hmac_secret == DEFAULT_HMAC_SECRET {
+            return Err("HMAC_SECRET must be changed in production".into());
+        }
+        if self.production && !self.cookie_secure {
+            return Err("COOKIE_SECURE must be enabled in production".into());
+        }
+        Ok(())
     }
 }
 
@@ -173,6 +202,10 @@ mod tests {
             mcp_allowed_hosts: vec![],
             mcp_allowed_origins: vec![],
             public_url: None,
+            session_lifetime_hours: 24,
+            public_registration_enabled: false,
+            allowed_origins: vec![],
+            production: false,
         };
 
         assert!(config.has_s3());
@@ -205,6 +238,10 @@ mod tests {
             mcp_allowed_hosts: vec![],
             mcp_allowed_origins: vec![],
             public_url: None,
+            session_lifetime_hours: 24,
+            public_registration_enabled: false,
+            allowed_origins: vec![],
+            production: false,
         };
 
         assert!(!config.has_s3());
@@ -237,6 +274,10 @@ mod tests {
             mcp_allowed_hosts: vec![],
             mcp_allowed_origins: vec![],
             public_url: None,
+            session_lifetime_hours: 24,
+            public_registration_enabled: false,
+            allowed_origins: vec![],
+            production: false,
         };
 
         assert!(!config.has_s3());
@@ -269,6 +310,10 @@ mod tests {
             mcp_allowed_hosts: vec![],
             mcp_allowed_origins: vec![],
             public_url: None,
+            session_lifetime_hours: 24,
+            public_registration_enabled: false,
+            allowed_origins: vec![],
+            production: false,
         };
 
         assert!(!config.has_s3());
@@ -301,6 +346,10 @@ mod tests {
             mcp_allowed_hosts: vec![],
             mcp_allowed_origins: vec![],
             public_url: None,
+            session_lifetime_hours: 24,
+            public_registration_enabled: false,
+            allowed_origins: vec![],
+            production: false,
         };
 
         assert!(!config.has_s3());
