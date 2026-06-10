@@ -6,6 +6,7 @@ mod docs;
 mod entry;
 mod files;
 mod graphql;
+mod instance;
 mod mcp;
 mod openapi;
 mod singleton;
@@ -14,13 +15,9 @@ mod webhooks;
 
 use std::sync::Arc;
 
-use axum::{
-    Extension, Router,
-    middleware::from_fn,
-    routing::get,
-};
+use axum::{Extension, Router, middleware::from_fn, routing::get};
 use tokio_util::sync::CancellationToken;
-use tower_http::cors::{Any, CorsLayer};
+use tower_http::cors::{AllowOrigin, Any, CorsLayer};
 use tower_http::limit::RequestBodyLimitLayer;
 use tower_http::trace::TraceLayer;
 use tracing::info;
@@ -84,14 +81,26 @@ pub fn create_router(
     let rate_limiter = RateLimiter::new(config.rate_limit_max_requests, config.rate_limit_window_secs);
     let max_upload_bytes = config.max_upload_size_bytes;
 
-    let cors = CorsLayer::new().allow_origin(Any).allow_methods(Any).allow_headers(Any);
+    let cors = if config.allowed_origins.is_empty() {
+        CorsLayer::new().allow_methods(Any).allow_headers(Any)
+    } else {
+        let origins = config
+            .allowed_origins
+            .iter()
+            .filter_map(|origin| origin.parse().ok())
+            .collect::<Vec<_>>();
+        CorsLayer::new()
+            .allow_origin(AllowOrigin::list(origins))
+            .allow_methods(Any)
+            .allow_headers(Any)
+            .allow_credentials(true)
+    };
 
     let mcp_enabled = config.mcp_enabled;
 
     let mut router = Router::new()
         // ── Auth (no middleware) ──
         .merge(auth::auth_routes())
-
         // ── Public API (/api/v1/*) ──
         .merge(public_api_v1_routes(max_upload_bytes))
         .route(
@@ -100,28 +109,23 @@ pub fn create_router(
                 .layer(from_fn(api_site_resolver))
                 .layer(from_fn(api_auth_middleware)),
         )
-
         // ── File serving (no auth — file IDs are effectively opaque) ──
         .merge(files::file_serve_routes())
-
         // ── Dashboard API (/api/dashboard/*) ──
         .nest(
             "/api/dashboard",
             Router::new()
                 .nest("/sites/{site_id}", dashboard_site_v1_routes(max_upload_bytes))
                 .merge(sites::dashboard_list_routes())
+                .merge(instance::routes())
                 .layer(from_fn(dashboard_auth_middleware)),
         )
-
         // ── GraphQL (custom auth in handler) ──
         .merge(graphql::graphql_routes())
-
         // ── Docs ──
         .merge(docs::docs_routes())
-
         // ── Dashboard SPA ──
         .merge(dashboard::dashboard_routes())
-
         // ── Global layers ──
         .layer(from_fn(trace_request))
         .layer(TraceLayer::new_for_http())
