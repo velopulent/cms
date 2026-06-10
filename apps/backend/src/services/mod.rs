@@ -1,11 +1,11 @@
 pub mod access_token;
 pub mod auth;
+pub mod authorization;
 pub mod collection;
 pub mod definition_validation;
 pub mod entry;
 pub mod error;
 pub mod file;
-pub mod scope;
 pub mod singleton;
 pub mod site;
 pub mod webhook;
@@ -34,8 +34,11 @@ impl Services {
         Self {
             auth: Arc::new(auth::AuthService::new(
                 repository.user.clone(),
-                config.jwt_secret.clone(),
+                repository.session.clone(),
+                config.hmac_secret.clone(),
                 config.cookie_secure,
+                config.session_lifetime_hours,
+                config.public_registration_enabled,
             )),
             site: Arc::new(site::SiteService::new(repository.site.clone(), repository.user.clone())),
             access_token: Arc::new(access_token::AccessTokenService::new(
