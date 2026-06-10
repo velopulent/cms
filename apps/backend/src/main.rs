@@ -17,6 +17,9 @@ async fn main() {
     let _guard = cms::tracing::init_tracing();
 
     let config = Config::from_env();
+    config
+        .validate_security()
+        .expect("Invalid production security configuration");
 
     let pool = init_db_with_config(&config)
         .await
@@ -117,6 +120,16 @@ async fn seed_admin(repository: &Repository) {
             .create(&id, "admin", "admin@cms.local", &password_hash)
             .await
             .expect("Failed to seed admin user");
+        repository
+            .user
+            .set_instance_role(&id, Some("instance_owner"))
+            .await
+            .expect("Failed to assign instance owner");
+        repository
+            .user
+            .update_password(&id, &password_hash, true)
+            .await
+            .expect("Failed to require password change");
 
         warn!("Seeded default admin user (admin/admin) — CHANGE THE PASSWORD IMMEDIATELY!");
     } else {

@@ -19,9 +19,11 @@ pub mod middleware {
 }
 pub mod models {
     pub mod access_token;
+    pub mod authorization;
     pub mod collection;
     pub mod entry;
     pub mod file;
+    pub mod session;
     pub mod site;
     pub mod user;
     pub mod webhook;
@@ -33,6 +35,7 @@ pub mod handlers {
     pub mod dashboard_handler;
     pub mod entry_handler;
     pub mod file_handler;
+    pub mod instance_handler;
     pub mod singleton_handler;
     pub mod site_handler;
     pub mod webhook_handler;
