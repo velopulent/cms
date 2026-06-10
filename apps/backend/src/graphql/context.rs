@@ -24,14 +24,15 @@ impl GqlContext {
 
         if let Some(header) = auth_header
             && let Some(token) = header.strip_prefix("Bearer ")
-                && token.starts_with("cms_site_")
-                    && let Ok(auth_actor) = verify_access_token(token, &repository, hmac_secret).await {
-                        if let Actor::ApiKey(k) = &auth_actor {
-                            site_id = Some(k.site_id.clone());
-                            permission = Some(k.permission.clone());
-                        }
-                        actor = Some(auth_actor);
-                    }
+            && token.starts_with("cms_site_")
+            && let Ok(auth_actor) = verify_access_token(token, &repository, hmac_secret).await
+        {
+            if let Actor::ApiKey(k) = &auth_actor {
+                site_id = Some(k.site_id.clone());
+                permission = Some(k.permission.clone());
+            }
+            actor = Some(auth_actor);
+        }
 
         Self {
             repository,
@@ -48,12 +49,12 @@ impl GqlContext {
             .ok_or_else(|| async_graphql::Error::new("Site token authentication required"))
     }
 
-    pub fn require_site_scope(&self, _scope: &str) -> async_graphql::Result<()> {
+    pub fn require_read(&self) -> async_graphql::Result<()> {
         match (&self.actor, &self.permission) {
             (Some(Actor::ApiKey(_)), Some(_)) => Ok(()),
-            (Some(Actor::ApiKey(_)), None) => {
-                Err(async_graphql::Error::new("Access token does not have required permission"))
-            }
+            (Some(Actor::ApiKey(_)), None) => Err(async_graphql::Error::new(
+                "Access token does not have required permission",
+            )),
             _ => Err(async_graphql::Error::new("Site token authentication required")),
         }
     }

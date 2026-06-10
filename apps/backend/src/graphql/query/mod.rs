@@ -288,7 +288,7 @@ impl QueryRoot {
     async fn webhooks(&self, ctx: &Context<'_>, site_id: String) -> Result<Vec<super::types::webhook::SiteWebhook>> {
         let gql_ctx = ctx.data::<GqlContext>()?;
         gql_ctx.require_site_match(&site_id)?;
-        gql_ctx.require_site_scope("webhooks:read")?;
+        gql_ctx.require_read()?;
 
         let webhooks = gql_ctx
             .services
@@ -314,7 +314,7 @@ impl QueryRoot {
     ) -> Result<super::types::webhook::SiteWebhook> {
         let gql_ctx = ctx.data::<GqlContext>()?;
         gql_ctx.require_site_match(&site_id)?;
-        gql_ctx.require_site_scope("webhooks:read")?;
+        gql_ctx.require_read()?;
 
         let webhook = gql_ctx
             .services
@@ -338,7 +338,7 @@ impl QueryRoot {
     ) -> Result<Vec<WebhookDelivery>> {
         let gql_ctx = ctx.data::<GqlContext>()?;
         gql_ctx.require_site_match(&site_id)?;
-        gql_ctx.require_site_scope("webhooks:read")?;
+        gql_ctx.require_read()?;
 
         let page_val = page.unwrap_or(1).max(1);
         let per_page_val = per_page.unwrap_or(20).clamp(1, 100);
