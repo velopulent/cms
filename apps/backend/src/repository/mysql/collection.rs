@@ -127,21 +127,22 @@ impl CollectionRepository for MysqlCollectionRepository {
     ) -> Result<(), RepositoryError> {
         for entry in entry_items {
             if let Ok(mut data) = serde_json::from_str::<serde_json::Value>(&entry.data)
-                && let Some(obj) = data.as_object_mut() {
-                    let mut renamed = serde_json::Map::new();
-                    for (key, value) in obj.iter() {
-                        let new_key = rename_map.get(key).cloned().unwrap_or_else(|| key.clone());
-                        renamed.insert(new_key, value.clone());
-                    }
-                    let new_data_str = serde_json::to_string(&serde_json::Value::Object(renamed))
-                        .unwrap_or_else(|_| entry.data.clone());
-
-                    sqlx::query("UPDATE entries SET data = ?, updated_at = NOW() WHERE id = ?")
-                        .bind(&new_data_str)
-                        .bind(&entry.id)
-                        .execute(&self.pool)
-                        .await?;
+                && let Some(obj) = data.as_object_mut()
+            {
+                let mut renamed = serde_json::Map::new();
+                for (key, value) in obj.iter() {
+                    let new_key = rename_map.get(key).cloned().unwrap_or_else(|| key.clone());
+                    renamed.insert(new_key, value.clone());
                 }
+                let new_data_str =
+                    serde_json::to_string(&serde_json::Value::Object(renamed)).unwrap_or_else(|_| entry.data.clone());
+
+                sqlx::query("UPDATE entries SET data = ?, updated_at = NOW() WHERE id = ?")
+                    .bind(&new_data_str)
+                    .bind(&entry.id)
+                    .execute(&self.pool)
+                    .await?;
+            }
         }
         Ok(())
     }

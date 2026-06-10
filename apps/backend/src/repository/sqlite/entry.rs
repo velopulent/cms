@@ -458,11 +458,7 @@ impl EntryRepository for SqliteEntryRepository {
             .ok_or(RepositoryError::NotFound)
     }
 
-    async fn get_singleton_entry(
-        &self,
-        site_id: &str,
-        slug: &str,
-    ) -> Result<Option<Entry>, RepositoryError> {
+    async fn get_singleton_entry(&self, site_id: &str, slug: &str) -> Result<Option<Entry>, RepositoryError> {
         let result = sqlx::query_as::<_, Entry>(
             "SELECT e.id, e.site_id, e.collection_id, e.data, e.slug, e.status, e.singleton_collection_id, e.created_at, e.updated_at, e.published_at
              FROM entries e
@@ -488,13 +484,12 @@ impl EntryRepository for SqliteEntryRepository {
     ) -> Result<Entry, RepositoryError> {
         let mut tx = self.pool.begin().await?;
 
-        let existing: Option<String> = sqlx::query_scalar(
-            "SELECT id FROM entries WHERE singleton_collection_id = ? AND site_id = ?",
-        )
-        .bind(collection_id)
-        .bind(site_id)
-        .fetch_optional(&mut *tx)
-        .await?;
+        let existing: Option<String> =
+            sqlx::query_scalar("SELECT id FROM entries WHERE singleton_collection_id = ? AND site_id = ?")
+                .bind(collection_id)
+                .bind(site_id)
+                .fetch_optional(&mut *tx)
+                .await?;
 
         let data_json: serde_json::Value = serde_json::from_str(data).unwrap_or(Value::Null);
 
@@ -570,31 +565,31 @@ impl EntryRepository for SqliteEntryRepository {
     ) -> Result<(), RepositoryError> {
         let mut tx = self.pool.begin().await?;
 
-        let existing: Option<(String, String)> = sqlx::query_as(
-            "SELECT id, data FROM entries WHERE singleton_collection_id = ? AND site_id = ?",
-        )
-        .bind(collection_id)
-        .bind(site_id)
-        .fetch_optional(&mut *tx)
-        .await?;
+        let existing: Option<(String, String)> =
+            sqlx::query_as("SELECT id, data FROM entries WHERE singleton_collection_id = ? AND site_id = ?")
+                .bind(collection_id)
+                .bind(site_id)
+                .fetch_optional(&mut *tx)
+                .await?;
 
         if let Some((id, data_str)) = existing
             && let Ok(mut data) = serde_json::from_str::<serde_json::Value>(&data_str)
-                && let Some(obj) = data.as_object_mut() {
-                    let mut renamed = serde_json::Map::new();
-                    for (key, value) in obj.iter() {
-                        let new_key = rename_map.get(key).cloned().unwrap_or_else(|| key.clone());
-                        renamed.insert(new_key, value.clone());
-                    }
-                    let new_data_str = serde_json::to_string(&serde_json::Value::Object(renamed))
-                        .unwrap_or_else(|_| data_str.clone());
+            && let Some(obj) = data.as_object_mut()
+        {
+            let mut renamed = serde_json::Map::new();
+            for (key, value) in obj.iter() {
+                let new_key = rename_map.get(key).cloned().unwrap_or_else(|| key.clone());
+                renamed.insert(new_key, value.clone());
+            }
+            let new_data_str =
+                serde_json::to_string(&serde_json::Value::Object(renamed)).unwrap_or_else(|_| data_str.clone());
 
-                    sqlx::query("UPDATE entries SET data = ?, updated_at = datetime('now') WHERE id = ?")
-                        .bind(&new_data_str)
-                        .bind(&id)
-                        .execute(&mut *tx)
-                        .await?;
-                }
+            sqlx::query("UPDATE entries SET data = ?, updated_at = datetime('now') WHERE id = ?")
+                .bind(&new_data_str)
+                .bind(&id)
+                .execute(&mut *tx)
+                .await?;
+        }
 
         tx.commit().await?;
         Ok(())

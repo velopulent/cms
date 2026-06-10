@@ -182,4 +182,35 @@ impl SiteRepository for PostgresSiteRepository {
 
         Ok(result.rows_affected())
     }
+
+    async fn transfer_ownership(
+        &self,
+        site_id: &str,
+        current_owner_id: &str,
+        new_owner_id: &str,
+    ) -> Result<(), RepositoryError> {
+        let mut tx = self.pool.begin().await?;
+        let promoted = sqlx::query(
+            "UPDATE site_members SET role = 'owner' WHERE site_id = $1 AND user_id = $2 AND role != 'owner'",
+        )
+        .bind(site_id)
+        .bind(new_owner_id)
+        .execute(&mut *tx)
+        .await?;
+        if promoted.rows_affected() != 1 {
+            return Err(RepositoryError::NotFound);
+        }
+        let demoted = sqlx::query(
+            "UPDATE site_members SET role = 'admin' WHERE site_id = $1 AND user_id = $2 AND role = 'owner'",
+        )
+        .bind(site_id)
+        .bind(current_owner_id)
+        .execute(&mut *tx)
+        .await?;
+        if demoted.rows_affected() != 1 {
+            return Err(RepositoryError::NotFound);
+        }
+        tx.commit().await?;
+        Ok(())
+    }
 }
