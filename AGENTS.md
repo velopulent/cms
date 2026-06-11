@@ -60,10 +60,67 @@ bun run format               # Format all projects
   - Run GraphQL: `cargo test --test graphql -- --test-threads=1`
   - Run gRPC: `cargo test --test grpc -- --test-threads=1`
 
+## CLI
+
+The backend binary (`cms`) is a clap CLI. With no subcommand it runs the server (back-compat with `cargo run`).
+
+```bash
+cms                                   # run the server (alias for `cms serve`)
+cms serve                             # run the server
+cms config init [--force] [--path P]  # write a default config.toml (non-secrets only)
+cms config show                       # print effective merged config (secrets redacted)
+cms config path                       # print resolved config file + search order
+cms admin reset-password --username U --password P
+```
+
+Global flags (highest precedence): `--config <PATH>`, `--bind <ADDR>`, `--database-url <URL>`, `--log-level <LEVEL>`.
+
+The server auto-migrates the database on every startup; there is no separate migrate command.
+
+## Configuration
+
+Non-secret settings live in a TOML config file; secrets stay in the environment (or `.env`).
+Layers merge with precedence: **CLI flag > env var > config file > built-in default**.
+
+Config file search order (first existing wins; missing is fine):
+1. `--config` flag / `CMS_CONFIG` env
+2. `./cms.toml` (current dir)
+3. user config dir — `~/.config/cms/config.toml` (Linux), `%APPDATA%\cms\config\config.toml` (Windows), `~/Library/Application Support/cms/config.toml` (macOS)
+4. `/etc/cms/config.toml`
+
+Env-only secrets (never read from the config file by convention, omitted from `config init`):
+`DATABASE_URL`, `JWT_SECRET`, `HMAC_SECRET`, `S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY`.
+
+Sample `config.toml` (generate with `cms config init`):
+
+```toml
+bind_address = "0.0.0.0:3000"
+grpc_bind_address = "0.0.0.0:50051"
+max_upload_size_mb = 50
+cookie_secure = false
+session_lifetime_hours = 24
+db_max_connections = 10
+rate_limit_max_requests = 100
+mcp_enabled = true
+mcp_allowed_hosts = ["localhost", "127.0.0.1"]
+
+[log]
+level = "cms=debug,tower_http=debug,axum=debug"
+output = "stdout"   # stdout | file
+format = "pretty"   # pretty | json
+annotations = false
+dir = "logs"
+```
+
 ## Environment Variables
+
+Every non-secret key below can also be set in `config.toml` (env still overrides the file).
+Logging keys map to the `[log]` table: `RUST_LOG`→`log.level`, `LOG_OUTPUT`→`log.output`,
+`LOG_FORMAT`→`log.format`, `LOG_ANNOTATIONS`→`log.annotations`, `LOG_DIR`→`log.dir`.
 
 | Variable | Default | Description |
 |----------|---------|-------------|
+| `CMS_CONFIG` | - | Explicit config file path (same as `--config`) |
 | `DATABASE_URL` | `sqlite:cms.db` | Database URL: `sqlite:path`, `postgres://...`, `mysql://...` |
 | `JWT_SECRET` | `cms-jwt-secret-change-in-production` | JWT signing secret |
 | `HMAC_SECRET` | `cms-hmac-secret-change-in-production` | HMAC key for token lookup |
@@ -82,6 +139,12 @@ bun run format               # Format all projects
 | `DB_MIN_CONNECTIONS` | `2` | Min DB connections |
 | `RATE_LIMIT_MAX_REQUESTS` | `100` | Rate limit per window |
 | `RATE_LIMIT_WINDOW_SECS` | `60` | Rate limit window |
+| `CMS_ENV` | - | `production` enables production security checks |
+| `RUST_LOG` | `cms=debug,tower_http=debug,axum=debug` | Log filter (`[log] level`) |
+| `LOG_OUTPUT` | `stdout` | `stdout` or `file` (`[log] output`) |
+| `LOG_FORMAT` | `pretty` | `pretty` or `json` (`[log] format`) |
+| `LOG_ANNOTATIONS` | `false` | Include file + line numbers (`[log] annotations`) |
+| `LOG_DIR` | `logs` | Log directory when `output = file` (`[log] dir`) |
 
 **Warning**: Default `JWT_SECRET` and `HMAC_SECRET` print warnings on startup—set these in production.
 
