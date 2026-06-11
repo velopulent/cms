@@ -8,35 +8,15 @@ static POSTGRES_MIGRATOR: sqlx::migrate::Migrator = sqlx::migrate!("migrations/p
 static MYSQL_MIGRATOR: sqlx::migrate::Migrator = sqlx::migrate!("migrations/mysql");
 
 pub async fn init_db(database_url: &str) -> Result<DbPool, sqlx::Error> {
+    // Only the database URL and pool sizing matter for connecting; everything
+    // else falls back to defaults.
     let pool = DbPool::from_url_with_config(&crate::config::Config {
         database_url: database_url.to_string(),
-        jwt_secret: String::new(),
-        bind_address: String::new(),
-        grpc_bind_address: String::new(),
-        storage_fs_path: None,
-        s3_access_key_id: None,
-        s3_secret_access_key: None,
-        s3_bucket: None,
-        s3_region: None,
-        s3_endpoint: None,
-        s3_public_url: None,
-        max_upload_size_bytes: 0,
-        cookie_secure: false,
-        session_lifetime_hours: 24,
-        public_registration_enabled: false,
-        allowed_origins: vec![],
-        production: false,
         db_max_connections: 10,
         db_min_connections: 2,
         db_acquire_timeout_secs: 30,
         db_idle_timeout_secs: 600,
-        rate_limit_max_requests: 100,
-        rate_limit_window_secs: 60,
-        hmac_secret: String::new(),
-        mcp_enabled: true,
-        mcp_allowed_hosts: vec![],
-        mcp_allowed_origins: vec![],
-        public_url: None,
+        ..Default::default()
     })
     .await?;
 
