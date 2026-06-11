@@ -1,5 +1,6 @@
 #![deny(dead_code, unused_imports, unused_variables, unused_mut)]
 
+pub mod cli;
 pub mod config;
 pub mod database;
 pub mod error;

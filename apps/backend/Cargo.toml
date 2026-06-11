@@ -56,6 +56,10 @@ http-body-util = "0.1.3"
 rmcp = { version = "1.6", features = ["server", "transport-streamable-http-server", "macros", "schemars"] }
 tokio-util = { version = "0.7", features = ["rt"] }
 schemars = "1"
+clap = { version = "4.6.1", features = ["derive", "env"] }
+figment = { version = "0.10.19", features = ["toml", "env"] }
+toml = "1.1.2"
+directories = "6.0.0"
 
 [build-dependencies]
 tonic-build = "0.14"
