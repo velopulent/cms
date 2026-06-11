@@ -6,20 +6,19 @@ use uuid::Uuid;
 
 pub static REQUEST_ID_HEADER: HeaderName = HeaderName::from_static("x-request-id");
 
-pub fn init_tracing() -> Option<tracing_appender::non_blocking::WorkerGuard> {
-    let env_filter =
-        EnvFilter::try_from_default_env().unwrap_or_else(|_| "cms=debug,tower_http=debug,axum=debug".into());
+pub fn init_tracing(config: &crate::config::Config) -> Option<tracing_appender::non_blocking::WorkerGuard> {
+    let env_filter = EnvFilter::new(&config.log_level);
 
-    let log_output = std::env::var("LOG_OUTPUT").unwrap_or_else(|_| "stdout".into());
-    let log_format = std::env::var("LOG_FORMAT").unwrap_or_else(|_| "pretty".into());
-    let log_annotations = std::env::var("LOG_ANNOTATIONS").unwrap_or_else(|_| "false".into()) == "true";
+    let log_output = config.log_output.as_str();
+    let log_format = config.log_format.as_str();
+    let log_annotations = config.log_annotations;
 
     let env_filter_str = env_filter.to_string();
 
-    match (log_output.as_str(), log_format.as_str()) {
+    match (log_output, log_format) {
         ("file", "json") | ("file", _) => {
-            let log_dir = std::env::var("LOG_DIR").unwrap_or_else(|_| "logs".into());
-            let file_appender = RollingFileAppender::new(Rotation::DAILY, &log_dir, "cms.log");
+            let log_dir = config.log_dir.as_str();
+            let file_appender = RollingFileAppender::new(Rotation::DAILY, log_dir, "cms.log");
             let (file_writer, guard) = tracing_appender::non_blocking(file_appender);
 
             let file_layer = fmt::layer()
