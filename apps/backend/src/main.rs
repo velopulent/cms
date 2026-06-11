@@ -1,4 +1,6 @@
-use cms::config::Config;
+use clap::Parser;
+use cms::cli::{AdminAction, Cli, Command, ConfigAction};
+use cms::config::{self, Config};
 use cms::database::init_db_with_config;
 use cms::grpc::server::spawn_grpc_server;
 use cms::repository::Repository;
@@ -6,6 +8,7 @@ use cms::router::create_router;
 use cms::services::Services;
 use cms::storage::{self, STORAGE_KIND_FILESYSTEM, STORAGE_KIND_S3, StorageRegistry};
 
+use std::error::Error;
 use std::net::SocketAddr;
 use std::sync::Arc;
 use tracing::{debug, info, warn};
@@ -14,16 +17,30 @@ use tracing::{debug, info, warn};
 async fn main() {
     dotenvy::dotenv().ok();
 
-    let _guard = cms::tracing::init_tracing();
+    let cli = Cli::parse();
 
-    let config = Config::from_env();
-    config
-        .validate_security()
-        .expect("Invalid production security configuration");
+    let result = match &cli.command {
+        Some(Command::Config { action }) => run_config(action, &cli),
+        Some(Command::Admin { action }) => run_admin(action, &cli).await,
+        Some(Command::Serve) | None => run_serve(&cli).await,
+    };
 
-    let pool = init_db_with_config(&config)
-        .await
-        .expect("Failed to initialize database");
+    if let Err(e) = result {
+        eprintln!("Error: {e}");
+        std::process::exit(1);
+    }
+}
+
+async fn run_serve(cli: &Cli) -> Result<(), Box<dyn Error>> {
+    let config = Config::load(cli)?;
+
+    let _guard = cms::tracing::init_tracing(&config);
+
+    if let Err(e) = config.validate_security() {
+        return Err(format!("Invalid production security configuration: {e}").into());
+    }
+
+    let pool = init_db_with_config(&config).await?;
 
     let repository = Repository::new(&pool);
 
@@ -107,6 +124,66 @@ async fn main() {
             }
         }
     }
+
+    Ok(())
+}
+
+fn run_config(action: &ConfigAction, cli: &Cli) -> Result<(), Box<dyn Error>> {
+    match action {
+        ConfigAction::Init { force, path } => {
+            let target = match path {
+                Some(p) => p.clone(),
+                None => config::user_config_path().ok_or("Could not determine user config directory")?,
+            };
+            if target.exists() && !force {
+                return Err(format!("{} already exists (use --force to overwrite)", target.display()).into());
+            }
+            if let Some(parent) = target.parent() {
+                std::fs::create_dir_all(parent)?;
+            }
+            std::fs::write(&target, config::default_config_toml())?;
+            println!("Wrote default config to {}", target.display());
+        }
+        ConfigAction::Show => {
+            let config = Config::load(cli)?;
+            print!("{}", config.redacted_toml());
+        }
+        ConfigAction::Path => {
+            match config::resolve_config_path(cli) {
+                Some(p) => println!("Active config file: {}", p.display()),
+                None => println!("Active config file: <none found; using built-in defaults>"),
+            }
+            println!("\nSearch order (first existing wins):");
+            match &cli.config {
+                Some(explicit) => println!("  1. --config / CMS_CONFIG: {}", explicit.display()),
+                None => println!("  1. --config / CMS_CONFIG: <not set>"),
+            }
+            for (i, p) in config::config_search_paths().iter().enumerate() {
+                let marker = if p.exists() { " (exists)" } else { "" };
+                println!("  {}. {}{}", i + 2, p.display(), marker);
+            }
+        }
+    }
+    Ok(())
+}
+
+async fn run_admin(action: &AdminAction, cli: &Cli) -> Result<(), Box<dyn Error>> {
+    let config = Config::load(cli)?;
+    let pool = init_db_with_config(&config).await?;
+    let repository = Repository::new(&pool);
+
+    match action {
+        AdminAction::ResetPassword { username, password } => {
+            let id = match repository.user.find_id_by_username(username).await? {
+                Some(id) => id,
+                None => return Err(format!("User '{username}' not found").into()),
+            };
+            let password_hash = bcrypt::hash(password, bcrypt::DEFAULT_COST)?;
+            repository.user.update_password(&id, &password_hash, false).await?;
+            println!("Password updated for user '{username}'.");
+        }
+    }
+    Ok(())
 }
 
 async fn seed_admin(repository: &Repository) {
