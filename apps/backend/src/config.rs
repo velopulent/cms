@@ -1,4 +1,13 @@
-use std::env;
+use std::path::PathBuf;
+
+use directories::ProjectDirs;
+use figment::{
+    Figment,
+    providers::{Env, Format, Serialized, Toml},
+};
+use serde::{Deserialize, Deserializer};
+
+use crate::cli::Cli;
 
 #[derive(Clone, Debug, Default)]
 pub struct Config {
@@ -46,88 +55,129 @@ pub struct Config {
     pub mcp_allowed_hosts: Vec<String>,
     pub mcp_allowed_origins: Vec<String>,
     pub public_url: Option<String>,
+
+    // Logging
+    pub log_level: String,
+    pub log_output: String,
+    pub log_format: String,
+    pub log_annotations: bool,
+    pub log_dir: String,
 }
 
 static DEFAULT_JWT_SECRET: &str = "cms-jwt-secret-change-in-production";
 static DEFAULT_HMAC_SECRET: &str = "cms-hmac-secret-change-in-production";
+static DEFAULT_LOG_LEVEL: &str = "cms=debug,tower_http=debug,axum=debug";
+
+/// Intermediate, fully-optional config deserialized from the merged figment
+/// layers (defaults < TOML file < env vars < CLI flags). Converted into the
+/// runtime [`Config`] by [`RawConfig::into_config`], which applies hardcoded
+/// defaults and the secret-warning behavior.
+#[derive(Debug, Default, Deserialize)]
+struct RawConfig {
+    database_url: Option<String>,
+    jwt_secret: Option<String>,
+    hmac_secret: Option<String>,
+    bind_address: Option<String>,
+    grpc_bind_address: Option<String>,
+
+    storage_fs_path: Option<String>,
+
+    s3_access_key_id: Option<String>,
+    s3_secret_access_key: Option<String>,
+    s3_bucket: Option<String>,
+    s3_region: Option<String>,
+    s3_endpoint: Option<String>,
+    s3_public_url: Option<String>,
+
+    max_upload_size_mb: Option<usize>,
+
+    #[serde(default, deserialize_with = "de_opt_lenient_bool")]
+    cookie_secure: Option<bool>,
+    session_lifetime_hours: Option<i64>,
+    #[serde(default, deserialize_with = "de_opt_lenient_bool")]
+    public_registration_enabled: Option<bool>,
+    #[serde(default, deserialize_with = "de_opt_str_list")]
+    allowed_origins: Option<Vec<String>>,
+    /// Maps the `CMS_ENV` env var / `env` TOML key; "production" => production.
+    env: Option<String>,
+
+    db_max_connections: Option<u32>,
+    db_min_connections: Option<u32>,
+    db_acquire_timeout_secs: Option<u64>,
+    db_idle_timeout_secs: Option<u64>,
+
+    rate_limit_max_requests: Option<u32>,
+    rate_limit_window_secs: Option<u64>,
+
+    #[serde(default, deserialize_with = "de_opt_lenient_bool")]
+    mcp_enabled: Option<bool>,
+    #[serde(default, deserialize_with = "de_opt_str_list")]
+    mcp_allowed_hosts: Option<Vec<String>>,
+    #[serde(default, deserialize_with = "de_opt_str_list")]
+    mcp_allowed_origins: Option<Vec<String>>,
+    public_url: Option<String>,
+
+    log: Option<RawLog>,
+}
+
+#[derive(Debug, Default, Deserialize)]
+struct RawLog {
+    level: Option<String>,
+    output: Option<String>,
+    format: Option<String>,
+    #[serde(default, deserialize_with = "de_opt_lenient_bool")]
+    annotations: Option<bool>,
+    dir: Option<String>,
+}
 
 impl Config {
+    /// Load configuration by merging, in increasing precedence:
+    /// built-in defaults < config file < environment variables < CLI flags.
+    pub fn load(cli: &Cli) -> Result<Self, figment::Error> {
+        let mut figment = Figment::new();
+
+        if let Some(path) = resolve_config_path(cli) {
+            figment = figment.merge(Toml::file(path));
+        }
+
+        // Environment layer: keep the existing unprefixed names. Remap the few
+        // that don't match a field 1:1 (legacy log vars, CMS_ENV) and project
+        // log keys into the nested `log` table via the "." separator.
+        figment = figment.merge(
+            Env::raw()
+                .map(|key| {
+                    let k = key.as_str().to_ascii_lowercase();
+                    match k.as_str() {
+                        "rust_log" => "log.level".into(),
+                        "log_output" => "log.output".into(),
+                        "log_format" => "log.format".into(),
+                        "log_annotations" => "log.annotations".into(),
+                        "log_dir" => "log.dir".into(),
+                        "cms_env" => "env".into(),
+                        _ => k.into(),
+                    }
+                })
+                .split("."),
+        );
+
+        // CLI flag layer: highest precedence, only for flags the user passed.
+        if let Some(v) = &cli.bind {
+            figment = figment.merge(Serialized::default("bind_address", v));
+        }
+        if let Some(v) = &cli.database_url {
+            figment = figment.merge(Serialized::default("database_url", v));
+        }
+        if let Some(v) = &cli.log_level {
+            figment = figment.merge(Serialized::default("log.level", v));
+        }
+
+        Ok(figment.extract::<RawConfig>()?.into_config())
+    }
+
+    /// Convenience for callers that only want env + defaults (no CLI flags).
     pub fn from_env() -> Self {
         dotenvy::dotenv().ok();
-
-        let jwt_secret = env::var("JWT_SECRET").unwrap_or_else(|_| DEFAULT_JWT_SECRET.to_string());
-
-        if jwt_secret == DEFAULT_JWT_SECRET {
-            eprintln!("WARNING: Using default JWT secret. Set JWT_SECRET environment variable in production!");
-        }
-
-        let database_url = env::var("DATABASE_URL").unwrap_or_else(|_| "sqlite:cms.db".into());
-
-        Self {
-            jwt_secret,
-            database_url,
-            bind_address: env::var("BIND_ADDRESS").unwrap_or_else(|_| "0.0.0.0:3000".into()),
-            grpc_bind_address: env::var("GRPC_BIND_ADDRESS").unwrap_or_else(|_| "0.0.0.0:50051".into()),
-            storage_fs_path: env::var("STORAGE_FS_PATH").ok(),
-            s3_access_key_id: env::var("S3_ACCESS_KEY_ID").ok(),
-            s3_secret_access_key: env::var("S3_SECRET_ACCESS_KEY").ok(),
-            s3_bucket: env::var("S3_BUCKET").ok(),
-            s3_region: env::var("S3_REGION").ok(),
-            s3_endpoint: env::var("S3_ENDPOINT").ok(),
-            s3_public_url: env::var("S3_PUBLIC_URL").ok(),
-            max_upload_size_bytes: env::var("MAX_UPLOAD_SIZE_MB")
-                .ok()
-                .and_then(|v| v.parse::<usize>().ok())
-                .unwrap_or(50)
-                * 1024
-                * 1024,
-            cookie_secure: env::var("COOKIE_SECURE")
-                .map(|v| v == "true" || v == "1")
-                .unwrap_or(false),
-            session_lifetime_hours: env::var("SESSION_LIFETIME_HOURS")
-                .ok()
-                .and_then(|v| v.parse().ok())
-                .unwrap_or(24),
-            public_registration_enabled: env::var("PUBLIC_REGISTRATION_ENABLED")
-                .map(|v| v == "true" || v == "1")
-                .unwrap_or(false),
-            allowed_origins: parse_csv_env("ALLOWED_ORIGINS").unwrap_or_default(),
-            production: env::var("CMS_ENV")
-                .map(|value| value.eq_ignore_ascii_case("production"))
-                .unwrap_or(false),
-            db_max_connections: env::var("DB_MAX_CONNECTIONS")
-                .ok()
-                .and_then(|v| v.parse().ok())
-                .unwrap_or(10),
-            db_min_connections: env::var("DB_MIN_CONNECTIONS")
-                .ok()
-                .and_then(|v| v.parse().ok())
-                .unwrap_or(2),
-            db_acquire_timeout_secs: env::var("DB_ACQUIRE_TIMEOUT_SECS")
-                .ok()
-                .and_then(|v| v.parse().ok())
-                .unwrap_or(30),
-            db_idle_timeout_secs: env::var("DB_IDLE_TIMEOUT_SECS")
-                .ok()
-                .and_then(|v| v.parse().ok())
-                .unwrap_or(600),
-            rate_limit_max_requests: env::var("RATE_LIMIT_MAX_REQUESTS")
-                .ok()
-                .and_then(|v| v.parse().ok())
-                .unwrap_or(100),
-            rate_limit_window_secs: env::var("RATE_LIMIT_WINDOW_SECS")
-                .ok()
-                .and_then(|v| v.parse().ok())
-                .unwrap_or(60),
-            hmac_secret: env::var("HMAC_SECRET").unwrap_or_else(|_| {
-                eprintln!("WARNING: Using default HMAC secret. Set HMAC_SECRET environment variable in production!");
-                DEFAULT_HMAC_SECRET.to_string()
-            }),
-            mcp_enabled: env::var("MCP_ENABLED").map(|v| v == "true" || v == "1").unwrap_or(true),
-            mcp_allowed_hosts: parse_csv_env("MCP_ALLOWED_HOSTS").unwrap_or_else(default_mcp_allowed_hosts),
-            mcp_allowed_origins: parse_csv_env("MCP_ALLOWED_ORIGINS").unwrap_or_default(),
-            public_url: env::var("PUBLIC_URL").ok().map(|v| v.trim_end_matches('/').to_string()),
-        }
+        Self::load(&Cli::default()).expect("Failed to load configuration")
     }
 
     pub fn has_s3(&self) -> bool {
@@ -146,17 +196,217 @@ impl Config {
         }
         Ok(())
     }
+
+    /// Render the effective configuration as TOML with secrets redacted.
+    /// Used by `cms config show`.
+    pub fn redacted_toml(&self) -> String {
+        format!(
+            "# Effective configuration (secrets redacted)\n\
+             database_url = \"{}\"\n\
+             jwt_secret = \"{}\"\n\
+             hmac_secret = \"{}\"\n\
+             bind_address = \"{}\"\n\
+             grpc_bind_address = \"{}\"\n\
+             public_url = {}\n\
+             env = \"{}\"\n\n\
+             # Storage\n\
+             storage_fs_path = {}\n\
+             s3_access_key_id = {}\n\
+             s3_secret_access_key = {}\n\
+             s3_bucket = {}\n\
+             s3_region = {}\n\
+             s3_endpoint = {}\n\
+             s3_public_url = {}\n\n\
+             # Uploads\n\
+             max_upload_size_mb = {}\n\n\
+             # Security / sessions\n\
+             cookie_secure = {}\n\
+             session_lifetime_hours = {}\n\
+             public_registration_enabled = {}\n\
+             allowed_origins = {}\n\n\
+             # Database pool\n\
+             db_max_connections = {}\n\
+             db_min_connections = {}\n\
+             db_acquire_timeout_secs = {}\n\
+             db_idle_timeout_secs = {}\n\n\
+             # Rate limiting\n\
+             rate_limit_max_requests = {}\n\
+             rate_limit_window_secs = {}\n\n\
+             # MCP\n\
+             mcp_enabled = {}\n\
+             mcp_allowed_hosts = {}\n\
+             mcp_allowed_origins = {}\n\n\
+             [log]\n\
+             level = \"{}\"\n\
+             output = \"{}\"\n\
+             format = \"{}\"\n\
+             annotations = {}\n\
+             dir = \"{}\"\n",
+            self.database_url,
+            redact(&self.jwt_secret),
+            redact(&self.hmac_secret),
+            self.bind_address,
+            self.grpc_bind_address,
+            opt_str(&self.public_url),
+            if self.production { "production" } else { "development" },
+            opt_str(&self.storage_fs_path),
+            opt_secret(&self.s3_access_key_id),
+            opt_secret(&self.s3_secret_access_key),
+            opt_str(&self.s3_bucket),
+            opt_str(&self.s3_region),
+            opt_str(&self.s3_endpoint),
+            opt_str(&self.s3_public_url),
+            self.max_upload_size_bytes / (1024 * 1024),
+            self.cookie_secure,
+            self.session_lifetime_hours,
+            self.public_registration_enabled,
+            toml_list(&self.allowed_origins),
+            self.db_max_connections,
+            self.db_min_connections,
+            self.db_acquire_timeout_secs,
+            self.db_idle_timeout_secs,
+            self.rate_limit_max_requests,
+            self.rate_limit_window_secs,
+            self.mcp_enabled,
+            toml_list(&self.mcp_allowed_hosts),
+            toml_list(&self.mcp_allowed_origins),
+            self.log_level,
+            self.log_output,
+            self.log_format,
+            self.log_annotations,
+            self.log_dir,
+        )
+    }
 }
 
-fn parse_csv_env(name: &str) -> Option<Vec<String>> {
-    let values = env::var(name).ok()?;
-    Some(
-        values
-            .split(',')
-            .map(str::trim)
-            .filter(|value| !value.is_empty())
-            .map(ToString::to_string)
-            .collect(),
+impl RawConfig {
+    fn into_config(self) -> Config {
+        let jwt_secret = self.jwt_secret.unwrap_or_else(|| {
+            eprintln!("WARNING: Using default JWT secret. Set JWT_SECRET environment variable in production!");
+            DEFAULT_JWT_SECRET.to_string()
+        });
+        let hmac_secret = self.hmac_secret.unwrap_or_else(|| {
+            eprintln!("WARNING: Using default HMAC secret. Set HMAC_SECRET environment variable in production!");
+            DEFAULT_HMAC_SECRET.to_string()
+        });
+
+        let log = self.log.unwrap_or_default();
+
+        Config {
+            database_url: self.database_url.unwrap_or_else(|| "sqlite:cms.db".into()),
+            jwt_secret,
+            hmac_secret,
+            bind_address: self.bind_address.unwrap_or_else(|| "0.0.0.0:3000".into()),
+            grpc_bind_address: self.grpc_bind_address.unwrap_or_else(|| "0.0.0.0:50051".into()),
+            storage_fs_path: self.storage_fs_path,
+            s3_access_key_id: self.s3_access_key_id,
+            s3_secret_access_key: self.s3_secret_access_key,
+            s3_bucket: self.s3_bucket,
+            s3_region: self.s3_region,
+            s3_endpoint: self.s3_endpoint,
+            s3_public_url: self.s3_public_url,
+            max_upload_size_bytes: self.max_upload_size_mb.unwrap_or(50) * 1024 * 1024,
+            cookie_secure: self.cookie_secure.unwrap_or(false),
+            session_lifetime_hours: self.session_lifetime_hours.unwrap_or(24),
+            public_registration_enabled: self.public_registration_enabled.unwrap_or(false),
+            allowed_origins: self.allowed_origins.unwrap_or_default(),
+            production: self.env.map(|v| v.eq_ignore_ascii_case("production")).unwrap_or(false),
+            db_max_connections: self.db_max_connections.unwrap_or(10),
+            db_min_connections: self.db_min_connections.unwrap_or(2),
+            db_acquire_timeout_secs: self.db_acquire_timeout_secs.unwrap_or(30),
+            db_idle_timeout_secs: self.db_idle_timeout_secs.unwrap_or(600),
+            rate_limit_max_requests: self.rate_limit_max_requests.unwrap_or(100),
+            rate_limit_window_secs: self.rate_limit_window_secs.unwrap_or(60),
+            mcp_enabled: self.mcp_enabled.unwrap_or(true),
+            mcp_allowed_hosts: self.mcp_allowed_hosts.unwrap_or_else(default_mcp_allowed_hosts),
+            mcp_allowed_origins: self.mcp_allowed_origins.unwrap_or_default(),
+            public_url: self.public_url.map(|v| v.trim_end_matches('/').to_string()),
+            log_level: log.level.unwrap_or_else(|| DEFAULT_LOG_LEVEL.to_string()),
+            log_output: log.output.unwrap_or_else(|| "stdout".into()),
+            log_format: log.format.unwrap_or_else(|| "pretty".into()),
+            log_annotations: log.annotations.unwrap_or(false),
+            log_dir: log.dir.unwrap_or_else(|| "logs".into()),
+        }
+    }
+}
+
+/// Resolve the config file path. First match wins; a missing file is fine.
+/// Order: `--config` / `CMS_CONFIG` > `./cms.toml` > user config dir > `/etc/cms`.
+pub fn resolve_config_path(cli: &Cli) -> Option<PathBuf> {
+    if let Some(path) = &cli.config {
+        return Some(path.clone());
+    }
+    config_search_paths().into_iter().find(|candidate| candidate.exists())
+}
+
+/// The ordered list of locations searched when no `--config` is given.
+pub fn config_search_paths() -> Vec<PathBuf> {
+    let mut paths = vec![PathBuf::from("cms.toml")];
+    if let Some(path) = user_config_path() {
+        paths.push(path);
+    }
+    paths.push(PathBuf::from("/etc/cms/config.toml"));
+    paths
+}
+
+/// The platform user-config location for the config file
+/// (`~/.config/cms/config.toml`, `%APPDATA%\cms\config.toml`, etc.).
+pub fn user_config_path() -> Option<PathBuf> {
+    ProjectDirs::from("", "", "cms").map(|dirs| dirs.config_dir().join("config.toml"))
+}
+
+/// The scaffold written by `cms config init` — non-secret keys only, with
+/// secrets shown as commented env-var hints.
+pub fn default_config_toml() -> String {
+    let hosts = default_mcp_allowed_hosts()
+        .iter()
+        .map(|h| format!("\"{h}\""))
+        .collect::<Vec<_>>()
+        .join(", ");
+    format!(
+        "# CMS configuration. Non-secret settings live here; secrets stay in the\n\
+         # environment (or a .env file). Precedence: CLI flag > env var > this file.\n\
+         #\n\
+         # Secrets are NOT read from this file by convention — set them via env:\n\
+         #   DATABASE_URL, JWT_SECRET, HMAC_SECRET,\n\
+         #   S3_ACCESS_KEY_ID, S3_SECRET_ACCESS_KEY\n\n\
+         bind_address = \"0.0.0.0:3000\"\n\
+         grpc_bind_address = \"0.0.0.0:50051\"\n\
+         # public_url = \"https://cms.example.com\"\n\
+         # env = \"production\"\n\n\
+         # --- Storage (filesystem) ---\n\
+         # storage_fs_path = \"./storage\"\n\n\
+         # --- Storage (S3, non-secret parts) ---\n\
+         # s3_bucket = \"my-bucket\"\n\
+         # s3_region = \"us-east-1\"\n\
+         # s3_endpoint = \"https://s3.example.com\"\n\
+         # s3_public_url = \"https://cdn.example.com\"\n\n\
+         # --- Uploads ---\n\
+         max_upload_size_mb = 50\n\n\
+         # --- Security / sessions ---\n\
+         cookie_secure = false\n\
+         session_lifetime_hours = 24\n\
+         public_registration_enabled = false\n\
+         allowed_origins = []\n\n\
+         # --- Database pool ---\n\
+         db_max_connections = 10\n\
+         db_min_connections = 2\n\
+         db_acquire_timeout_secs = 30\n\
+         db_idle_timeout_secs = 600\n\n\
+         # --- Rate limiting ---\n\
+         rate_limit_max_requests = 100\n\
+         rate_limit_window_secs = 60\n\n\
+         # --- MCP ---\n\
+         mcp_enabled = true\n\
+         mcp_allowed_hosts = [{hosts}]\n\
+         mcp_allowed_origins = []\n\n\
+         # --- Logging ---\n\
+         [log]\n\
+         level = \"{DEFAULT_LOG_LEVEL}\"\n\
+         output = \"stdout\"   # stdout | file\n\
+         format = \"pretty\"   # pretty | json\n\
+         annotations = false  # include file + line numbers\n\
+         dir = \"logs\"        # used when output = \"file\"\n",
     )
 }
 
@@ -171,189 +421,158 @@ fn default_mcp_allowed_hosts() -> Vec<String> {
     ]
 }
 
+/// Accepts booleans as `true`/`false`, integers (`0`/`1`), or strings
+/// (`"true"`/`"1"`) for env back-compat.
+fn de_opt_lenient_bool<'de, D>(deserializer: D) -> Result<Option<bool>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    #[derive(Deserialize)]
+    #[serde(untagged)]
+    enum Lenient {
+        Bool(bool),
+        Int(i64),
+        Str(String),
+    }
+    Ok(match Option::<Lenient>::deserialize(deserializer)? {
+        None => None,
+        Some(Lenient::Bool(b)) => Some(b),
+        Some(Lenient::Int(i)) => Some(i != 0),
+        Some(Lenient::Str(s)) => Some(matches!(s.to_ascii_lowercase().as_str(), "1" | "true")),
+    })
+}
+
+/// Accepts a list either as a TOML array or as a comma-separated string
+/// (env back-compat with the previous CSV parsing).
+fn de_opt_str_list<'de, D>(deserializer: D) -> Result<Option<Vec<String>>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    #[derive(Deserialize)]
+    #[serde(untagged)]
+    enum List {
+        Vec(Vec<String>),
+        Str(String),
+    }
+    Ok(match Option::<List>::deserialize(deserializer)? {
+        None => None,
+        Some(List::Vec(v)) => Some(v),
+        Some(List::Str(s)) => Some(
+            s.split(',')
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+                .map(ToString::to_string)
+                .collect(),
+        ),
+    })
+}
+
+fn redact(secret: &str) -> String {
+    if secret.is_empty() {
+        "".into()
+    } else {
+        "***redacted***".into()
+    }
+}
+
+fn opt_str(value: &Option<String>) -> String {
+    match value {
+        Some(v) => format!("\"{v}\""),
+        None => "\"<unset>\"".to_string(),
+    }
+}
+
+fn opt_secret(value: &Option<String>) -> String {
+    match value {
+        Some(_) => "\"***redacted***\"".to_string(),
+        None => "\"<unset>\"".to_string(),
+    }
+}
+
+fn toml_list(values: &[String]) -> String {
+    let inner = values.iter().map(|v| format!("\"{v}\"")).collect::<Vec<_>>().join(", ");
+    format!("[{inner}]")
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    #[test]
-    fn test_has_s3_returns_true_when_all_s3_fields_are_set() {
-        let config = Config {
-            database_url: "sqlite:cms.db".to_string(),
-            jwt_secret: "secret".to_string(),
-            bind_address: "0.0.0.0:3000".to_string(),
-            grpc_bind_address: "0.0.0.0:50051".to_string(),
-            storage_fs_path: None,
+    fn s3_config() -> Config {
+        Config {
             s3_access_key_id: Some("key".to_string()),
             s3_secret_access_key: Some("secret".to_string()),
             s3_bucket: Some("bucket".to_string()),
             s3_region: Some("us-east-1".to_string()),
-            s3_endpoint: None,
-            s3_public_url: None,
-            max_upload_size_bytes: 50 * 1024 * 1024,
-            cookie_secure: false,
-            db_max_connections: 10,
-            db_min_connections: 2,
-            db_acquire_timeout_secs: 30,
-            db_idle_timeout_secs: 600,
-            rate_limit_max_requests: 100,
-            rate_limit_window_secs: 60,
-            hmac_secret: "hmac".to_string(),
-            mcp_enabled: true,
-            mcp_allowed_hosts: vec![],
-            mcp_allowed_origins: vec![],
-            public_url: None,
-            session_lifetime_hours: 24,
-            public_registration_enabled: false,
-            allowed_origins: vec![],
-            production: false,
-        };
+            ..Config::default()
+        }
+    }
 
-        assert!(config.has_s3());
+    #[test]
+    fn test_has_s3_returns_true_when_all_s3_fields_are_set() {
+        assert!(s3_config().has_s3());
     }
 
     #[test]
     fn test_has_s3_returns_false_when_access_key_id_is_missing() {
         let config = Config {
-            database_url: "sqlite:cms.db".to_string(),
-            jwt_secret: "secret".to_string(),
-            bind_address: "0.0.0.0:3000".to_string(),
-            grpc_bind_address: "0.0.0.0:50051".to_string(),
-            storage_fs_path: None,
             s3_access_key_id: None,
-            s3_secret_access_key: Some("secret".to_string()),
-            s3_bucket: Some("bucket".to_string()),
-            s3_region: Some("us-east-1".to_string()),
-            s3_endpoint: None,
-            s3_public_url: None,
-            max_upload_size_bytes: 50 * 1024 * 1024,
-            cookie_secure: false,
-            db_max_connections: 10,
-            db_min_connections: 2,
-            db_acquire_timeout_secs: 30,
-            db_idle_timeout_secs: 600,
-            rate_limit_max_requests: 100,
-            rate_limit_window_secs: 60,
-            hmac_secret: "hmac".to_string(),
-            mcp_enabled: true,
-            mcp_allowed_hosts: vec![],
-            mcp_allowed_origins: vec![],
-            public_url: None,
-            session_lifetime_hours: 24,
-            public_registration_enabled: false,
-            allowed_origins: vec![],
-            production: false,
+            ..s3_config()
         };
-
         assert!(!config.has_s3());
     }
 
     #[test]
     fn test_has_s3_returns_false_when_secret_is_missing() {
         let config = Config {
-            database_url: "sqlite:cms.db".to_string(),
-            jwt_secret: "secret".to_string(),
-            bind_address: "0.0.0.0:3000".to_string(),
-            grpc_bind_address: "0.0.0.0:50051".to_string(),
-            storage_fs_path: None,
-            s3_access_key_id: Some("key".to_string()),
             s3_secret_access_key: None,
-            s3_bucket: Some("bucket".to_string()),
-            s3_region: Some("us-east-1".to_string()),
-            s3_endpoint: None,
-            s3_public_url: None,
-            max_upload_size_bytes: 50 * 1024 * 1024,
-            cookie_secure: false,
-            db_max_connections: 10,
-            db_min_connections: 2,
-            db_acquire_timeout_secs: 30,
-            db_idle_timeout_secs: 600,
-            rate_limit_max_requests: 100,
-            rate_limit_window_secs: 60,
-            hmac_secret: "hmac".to_string(),
-            mcp_enabled: true,
-            mcp_allowed_hosts: vec![],
-            mcp_allowed_origins: vec![],
-            public_url: None,
-            session_lifetime_hours: 24,
-            public_registration_enabled: false,
-            allowed_origins: vec![],
-            production: false,
+            ..s3_config()
         };
-
         assert!(!config.has_s3());
     }
 
     #[test]
     fn test_has_s3_returns_false_when_bucket_is_missing() {
         let config = Config {
-            database_url: "sqlite:cms.db".to_string(),
-            jwt_secret: "secret".to_string(),
-            bind_address: "0.0.0.0:3000".to_string(),
-            grpc_bind_address: "0.0.0.0:50051".to_string(),
-            storage_fs_path: None,
-            s3_access_key_id: Some("key".to_string()),
-            s3_secret_access_key: Some("secret".to_string()),
             s3_bucket: None,
-            s3_region: Some("us-east-1".to_string()),
-            s3_endpoint: None,
-            s3_public_url: None,
-            max_upload_size_bytes: 50 * 1024 * 1024,
-            cookie_secure: false,
-            db_max_connections: 10,
-            db_min_connections: 2,
-            db_acquire_timeout_secs: 30,
-            db_idle_timeout_secs: 600,
-            rate_limit_max_requests: 100,
-            rate_limit_window_secs: 60,
-            hmac_secret: "hmac".to_string(),
-            mcp_enabled: true,
-            mcp_allowed_hosts: vec![],
-            mcp_allowed_origins: vec![],
-            public_url: None,
-            session_lifetime_hours: 24,
-            public_registration_enabled: false,
-            allowed_origins: vec![],
-            production: false,
+            ..s3_config()
         };
-
         assert!(!config.has_s3());
     }
 
     #[test]
     fn test_config_default_values() {
         let config = Config {
-            database_url: "sqlite:cms.db".to_string(),
-            jwt_secret: "default-secret".to_string(),
-            bind_address: "0.0.0.0:3000".to_string(),
-            grpc_bind_address: "0.0.0.0:50051".to_string(),
             storage_fs_path: Some("/tmp/storage".to_string()),
-            s3_access_key_id: None,
-            s3_secret_access_key: None,
-            s3_bucket: None,
-            s3_region: None,
-            s3_endpoint: None,
-            s3_public_url: None,
             max_upload_size_bytes: 50 * 1024 * 1024,
             cookie_secure: true,
-            db_max_connections: 10,
-            db_min_connections: 2,
-            db_acquire_timeout_secs: 30,
-            db_idle_timeout_secs: 600,
-            rate_limit_max_requests: 100,
-            rate_limit_window_secs: 60,
-            hmac_secret: "hmac".to_string(),
-            mcp_enabled: true,
-            mcp_allowed_hosts: vec![],
-            mcp_allowed_origins: vec![],
-            public_url: None,
-            session_lifetime_hours: 24,
-            public_registration_enabled: false,
-            allowed_origins: vec![],
-            production: false,
+            ..Config::default()
         };
 
         assert!(!config.has_s3());
         assert_eq!(config.max_upload_size_bytes, 50 * 1024 * 1024);
         assert!(config.cookie_secure);
+    }
+
+    #[test]
+    fn test_raw_config_into_config_applies_defaults() {
+        let config = RawConfig::default().into_config();
+        assert_eq!(config.database_url, "sqlite:cms.db");
+        assert_eq!(config.bind_address, "0.0.0.0:3000");
+        assert_eq!(config.max_upload_size_bytes, 50 * 1024 * 1024);
+        assert_eq!(config.log_level, DEFAULT_LOG_LEVEL);
+        assert_eq!(config.log_output, "stdout");
+        assert!(config.mcp_enabled);
+        assert!(!config.production);
+    }
+
+    #[test]
+    fn test_env_maps_to_production() {
+        let config = RawConfig {
+            env: Some("production".to_string()),
+            ..RawConfig::default()
+        }
+        .into_config();
+        assert!(config.production);
     }
 }
