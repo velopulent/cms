@@ -85,6 +85,35 @@ pub fn init_tracing(config: &crate::config::Config) -> Option<tracing_appender::
     }
 }
 
+pub fn init_stdio_tracing(config: &crate::config::Config) {
+    let env_filter = EnvFilter::new(&config.log_level);
+    let annotations = config.log_annotations;
+
+    if config.log_format == "json" {
+        let layer = fmt::layer()
+            .with_writer(std::io::stderr)
+            .with_target(true)
+            .with_file(annotations)
+            .with_line_number(annotations)
+            .json();
+        tracing_subscriber::registry().with(env_filter).with(layer).init();
+    } else {
+        let layer = fmt::layer()
+            .with_writer(std::io::stderr)
+            .with_target(true)
+            .with_file(annotations)
+            .with_line_number(annotations)
+            .pretty();
+        tracing_subscriber::registry().with(env_filter).with(layer).init();
+    }
+
+    tracing::info!(
+        log_output = "stderr",
+        log_format = %config.log_format,
+        "MCP stdio tracing initialized"
+    );
+}
+
 pub async fn trace_request(req: Request, next: Next) -> Response {
     let request_id = req
         .headers()
