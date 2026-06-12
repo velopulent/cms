@@ -45,6 +45,8 @@ impl TestServer {
         config.db_idle_timeout_secs = 600;
         config.max_upload_size_bytes = 50 * 1024 * 1024;
         config.public_registration_enabled = true;
+        config.bcrypt_cost = bcrypt::DEFAULT_COST;
+        config.webhook_allow_private_targets = true;
 
         let pool = init_db_with_config(&config)
             .await
@@ -67,7 +69,11 @@ impl TestServer {
         let (shutdown_tx, shutdown_rx) = tokio::sync::oneshot::channel::<()>();
 
         tokio::spawn(async move {
-            let server = axum::serve(listener, app).with_graceful_shutdown(async move {
+            let server = axum::serve(
+                listener,
+                app.into_make_service_with_connect_info::<std::net::SocketAddr>(),
+            )
+            .with_graceful_shutdown(async move {
                 let _ = shutdown_rx.await;
             });
             if let Err(e) = server.await {

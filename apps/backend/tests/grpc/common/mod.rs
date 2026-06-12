@@ -48,6 +48,8 @@ impl GrpcTestContext {
         config.db_idle_timeout_secs = 600;
         config.max_upload_size_bytes = 50 * 1024 * 1024;
         config.public_registration_enabled = true;
+        config.bcrypt_cost = bcrypt::DEFAULT_COST;
+        config.webhook_allow_private_targets = true;
 
         let pool = init_db_with_config(&config)
             .await
