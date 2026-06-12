@@ -24,5 +24,3 @@ dist
 .vscode
 .idea
 
-# Generated
-apps/backend/src/grpc/cms/cms.v1.rs
