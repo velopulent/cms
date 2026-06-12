@@ -1,3 +1,4 @@
+use axum::extract::ConnectInfo;
 use axum::{
     Json,
     extract::Request,
@@ -5,16 +6,22 @@ use axum::{
     middleware::Next,
     response::{IntoResponse, Response},
 };
+use dashmap::DashMap;
 use serde_json::json;
-use std::collections::HashMap;
-use std::sync::{Arc, Mutex};
-use std::time::Instant;
+use std::net::SocketAddr;
+use std::sync::Arc;
+use std::time::{Duration, Instant};
+
+/// Above this many tracked keys, a `check()` call first sweeps expired entries
+/// to bound memory (the map is otherwise unbounded and a DoS vector).
+const EVICTION_THRESHOLD: usize = 10_000;
 
 #[derive(Clone)]
 pub struct RateLimiter {
-    state: Arc<Mutex<HashMap<String, RateLimitEntry>>>,
+    state: Arc<DashMap<String, RateLimitEntry>>,
     max_requests: u32,
-    window_secs: u64,
+    window: Duration,
+    trust_proxy_headers: bool,
 }
 
 struct RateLimitEntry {
@@ -23,35 +30,71 @@ struct RateLimitEntry {
 }
 
 impl RateLimiter {
-    pub fn new(max_requests: u32, window_secs: u64) -> Self {
+    pub fn new(max_requests: u32, window_secs: u64, trust_proxy_headers: bool) -> Self {
         Self {
-            state: Arc::new(Mutex::new(HashMap::new())),
+            state: Arc::new(DashMap::new()),
             max_requests,
-            window_secs,
+            window: Duration::from_secs(window_secs),
+            trust_proxy_headers,
         }
     }
 
     pub fn check(&self, key: &str) -> Result<(), ()> {
-        let mut state = self.state.lock().map_err(|_| ())?;
         let now = Instant::now();
 
-        let entry = state.entry(key.to_string()).or_insert(RateLimitEntry {
+        // Bound memory: drop expired buckets once the map grows large. Done
+        // before taking a shard lock on `key` to avoid a self-deadlock.
+        if self.state.len() > EVICTION_THRESHOLD {
+            self.state.retain(|_, e| now.duration_since(e.window_start) <= self.window);
+        }
+
+        let mut entry = self.state.entry(key.to_string()).or_insert(RateLimitEntry {
             count: 0,
             window_start: now,
         });
 
-        if now.duration_since(entry.window_start).as_secs() > self.window_secs {
+        if now.duration_since(entry.window_start) > self.window {
             entry.count = 0;
             entry.window_start = now;
         }
-
         entry.count += 1;
 
-        if entry.count > self.max_requests {
-            Err(())
-        } else {
-            Ok(())
+        if entry.count > self.max_requests { Err(()) } else { Ok(()) }
+    }
+
+    /// Derive the rate-limit bucket key for a request. When `trust_proxy_headers`
+    /// is enabled, the first `X-Forwarded-For` / `X-Real-IP` value is used;
+    /// otherwise the TCP peer IP (via `ConnectInfo`) is used so clients cannot
+    /// spoof their bucket. Never keys on the `Authorization` header, which would
+    /// leak bearer tokens into server state and let a stolen token grief its owner.
+    fn extract_client_key(&self, req: &Request) -> String {
+        if self.trust_proxy_headers {
+            if let Some(ip) = req
+                .headers()
+                .get("x-forwarded-for")
+                .and_then(|v| v.to_str().ok())
+                .and_then(|v| v.split(',').next())
+                .map(str::trim)
+                .filter(|s| !s.is_empty())
+            {
+                return ip.to_string();
+            }
+            if let Some(ip) = req
+                .headers()
+                .get("x-real-ip")
+                .and_then(|v| v.to_str().ok())
+                .map(str::trim)
+                .filter(|s| !s.is_empty())
+            {
+                return ip.to_string();
+            }
         }
+
+        if let Some(ConnectInfo(addr)) = req.extensions().get::<ConnectInfo<SocketAddr>>() {
+            return addr.ip().to_string();
+        }
+
+        "unknown".to_string()
     }
 }
 
@@ -60,7 +103,7 @@ pub async fn rate_limit_middleware(
     req: Request,
     next: Next,
 ) -> Response {
-    let key = extract_client_key(&req);
+    let key = limiter.extract_client_key(&req);
 
     match limiter.check(&key) {
         Ok(()) => next.run(req).await,
@@ -70,25 +113,4 @@ pub async fn rate_limit_middleware(
         )
             .into_response(),
     }
-}
-
-fn extract_client_key(req: &Request) -> String {
-    req.headers()
-        .get("x-forwarded-for")
-        .and_then(|v| v.to_str().ok())
-        .and_then(|v| v.split(',').next())
-        .map(|s| s.trim().to_string())
-        .or_else(|| {
-            req.headers()
-                .get("x-real-ip")
-                .and_then(|v| v.to_str().ok())
-                .map(|s| s.to_string())
-        })
-        .or_else(|| {
-            req.headers()
-                .get("authorization")
-                .and_then(|v| v.to_str().ok())
-                .map(|s| s.to_string())
-        })
-        .unwrap_or_else(|| "unknown".to_string())
 }
