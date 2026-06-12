@@ -30,6 +30,11 @@ pub struct Cli {
 pub enum Command {
     /// Run the server (default when no subcommand is given).
     Serve,
+    /// Run Model Context Protocol transports.
+    Mcp {
+        #[command(subcommand)]
+        transport: McpTransport,
+    },
     /// Inspect or scaffold configuration.
     Config {
         #[command(subcommand)]
@@ -40,6 +45,12 @@ pub enum Command {
         #[command(subcommand)]
         action: AdminAction,
     },
+}
+
+#[derive(Subcommand, Debug)]
+pub enum McpTransport {
+    /// Run MCP over stdin/stdout.
+    Stdio,
 }
 
 #[derive(Subcommand, Debug)]
@@ -68,4 +79,21 @@ pub enum AdminAction {
         #[arg(long, value_name = "PASSWORD")]
         password: String,
     },
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{Cli, Command, McpTransport};
+    use clap::Parser;
+
+    #[test]
+    fn parses_mcp_stdio_command() {
+        let cli = Cli::try_parse_from(["cms", "mcp", "stdio"]).expect("command should parse");
+        assert!(matches!(
+            cli.command,
+            Some(Command::Mcp {
+                transport: McpTransport::Stdio
+            })
+        ));
+    }
 }
