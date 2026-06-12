@@ -33,3 +33,97 @@ pub async fn init_db_with_config(config: &crate::config::Config) -> Result<DbPoo
         .map_err(|e| sqlx::Error::Configuration(e.into()))?;
     Ok(pool)
 }
+
+pub async fn connect_db_without_migrations(
+    config: &crate::config::Config,
+) -> Result<DbPool, Box<dyn std::error::Error>> {
+    let pool = DbPool::from_existing_with_config(config).await.map_err(|error| {
+        format!(
+            "Unable to connect to the existing CMS database without creating or migrating it: {error}. \
+             Run `cms serve` once to initialize and migrate the database."
+        )
+    })?;
+
+    pool.validate_migrations().await.map_err(|error| {
+        format!(
+            "CMS database schema is missing, outdated, or incompatible: {error}. \
+             Run `cms serve` once to apply migrations."
+        )
+    })?;
+
+    Ok(pool)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{connect_db_without_migrations, init_db_with_config};
+    use crate::config::Config;
+    use crate::database::pool::DbPool;
+
+    fn sqlite_config(path: &std::path::Path) -> Config {
+        Config {
+            database_url: format!("sqlite://{}", path.to_string_lossy().replace('\\', "/")),
+            db_max_connections: 2,
+            db_min_connections: 1,
+            db_acquire_timeout_secs: 5,
+            db_idle_timeout_secs: 60,
+            ..Config::default()
+        }
+    }
+
+    #[tokio::test]
+    async fn connect_without_migrations_does_not_create_sqlite_database() {
+        let directory = tempfile::tempdir().expect("temp directory");
+        let database_path = directory.path().join("missing.db");
+        let config = sqlite_config(&database_path);
+
+        let result = connect_db_without_migrations(&config).await;
+
+        assert!(result.is_err());
+        assert!(!database_path.exists(), "stdio connection must not create database");
+    }
+
+    #[tokio::test]
+    async fn connect_without_migrations_accepts_current_schema() {
+        let directory = tempfile::tempdir().expect("temp directory");
+        let database_path = directory.path().join("current.db");
+        let config = sqlite_config(&database_path);
+        let pool = init_db_with_config(&config).await.expect("migrated database");
+        drop(pool);
+
+        connect_db_without_migrations(&config)
+            .await
+            .expect("current schema should be accepted");
+    }
+
+    #[tokio::test]
+    async fn connect_without_migrations_rejects_pending_schema_without_applying_it() {
+        let directory = tempfile::tempdir().expect("temp directory");
+        let database_path = directory.path().join("pending.db");
+        let config = sqlite_config(&database_path);
+        let pool = init_db_with_config(&config).await.expect("migrated database");
+        let DbPool::Sqlite(sqlite) = pool else {
+            panic!("expected sqlite pool");
+        };
+        sqlx::query("DELETE FROM _sqlx_migrations WHERE version = 20260611000000")
+            .execute(&sqlite)
+            .await
+            .expect("remove latest migration record");
+        drop(sqlite);
+
+        let result = connect_db_without_migrations(&config).await;
+        assert!(result.is_err(), "pending schema should be rejected");
+
+        let pool = DbPool::from_existing_with_config(&config)
+            .await
+            .expect("database should still exist");
+        let DbPool::Sqlite(sqlite) = pool else {
+            panic!("expected sqlite pool");
+        };
+        let count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM _sqlx_migrations WHERE version = 20260611000000")
+            .fetch_one(&sqlite)
+            .await
+            .expect("read migration table");
+        assert_eq!(count, 0, "validation must not apply pending migration");
+    }
+}
