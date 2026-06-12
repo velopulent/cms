@@ -45,6 +45,10 @@ pub fn tool_error(e: impl Into<crate::services::error::ServiceError>) -> CallToo
 }
 
 pub fn resolve_actor(ctx: &RequestContext<RoleServer>) -> Result<Actor, ErrorData> {
+    if let Some(actor) = ctx.extensions.get::<Actor>() {
+        return Ok(actor.clone());
+    }
+
     let parts = ctx
         .extensions
         .get::<http::request::Parts>()
@@ -57,6 +61,12 @@ pub fn resolve_actor(ctx: &RequestContext<RoleServer>) -> Result<Actor, ErrorDat
         .ok_or_else(|| mcp_error(ErrorCode::INVALID_REQUEST, "Missing MCP authentication"))?;
 
     Ok(actor)
+}
+
+pub async fn verify_stdio_token(token: &str, repository: &Repository, hmac_secret: &str) -> Result<Actor, ErrorData> {
+    verify_access_token(token, repository, hmac_secret)
+        .await
+        .map_err(|(_, Json(error))| mcp_error(ErrorCode::INVALID_REQUEST, error.message))
 }
 
 pub async fn authenticate_mcp_request(mut request: Request<Body>, next: Next) -> Response {
@@ -153,8 +163,11 @@ mod tests {
             .create("site-123", "Test Site", "filesystem", "user-123")
             .await
             .expect("site should be created");
-        let service =
-            AccessTokenService::new(repository.access_token.clone(), hmac_secret.to_string(), bcrypt::DEFAULT_COST);
+        let service = AccessTokenService::new(
+            repository.access_token.clone(),
+            hmac_secret.to_string(),
+            bcrypt::DEFAULT_COST,
+        );
         let token = service
             .create_site_token("site-123", "MCP".to_string(), AccessTokenPermission::Read, None)
             .await
