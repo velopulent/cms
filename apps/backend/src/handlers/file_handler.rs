@@ -147,37 +147,42 @@ pub async fn upload_file(
     let mut file_name: Option<String> = None;
     let mut file_content_type: Option<String> = None;
 
-    while let Ok(Some(field)) = multipart.next_field().await {
+    while let Ok(Some(mut field)) = multipart.next_field().await {
         let name = field.name().unwrap_or("").to_string();
 
         if name == "file" {
             file_name = field.file_name().map(String::from);
             file_content_type = field.content_type().map(String::from);
 
-            match field.bytes().await {
-                Ok(bytes) => {
-                    if bytes.len() as u64 > config.max_upload_size_bytes as u64 {
+            // Stream the field in chunks, enforcing the size cap incrementally so an
+            // oversized upload is rejected without first buffering it whole.
+            let max = config.max_upload_size_bytes;
+            let mut buf: Vec<u8> = Vec::new();
+            loop {
+                match field.chunk().await {
+                    Ok(Some(chunk)) => {
+                        if buf.len() + chunk.len() > max {
+                            return (
+                                StatusCode::PAYLOAD_TOO_LARGE,
+                                Json(json!({
+                                    "error": format!("File too large. Maximum size is {}MB", max / (1024 * 1024))
+                                })),
+                            )
+                                .into_response();
+                        }
+                        buf.extend_from_slice(&chunk);
+                    }
+                    Ok(None) => break,
+                    Err(e) => {
                         return (
-                            StatusCode::PAYLOAD_TOO_LARGE,
-                            Json(json!({
-                                "error": format!(
-                                    "File too large. Maximum size is {}MB",
-                                    config.max_upload_size_bytes / (1024 * 1024)
-                                )
-                            })),
+                            StatusCode::BAD_REQUEST,
+                            Json(json!({"error": format!("Failed to read file: {}", e)})),
                         )
                             .into_response();
                     }
-                    file_data = Some(bytes);
-                }
-                Err(e) => {
-                    return (
-                        StatusCode::BAD_REQUEST,
-                        Json(json!({"error": format!("Failed to read file: {}", e)})),
-                    )
-                        .into_response();
                 }
             }
+            file_data = Some(Bytes::from(buf));
         }
     }
 
@@ -188,7 +193,7 @@ pub async fn upload_file(
         }
     };
 
-    let file_name = file_name.unwrap_or_else(|| "upload".into());
+    let file_name = sanitize_filename(&file_name.unwrap_or_else(|| "upload".into()));
     let content_type = file_content_type.unwrap_or_else(|| "application/octet-stream".into());
     let created_by = ctx.auth.actor.user_id();
 
@@ -212,6 +217,46 @@ pub async fn upload_file(
     {
         Ok(file) => (StatusCode::CREATED, Json(file)).into_response(),
         Err(e) => e.into_response(),
+    }
+}
+
+/// Reduce an uploaded filename to a safe basename: strips any path components,
+/// control/null bytes, and leading dots (so `../`, `..\`, and dotfiles can't
+/// escape or hide). Falls back to `"upload"` if nothing usable remains.
+fn sanitize_filename(name: &str) -> String {
+    let base = name.rsplit(['/', '\\']).next().unwrap_or(name);
+    let cleaned: String = base.chars().filter(|c| !c.is_control()).collect();
+    let trimmed = cleaned.trim().trim_start_matches('.').trim();
+    if trimmed.is_empty() {
+        "upload".to_string()
+    } else {
+        trimmed.to_string()
+    }
+}
+
+#[cfg(test)]
+mod sanitize_tests {
+    use super::sanitize_filename;
+
+    #[test]
+    fn strips_path_traversal() {
+        assert_eq!(sanitize_filename("../../etc/passwd"), "passwd");
+        assert_eq!(sanitize_filename("..\\..\\windows\\system32\\x.dll"), "x.dll");
+        assert_eq!(sanitize_filename("/abs/path/photo.jpg"), "photo.jpg");
+    }
+
+    #[test]
+    fn strips_leading_dots_and_control() {
+        assert_eq!(sanitize_filename("...env.png"), "env.png");
+        assert_eq!(sanitize_filename("na\0me.txt"), "name.txt");
+        assert_eq!(sanitize_filename(".."), "upload");
+        assert_eq!(sanitize_filename(""), "upload");
+    }
+
+    #[test]
+    fn keeps_normal_names() {
+        assert_eq!(sanitize_filename("report 2026.pdf"), "report 2026.pdf");
+        assert_eq!(sanitize_filename("photo.final.jpg"), "photo.final.jpg");
     }
 }
 
