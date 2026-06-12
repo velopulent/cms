@@ -1,4 +1,5 @@
 use std::sync::Arc;
+use std::time::Instant;
 
 use rmcp::handler::server::wrapper::Parameters;
 use rmcp::model::{
@@ -27,6 +28,7 @@ pub struct CmsServer {
     pub storage_registry: Arc<StorageRegistry>,
     pub config: Arc<Config>,
     pub authorizer: Arc<AuthorizationService>,
+    stdio_token: Option<Arc<str>>,
 }
 
 #[tool_router]
@@ -44,7 +46,20 @@ impl CmsServer {
             storage_registry,
             config,
             authorizer,
+            stdio_token: None,
         }
+    }
+
+    pub fn new_stdio(
+        services: Arc<Services>,
+        repository: Arc<Repository>,
+        storage_registry: Arc<StorageRegistry>,
+        config: Arc<Config>,
+        token: String,
+    ) -> Self {
+        let mut server = Self::new(services, repository, storage_registry, config);
+        server.stdio_token = Some(Arc::from(token));
+        server
     }
 
     #[tool(description = "Get details of a specific site by ID")]
@@ -501,19 +516,29 @@ impl ServerHandler for CmsServer {
     async fn initialize(
         &self,
         request: InitializeRequestParams,
-        context: RequestContext<RoleServer>,
+        mut context: RequestContext<RoleServer>,
     ) -> Result<ServerInfo, McpError> {
+        let started = Instant::now();
+        self.authenticate_context(&mut context).await?;
         if context.peer.peer_info().is_none() {
             context.peer.set_peer_info(request.clone());
         }
+        tracing::info!(
+            mcp_method = "initialize",
+            duration_ms = started.elapsed().as_millis(),
+            outcome = "success",
+            "MCP operation completed"
+        );
         Ok(self.get_info().with_protocol_version(request.protocol_version))
     }
 
     async fn list_tools(
         &self,
         _request: Option<PaginatedRequestParams>,
-        _ctx: RequestContext<RoleServer>,
+        mut ctx: RequestContext<RoleServer>,
     ) -> Result<ListToolsResult, McpError> {
+        let started = Instant::now();
+        self.authenticate_context(&mut ctx).await?;
         let tools = Self::tool_router()
             .list_all()
             .into_iter()
@@ -522,42 +547,86 @@ impl ServerHandler for CmsServer {
                 tool
             })
             .collect();
-        Ok(ListToolsResult {
+        let result = ListToolsResult {
             tools,
             meta: None,
             next_cursor: None,
-        })
+        };
+        tracing::info!(
+            mcp_method = "tools/list",
+            duration_ms = started.elapsed().as_millis(),
+            outcome = "success",
+            "MCP operation completed"
+        );
+        Ok(result)
     }
 
     async fn call_tool(
         &self,
         request: CallToolRequestParams,
-        ctx: RequestContext<RoleServer>,
+        mut ctx: RequestContext<RoleServer>,
     ) -> Result<CallToolResult, McpError> {
+        let started = Instant::now();
+        let tool_name = request.name.to_string();
+        self.authenticate_context(&mut ctx).await?;
         let tool_context = rmcp::handler::server::tool::ToolCallContext::new(self, request, ctx);
-        Self::tool_router().call(tool_context).await
+        let result = Self::tool_router().call(tool_context).await;
+        tracing::info!(
+            mcp_method = "tools/call",
+            mcp_tool = %tool_name,
+            duration_ms = started.elapsed().as_millis(),
+            outcome = if result.is_ok() { "success" } else { "error" },
+            "MCP operation completed"
+        );
+        result
     }
 
     async fn list_resources(
         &self,
         request: Option<PaginatedRequestParams>,
-        ctx: RequestContext<RoleServer>,
+        mut ctx: RequestContext<RoleServer>,
     ) -> Result<ListResourcesResult, McpError> {
-        let actor = self.resolve_actor(&ctx)?;
-        site_schema::list_resources(&self.authorizer, &self.services, &actor, request).await
+        let started = Instant::now();
+        let actor = self.authenticate_context(&mut ctx).await?;
+        let result = site_schema::list_resources(&self.authorizer, &self.services, &actor, request).await;
+        tracing::info!(
+            mcp_method = "resources/list",
+            duration_ms = started.elapsed().as_millis(),
+            outcome = if result.is_ok() { "success" } else { "error" },
+            "MCP operation completed"
+        );
+        result
     }
 
     async fn read_resource(
         &self,
         request: ReadResourceRequestParams,
-        ctx: RequestContext<RoleServer>,
+        mut ctx: RequestContext<RoleServer>,
     ) -> Result<ReadResourceResult, McpError> {
-        let actor = self.resolve_actor(&ctx)?;
-        site_schema::read_resource(&self.authorizer, &self.services, &actor, &request.uri).await
+        let started = Instant::now();
+        let actor = self.authenticate_context(&mut ctx).await?;
+        let result = site_schema::read_resource(&self.authorizer, &self.services, &actor, &request.uri).await;
+        tracing::info!(
+            mcp_method = "resources/read",
+            duration_ms = started.elapsed().as_millis(),
+            outcome = if result.is_ok() { "success" } else { "error" },
+            "MCP operation completed"
+        );
+        result
     }
 }
 
 impl CmsServer {
+    async fn authenticate_context(&self, ctx: &mut RequestContext<RoleServer>) -> Result<Actor, McpError> {
+        if let Some(token) = &self.stdio_token {
+            let actor = crate::mcp::auth::verify_stdio_token(token, &self.repository, &self.config.hmac_secret).await?;
+            ctx.extensions.insert(actor.clone());
+            return Ok(actor);
+        }
+
+        self.resolve_actor(ctx)
+    }
+
     fn resolve_actor(&self, ctx: &RequestContext<RoleServer>) -> Result<Actor, McpError> {
         crate::mcp::auth::resolve_actor(ctx)
     }
