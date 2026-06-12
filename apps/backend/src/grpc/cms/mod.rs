@@ -1,4 +1,4 @@
 #[allow(dead_code)]
 pub mod v1 {
-    include!("cms.v1.rs");
+    tonic::include_proto!("cms.v1");
 }
