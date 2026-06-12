@@ -82,6 +82,19 @@ Visit `http://localhost:3000` and log in with:
 | `/mcp` | MCP Streamable HTTP endpoint |
 ---
 
+### MCP over stdio
+
+Run a standalone MCP process for clients that launch local stdio servers:
+
+```bash
+CMS_MCP_TOKEN=cms_site_... cms mcp stdio
+```
+
+The command connects to an existing CMS database and never starts HTTP/gRPC
+listeners, seeds users, creates a SQLite database, or runs migrations. Run
+`cms serve` first when the database schema needs initialization or migration.
+MCP protocol messages use stdout; structured process logs use stderr.
+
 
 
 ## Why This CMS?
