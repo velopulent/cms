@@ -47,6 +47,13 @@ pub struct Config {
     pub rate_limit_max_requests: u32,
     pub rate_limit_window_secs: u64,
 
+    // Password hashing cost (bcrypt work factor)
+    pub bcrypt_cost: u32,
+    // Trust reverse-proxy client-IP headers (X-Forwarded-For / X-Real-IP)
+    pub trust_proxy_headers: bool,
+    // Allow webhooks to target private/loopback addresses (SSRF guard off)
+    pub webhook_allow_private_targets: bool,
+
     // Hash secret for access token fast lookup
     pub hmac_secret: String,
 
@@ -108,6 +115,12 @@ struct RawConfig {
 
     rate_limit_max_requests: Option<u32>,
     rate_limit_window_secs: Option<u64>,
+
+    bcrypt_cost: Option<u32>,
+    #[serde(default, deserialize_with = "de_opt_lenient_bool")]
+    trust_proxy_headers: Option<bool>,
+    #[serde(default, deserialize_with = "de_opt_lenient_bool")]
+    webhook_allow_private_targets: Option<bool>,
 
     #[serde(default, deserialize_with = "de_opt_lenient_bool")]
     mcp_enabled: Option<bool>,
@@ -185,15 +198,42 @@ impl Config {
     }
 
     pub fn validate_security(&self) -> Result<(), String> {
-        if self.production && self.jwt_secret == DEFAULT_JWT_SECRET {
-            return Err("JWT_SECRET must be changed in production".into());
+        let jwt_default = self.jwt_secret == DEFAULT_JWT_SECRET;
+        let hmac_default = self.hmac_secret == DEFAULT_HMAC_SECRET;
+
+        if self.production {
+            if jwt_default {
+                return Err("JWT_SECRET must be changed in production".into());
+            }
+            if hmac_default {
+                return Err("HMAC_SECRET must be changed in production".into());
+            }
+            if self.jwt_secret.len() < 32 {
+                return Err("JWT_SECRET must be at least 32 bytes long".into());
+            }
+            if self.hmac_secret.len() < 32 {
+                return Err("HMAC_SECRET must be at least 32 bytes long".into());
+            }
+            if !self.cookie_secure {
+                return Err("COOKIE_SECURE must be enabled in production".into());
+            }
+        } else if (jwt_default || hmac_default) && binds_publicly(&self.bind_address) {
+            // Not production, but exposing a public listener with built-in default
+            // secrets lets anyone reachable forge sessions/tokens. Warn loudly
+            // rather than hard-fail so local default startup keeps working.
+            eprintln!(
+                "\n\
+                 ============================ SECURITY WARNING ============================\n\
+                 Binding to public address {} while using the built-in default\n\
+                 JWT_SECRET/HMAC_SECRET. Anyone who can reach this port can forge\n\
+                 sessions and access tokens.\n\
+                 Set JWT_SECRET and HMAC_SECRET (>=32 random bytes) before exposing this\n\
+                 server, or bind to 127.0.0.1 for local development.\n\
+                 =========================================================================\n",
+                self.bind_address
+            );
         }
-        if self.production && self.hmac_secret == DEFAULT_HMAC_SECRET {
-            return Err("HMAC_SECRET must be changed in production".into());
-        }
-        if self.production && !self.cookie_secure {
-            return Err("COOKIE_SECURE must be enabled in production".into());
-        }
+
         Ok(())
     }
 
@@ -231,7 +271,10 @@ impl Config {
              db_idle_timeout_secs = {}\n\n\
              # Rate limiting\n\
              rate_limit_max_requests = {}\n\
-             rate_limit_window_secs = {}\n\n\
+             rate_limit_window_secs = {}\n\
+             trust_proxy_headers = {}\n\n\
+             # Password hashing\n\
+             bcrypt_cost = {}\n\n\
              # MCP\n\
              mcp_enabled = {}\n\
              mcp_allowed_hosts = {}\n\
@@ -267,6 +310,8 @@ impl Config {
             self.db_idle_timeout_secs,
             self.rate_limit_max_requests,
             self.rate_limit_window_secs,
+            self.trust_proxy_headers,
+            self.bcrypt_cost,
             self.mcp_enabled,
             toml_list(&self.mcp_allowed_hosts),
             toml_list(&self.mcp_allowed_origins),
@@ -311,12 +356,15 @@ impl RawConfig {
             public_registration_enabled: self.public_registration_enabled.unwrap_or(false),
             allowed_origins: self.allowed_origins.unwrap_or_default(),
             production: self.env.map(|v| v.eq_ignore_ascii_case("production")).unwrap_or(false),
-            db_max_connections: self.db_max_connections.unwrap_or(10),
+            db_max_connections: self.db_max_connections.unwrap_or(20),
             db_min_connections: self.db_min_connections.unwrap_or(2),
             db_acquire_timeout_secs: self.db_acquire_timeout_secs.unwrap_or(30),
             db_idle_timeout_secs: self.db_idle_timeout_secs.unwrap_or(600),
             rate_limit_max_requests: self.rate_limit_max_requests.unwrap_or(100),
             rate_limit_window_secs: self.rate_limit_window_secs.unwrap_or(60),
+            bcrypt_cost: self.bcrypt_cost.unwrap_or(bcrypt::DEFAULT_COST),
+            trust_proxy_headers: self.trust_proxy_headers.unwrap_or(false),
+            webhook_allow_private_targets: self.webhook_allow_private_targets.unwrap_or(false),
             mcp_enabled: self.mcp_enabled.unwrap_or(true),
             mcp_allowed_hosts: self.mcp_allowed_hosts.unwrap_or_else(default_mcp_allowed_hosts),
             mcp_allowed_origins: self.mcp_allowed_origins.unwrap_or_default(),
@@ -395,7 +443,14 @@ pub fn default_config_toml() -> String {
          db_idle_timeout_secs = 600\n\n\
          # --- Rate limiting ---\n\
          rate_limit_max_requests = 100\n\
-         rate_limit_window_secs = 60\n\n\
+         rate_limit_window_secs = 60\n\
+         # Trust X-Forwarded-For / X-Real-IP for client IP (enable only behind a trusted proxy)\n\
+         trust_proxy_headers = false\n\n\
+         # --- Password hashing ---\n\
+         bcrypt_cost = 12\n\n\
+         # --- Webhooks ---\n\
+         # Allow webhooks to target private/loopback addresses (SSRF guard off)\n\
+         webhook_allow_private_targets = false\n\n\
          # --- MCP ---\n\
          mcp_enabled = true\n\
          mcp_allowed_hosts = [{hosts}]\n\
@@ -408,6 +463,20 @@ pub fn default_config_toml() -> String {
          annotations = false  # include file + line numbers\n\
          dir = \"logs\"        # used when output = \"file\"\n",
     )
+}
+
+/// Whether a listen address is reachable beyond loopback. `0.0.0.0` /
+/// `[::]` (unspecified) and any routable IP count as public; only `127.0.0.0/8`
+/// and `::1` are treated as loopback-only. Unparseable addresses are treated as
+/// public unless they obviously reference localhost.
+fn binds_publicly(bind_address: &str) -> bool {
+    match bind_address.parse::<std::net::SocketAddr>() {
+        Ok(addr) => !addr.ip().is_loopback(),
+        Err(_) => {
+            let lower = bind_address.to_ascii_lowercase();
+            !(lower.contains("127.0.0.1") || lower.contains("::1") || lower.contains("localhost"))
+        }
+    }
 }
 
 fn default_mcp_allowed_hosts() -> Vec<String> {
