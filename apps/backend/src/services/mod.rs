@@ -39,11 +39,13 @@ impl Services {
                 config.cookie_secure,
                 config.session_lifetime_hours,
                 config.public_registration_enabled,
+                config.bcrypt_cost,
             )),
             site: Arc::new(site::SiteService::new(repository.site.clone(), repository.user.clone())),
             access_token: Arc::new(access_token::AccessTokenService::new(
                 repository.access_token.clone(),
                 config.hmac_secret.clone(),
+                config.bcrypt_cost,
             )),
             collection: Arc::new(collection::CollectionService::new(
                 repository.collection.clone(),
@@ -63,6 +65,7 @@ impl Services {
             webhook: Arc::new(webhook::WebhookService::new(
                 repository.webhook.clone(),
                 &config.hmac_secret,
+                config.webhook_allow_private_targets,
             )),
         }
     }

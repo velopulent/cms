@@ -4,7 +4,7 @@ use axum::Json;
 use axum::http::{HeaderValue, StatusCode};
 use axum::response::{IntoResponse, Response};
 use axum_extra::extract::cookie::Cookie;
-use bcrypt::{DEFAULT_COST, hash, verify};
+use bcrypt::{hash, verify};
 use serde_json::json;
 use thiserror::Error;
 use time::Duration;
@@ -28,6 +28,7 @@ pub struct AuthService {
     cookie_secure: bool,
     session_lifetime_hours: i64,
     public_registration_enabled: bool,
+    bcrypt_cost: u32,
 }
 
 #[derive(Error, Debug)]
@@ -89,6 +90,7 @@ impl AuthService {
         cookie_secure: bool,
         session_lifetime_hours: i64,
         public_registration_enabled: bool,
+        bcrypt_cost: u32,
     ) -> Self {
         Self {
             user_repo,
@@ -97,6 +99,7 @@ impl AuthService {
             cookie_secure,
             session_lifetime_hours,
             public_registration_enabled,
+            bcrypt_cost,
         }
     }
 
@@ -144,7 +147,7 @@ impl AuthService {
             return Err(AuthError::ValidationError("Invalid email address".into()));
         }
 
-        let password_hash = hash(password, DEFAULT_COST).map_err(|e| AuthError::HashError(e.to_string()))?;
+        let password_hash = hash(password, self.bcrypt_cost).map_err(|e| AuthError::HashError(e.to_string()))?;
 
         let id = Uuid::now_v7().to_string();
         info!("Creating new user: id={}", id);
@@ -287,7 +290,7 @@ impl AuthService {
             return Err(AuthError::ValidationError("Invalid username or email".into()));
         }
         let id = Uuid::now_v7().to_string();
-        let password_hash = hash(temporary_password, DEFAULT_COST).map_err(|e| AuthError::HashError(e.to_string()))?;
+        let password_hash = hash(temporary_password, self.bcrypt_cost).map_err(|e| AuthError::HashError(e.to_string()))?;
         self.user_repo
             .create(&id, username, email, &password_hash)
             .await
@@ -461,7 +464,7 @@ impl AuthService {
         if !verify(current_password, &user.password_hash).unwrap_or(false) {
             return Err(AuthError::InvalidCredentials);
         }
-        let password_hash = hash(new_password, DEFAULT_COST).map_err(|e| AuthError::HashError(e.to_string()))?;
+        let password_hash = hash(new_password, self.bcrypt_cost).map_err(|e| AuthError::HashError(e.to_string()))?;
         self.user_repo
             .update_password(user_id, &password_hash, false)
             .await
@@ -505,6 +508,7 @@ mod tests {
             cookie_secure,
             24,
             true,
+            bcrypt::DEFAULT_COST,
         )
     }
 

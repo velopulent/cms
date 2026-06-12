@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use axum::{Json, http::StatusCode, response::IntoResponse};
-use bcrypt::{DEFAULT_COST, hash};
+use bcrypt::hash;
 use serde_json::json;
 use thiserror::Error;
 use tracing::{debug, error, info};
@@ -17,6 +17,7 @@ const SITE_TOKEN_PREFIX: &str = "cms_site_";
 pub struct AccessTokenService {
     access_token_repo: Arc<dyn AccessTokenRepository>,
     hmac_secret: String,
+    bcrypt_cost: u32,
 }
 
 #[derive(Error, Debug)]
@@ -48,10 +49,11 @@ impl TokenError {
 }
 
 impl AccessTokenService {
-    pub fn new(access_token_repo: Arc<dyn AccessTokenRepository>, hmac_secret: String) -> Self {
+    pub fn new(access_token_repo: Arc<dyn AccessTokenRepository>, hmac_secret: String, bcrypt_cost: u32) -> Self {
         Self {
             access_token_repo,
             hmac_secret,
+            bcrypt_cost,
         }
     }
 
@@ -83,7 +85,7 @@ impl AccessTokenService {
 
         let raw_token = Self::build_token();
         let prefix: String = raw_token.chars().take(24).collect();
-        let token_hash = hash(&raw_token, DEFAULT_COST).map_err(|e| TokenError::HashError(e.to_string()))?;
+        let token_hash = hash(&raw_token, self.bcrypt_cost).map_err(|e| TokenError::HashError(e.to_string()))?;
         let token_hmac = compute_key_hmac(&raw_token, &self.hmac_secret);
         let id = Uuid::now_v7().to_string();
         let permission_str = permission.as_str();
@@ -148,7 +150,7 @@ mod tests {
     }
 
     fn test_service(repo: Arc<InMemoryAccessTokenRepository>) -> AccessTokenService {
-        AccessTokenService::new(repo, "hmac-secret-key".to_string())
+        AccessTokenService::new(repo, "hmac-secret-key".to_string(), bcrypt::DEFAULT_COST)
     }
 
     #[tokio::test]

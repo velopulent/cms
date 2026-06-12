@@ -153,7 +153,8 @@ mod tests {
             .create("site-123", "Test Site", "filesystem", "user-123")
             .await
             .expect("site should be created");
-        let service = AccessTokenService::new(repository.access_token.clone(), hmac_secret.to_string());
+        let service =
+            AccessTokenService::new(repository.access_token.clone(), hmac_secret.to_string(), bcrypt::DEFAULT_COST);
         let token = service
             .create_site_token("site-123", "MCP".to_string(), AccessTokenPermission::Read, None)
             .await
