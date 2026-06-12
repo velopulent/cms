@@ -1,9 +1,13 @@
 use std::collections::HashMap;
+use std::net::IpAddr;
 use std::sync::Arc;
 use std::time::Duration;
 
+use aes_gcm::aead::{Aead, KeyInit};
+use aes_gcm::{Aes256Gcm, Key, Nonce};
 use axum::{Json, http::StatusCode, response::IntoResponse};
 use base64::{Engine, engine::general_purpose::STANDARD as BASE64_STANDARD};
+use rand::RngCore;
 use serde_json::json;
 use sha2::{Digest, Sha256};
 use thiserror::Error;
@@ -34,6 +38,7 @@ fn sanitize_url_for_logging(url: &str) -> String {
 pub struct WebhookService {
     webhook_repo: Arc<dyn WebhookRepository>,
     encryption_key: Arc<[u8; 32]>,
+    allow_private_targets: bool,
 }
 
 #[derive(Error, Debug)]
@@ -80,11 +85,12 @@ impl From<RepositoryError> for WebhookError {
 }
 
 impl WebhookService {
-    pub fn new(webhook_repo: Arc<dyn WebhookRepository>, hmac_secret: &str) -> Self {
+    pub fn new(webhook_repo: Arc<dyn WebhookRepository>, hmac_secret: &str, allow_private_targets: bool) -> Self {
         let key = derive_encryption_key(hmac_secret);
         Self {
             webhook_repo,
             encryption_key: Arc::new(key),
+            allow_private_targets,
         }
     }
 
@@ -124,7 +130,7 @@ impl WebhookService {
             return Err(WebhookError::InvalidLabel("Label is required".into()));
         }
 
-        if let Err(e) = validate_url(url) {
+        if let Err(e) = validate_url(url, self.allow_private_targets) {
             warn!(
                 "Webhook creation failed: invalid url_pattern={}, error={}",
                 sanitize_url_for_logging(url),
@@ -175,7 +181,7 @@ impl WebhookService {
         );
 
         if let Some(url_val) = url
-            && let Err(e) = validate_url(url_val)
+            && let Err(e) = validate_url(url_val, self.allow_private_targets)
         {
             warn!(
                 "Webhook update failed: invalid url_pattern={}, error={}",
@@ -264,8 +270,19 @@ impl WebhookService {
         let headers = decrypt_headers(&webhook.headers_encrypted, &self.encryption_key);
         debug!("Decrypted headers for webhook: header_count={}", headers.len());
 
+        // Re-validate and resolve right before sending: the stored host may now
+        // resolve to a private address (DNS rebinding). Pin the connection to a
+        // vetted IP and refuse redirects so it can't be bounced internally.
+        validate_url(&webhook.url, self.allow_private_targets)?;
+        let parsed_url = url::Url::parse(&webhook.url)
+            .map_err(|_| WebhookError::InvalidUrl("Invalid URL format".into()))?;
+        let safe_addr = resolve_safe_addr(&parsed_url, self.allow_private_targets).await?;
+        let host = parsed_url.host_str().unwrap_or_default().to_string();
+
         let client = reqwest::Client::builder()
             .timeout(Duration::from_secs(WEBHOOK_TIMEOUT_SECS))
+            .redirect(reqwest::redirect::Policy::none())
+            .resolve(&host, safe_addr)
             .build()
             .map_err(|e| {
                 error!("Failed to create HTTP client for webhook: error={}", e);
@@ -381,17 +398,96 @@ impl WebhookService {
     }
 }
 
-fn validate_url(url: &str) -> Result<(), WebhookError> {
+/// Structural SSRF validation done at create/update time (no DNS lookup).
+/// Rejects non-http(s) schemes, embedded credentials, localhost aliases, and
+/// IP literals that point at private/loopback/link-local ranges. DNS-name hosts
+/// are re-checked against their resolved IPs at delivery time (see
+/// [`resolve_safe_addr`]) to defend against DNS rebinding.
+fn validate_url(url: &str, allow_private: bool) -> Result<(), WebhookError> {
     if url.trim().is_empty() {
         return Err(WebhookError::InvalidUrl("URL is required".into()));
     }
-    if let Ok(parsed) = url::Url::parse(url) {
-        if parsed.scheme() != "https" && parsed.scheme() != "http" {
-            return Err(WebhookError::InvalidUrl("URL must use http or https scheme".into()));
+    let parsed = url::Url::parse(url).map_err(|_| WebhookError::InvalidUrl("Invalid URL format".into()))?;
+    if parsed.scheme() != "https" && parsed.scheme() != "http" {
+        return Err(WebhookError::InvalidUrl("URL must use http or https scheme".into()));
+    }
+    if !parsed.username().is_empty() || parsed.password().is_some() {
+        return Err(WebhookError::InvalidUrl("URL must not contain credentials".into()));
+    }
+    let host = parsed
+        .host_str()
+        .ok_or_else(|| WebhookError::InvalidUrl("URL must have a host".into()))?;
+
+    // Escape hatch for trusted internal/on-prem endpoints (and tests).
+    if allow_private {
+        return Ok(());
+    }
+
+    let host_lower = host.to_ascii_lowercase();
+    if host_lower == "localhost" || host_lower.ends_with(".localhost") {
+        return Err(WebhookError::InvalidUrl("URL host is not allowed".into()));
+    }
+    // IP literal? validate the address directly.
+    if let Ok(ip) = host_lower.trim_start_matches('[').trim_end_matches(']').parse::<IpAddr>()
+        && is_disallowed_ip(ip)
+    {
+        return Err(WebhookError::InvalidUrl("URL host resolves to a disallowed address".into()));
+    }
+    Ok(())
+}
+
+/// Resolve a webhook URL's host and ensure every resolved address is publicly
+/// routable. Returns one safe `SocketAddr` to pin the outgoing connection to,
+/// closing the DNS-rebinding window between validation and connect.
+async fn resolve_safe_addr(parsed: &url::Url, allow_private: bool) -> Result<std::net::SocketAddr, WebhookError> {
+    let host = parsed
+        .host_str()
+        .ok_or_else(|| WebhookError::InvalidUrl("URL must have a host".into()))?;
+    let port = parsed
+        .port_or_known_default()
+        .ok_or_else(|| WebhookError::InvalidUrl("URL has no known port".into()))?;
+
+    let addrs = tokio::net::lookup_host((host, port))
+        .await
+        .map_err(|e| WebhookError::DeliveryFailed(format!("DNS resolution failed: {e}")))?;
+
+    let mut chosen = None;
+    for addr in addrs {
+        if !allow_private && is_disallowed_ip(addr.ip()) {
+            return Err(WebhookError::InvalidUrl("URL host resolves to a disallowed address".into()));
         }
-        Ok(())
-    } else {
-        Err(WebhookError::InvalidUrl("Invalid URL format".into()))
+        chosen.get_or_insert(addr);
+    }
+    chosen.ok_or_else(|| WebhookError::InvalidUrl("URL host did not resolve".into()))
+}
+
+/// True if an IP must never be the target of an outbound webhook (loopback,
+/// private, link-local, CGNAT, unique-local, multicast, unspecified, etc.).
+fn is_disallowed_ip(ip: IpAddr) -> bool {
+    match ip {
+        IpAddr::V4(v4) => {
+            let o = v4.octets();
+            v4.is_loopback()
+                || v4.is_private()
+                || v4.is_link_local()
+                || v4.is_broadcast()
+                || v4.is_unspecified()
+                || v4.is_documentation()
+                || o[0] == 0
+                // CGNAT 100.64.0.0/10
+                || (o[0] == 100 && (64..=127).contains(&o[1]))
+        }
+        IpAddr::V6(v6) => {
+            if let Some(v4) = v6.to_ipv4_mapped() {
+                return is_disallowed_ip(IpAddr::V4(v4));
+            }
+            let seg0 = v6.segments()[0];
+            v6.is_loopback()
+                || v6.is_unspecified()
+                || v6.is_multicast()
+                || (seg0 & 0xfe00) == 0xfc00 // unique local fc00::/7
+                || (seg0 & 0xffc0) == 0xfe80 // link local fe80::/10
+        }
     }
 }
 
@@ -405,27 +501,44 @@ fn derive_encryption_key(secret: &str) -> [u8; 32] {
     key
 }
 
+/// Encrypt webhook headers with AES-256-GCM. Output is
+/// `base64(nonce[12] || ciphertext||tag)`. A fresh random nonce is used per call.
 fn encrypt_headers(headers: &HashMap<String, String>, key: &[u8; 32]) -> String {
     let json = serde_json::to_string(headers).unwrap_or_default();
-    let plaintext = json.as_bytes();
-    let mut encrypted = Vec::with_capacity(plaintext.len());
-    for (i, byte) in plaintext.iter().enumerate() {
-        encrypted.push(byte ^ key[i % key.len()]);
+    let cipher = Aes256Gcm::new(Key::<Aes256Gcm>::from_slice(key));
+    let mut nonce_bytes = [0u8; 12];
+    rand::thread_rng().fill_bytes(&mut nonce_bytes);
+    let nonce = Nonce::from_slice(&nonce_bytes);
+    match cipher.encrypt(nonce, json.as_bytes()) {
+        Ok(ciphertext) => {
+            let mut out = Vec::with_capacity(nonce_bytes.len() + ciphertext.len());
+            out.extend_from_slice(&nonce_bytes);
+            out.extend_from_slice(&ciphertext);
+            BASE64_STANDARD.encode(out)
+        }
+        Err(_) => String::new(),
     }
-    BASE64_STANDARD.encode(encrypted)
 }
 
+/// Decrypt AES-256-GCM headers produced by [`encrypt_headers`]. Any failure
+/// (bad base64, wrong key, truncated data, or legacy/incompatible ciphertext)
+/// yields an empty map rather than an error.
 fn decrypt_headers(encrypted: &str, key: &[u8; 32]) -> HashMap<String, String> {
-    let bytes = match BASE64_STANDARD.decode(encrypted) {
+    let raw = match BASE64_STANDARD.decode(encrypted) {
         Ok(b) => b,
         Err(_) => return HashMap::new(),
     };
-    let mut decrypted = Vec::with_capacity(bytes.len());
-    for (i, byte) in bytes.iter().enumerate() {
-        decrypted.push(byte ^ key[i % key.len()]);
+    if raw.len() < 12 {
+        return HashMap::new();
     }
-    match String::from_utf8(decrypted) {
-        Ok(s) => serde_json::from_str(&s).unwrap_or_default(),
+    let (nonce_bytes, ciphertext) = raw.split_at(12);
+    let cipher = Aes256Gcm::new(Key::<Aes256Gcm>::from_slice(key));
+    let nonce = Nonce::from_slice(nonce_bytes);
+    match cipher.decrypt(nonce, ciphertext) {
+        Ok(plaintext) => match String::from_utf8(plaintext) {
+            Ok(s) => serde_json::from_str(&s).unwrap_or_default(),
+            Err(_) => HashMap::new(),
+        },
         Err(_) => HashMap::new(),
     }
 }
@@ -451,7 +564,7 @@ mod tests {
     }
 
     fn test_service(repo: Arc<InMemoryWebhookRepository>) -> WebhookService {
-        WebhookService::new(repo, "test-secret-key-for-webhooks")
+        WebhookService::new(repo, "test-secret-key-for-webhooks", false)
     }
 
     fn make_webhook(id: &str, site_id: &str) -> SiteWebhook {
@@ -471,24 +584,53 @@ mod tests {
 
     #[test]
     fn test_validate_url_valid() {
-        assert!(validate_url("https://example.com/hook").is_ok());
-        assert!(validate_url("http://localhost:8080/webhook").is_ok());
+        assert!(validate_url("https://example.com/hook", false).is_ok());
+        assert!(validate_url("https://example.com:8080/webhook", false).is_ok());
+    }
+
+    #[test]
+    fn test_validate_url_blocks_ssrf() {
+        // localhost aliases
+        assert!(validate_url("http://localhost:8080/webhook", false).is_err());
+        assert!(validate_url("http://foo.localhost/webhook", false).is_err());
+        // private / loopback / link-local / cgnat IP literals
+        assert!(validate_url("http://127.0.0.1/x", false).is_err());
+        assert!(validate_url("http://10.0.0.5/x", false).is_err());
+        assert!(validate_url("http://192.168.1.1/x", false).is_err());
+        assert!(validate_url("http://172.16.0.1/x", false).is_err());
+        assert!(validate_url("http://169.254.169.254/latest/meta-data", false).is_err());
+        assert!(validate_url("http://100.64.0.1/x", false).is_err());
+        assert!(validate_url("http://[::1]/x", false).is_err());
+        // embedded credentials
+        assert!(validate_url("https://user:pass@example.com/x", false).is_err());
+    }
+
+    #[test]
+    fn test_is_disallowed_ip() {
+        use std::net::IpAddr;
+        assert!(is_disallowed_ip("127.0.0.1".parse::<IpAddr>().unwrap()));
+        assert!(is_disallowed_ip("10.1.2.3".parse::<IpAddr>().unwrap()));
+        assert!(is_disallowed_ip("169.254.169.254".parse::<IpAddr>().unwrap()));
+        assert!(is_disallowed_ip("::1".parse::<IpAddr>().unwrap()));
+        assert!(is_disallowed_ip("fd00::1".parse::<IpAddr>().unwrap()));
+        assert!(!is_disallowed_ip("8.8.8.8".parse::<IpAddr>().unwrap()));
+        assert!(!is_disallowed_ip("1.1.1.1".parse::<IpAddr>().unwrap()));
     }
 
     #[test]
     fn test_validate_url_empty() {
-        assert!(validate_url("").is_err());
-        assert!(validate_url("   ").is_err());
+        assert!(validate_url("", false).is_err());
+        assert!(validate_url("   ", false).is_err());
     }
 
     #[test]
     fn test_validate_url_no_scheme() {
-        assert!(validate_url("example.com/hook").is_err());
+        assert!(validate_url("example.com/hook", false).is_err());
     }
 
     #[test]
     fn test_validate_url_ftp_scheme() {
-        assert!(validate_url("ftp://example.com/hook").is_err());
+        assert!(validate_url("ftp://example.com/hook", false).is_err());
     }
 
     #[test]
