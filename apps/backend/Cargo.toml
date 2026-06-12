@@ -35,7 +35,7 @@ bytes = "1"
 http = "1"
 regex = "1"
 json-patch = "4"
-async-graphql = { version = "7", features = ["chrono", "uuid"] }
+async-graphql = { version = "7", features = ["chrono", "uuid", "dataloader"] }
 async-graphql-axum = "7"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
@@ -45,6 +45,9 @@ hmac = "0.13"
 hex = "0.4"
 cookie = "0.18"
 base64 = "0.22"
+aes-gcm = "0.10"
+rand = "0.8"
+dashmap = "6"
 url = "2"
 reqwest = { version = "0.13", features = ["json", "cookies", "multipart"] }
 prost = "0.14"
