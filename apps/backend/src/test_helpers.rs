@@ -613,6 +613,22 @@ impl EntryRepository for InMemoryEntryRepository {
             .collect())
     }
 
+    async fn get_by_collection_ids(
+        &self,
+        collection_ids: &[String],
+        status: Option<&str>,
+        published_only: bool,
+    ) -> Result<Vec<Entry>, RepositoryError> {
+        let entries = self.entries.lock().unwrap();
+        Ok(entries
+            .iter()
+            .filter(|e| collection_ids.iter().any(|c| c == &e.collection_id))
+            .filter(|e| status.is_none() || e.status == status.unwrap())
+            .filter(|e| !published_only || e.status == "published")
+            .cloned()
+            .collect())
+    }
+
     async fn create(
         &self,
         id: &str,

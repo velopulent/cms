@@ -202,6 +202,39 @@ impl EntryRepository for SqliteEntryRepository {
         Ok(result)
     }
 
+    async fn get_by_collection_ids(
+        &self,
+        collection_ids: &[String],
+        status: Option<&str>,
+        published_only: bool,
+    ) -> Result<Vec<Entry>, RepositoryError> {
+        if collection_ids.is_empty() {
+            return Ok(Vec::new());
+        }
+        let placeholders = vec!["?"; collection_ids.len()].join(", ");
+        let mut query = format!(
+            "SELECT id, site_id, collection_id, data, slug, status, singleton_collection_id, created_at, updated_at, published_at
+             FROM entries WHERE collection_id IN ({placeholders})"
+        );
+        let mut bindings: Vec<String> = collection_ids.to_vec();
+
+        if let Some(s) = status {
+            query.push_str(" AND status = ?");
+            bindings.push(s.to_string());
+        } else if published_only {
+            query.push_str(" AND status = 'published'");
+        }
+
+        query.push_str(" ORDER BY updated_at DESC");
+
+        let mut q = sqlx::query_as::<_, Entry>(&query);
+        for b in &bindings {
+            q = q.bind(b);
+        }
+
+        Ok(q.fetch_all(&self.pool).await?)
+    }
+
     async fn create(
         &self,
         id: &str,

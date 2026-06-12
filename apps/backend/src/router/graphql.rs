@@ -22,9 +22,19 @@ async fn graphql_handler(
 ) -> async_graphql_axum::GraphQLResponse {
     let auth_header = headers.get("Authorization").and_then(|v| v.to_str().ok());
 
+    // Per-request DataLoader (request-scoped cache) to batch nested resolvers.
+    let entry_loader = async_graphql::dataloader::DataLoader::new(
+        crate::graphql::loaders::EntryLoader {
+            repository: repository.clone(),
+        },
+        tokio::spawn,
+    );
+
     let gql_ctx = GqlContext::from_request(repository, services, auth_header, &config.hmac_secret).await;
 
-    let response = schema.execute(req.into_inner().data(gql_ctx)).await;
+    let response = schema
+        .execute(req.into_inner().data(gql_ctx).data(entry_loader))
+        .await;
     async_graphql_axum::GraphQLResponse::from(response)
 }
 
@@ -36,8 +46,8 @@ async fn graphiql_handler() -> impl IntoResponse {
     )
 }
 
-pub fn graphql_routes() -> Router {
+pub fn graphql_routes(production: bool) -> Router {
     Router::new()
         .route("/api/graphql", get(graphiql_handler).post(graphql_handler))
-        .layer(Extension(Arc::new(build_schema())))
+        .layer(Extension(Arc::new(build_schema(production))))
 }

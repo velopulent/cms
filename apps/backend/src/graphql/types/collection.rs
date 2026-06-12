@@ -23,15 +23,23 @@ impl Collection {
         ctx: &async_graphql::Context<'_>,
         status: Option<String>,
     ) -> async_graphql::Result<Vec<Entry>> {
+        use async_graphql::dataloader::DataLoader;
+        use crate::graphql::loaders::{EntriesByCollection, EntryLoader};
+
         let gql_ctx = ctx.data::<crate::graphql::context::GqlContext>()?;
         let published_only = gql_ctx.site_id.is_some();
 
-        let items = gql_ctx
-            .repository
-            .entry
-            .get_by_collection_id(&self.id, status.as_deref(), published_only)
+        // Batched via DataLoader to avoid an N+1 across multiple collections.
+        let loader = ctx.data::<DataLoader<EntryLoader>>()?;
+        let items = loader
+            .load_one(EntriesByCollection {
+                collection_id: self.id.clone(),
+                status: status.clone(),
+                published_only,
+            })
             .await
-            .map_err(|e| async_graphql::Error::new(format!("Database error: {}", e)))?;
+            .map_err(|e| crate::graphql::internal_error("collection.entry", e))?
+            .unwrap_or_default();
 
         Ok(items.into_iter().map(super::entry::db_entry_to_gql).collect())
     }

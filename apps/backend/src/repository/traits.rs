@@ -123,6 +123,15 @@ pub trait EntryRepository: Send + Sync {
         status: Option<&str>,
         published_only: bool,
     ) -> Result<Vec<Entry>, RepositoryError>;
+    /// Batched variant of [`get_by_collection_id`] for many collections in one
+    /// query (used by the GraphQL DataLoader to avoid N+1). Each returned entry
+    /// carries its `collection_id` so callers can group the flat result.
+    async fn get_by_collection_ids(
+        &self,
+        collection_ids: &[String],
+        status: Option<&str>,
+        published_only: bool,
+    ) -> Result<Vec<Entry>, RepositoryError>;
     async fn create(
         &self,
         id: &str,
