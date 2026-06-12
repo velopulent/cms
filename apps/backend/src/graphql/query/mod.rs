@@ -22,7 +22,7 @@ impl QueryRoot {
             .site
             .get_site(site_id)
             .await
-            .map_err(|e| async_graphql::Error::new(format!("Database error: {}", e)))?
+            .map_err(|e| crate::graphql::internal_error("query", e))?
             .ok_or_else(|| async_graphql::Error::new("Site not found"))?;
 
         Ok(Site {
@@ -44,7 +44,7 @@ impl QueryRoot {
             .collection
             .list_collections(site_id)
             .await
-            .map_err(|e| async_graphql::Error::new(format!("Database error: {}", e)))?;
+            .map_err(|e| crate::graphql::internal_error("query", e))?;
 
         Ok(db_collections
             .into_iter()
@@ -61,7 +61,7 @@ impl QueryRoot {
             .collection
             .get_collection(site_id, &slug)
             .await
-            .map_err(|e| async_graphql::Error::new(format!("Database error: {}", e)))?
+            .map_err(|e| crate::graphql::internal_error("query", e))?
             .ok_or_else(|| async_graphql::Error::new("Collection not found"))?;
 
         Ok(super::types::collection::db_collection_to_gql(db_collection))
@@ -99,7 +99,7 @@ impl QueryRoot {
             .entry
             .list_entries(params)
             .await
-            .map_err(|e| async_graphql::Error::new(format!("Database error: {}", e)))?;
+            .map_err(|e| crate::graphql::internal_error("query", e))?;
 
         Ok(result
             .items
@@ -117,7 +117,7 @@ impl QueryRoot {
             .entry
             .get_entry(&id, site_id, false)
             .await
-            .map_err(|e| async_graphql::Error::new(format!("Database error: {}", e)))?
+            .map_err(|e| crate::graphql::internal_error("query", e))?
             .ok_or_else(|| async_graphql::Error::new("Entry not found"))?;
 
         Ok(super::types::entry::db_entry_to_gql(entry))
@@ -150,7 +150,7 @@ impl QueryRoot {
             .file
             .list_files(params)
             .await
-            .map_err(|e| async_graphql::Error::new(format!("Database error: {}", e)))?;
+            .map_err(|e| crate::graphql::internal_error("query", e))?;
 
         Ok(result
             .items
@@ -168,7 +168,7 @@ impl QueryRoot {
             .file
             .get_file(&id, site_id)
             .await
-            .map_err(|e| async_graphql::Error::new(format!("Database error: {}", e)))?
+            .map_err(|e| crate::graphql::internal_error("query", e))?
             .ok_or_else(|| async_graphql::Error::new("File not found"))?;
 
         Ok(super::types::file::db_file_to_gql(db_file, gql_ctx))
@@ -187,7 +187,7 @@ impl QueryRoot {
             .file
             .get_file_references(&file_id, site_id)
             .await
-            .map_err(|e| async_graphql::Error::new(format!("Database error: {}", e)))?;
+            .map_err(|e| crate::graphql::internal_error("query", e))?;
 
         Ok(refs
             .into_iter()
@@ -215,7 +215,7 @@ impl QueryRoot {
             .entry
             .get_entry(&entry_id, site_id, false)
             .await
-            .map_err(|e| async_graphql::Error::new(format!("Database error: {}", e)))?
+            .map_err(|e| crate::graphql::internal_error("query", e))?
             .ok_or_else(|| async_graphql::Error::new("Entry not found"))?;
 
         let page_val = page.unwrap_or(1).max(1);
@@ -226,7 +226,7 @@ impl QueryRoot {
             .entry
             .list_revisions(&entry_id, site_id, page_val, per_page_val)
             .await
-            .map_err(|e| async_graphql::Error::new(format!("Database error: {}", e)))?;
+            .map_err(|e| crate::graphql::internal_error("query", e))?;
 
         Ok(super::types::entry::RevisionsListResult {
             items: result
@@ -256,7 +256,7 @@ impl QueryRoot {
             .entry
             .get_entry(&entry_id, site_id, false)
             .await
-            .map_err(|e| async_graphql::Error::new(format!("Database error: {}", e)))?
+            .map_err(|e| crate::graphql::internal_error("query", e))?
             .ok_or_else(|| async_graphql::Error::new("Entry not found"))?;
 
         let revision = gql_ctx
@@ -264,7 +264,7 @@ impl QueryRoot {
             .entry
             .get_revision(&entry_id, site_id, revision_number)
             .await
-            .map_err(|e| async_graphql::Error::new(format!("Database error: {}", e)))?
+            .map_err(|e| crate::graphql::internal_error("query", e))?
             .ok_or_else(|| async_graphql::Error::new("Revision not found"))?;
 
         let diff_value = if diff.unwrap_or(false) && revision_number > 1 {
@@ -295,7 +295,7 @@ impl QueryRoot {
             .webhook
             .list_webhooks(&site_id)
             .await
-            .map_err(|e| async_graphql::Error::new(format!("Database error: {}", e)))?;
+            .map_err(|e| crate::graphql::internal_error("query", e))?;
 
         Ok(webhooks
             .into_iter()
@@ -321,7 +321,7 @@ impl QueryRoot {
             .webhook
             .get_webhook(&webhook_id, &site_id)
             .await
-            .map_err(|e| async_graphql::Error::new(format!("Database error: {}", e)))?
+            .map_err(|e| crate::graphql::internal_error("query", e))?
             .ok_or_else(|| async_graphql::Error::new("Webhook not found"))?;
 
         let headers = gql_ctx.services.webhook.decrypt_webhook_headers(&webhook);
@@ -348,7 +348,7 @@ impl QueryRoot {
             .webhook
             .list_deliveries(&webhook_id, &site_id, page_val, per_page_val)
             .await
-            .map_err(|e| async_graphql::Error::new(format!("Database error: {}", e)))?;
+            .map_err(|e| crate::graphql::internal_error("query", e))?;
 
         Ok(deliveries.into_iter().map(db_delivery_to_gql).collect())
     }
