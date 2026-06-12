@@ -1,8 +1,9 @@
 use clap::Parser;
-use cms::cli::{AdminAction, Cli, Command, ConfigAction};
+use cms::cli::{AdminAction, Cli, Command, ConfigAction, McpTransport};
 use cms::config::{self, Config};
-use cms::database::init_db_with_config;
+use cms::database::{connect_db_without_migrations, init_db_with_config};
 use cms::grpc::server::spawn_grpc_server;
+use cms::middleware::auth::Actor;
 use cms::repository::Repository;
 use cms::router::create_router;
 use cms::services::Services;
@@ -22,6 +23,9 @@ async fn main() {
     let result = match &cli.command {
         Some(Command::Config { action }) => run_config(action, &cli),
         Some(Command::Admin { action }) => run_admin(action, &cli).await,
+        Some(Command::Mcp {
+            transport: McpTransport::Stdio,
+        }) => run_mcp_stdio(&cli).await,
         Some(Command::Serve) | None => run_serve(&cli).await,
     };
 
@@ -46,40 +50,7 @@ async fn run_serve(cli: &Cli) -> Result<(), Box<dyn Error>> {
 
     seed_admin(&repository).await;
 
-    let mut storage_registry = StorageRegistry::new();
-
-    if let Some(ref fs_path) = config.storage_fs_path {
-        match storage::FileSystemStorage::new(fs_path) {
-            Ok(fs) => {
-                storage_registry.register(STORAGE_KIND_FILESYSTEM, Arc::new(fs));
-                info!("Filesystem storage initialized at {}", fs_path);
-            }
-            Err(e) => warn!("Failed to init filesystem storage: {}", e),
-        }
-    }
-
-    if config.has_s3() {
-        match storage::S3Storage::new(
-            config.s3_access_key_id.as_deref().unwrap(),
-            config.s3_secret_access_key.as_deref().unwrap(),
-            config.s3_bucket.as_deref().unwrap(),
-            config.s3_region.as_deref().unwrap_or("us-east-1"),
-            config.s3_endpoint.as_deref(),
-            config.s3_public_url.as_deref(),
-        ) {
-            Ok(s3) => {
-                storage_registry.register(STORAGE_KIND_S3, Arc::new(s3));
-                info!("S3 storage initialized");
-            }
-            Err(e) => warn!("Failed to init S3 storage: {}", e),
-        }
-    }
-
-    if storage_registry.get(STORAGE_KIND_FILESYSTEM).is_none() && storage_registry.get(STORAGE_KIND_S3).is_none() {
-        warn!("No storage providers configured. Set STORAGE_FS_PATH or S3_* env vars.");
-    }
-
-    let storage_registry = Arc::new(storage_registry);
+    let storage_registry = initialize_storage(&config);
     let services = Services::new(Arc::new(repository.clone()), &config);
     let app = create_router(
         repository.clone(),
@@ -129,6 +100,92 @@ async fn run_serve(cli: &Cli) -> Result<(), Box<dyn Error>> {
     }
 
     Ok(())
+}
+
+async fn run_mcp_stdio(cli: &Cli) -> Result<(), Box<dyn Error>> {
+    let config = Config::load(cli)?;
+    cms::tracing::init_stdio_tracing(&config);
+
+    info!("Starting standalone MCP stdio process");
+    debug!(
+        database_backend = ?cms::database::backend::DatabaseBackend::from_url(&config.database_url),
+        "MCP stdio configuration loaded"
+    );
+
+    if let Err(error) = config.validate_security() {
+        return Err(format!("Invalid production security configuration: {error}").into());
+    }
+
+    let token = std::env::var("CMS_MCP_TOKEN").map_err(|_| "CMS_MCP_TOKEN is required for `cms mcp stdio`")?;
+    if token.trim().is_empty() {
+        return Err("CMS_MCP_TOKEN must not be empty".into());
+    }
+
+    let pool = connect_db_without_migrations(&config).await?;
+    info!("Existing CMS database schema is compatible; no migrations were run");
+
+    let repository = Repository::new(&pool);
+    let actor = cms::mcp::auth::verify_stdio_token(&token, &repository, &config.hmac_secret)
+        .await
+        .map_err(|error| format!("MCP stdio authentication failed: {}", error.message))?;
+    match &actor {
+        Actor::ApiKey(api_key) => info!(
+            site_id = %api_key.site_id,
+            permission = %api_key.permission,
+            "MCP stdio site token authenticated"
+        ),
+        Actor::User(_) => return Err("MCP stdio requires a CMS site access token".into()),
+    }
+
+    let storage_registry = initialize_storage(&config);
+    let repository = Arc::new(repository);
+    let config = Arc::new(config);
+    let services = Arc::new(Services::new(repository.clone(), &config));
+    let server = cms::mcp::server::CmsServer::new_stdio(services, repository, storage_registry, config, token);
+
+    let result = cms::mcp::transports::stdio::serve(server).await;
+    match &result {
+        Ok(()) => info!("Standalone MCP stdio process exited cleanly"),
+        Err(error) => tracing::error!(error = %error, "Standalone MCP stdio process exiting after failure"),
+    }
+    result
+}
+
+fn initialize_storage(config: &Config) -> Arc<StorageRegistry> {
+    let mut storage_registry = StorageRegistry::new();
+
+    if let Some(ref fs_path) = config.storage_fs_path {
+        match storage::FileSystemStorage::new(fs_path) {
+            Ok(fs) => {
+                storage_registry.register(STORAGE_KIND_FILESYSTEM, Arc::new(fs));
+                info!("Filesystem storage initialized at {}", fs_path);
+            }
+            Err(error) => warn!("Failed to initialize filesystem storage: {}", error),
+        }
+    }
+
+    if config.has_s3() {
+        match storage::S3Storage::new(
+            config.s3_access_key_id.as_deref().unwrap(),
+            config.s3_secret_access_key.as_deref().unwrap(),
+            config.s3_bucket.as_deref().unwrap(),
+            config.s3_region.as_deref().unwrap_or("us-east-1"),
+            config.s3_endpoint.as_deref(),
+            config.s3_public_url.as_deref(),
+        ) {
+            Ok(s3) => {
+                storage_registry.register(STORAGE_KIND_S3, Arc::new(s3));
+                info!("S3 storage initialized");
+            }
+            Err(error) => warn!("Failed to initialize S3 storage: {}", error),
+        }
+    }
+
+    if storage_registry.get(STORAGE_KIND_FILESYSTEM).is_none() && storage_registry.get(STORAGE_KIND_S3).is_none() {
+        warn!("No storage providers configured. Set STORAGE_FS_PATH or S3_* env vars.");
+    }
+
+    Arc::new(storage_registry)
 }
 
 fn run_config(action: &ConfigAction, cli: &Cli) -> Result<(), Box<dyn Error>> {
