@@ -15,9 +15,10 @@ mod webhooks;
 
 use std::sync::Arc;
 
+use axum::http::{HeaderName, Method, header};
 use axum::{Extension, Router, middleware::from_fn, routing::get};
 use tokio_util::sync::CancellationToken;
-use tower_http::cors::{AllowOrigin, Any, CorsLayer};
+use tower_http::cors::{AllowOrigin, CorsLayer};
 use tower_http::limit::RequestBodyLimitLayer;
 use tower_http::trace::TraceLayer;
 use tracing::info;
@@ -78,21 +79,41 @@ pub fn create_router(
     storage_registry: Arc<StorageRegistry>,
     services: Services,
 ) -> Router {
-    let rate_limiter = RateLimiter::new(config.rate_limit_max_requests, config.rate_limit_window_secs);
+    let rate_limiter = RateLimiter::new(
+        config.rate_limit_max_requests,
+        config.rate_limit_window_secs,
+        config.trust_proxy_headers,
+    );
     let max_upload_bytes = config.max_upload_size_bytes;
 
     let cors = if config.allowed_origins.is_empty() {
-        CorsLayer::new().allow_methods(Any).allow_headers(Any)
+        // No cross-origin access configured: same-origin only. Emitting no
+        // Access-Control-Allow-Origin header makes browsers block cross-site reads.
+        CorsLayer::new()
     } else {
         let origins = config
             .allowed_origins
             .iter()
             .filter_map(|origin| origin.parse().ok())
             .collect::<Vec<_>>();
+        // Explicit method + header allow-lists are required for credentialed CORS;
+        // `Any` is silently ignored by browsers when credentials are allowed.
         CorsLayer::new()
             .allow_origin(AllowOrigin::list(origins))
-            .allow_methods(Any)
-            .allow_headers(Any)
+            .allow_methods([
+                Method::GET,
+                Method::POST,
+                Method::PUT,
+                Method::PATCH,
+                Method::DELETE,
+                Method::OPTIONS,
+            ])
+            .allow_headers([
+                header::AUTHORIZATION,
+                header::CONTENT_TYPE,
+                header::ACCEPT,
+                HeaderName::from_static("x-csrf-token"),
+            ])
             .allow_credentials(true)
     };
 
@@ -121,7 +142,7 @@ pub fn create_router(
                 .layer(from_fn(dashboard_auth_middleware)),
         )
         // ── GraphQL (custom auth in handler) ──
-        .merge(graphql::graphql_routes())
+        .merge(graphql::graphql_routes(config.production))
         // ── Docs ──
         .merge(docs::docs_routes())
         // ── Dashboard SPA ──

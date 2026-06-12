@@ -99,10 +99,13 @@ async fn run_serve(cli: &Cli) -> Result<(), Box<dyn Error>> {
             .await
             .expect("Failed to bind address");
 
-        axum::serve(listener, app)
-            .with_graceful_shutdown(shutdown_signal())
-            .await
-            .expect("Server error");
+        axum::serve(
+            listener,
+            app.into_make_service_with_connect_info::<std::net::SocketAddr>(),
+        )
+        .with_graceful_shutdown(shutdown_signal())
+        .await
+        .expect("Server error");
     });
 
     let grpc_handle = tokio::spawn(spawn_grpc_server(
@@ -209,6 +212,15 @@ async fn seed_admin(repository: &Repository) {
             .expect("Failed to require password change");
 
         warn!("Seeded default admin user (admin/admin) — CHANGE THE PASSWORD IMMEDIATELY!");
+        eprintln!(
+            "\n\
+             ============================ SECURITY WARNING ============================\n\
+             A default admin account was created:  username 'admin'  password 'admin'\n\
+             Anyone who can reach this server can log in until you change it. Run:\n\
+             \n    cms admin reset-password --username admin --password <new-strong-password>\n\n\
+             or change it from the dashboard now. Do NOT expose this server until done.\n\
+             =========================================================================\n"
+        );
     } else {
         debug!("Admin user already exists, skipping seeding");
     }
