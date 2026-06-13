@@ -6,6 +6,8 @@ pub mod database;
 pub mod error;
 pub mod graphql;
 pub mod mcp;
+pub mod paths;
+pub mod secrets;
 pub mod signed_upload;
 pub mod test_helpers;
 pub mod tracing;
