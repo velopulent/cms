@@ -13,11 +13,11 @@ import { Route as RegisterRouteImport } from './routes/register'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as AdminRouteImport } from './routes/_admin'
 import { Route as AdminSitesRouteImport } from './routes/_admin/sites'
-import { Route as AdminAccountRouteImport } from './routes/_admin/account'
 import { Route as AdminShellRouteImport } from './routes/_admin/_shell'
 import { Route as AdminShellIndexRouteImport } from './routes/_admin/_shell/index'
 import { Route as AdminSitesSiteIdRouteImport } from './routes/_admin/sites.$siteId'
 import { Route as AdminShellSettingsRouteImport } from './routes/_admin/_shell/settings'
+import { Route as AdminShellAccountRouteImport } from './routes/_admin/_shell/account'
 import { Route as AdminSitesSiteIdIndexRouteImport } from './routes/_admin/sites.$siteId/index'
 import { Route as AdminShellSettingsIndexRouteImport } from './routes/_admin/_shell/settings/index'
 import { Route as AdminSitesSiteIdSettingsRouteImport } from './routes/_admin/sites.$siteId/settings'
@@ -53,11 +53,6 @@ const AdminSitesRoute = AdminSitesRouteImport.update({
   path: '/sites',
   getParentRoute: () => AdminRoute,
 } as any)
-const AdminAccountRoute = AdminAccountRouteImport.update({
-  id: '/account',
-  path: '/account',
-  getParentRoute: () => AdminRoute,
-} as any)
 const AdminShellRoute = AdminShellRouteImport.update({
   id: '/_shell',
   getParentRoute: () => AdminRoute,
@@ -75,6 +70,11 @@ const AdminSitesSiteIdRoute = AdminSitesSiteIdRouteImport.update({
 const AdminShellSettingsRoute = AdminShellSettingsRouteImport.update({
   id: '/settings',
   path: '/settings',
+  getParentRoute: () => AdminShellRoute,
+} as any)
+const AdminShellAccountRoute = AdminShellAccountRouteImport.update({
+  id: '/account',
+  path: '/account',
   getParentRoute: () => AdminShellRoute,
 } as any)
 const AdminSitesSiteIdIndexRoute = AdminSitesSiteIdIndexRouteImport.update({
@@ -168,8 +168,8 @@ export interface FileRoutesByFullPath {
   '/': typeof AdminShellIndexRoute
   '/login': typeof LoginRoute
   '/register': typeof RegisterRoute
-  '/account': typeof AdminAccountRoute
   '/sites': typeof AdminSitesRouteWithChildren
+  '/account': typeof AdminShellAccountRoute
   '/settings': typeof AdminShellSettingsRouteWithChildren
   '/sites/$siteId': typeof AdminSitesSiteIdRouteWithChildren
   '/settings/users': typeof AdminShellSettingsUsersRoute
@@ -192,8 +192,8 @@ export interface FileRoutesByTo {
   '/': typeof AdminShellIndexRoute
   '/login': typeof LoginRoute
   '/register': typeof RegisterRoute
-  '/account': typeof AdminAccountRoute
   '/sites': typeof AdminSitesRouteWithChildren
+  '/account': typeof AdminShellAccountRoute
   '/settings/users': typeof AdminShellSettingsUsersRoute
   '/sites/$siteId/collections': typeof AdminSitesSiteIdCollectionsRoute
   '/sites/$siteId/files': typeof AdminSitesSiteIdFilesRoute
@@ -214,8 +214,8 @@ export interface FileRoutesById {
   '/login': typeof LoginRoute
   '/register': typeof RegisterRoute
   '/_admin/_shell': typeof AdminShellRouteWithChildren
-  '/_admin/account': typeof AdminAccountRoute
   '/_admin/sites': typeof AdminSitesRouteWithChildren
+  '/_admin/_shell/account': typeof AdminShellAccountRoute
   '/_admin/_shell/settings': typeof AdminShellSettingsRouteWithChildren
   '/_admin/sites/$siteId': typeof AdminSitesSiteIdRouteWithChildren
   '/_admin/_shell/': typeof AdminShellIndexRoute
@@ -241,8 +241,8 @@ export interface FileRouteTypes {
     | '/'
     | '/login'
     | '/register'
-    | '/account'
     | '/sites'
+    | '/account'
     | '/settings'
     | '/sites/$siteId'
     | '/settings/users'
@@ -265,8 +265,8 @@ export interface FileRouteTypes {
     | '/'
     | '/login'
     | '/register'
-    | '/account'
     | '/sites'
+    | '/account'
     | '/settings/users'
     | '/sites/$siteId/collections'
     | '/sites/$siteId/files'
@@ -286,8 +286,8 @@ export interface FileRouteTypes {
     | '/login'
     | '/register'
     | '/_admin/_shell'
-    | '/_admin/account'
     | '/_admin/sites'
+    | '/_admin/_shell/account'
     | '/_admin/_shell/settings'
     | '/_admin/sites/$siteId'
     | '/_admin/_shell/'
@@ -344,13 +344,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AdminSitesRouteImport
       parentRoute: typeof AdminRoute
     }
-    '/_admin/account': {
-      id: '/_admin/account'
-      path: '/account'
-      fullPath: '/account'
-      preLoaderRoute: typeof AdminAccountRouteImport
-      parentRoute: typeof AdminRoute
-    }
     '/_admin/_shell': {
       id: '/_admin/_shell'
       path: ''
@@ -377,6 +370,13 @@ declare module '@tanstack/react-router' {
       path: '/settings'
       fullPath: '/settings'
       preLoaderRoute: typeof AdminShellSettingsRouteImport
+      parentRoute: typeof AdminShellRoute
+    }
+    '/_admin/_shell/account': {
+      id: '/_admin/_shell/account'
+      path: '/account'
+      fullPath: '/account'
+      preLoaderRoute: typeof AdminShellAccountRouteImport
       parentRoute: typeof AdminShellRoute
     }
     '/_admin/sites/$siteId/': {
@@ -501,11 +501,13 @@ const AdminShellSettingsRouteWithChildren =
   AdminShellSettingsRoute._addFileChildren(AdminShellSettingsRouteChildren)
 
 interface AdminShellRouteChildren {
+  AdminShellAccountRoute: typeof AdminShellAccountRoute
   AdminShellSettingsRoute: typeof AdminShellSettingsRouteWithChildren
   AdminShellIndexRoute: typeof AdminShellIndexRoute
 }
 
 const AdminShellRouteChildren: AdminShellRouteChildren = {
+  AdminShellAccountRoute: AdminShellAccountRoute,
   AdminShellSettingsRoute: AdminShellSettingsRouteWithChildren,
   AdminShellIndexRoute: AdminShellIndexRoute,
 }
@@ -592,13 +594,11 @@ const AdminSitesRouteWithChildren = AdminSitesRoute._addFileChildren(
 
 interface AdminRouteChildren {
   AdminShellRoute: typeof AdminShellRouteWithChildren
-  AdminAccountRoute: typeof AdminAccountRoute
   AdminSitesRoute: typeof AdminSitesRouteWithChildren
 }
 
 const AdminRouteChildren: AdminRouteChildren = {
   AdminShellRoute: AdminShellRouteWithChildren,
-  AdminAccountRoute: AdminAccountRoute,
   AdminSitesRoute: AdminSitesRouteWithChildren,
 }
 
