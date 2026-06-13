@@ -1,7 +1,12 @@
 "use client";
 
 import { useNavigate, useParams } from "@tanstack/react-router";
-import { ChevronsUpDown, GalleryVerticalEnd, Plus } from "lucide-react";
+import {
+  ChevronsUpDown,
+  GalleryVerticalEnd,
+  LayoutDashboard,
+  Plus,
+} from "lucide-react";
 import type * as React from "react";
 
 import {
@@ -88,6 +93,18 @@ export function SiteSwitcher({
             side={isMobile ? "bottom" : "right"}
             sideOffset={4}
           >
+            <DropdownMenuGroup>
+              <DropdownMenuItem
+                className="gap-2 p-2"
+                onClick={() => navigate({ to: "/" })}
+              >
+                <div className="flex size-6 items-center justify-center rounded-md border">
+                  <LayoutDashboard className="size-4" />
+                </div>
+                <div className="font-medium">Dashboard</div>
+              </DropdownMenuItem>
+            </DropdownMenuGroup>
+            <DropdownMenuSeparator />
             <DropdownMenuGroup>
               <DropdownMenuLabel className="text-xs text-muted-foreground">
                 Sites
