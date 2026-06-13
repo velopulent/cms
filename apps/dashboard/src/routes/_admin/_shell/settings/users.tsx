@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { createFileRoute, redirect } from "@tanstack/react-router";
+import { createFileRoute } from "@tanstack/react-router";
 import { ShieldCheck, UserPlus } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
@@ -26,24 +26,14 @@ import { Skeleton } from "@/components/ui/skeleton";
 import {
   createManagedUser,
   getInstanceUsers,
-  getMe,
   updateInstanceRole,
 } from "@/lib/api";
 
-export const Route = createFileRoute("/_admin/instance")({
-  beforeLoad: async ({ context }) => {
-    const user = await context.queryClient.ensureQueryData({
-      queryKey: ["me"],
-      queryFn: getMe,
-    });
-    if (user.instance_role !== "instance_owner") {
-      throw redirect({ to: "/sites" });
-    }
-  },
-  component: InstanceAdministrationPage,
+export const Route = createFileRoute("/_admin/_shell/settings/users")({
+  component: InstanceUsers,
 });
 
-function InstanceAdministrationPage() {
+function InstanceUsers() {
   const queryClient = useQueryClient();
   const [open, setOpen] = useState(false);
   const [form, setForm] = useState({
@@ -89,14 +79,8 @@ function InstanceAdministrationPage() {
   });
 
   return (
-    <main className="mx-auto flex w-full max-w-6xl flex-col gap-6 p-4 md:p-6">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <h1 className="text-2xl font-semibold">Instance administration</h1>
-          <p className="text-sm text-muted-foreground">
-            Manage users allowed to administer this CMS installation.
-          </p>
-        </div>
+    <div className="flex flex-col gap-4">
+      <div className="flex justify-end">
         <Button onClick={() => setOpen(true)}>
           <UserPlus data-icon="inline-start" />
           Create user
@@ -263,6 +247,6 @@ function InstanceAdministrationPage() {
           </form>
         </DialogContent>
       </Dialog>
-    </main>
+    </div>
   );
 }

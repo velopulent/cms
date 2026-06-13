@@ -114,7 +114,7 @@ export function SiteSwitcher({
             <DropdownMenuGroup>
               <DropdownMenuItem
                 className="gap-2 p-2"
-                onClick={() => navigate({ to: "/sites" })}
+                onClick={() => navigate({ to: "/", search: { create: true } })}
               >
                 <div className="flex size-6 items-center justify-center rounded-md border bg-transparent">
                   <Plus className="size-4" />

@@ -9,7 +9,6 @@ import {
   Layers,
   LayoutDashboard,
   Settings,
-  ShieldCheck,
 } from "lucide-react";
 import { type ComponentProps, useMemo } from "react";
 import { NavCollections } from "@/components/sidebar/nav-collections";
@@ -128,18 +127,6 @@ export function AppSidebar({ ...props }: ComponentProps<typeof Sidebar>) {
       </SidebarContent>
       <SidebarFooter>
         <SidebarMenu>
-          {auth.user?.instance_role === "instance_owner" && (
-            <SidebarMenuItem>
-              <SidebarMenuButton
-                tooltip="Instance administration"
-                isActive={pathname === "/instance"}
-                render={<Link to="/instance" />}
-              >
-                <ShieldCheck />
-                <span>Instance</span>
-              </SidebarMenuButton>
-            </SidebarMenuItem>
-          )}
           <SidebarMenuItem>
             <SidebarMenuButton
               tooltip="Settings"

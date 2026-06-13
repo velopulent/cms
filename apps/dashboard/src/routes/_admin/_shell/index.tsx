@@ -43,11 +43,11 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { useAuth } from "@/contexts/auth-context";
 import { createSite, getSites, type SiteWithRole } from "@/lib/api";
 
-export const Route = createFileRoute("/_admin/sites/")({
+export const Route = createFileRoute("/_admin/_shell/")({
   validateSearch: z.object({
     create: z.boolean().optional(),
   }),
-  component: SitesPage,
+  component: HomePage,
 });
 
 function formatDate(dateStr: string) {
@@ -59,15 +59,15 @@ function formatDate(dateStr: string) {
   });
 }
 
+const roleColors = {
+  owner: "bg-purple-500/10 text-purple-700 border-purple-500/20",
+  admin: "bg-blue-500/10 text-blue-700 border-blue-500/20",
+  editor: "bg-green-500/10 text-green-700 border-green-500/20",
+  viewer: "bg-orange-500/10 text-orange-700 border-orange-500/20",
+} as const;
+
 function SiteCard({ site }: { site: SiteWithRole }) {
   const navigate = useNavigate();
-
-  const roleColors = {
-    owner: "bg-purple-500/10 text-purple-700 border-purple-500/20",
-    admin: "bg-blue-500/10 text-blue-700 border-blue-500/20",
-    editor: "bg-green-500/10 text-green-700 border-green-500/20",
-    viewer: "bg-orange-500/10 text-orange-700 border-orange-500/20",
-  } as const;
 
   return (
     <Card
@@ -80,19 +80,17 @@ function SiteCard({ site }: { site: SiteWithRole }) {
       }
     >
       <CardHeader className="pb-3">
-        <div className="flex items-start justify-between">
-          <div className="flex items-center gap-3">
-            <div className="flex size-10 items-center justify-center rounded-lg bg-primary/10">
-              <Globe className="size-5 text-primary" />
-            </div>
-            <div>
-              <CardTitle className="text-lg font-semibold">
-                {site.name}
-              </CardTitle>
-              <CardDescription className="text-xs">
-                Created {formatDate(site.created_at)}
-              </CardDescription>
-            </div>
+        <div className="flex items-center gap-3">
+          <div className="flex size-10 items-center justify-center rounded-lg bg-primary/10">
+            <Globe className="size-5 text-primary" />
+          </div>
+          <div className="min-w-0">
+            <CardTitle className="truncate text-lg font-semibold">
+              {site.name}
+            </CardTitle>
+            <CardDescription className="text-xs">
+              Created {formatDate(site.created_at)}
+            </CardDescription>
           </div>
         </div>
       </CardHeader>
@@ -288,10 +286,10 @@ function CreateSiteDialog({
   );
 }
 
-function SitesPage() {
+function HomePage() {
   const { user } = useAuth();
   const navigate = useNavigate();
-  const search = useSearch({ from: "/_admin/sites/" });
+  const search = useSearch({ from: "/_admin/_shell/" });
   const [createOpen, setCreateOpen] = useState(false);
   const canCreateSite = user?.instance_role === "instance_owner";
 
@@ -303,79 +301,62 @@ function SitesPage() {
   useEffect(() => {
     if (search.create && canCreateSite) {
       setCreateOpen(true);
-      navigate({ to: "/sites", search: {}, replace: true });
+      navigate({ to: "/", search: {}, replace: true });
     }
   }, [search.create, canCreateSite, navigate]);
 
-  if (isLoading) {
-    return (
-      <div className="container mx-auto max-w-5xl p-6">
-        <div className="mb-6 flex items-center justify-between">
-          <div>
-            <Skeleton className="h-8 w-24" />
-            <Skeleton className="mt-2 h-4 w-48" />
-          </div>
+  return (
+    <main className="container mx-auto w-full max-w-6xl flex-1 p-4 sm:p-6">
+      <div className="mb-8 flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight">Your Sites</h1>
+          <p className="text-muted-foreground">
+            Manage your sites and their content
+          </p>
         </div>
+        {canCreateSite ? (
+          <Button onClick={() => setCreateOpen(true)} className="gap-2">
+            <Plus className="size-4" />
+            Create Site
+          </Button>
+        ) : null}
+      </div>
+
+      {isLoading ? (
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {[1, 2, 3].map((i) => (
             <Skeleton key={i} className="h-40 w-full" />
           ))}
         </div>
-      </div>
-    );
-  }
-
-  return (
-    <>
-      <div className="container mx-auto max-w-5xl p-6">
-        <div className="mb-8 flex items-center justify-between">
-          <div>
-            <h1 className="text-2xl font-bold tracking-tight">Your Sites</h1>
-            <p className="text-muted-foreground">
-              Manage your sites and their content
-            </p>
+      ) : sites && sites.length > 0 ? (
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          {sites.map((site) => (
+            <SiteCard key={site.id} site={site} />
+          ))}
+        </div>
+      ) : (
+        <div className="flex flex-col items-center justify-center rounded-lg border border-dashed py-16">
+          <div className="flex size-16 items-center justify-center rounded-full bg-muted">
+            <Globe className="size-8 text-muted-foreground" />
           </div>
+          <h3 className="mt-4 text-lg font-semibold">No sites yet</h3>
+          <p className="mt-1 max-w-sm text-center text-muted-foreground">
+            {canCreateSite
+              ? "Create your first site to start managing content"
+              : "An instance owner must create a site before you can access it."}
+          </p>
           {canCreateSite ? (
-            <Button onClick={() => setCreateOpen(true)} className="gap-2">
+            <Button onClick={() => setCreateOpen(true)} className="mt-6 gap-2">
               <Plus className="size-4" />
               Create Site
             </Button>
           ) : null}
         </div>
-
-        {sites && sites.length > 0 ? (
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {sites.map((site) => (
-              <SiteCard key={site.id} site={site} />
-            ))}
-          </div>
-        ) : (
-          <div className="flex flex-col items-center justify-center rounded-lg border border-dashed py-16">
-            <div className="flex size-16 items-center justify-center rounded-full bg-muted">
-              <Globe className="size-8 text-muted-foreground" />
-            </div>
-            <h3 className="mt-4 text-lg font-semibold">No sites yet</h3>
-            <p className="mt-1 max-w-sm text-center text-muted-foreground">
-              {canCreateSite
-                ? "Create your first site to start managing content"
-                : "An instance owner must create a site before you can access it."}
-            </p>
-            {canCreateSite ? (
-              <Button
-                onClick={() => setCreateOpen(true)}
-                className="mt-6 gap-2"
-              >
-                <Plus className="size-4" />
-                Create Site
-              </Button>
-            ) : null}
-          </div>
-        )}
-      </div>
+      )}
 
       {canCreateSite ? (
         <CreateSiteDialog open={createOpen} onOpenChange={setCreateOpen} />
       ) : null}
-    </>
+    </main>
   );
 }
