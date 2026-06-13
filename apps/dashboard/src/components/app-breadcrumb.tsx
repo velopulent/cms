@@ -148,13 +148,27 @@ export function AppBreadcrumb() {
   const matches = useMatches();
   const params = useParams({ strict: false }) as Record<string, string>;
 
-  const currentMatch = matches[matches.length - 1];
-  if (!currentMatch) return null;
+  // Find the most specific matched route (leaf first) that has a breadcrumb
+  // config. Scanning all matches—not just the leaf—lets index routes (whose
+  // leaf id carries a trailing slash, e.g. ".../settings/") and nested tabs
+  // resolve to their layout's config.
+  let config: BreadcrumbConfig | undefined;
+  let routeId: string | undefined;
+  for (let i = matches.length - 1; i >= 0; i--) {
+    const found = breadcrumbConfigs.find((c) => c.routeId === matches[i].routeId);
+    if (found) {
+      config = found;
+      routeId = matches[i].routeId;
+      break;
+    }
+  }
 
-  const routeId = currentMatch.routeId;
-  const config = breadcrumbConfigs.find((c) => c.routeId === routeId);
+  // Rules of Hooks: this must run unconditionally on every render, before any
+  // early return. Passing an empty crumb list keeps the hook count stable when
+  // no config matches.
+  const labels = useBreadcrumbLabels(config?.crumbs ?? [], params);
 
-  if (!config) {
+  if (!config || !routeId) {
     return (
       <Breadcrumb>
         <BreadcrumbList>
@@ -166,7 +180,6 @@ export function AppBreadcrumb() {
     );
   }
 
-  const labels = useBreadcrumbLabels(config.crumbs, params);
   const isLoading = labels.some((label) => label === null);
 
   if (isLoading) {
