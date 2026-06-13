@@ -6,8 +6,8 @@ import {
   Files,
   FileText,
   GalleryVerticalEnd,
+  Home,
   Layers,
-  LayoutDashboard,
   Settings,
 } from "lucide-react";
 import { type ComponentProps, useMemo } from "react";
@@ -59,9 +59,9 @@ export function AppSidebar({ ...props }: ComponentProps<typeof Sidebar>) {
   const navMain = useMemo(
     () => [
       {
-        title: "Dashboard",
+        title: "Home",
         url: `/sites/${siteId}`,
-        icon: <LayoutDashboard />,
+        icon: <Home />,
       },
       {
         title: "Collections",
