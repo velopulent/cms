@@ -1,6 +1,5 @@
 use std::path::PathBuf;
 
-use directories::ProjectDirs;
 use figment::{
     Figment,
     providers::{Env, Format, Serialized, Toml},
@@ -8,6 +7,8 @@ use figment::{
 use serde::{Deserialize, Deserializer};
 
 use crate::cli::Cli;
+use crate::paths;
+use crate::secrets;
 
 #[derive(Clone, Debug, Default)]
 pub struct Config {
@@ -148,6 +149,15 @@ impl Config {
     /// built-in defaults < config file < environment variables < CLI flags.
     pub fn load(cli: &Cli) -> Result<Self, figment::Error> {
         let mut figment = Figment::new();
+
+        // Lowest-precedence secret layer: persisted JWT/HMAC secrets from
+        // `~/.cms/secrets.toml`. Read-only here (generation happens in
+        // `secrets::ensure()` during serve/admin). Best-effort: a missing or
+        // unreadable file just leaves the built-in defaults in play. Env vars
+        // and CLI flags still override these.
+        if let Ok(Some(persisted)) = secrets::load() {
+            figment = figment.merge(Serialized::defaults(persisted));
+        }
 
         if let Some(path) = resolve_config_path(cli) {
             figment = figment.merge(Toml::file(path));
@@ -338,7 +348,7 @@ impl RawConfig {
         let log = self.log.unwrap_or_default();
 
         Config {
-            database_url: self.database_url.unwrap_or_else(|| "sqlite:cms.db".into()),
+            database_url: self.database_url.unwrap_or_else(paths::default_database_url),
             jwt_secret,
             hmac_secret,
             bind_address: self.bind_address.unwrap_or_else(|| "0.0.0.0:3000".into()),
@@ -373,7 +383,9 @@ impl RawConfig {
             log_output: log.output.unwrap_or_else(|| "stdout".into()),
             log_format: log.format.unwrap_or_else(|| "pretty".into()),
             log_annotations: log.annotations.unwrap_or(false),
-            log_dir: log.dir.unwrap_or_else(|| "logs".into()),
+            log_dir: log
+                .dir
+                .unwrap_or_else(|| paths::logs_dir().to_string_lossy().into_owned()),
         }
     }
 }
@@ -397,10 +409,10 @@ pub fn config_search_paths() -> Vec<PathBuf> {
     paths
 }
 
-/// The platform user-config location for the config file
-/// (`~/.config/cms/config.toml`, `%APPDATA%\cms\config.toml`, etc.).
+/// The user-config location for the config file: `~/.cms/config.toml`
+/// (or `$CMS_HOME/config.toml`).
 pub fn user_config_path() -> Option<PathBuf> {
-    ProjectDirs::from("", "", "cms").map(|dirs| dirs.config_dir().join("config.toml"))
+    Some(paths::config_file())
 }
 
 /// The scaffold written by `cms config init` — non-secret keys only, with
@@ -626,7 +638,8 @@ mod tests {
     #[test]
     fn test_raw_config_into_config_applies_defaults() {
         let config = RawConfig::default().into_config();
-        assert_eq!(config.database_url, "sqlite:cms.db");
+        assert!(config.database_url.starts_with("sqlite://"));
+        assert!(config.database_url.ends_with("cms.db"));
         assert_eq!(config.bind_address, "0.0.0.0:3000");
         assert_eq!(config.max_upload_size_bytes, 50 * 1024 * 1024);
         assert_eq!(config.log_level, DEFAULT_LOG_LEVEL);
