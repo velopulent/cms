@@ -85,11 +85,34 @@ Layers merge with precedence: **CLI flag > env var > config file > built-in defa
 Config file search order (first existing wins; missing is fine):
 1. `--config` flag / `CMS_CONFIG` env
 2. `./cms.toml` (current dir)
-3. user config dir — `~/.config/cms/config.toml` (Linux), `%APPDATA%\cms\config\config.toml` (Windows), `~/Library/Application Support/cms/config.toml` (macOS)
+3. `~/.cms/config.toml` (CMS home; `$CMS_HOME/config.toml` if set) — where `cms config init` writes
 4. `/etc/cms/config.toml`
 
-Env-only secrets (never read from the config file by convention, omitted from `config init`):
-`DATABASE_URL`, `JWT_SECRET`, `HMAC_SECRET`, `S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY`.
+## Data directory (CMS home)
+
+All runtime files live under one home directory: `$CMS_HOME` if set, else `~/.cms`
+(same layout on Windows, macOS, Linux via the `directories` crate). `cms serve`
+creates it on first run. Resolution lives in `apps/backend/src/paths.rs`.
+
+```text
+~/.cms/
+  config.toml     # non-secret config (cms config init target)
+  secrets.toml    # auto-generated JWT_SECRET/HMAC_SECRET (0600 on unix)
+  cms.db          # default SQLite database (+ -wal / -shm)
+  logs/           # rolling logs when [log] output = "file"
+  storage/        # default filesystem storage for uploads
+```
+
+Secrets: on first `serve`/`admin`, random `JWT_SECRET`/`HMAC_SECRET` are generated
+and persisted to `secrets.toml` (`apps/backend/src/secrets.rs`), then loaded by
+every process — including `cms mcp stdio`, which is launched from an arbitrary cwd
+and so cannot rely on a cwd `.env`. Env vars still override the file. `mcp stdio`
+is read-only: it never creates the home dir, database, or secrets file.
+
+Env-only secrets (never read from `config.toml` by convention, omitted from
+`config init`): `DATABASE_URL`, `JWT_SECRET`, `HMAC_SECRET`, `S3_ACCESS_KEY_ID`,
+`S3_SECRET_ACCESS_KEY`. (`JWT_SECRET`/`HMAC_SECRET` are auto-persisted to
+`secrets.toml`; the others remain env-only.)
 
 Sample `config.toml` (generate with `cms config init`):
 
@@ -121,7 +144,8 @@ Logging keys map to the `[log]` table: `RUST_LOG`→`log.level`, `LOG_OUTPUT`→
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `CMS_CONFIG` | - | Explicit config file path (same as `--config`) |
-| `DATABASE_URL` | `sqlite:cms.db` | Database URL: `sqlite:path`, `postgres://...`, `mysql://...` |
+| `CMS_HOME` | `~/.cms` | CMS home directory (db, config, secrets, logs, storage) |
+| `DATABASE_URL` | `sqlite://~/.cms/cms.db` | Database URL: `sqlite:path`, `postgres://...`, `mysql://...` |
 | `JWT_SECRET` | `cms-jwt-secret-change-in-production` | JWT signing secret |
 | `HMAC_SECRET` | `cms-hmac-secret-change-in-production` | HMAC key for token lookup |
 | `BIND_ADDRESS` | `0.0.0.0:3000` | REST API listen address |
@@ -144,9 +168,10 @@ Logging keys map to the `[log]` table: `RUST_LOG`→`log.level`, `LOG_OUTPUT`→
 | `LOG_OUTPUT` | `stdout` | `stdout` or `file` (`[log] output`) |
 | `LOG_FORMAT` | `pretty` | `pretty` or `json` (`[log] format`) |
 | `LOG_ANNOTATIONS` | `false` | Include file + line numbers (`[log] annotations`) |
-| `LOG_DIR` | `logs` | Log directory when `output = file` (`[log] dir`) |
+| `LOG_DIR` | `~/.cms/logs` | Log directory when `output = file` (`[log] dir`) |
 
-**Warning**: Default `JWT_SECRET` and `HMAC_SECRET` print warnings on startup—set these in production.
+**Note**: `JWT_SECRET`/`HMAC_SECRET` are auto-generated and persisted to
+`~/.cms/secrets.toml` on first run. Set them explicitly via env to override.
 
 ## Proto Compilation
 
