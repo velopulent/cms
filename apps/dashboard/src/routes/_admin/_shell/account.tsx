@@ -18,7 +18,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { useAuth } from "@/contexts/auth-context";
 import { changePassword, getSessions, revokeAllSessions } from "@/lib/api";
 
-export const Route = createFileRoute("/_admin/account")({
+export const Route = createFileRoute("/_admin/_shell/account")({
   component: AccountPage,
 });
 
