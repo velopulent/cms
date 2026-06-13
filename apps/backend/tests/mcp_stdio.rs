@@ -38,6 +38,35 @@ impl StdioClient {
         Self { child, stdin, stdout }
     }
 
+    /// Start the stdio process the way a real MCP client does: it knows only
+    /// `CMS_HOME` and `CMS_MCP_TOKEN`. No `DATABASE_URL` / `HMAC_SECRET` in the
+    /// environment, and a working directory with no `.env` — so both the database
+    /// path and the HMAC secret must be resolved from `~/.cms`.
+    async fn start_from_home(home: &std::path::Path, token: &str) -> Self {
+        let mut child = Command::new(env!("CARGO_BIN_EXE_cms"))
+            .args(["mcp", "stdio"])
+            .env_remove("DATABASE_URL")
+            .env_remove("HMAC_SECRET")
+            .env_remove("JWT_SECRET")
+            .env("CMS_HOME", home)
+            .env("CMS_MCP_TOKEN", token)
+            .env("DB_MIN_CONNECTIONS", "1")
+            .env("DB_MAX_CONNECTIONS", "2")
+            .env("RUST_LOG", "cms=debug")
+            .env("LOG_FORMAT", "pretty")
+            .current_dir(home)
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .kill_on_drop(true)
+            .spawn()
+            .expect("spawn cms mcp stdio");
+
+        let stdin = child.stdin.take().expect("child stdin");
+        let stdout = BufReader::new(child.stdout.take().expect("child stdout"));
+        Self { child, stdin, stdout }
+    }
+
     async fn request(&mut self, id: u64, method: &str, params: Option<Value>) -> Value {
         let mut request = json!({
             "jsonrpc": "2.0",
@@ -113,6 +142,72 @@ async fn setup_database(permission: AccessTokenPermission) -> (tempfile::TempDir
     drop(pool);
 
     (directory, config, token.id, token.token)
+}
+
+/// Provision a `~/.cms`-style home: a `secrets.toml` and a database at the
+/// default location (`<home>/cms.db`), with a site token signed by the persisted
+/// HMAC secret. Mirrors what `cms serve` leaves behind on first run.
+async fn setup_home_instance(home: &std::path::Path) -> String {
+    let hmac_secret = "home-instance-hmac-secret".to_string();
+    std::fs::write(
+        home.join("secrets.toml"),
+        format!("jwt_secret = \"home-instance-jwt-secret\"\nhmac_secret = \"{hmac_secret}\"\n"),
+    )
+    .expect("write secrets.toml");
+
+    let database_path = home.join("cms.db");
+    let database_url = format!("sqlite://{}", database_path.to_string_lossy().replace('\\', "/"));
+    let config = Config {
+        database_url,
+        hmac_secret: hmac_secret.clone(),
+        bcrypt_cost: 4,
+        db_max_connections: 2,
+        db_min_connections: 1,
+        db_acquire_timeout_secs: 5,
+        db_idle_timeout_secs: 60,
+        ..Config::default()
+    };
+    let pool = init_db_with_config(&config).await.expect("initialize database");
+    let repository = Repository::new(&pool);
+    let password_hash = bcrypt::hash("password", 4).expect("password hash");
+    repository
+        .user
+        .create("home-user", "home", "home@example.com", &password_hash)
+        .await
+        .expect("create user");
+    repository
+        .site
+        .create("home-site", "Home Site", "filesystem", "home-user")
+        .await
+        .expect("create site");
+    let token = AccessTokenService::new(repository.access_token.clone(), hmac_secret, 4)
+        .create_site_token("home-site", "home".to_string(), AccessTokenPermission::Write, Some("home-user"))
+        .await
+        .expect("create token");
+    drop(repository);
+    drop(pool);
+
+    token.token
+}
+
+/// Proves the MCP-stdio fix: a cwd-less client process authenticates and serves
+/// using only `CMS_HOME` + `CMS_MCP_TOKEN`, with the database path and HMAC
+/// secret resolved from `~/.cms` rather than a cwd `.env`.
+#[tokio::test]
+async fn stdio_resolves_database_and_secret_from_cms_home() {
+    let home = tempfile::tempdir().expect("temp home");
+    let token = setup_home_instance(home.path()).await;
+
+    let mut client = StdioClient::start_from_home(home.path(), &token).await;
+    initialize(&mut client).await;
+
+    let site = client
+        .request(2, "tools/call", Some(json!({"name": "get_site", "arguments": {}})))
+        .await;
+    assert_eq!(site["result"]["isError"], false, "stdio must authenticate from ~/.cms");
+
+    let (status, logs) = client.close().await;
+    assert!(status.success(), "stdio process should exit cleanly; logs:\n{logs}");
 }
 
 async fn initialize(client: &mut StdioClient) {
