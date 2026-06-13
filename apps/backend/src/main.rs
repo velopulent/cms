@@ -36,6 +36,8 @@ async fn main() {
 }
 
 async fn run_serve(cli: &Cli) -> Result<(), Box<dyn Error>> {
+    cms::paths::ensure()?;
+    cms::secrets::ensure()?;
     let config = Config::load(cli)?;
 
     let _guard = cms::tracing::init_tracing(&config);
@@ -103,6 +105,18 @@ async fn run_serve(cli: &Cli) -> Result<(), Box<dyn Error>> {
 }
 
 async fn run_mcp_stdio(cli: &Cli) -> Result<(), Box<dyn Error>> {
+    // Read-only: never create the home dir, database, or secrets file here. The
+    // persisted secrets written by `cms serve` are what make this process verify
+    // the site token with the same HMAC secret the server signed it with.
+    if cms::secrets::load()?.is_none()
+        && std::env::var("JWT_SECRET").is_err()
+        && std::env::var("HMAC_SECRET").is_err()
+    {
+        return Err("No instance secrets found. Run `cms serve` once to initialize \
+                    ~/.cms (or set JWT_SECRET and HMAC_SECRET) before `cms mcp stdio`."
+            .into());
+    }
+
     let config = Config::load(cli)?;
     cms::tracing::init_stdio_tracing(&config);
 
@@ -154,8 +168,16 @@ async fn run_mcp_stdio(cli: &Cli) -> Result<(), Box<dyn Error>> {
 fn initialize_storage(config: &Config) -> Arc<StorageRegistry> {
     let mut storage_registry = StorageRegistry::new();
 
-    if let Some(ref fs_path) = config.storage_fs_path {
-        match storage::FileSystemStorage::new(fs_path) {
+    // Use an explicit filesystem path if set; otherwise default to ~/.cms/storage
+    // so uploads work out of the box — unless S3 is configured and takes over.
+    let fs_path = match (&config.storage_fs_path, config.has_s3()) {
+        (Some(path), _) => Some(path.clone()),
+        (None, false) => Some(cms::paths::storage_dir().to_string_lossy().into_owned()),
+        (None, true) => None,
+    };
+
+    if let Some(fs_path) = fs_path {
+        match storage::FileSystemStorage::new(&fs_path) {
             Ok(fs) => {
                 storage_registry.register(STORAGE_KIND_FILESYSTEM, Arc::new(fs));
                 info!("Filesystem storage initialized at {}", fs_path);
@@ -228,6 +250,8 @@ fn run_config(action: &ConfigAction, cli: &Cli) -> Result<(), Box<dyn Error>> {
 }
 
 async fn run_admin(action: &AdminAction, cli: &Cli) -> Result<(), Box<dyn Error>> {
+    cms::paths::ensure()?;
+    cms::secrets::ensure()?;
     let config = Config::load(cli)?;
     let pool = init_db_with_config(&config).await?;
     let repository = Repository::new(&pool);
