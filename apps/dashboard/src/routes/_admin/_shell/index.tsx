@@ -59,13 +59,6 @@ function formatDate(dateStr: string) {
   });
 }
 
-const roleColors = {
-  owner: "bg-purple-500/10 text-purple-700 border-purple-500/20",
-  admin: "bg-blue-500/10 text-blue-700 border-blue-500/20",
-  editor: "bg-green-500/10 text-green-700 border-green-500/20",
-  viewer: "bg-orange-500/10 text-orange-700 border-orange-500/20",
-} as const;
-
 function SiteCard({ site }: { site: SiteWithRole }) {
   const navigate = useNavigate();
 
@@ -95,14 +88,7 @@ function SiteCard({ site }: { site: SiteWithRole }) {
         </div>
       </CardHeader>
       <CardContent className="flex items-center justify-between pt-0">
-        <Badge
-          variant="outline"
-          className={
-            roleColors[site.role as keyof typeof roleColors] || "bg-muted"
-          }
-        >
-          {site.role}
-        </Badge>
+        <Badge variant="outline">{site.role}</Badge>
       </CardContent>
     </Card>
   );
