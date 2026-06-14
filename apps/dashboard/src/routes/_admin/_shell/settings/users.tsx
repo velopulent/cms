@@ -7,6 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
   Card,
+  CardAction,
   CardContent,
   CardDescription,
   CardHeader,
@@ -80,20 +81,20 @@ function InstanceUsers() {
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="flex justify-end">
-        <Button onClick={() => setOpen(true)}>
-          <UserPlus data-icon="inline-start" />
-          Create user
-        </Button>
-      </div>
-
       <Card>
         <CardHeader>
           <CardTitle>Users</CardTitle>
+
           <CardDescription>
             Instance owners can create sites and manage installation-wide
             settings.
           </CardDescription>
+          <CardAction>
+            <Button onClick={() => setOpen(true)}>
+              <UserPlus data-icon="inline-start" />
+              Create user
+            </Button>
+          </CardAction>
         </CardHeader>
         <CardContent>
           {isLoading ? (
