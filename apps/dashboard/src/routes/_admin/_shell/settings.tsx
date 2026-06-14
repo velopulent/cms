@@ -35,7 +35,6 @@ function InstanceSettingsLayout() {
       </div>
 
       <Tabs value={active}>
-        <div className="-mx-1 overflow-x-auto px-1">
           <TabsList>
             <TabsTrigger
               value="general"
@@ -52,7 +51,6 @@ function InstanceSettingsLayout() {
               Users
             </TabsTrigger>
           </TabsList>
-        </div>
       </Tabs>
 
       <Outlet />
