@@ -1,5 +1,5 @@
 import { Link, useNavigate } from "@tanstack/react-router";
-import { GalleryVerticalEnd, LogOut, Settings, User } from "lucide-react";
+import { LogOut, Settings, User } from "lucide-react";
 import { ModeToggle } from "@/components/theme-toggle";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button, buttonVariants } from "@/components/ui/button";
@@ -14,7 +14,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { useAuth } from "@/contexts/auth-context";
 
-export function HomeHeader() {
+export function DashboardHeader() {
   const auth = useAuth();
   const navigate = useNavigate();
   const isOwner = auth.user?.instance_role === "instance_owner";
@@ -27,11 +27,14 @@ export function HomeHeader() {
   };
 
   return (
-    <header className="sticky top-0 z-20 flex h-16 items-center justify-between border-b bg-background/80 px-4 backdrop-blur sm:px-6">
+    <header className="sticky top-0 z-20 flex h-16 items-center justify-between border-b bg-background/80 px-4 backdrop-blur sm:px-6 max-w-6xl mx-auto w-full">
       <Link to="/" className="flex items-center gap-2 font-semibold">
-        <div className="flex size-8 items-center justify-center rounded-lg bg-primary text-primary-foreground">
-          <GalleryVerticalEnd className="size-4" />
-        </div>
+        <img
+          src="/dashboard/logo192.png"
+          alt="Velopulent CMS Logo"
+          className="size-8"
+        />
+
         <span className="text-base">CMS</span>
       </Link>
 
