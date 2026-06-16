@@ -1,5 +1,5 @@
 use clap::Parser;
-use cms::cli::{AdminAction, Cli, Command, ConfigAction, McpTransport};
+use cms::cli::{AdminAction, BackupAction, Cli, Command, ConfigAction, McpTransport};
 use cms::config::{self, Config};
 use cms::database::{connect_db_without_migrations, init_db_with_config};
 use cms::grpc::server::spawn_grpc_server;
@@ -23,6 +23,14 @@ async fn main() {
     let result = match &cli.command {
         Some(Command::Config { action }) => run_config(action, &cli),
         Some(Command::Admin { action }) => run_admin(action, &cli).await,
+        Some(Command::Backup { action }) => run_backup(action, &cli).await,
+        Some(Command::Restore {
+            file,
+            scope,
+            site,
+            import_as_new,
+            yes,
+        }) => run_restore(file, scope, site, *import_as_new, *yes, &cli).await,
         Some(Command::Mcp {
             transport: McpTransport::Stdio,
         }) => run_mcp_stdio(&cli).await,
@@ -54,12 +62,31 @@ async fn run_serve(cli: &Cli) -> Result<(), Box<dyn Error>> {
 
     let storage_registry = initialize_storage(&config);
     let services = Services::new(Arc::new(repository.clone()), &config);
+
+    let backup_destination = cms::services::backup::build_backup_destination(&config)
+        .map_err(|e| format!("Failed to initialize backup destination: {e}"))?;
+    let backup_service = Arc::new(cms::services::backup::BackupService::new(
+        pool.clone(),
+        storage_registry.clone(),
+        backup_destination,
+        &config,
+    ));
+
     let app = create_router(
         repository.clone(),
         config.clone(),
         storage_registry.clone(),
         services.clone(),
+        backup_service.clone(),
     );
+
+    if config.backup_enabled {
+        let scheduler_service = backup_service.clone();
+        tokio::spawn(async move {
+            cms::services::backup::scheduler::run(scheduler_service).await;
+        });
+        info!("Backup scheduler started");
+    }
 
     let addr: SocketAddr = config.bind_address.parse().expect("Invalid BIND_ADDRESS");
     info!("REST API server running on {}", addr);
@@ -268,6 +295,138 @@ async fn run_admin(action: &AdminAction, cli: &Cli) -> Result<(), Box<dyn Error>
         }
     }
     Ok(())
+}
+
+async fn run_backup(action: &BackupAction, cli: &Cli) -> Result<(), Box<dyn Error>> {
+    use cms::services::backup::{BackupService, CreateBackupOptions, build_backup_destination, meta};
+
+    cms::paths::ensure()?;
+    cms::secrets::ensure()?;
+    let config = Config::load(cli)?;
+    let pool = init_db_with_config(&config).await?;
+    let storage_registry = initialize_storage(&config);
+    let destination = build_backup_destination(&config)?;
+    let service = BackupService::new(pool.clone(), storage_registry, destination, &config);
+
+    match action {
+        BackupAction::Create {
+            scope,
+            site,
+            out,
+            no_files,
+            encrypt,
+        } => {
+            let scope = parse_scope(scope, site.as_deref())?;
+            let include_files = !no_files;
+            if let Some(out) = out {
+                let (manifest, bytes) = service.build_artifact(&scope, include_files, *encrypt).await?;
+                std::fs::write(out, &bytes)?;
+                println!(
+                    "Wrote backup to {} ({} bytes, {} tables, {} files)",
+                    out.display(),
+                    bytes.len(),
+                    manifest.tables.len(),
+                    manifest.files.len()
+                );
+            } else {
+                let row = service
+                    .create_backup(CreateBackupOptions {
+                        scope,
+                        include_files,
+                        encrypt: *encrypt,
+                        schedule_id: None,
+                        created_by: None,
+                    })
+                    .await?;
+                println!(
+                    "Backup {} created ({} bytes) -> {}",
+                    row.id,
+                    row.size_bytes,
+                    row.destination_key.unwrap_or_default()
+                );
+            }
+        }
+        BackupAction::List => {
+            let rows = meta::list_backups(service.pool(), None, None).await?;
+            if rows.is_empty() {
+                println!("No backups recorded.");
+            }
+            for r in rows {
+                println!(
+                    "{}  {:8}  scope={:8} site={:36}  {}  {} bytes  {}",
+                    r.id,
+                    r.status,
+                    r.scope,
+                    r.site_id.unwrap_or_else(|| "-".into()),
+                    if r.encrypted != 0 { "encrypted" } else { "plaintext" },
+                    r.size_bytes,
+                    r.created_at
+                );
+            }
+        }
+    }
+    Ok(())
+}
+
+async fn run_restore(
+    file: &std::path::Path,
+    scope: &str,
+    site: &Option<String>,
+    import_as_new: bool,
+    yes: bool,
+    cli: &Cli,
+) -> Result<(), Box<dyn Error>> {
+    use cms::services::backup::{BackupService, RestoreRequest, RestoreSource, RestoreTarget, build_backup_destination};
+
+    if !yes {
+        return Err("Restore is destructive and replaces data within the chosen scope. \
+                    Re-run with --yes to proceed."
+            .into());
+    }
+
+    cms::paths::ensure()?;
+    cms::secrets::ensure()?;
+    let config = Config::load(cli)?;
+    let pool = init_db_with_config(&config).await?;
+    let storage_registry = initialize_storage(&config);
+    let destination = build_backup_destination(&config)?;
+    let service = BackupService::new(pool.clone(), storage_registry, destination, &config);
+
+    let bytes = std::fs::read(file)?;
+    let target = match scope {
+        "instance" => RestoreTarget::WholeInstance,
+        "site" => {
+            let sid = site
+                .clone()
+                .ok_or("--site <SITE_ID> is required for --scope site")?;
+            RestoreTarget::Site {
+                site_id: sid,
+                import_as_new,
+            }
+        }
+        other => return Err(format!("unknown scope '{other}' (use instance|site)").into()),
+    };
+
+    service
+        .restore(RestoreRequest {
+            source: RestoreSource::Bytes(bytes),
+            target,
+            created_by: None,
+        })
+        .await?;
+    println!("Restore complete.");
+    Ok(())
+}
+
+fn parse_scope(scope: &str, site: Option<&str>) -> Result<cms::services::backup::Scope, Box<dyn Error>> {
+    use cms::services::backup::Scope;
+    match scope {
+        "instance" => Ok(Scope::Instance),
+        "site" => site
+            .map(|s| Scope::Site(s.to_string()))
+            .ok_or_else(|| "--site <SITE_ID> is required for --scope site".into()),
+        other => Err(format!("unknown scope '{other}' (use instance|site)").into()),
+    }
 }
 
 async fn seed_admin(repository: &Repository) {
