@@ -79,12 +79,6 @@ pub trait SiteRepository: Send + Sync {
         role: &str,
     ) -> Result<Option<SiteMember>, RepositoryError>;
     async fn remove_member(&self, site_id: &str, user_id: &str) -> Result<u64, RepositoryError>;
-    async fn transfer_ownership(
-        &self,
-        site_id: &str,
-        current_owner_id: &str,
-        new_owner_id: &str,
-    ) -> Result<(), RepositoryError>;
 }
 
 #[async_trait]

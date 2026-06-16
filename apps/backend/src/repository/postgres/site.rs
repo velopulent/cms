@@ -60,25 +60,15 @@ impl SiteRepository for PostgresSiteRepository {
         storage_provider: &str,
         created_by: &str,
     ) -> Result<Site, RepositoryError> {
-        let mut tx = self.pool.begin().await?;
-
+        // The creator is an instance operator; site authority comes from their instance
+        // role, not a site_members row, so no membership is inserted here.
         sqlx::query("INSERT INTO sites (id, name, storage_provider, created_by) VALUES ($1, $2, $3, $4)")
             .bind(id)
             .bind(name)
             .bind(storage_provider)
             .bind(created_by)
-            .execute(&mut *tx)
+            .execute(&self.pool)
             .await?;
-
-        let member_id = uuid::Uuid::now_v7().to_string();
-        sqlx::query("INSERT INTO site_members (id, site_id, user_id, role) VALUES ($1, $2, $3, 'owner')")
-            .bind(&member_id)
-            .bind(id)
-            .bind(created_by)
-            .execute(&mut *tx)
-            .await?;
-
-        tx.commit().await?;
 
         self.get_by_id(id).await?.ok_or(RepositoryError::NotFound)
     }
@@ -181,36 +171,5 @@ impl SiteRepository for PostgresSiteRepository {
             .await?;
 
         Ok(result.rows_affected())
-    }
-
-    async fn transfer_ownership(
-        &self,
-        site_id: &str,
-        current_owner_id: &str,
-        new_owner_id: &str,
-    ) -> Result<(), RepositoryError> {
-        let mut tx = self.pool.begin().await?;
-        let promoted = sqlx::query(
-            "UPDATE site_members SET role = 'owner' WHERE site_id = $1 AND user_id = $2 AND role != 'owner'",
-        )
-        .bind(site_id)
-        .bind(new_owner_id)
-        .execute(&mut *tx)
-        .await?;
-        if promoted.rows_affected() != 1 {
-            return Err(RepositoryError::NotFound);
-        }
-        let demoted = sqlx::query(
-            "UPDATE site_members SET role = 'admin' WHERE site_id = $1 AND user_id = $2 AND role = 'owner'",
-        )
-        .bind(site_id)
-        .bind(current_owner_id)
-        .execute(&mut *tx)
-        .await?;
-        if demoted.rows_affected() != 1 {
-            return Err(RepositoryError::NotFound);
-        }
-        tx.commit().await?;
-        Ok(())
     }
 }
