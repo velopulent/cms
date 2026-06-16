@@ -96,6 +96,14 @@ pub enum Action {
     MembersManage,
     /// Grant or revoke instance roles (owner-only).
     InstanceRolesGrant,
+    /// Create/manage instance-wide backups and schedules (owner-only).
+    InstanceBackup,
+    /// Restore an instance-wide backup (owner-only; destructive).
+    InstanceRestore,
+    /// Create/manage a single site's backups and schedules (operators only).
+    SiteBackup,
+    /// Restore a single site (operators only; destructive).
+    SiteRestore,
 }
 
 pub struct Authorizer;
@@ -107,7 +115,12 @@ impl Authorizer {
         match role {
             Some(InstanceRole::InstanceOwner) => matches!(
                 action,
-                Action::InstanceManage | Action::SiteCreate | Action::SiteDelete | Action::InstanceRolesGrant
+                Action::InstanceManage
+                    | Action::SiteCreate
+                    | Action::SiteDelete
+                    | Action::InstanceRolesGrant
+                    | Action::InstanceBackup
+                    | Action::InstanceRestore
             ),
             Some(InstanceRole::InstanceAdmin) => {
                 matches!(action, Action::InstanceManage | Action::SiteCreate | Action::SiteDelete)
