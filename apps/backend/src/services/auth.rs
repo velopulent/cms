@@ -20,6 +20,17 @@ use crate::repository::traits::{SessionRepository, UserRepository};
 static EMAIL_RE: std::sync::LazyLock<regex::Regex> =
     std::sync::LazyLock::new(|| regex::Regex::new(r"^[^@\s]+@[^@\s]+\.[^@\s]+$").unwrap());
 
+/// Validate an optional instance role string from an API payload.
+/// Accepts `"instance_owner"`, `"instance_admin"`, or `None`; rejects anything else.
+fn normalize_instance_role(role: Option<&str>) -> Result<Option<&str>, AuthError> {
+    match role {
+        None => Ok(None),
+        Some("instance_owner") => Ok(Some("instance_owner")),
+        Some("instance_admin") => Ok(Some("instance_admin")),
+        Some(other) => Err(AuthError::ValidationError(format!("Invalid instance role '{other}'"))),
+    }
+}
+
 #[derive(Clone)]
 pub struct AuthService {
     user_repo: Arc<dyn UserRepository>,
@@ -277,7 +288,7 @@ impl AuthService {
         username: &str,
         email: &str,
         temporary_password: &str,
-        instance_owner: bool,
+        instance_role: Option<&str>,
     ) -> Result<UserPublic, AuthError> {
         if temporary_password.len() < 8 {
             return Err(AuthError::ValidationError(
@@ -298,7 +309,7 @@ impl AuthService {
                 RepositoryError::UniqueViolation(_) => AuthError::UserExists,
                 other => AuthError::DatabaseError(other.to_string()),
             })?;
-        let instance_role = instance_owner.then_some("instance_owner");
+        let instance_role = normalize_instance_role(instance_role)?;
         self.user_repo
             .set_instance_role(&id, instance_role)
             .await
@@ -316,15 +327,17 @@ impl AuthService {
         })
     }
 
-    pub async fn set_instance_owner(&self, user_id: &str, enabled: bool) -> Result<(), AuthError> {
+    pub async fn set_instance_role(&self, user_id: &str, role: Option<&str>) -> Result<(), AuthError> {
+        let role = normalize_instance_role(role)?;
         let user = self
             .user_repo
             .find_by_id(user_id)
             .await
             .map_err(|e| AuthError::DatabaseError(e.to_string()))?
             .ok_or(AuthError::NotFound)?;
-        if !enabled
-            && user.instance_role.as_deref() == Some("instance_owner")
+        // Guard the last instance owner from being demoted away.
+        let removing_owner = user.instance_role.as_deref() == Some("instance_owner") && role != Some("instance_owner");
+        if removing_owner
             && self
                 .user_repo
                 .count_instance_owners()
@@ -337,7 +350,7 @@ impl AuthService {
             ));
         }
         self.user_repo
-            .set_instance_role(user_id, enabled.then_some("instance_owner"))
+            .set_instance_role(user_id, role)
             .await
             .map_err(|e| AuthError::DatabaseError(e.to_string()))?;
         Ok(())
