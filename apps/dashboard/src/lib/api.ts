@@ -73,12 +73,44 @@ export async function authApi<T>(
 
 // --- Types ---
 
+export type InstanceRole = "instance_owner" | "instance_admin";
+
 export interface UserPublic {
   id: string;
   username: string;
   email: string;
-  instance_role: "instance_owner" | null;
+  instance_role: InstanceRole | null;
   must_change_password: boolean;
+}
+
+/** True for instance operators (owner or admin) who manage the whole installation. */
+export function isOperator(role: InstanceRole | null | undefined): boolean {
+  return role === "instance_owner" || role === "instance_admin";
+}
+
+/** Human label for an instance role, used in settings/user lists. */
+export function instanceRoleLabel(role: InstanceRole | null | undefined): string {
+  if (role === "instance_owner") return "Instance owner";
+  if (role === "instance_admin") return "Instance admin";
+  return "User";
+}
+
+/** Friendly label for the effective role on a site (collaborator or operator). */
+export function siteRoleLabel(
+  role: InstanceRole | "editor" | "viewer" | null | undefined,
+): string {
+  switch (role) {
+    case "instance_owner":
+      return "Owner";
+    case "instance_admin":
+      return "Admin";
+    case "editor":
+      return "Editor";
+    case "viewer":
+      return "Viewer";
+    default:
+      return "—";
+  }
 }
 
 export interface AuthResponse {
@@ -95,7 +127,9 @@ export interface Site {
 }
 
 export interface SiteWithRole extends Site {
-  role: "owner" | "admin" | "editor" | "viewer";
+  // For collaborators this is their site role; for instance operators the server
+  // synthesizes their instance role (operators have implicit access to every site).
+  role: InstanceRole | "editor" | "viewer";
 }
 
 export interface SiteMember {
@@ -104,7 +138,7 @@ export interface SiteMember {
   user_id: string;
   username: string;
   email: string;
-  role: "owner" | "admin" | "editor" | "viewer";
+  role: "editor" | "viewer";
   created_at: string;
 }
 
@@ -455,7 +489,7 @@ export async function createManagedUser(data: {
   username: string;
   email: string;
   temporary_password: string;
-  instance_owner: boolean;
+  instance_role: InstanceRole | null;
 }) {
   return api<UserPublic>("/instance/users", {
     method: "POST",
@@ -465,11 +499,11 @@ export async function createManagedUser(data: {
 
 export async function updateInstanceRole(
   userId: string,
-  instanceOwner: boolean,
+  instanceRole: InstanceRole | null,
 ) {
   return api<void>(`/instance/users/${userId}/role`, {
     method: "PUT",
-    body: JSON.stringify({ instance_owner: instanceOwner }),
+    body: JSON.stringify({ instance_role: instanceRole }),
   });
 }
 
@@ -532,16 +566,6 @@ export async function updateMemberRole(
 export async function removeMember(siteId: string, userId: string) {
   return api<void>(`/sites/${siteId}/members/${userId}`, {
     method: "DELETE",
-  });
-}
-
-export async function transferOwnership(
-  siteId: string,
-  newOwnerUserId: string,
-) {
-  return api<void>(`/sites/${siteId}/ownership`, {
-    method: "POST",
-    body: JSON.stringify({ new_owner_user_id: newOwnerUserId }),
   });
 }
 
