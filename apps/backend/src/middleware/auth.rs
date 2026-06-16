@@ -355,6 +355,23 @@ pub async fn check_site_action_repo(
     site_id: &str,
     action: Action,
 ) -> Result<(), (StatusCode, Json<AuthError>)> {
+    // Instance operators (Owner/Admin) have full authority over every site, without
+    // needing a site_members row. This is the single override point for "manage all sites".
+    if let Some(account) = repository
+        .user
+        .find_by_id(user_id)
+        .await
+        .map_err(|_| AuthError::unauthorized("Unable to load user"))?
+    {
+        let instance_role = account
+            .instance_role
+            .as_deref()
+            .and_then(|value| value.parse::<InstanceRole>().ok());
+        if Authorizer::allows_site_as_instance(instance_role, action) {
+            return Ok(());
+        }
+    }
+
     let role = repository.user.get_role(user_id, site_id).await.map_err(|e| {
         (
             StatusCode::INTERNAL_SERVER_ERROR,
