@@ -24,10 +24,12 @@ import { Route as AdminSitesSiteIdSettingsRouteImport } from './routes/_admin/si
 import { Route as AdminSitesSiteIdFilesRouteImport } from './routes/_admin/sites.$siteId/files'
 import { Route as AdminSitesSiteIdCollectionsRouteImport } from './routes/_admin/sites.$siteId/collections'
 import { Route as AdminShellSettingsUsersRouteImport } from './routes/_admin/_shell/settings/users'
+import { Route as AdminShellSettingsBackupsRouteImport } from './routes/_admin/_shell/settings/backups'
 import { Route as AdminSitesSiteIdSettingsIndexRouteImport } from './routes/_admin/sites.$siteId/settings/index'
 import { Route as AdminSitesSiteIdSingletonsSlugRouteImport } from './routes/_admin/sites.$siteId/singletons.$slug'
 import { Route as AdminSitesSiteIdSettingsWebhooksRouteImport } from './routes/_admin/sites.$siteId/settings/webhooks'
 import { Route as AdminSitesSiteIdSettingsMembersRouteImport } from './routes/_admin/sites.$siteId/settings/members'
+import { Route as AdminSitesSiteIdSettingsBackupsRouteImport } from './routes/_admin/sites.$siteId/settings/backups'
 import { Route as AdminSitesSiteIdSettingsApiKeysRouteImport } from './routes/_admin/sites.$siteId/settings/api-keys'
 import { Route as AdminSitesSiteIdEntriesCollectionSlugRouteImport } from './routes/_admin/sites.$siteId/entries.$collectionSlug'
 import { Route as AdminSitesSiteIdEntriesCollectionSlugIndexRouteImport } from './routes/_admin/sites.$siteId/entries.$collectionSlug/index'
@@ -109,6 +111,12 @@ const AdminShellSettingsUsersRoute = AdminShellSettingsUsersRouteImport.update({
   path: '/users',
   getParentRoute: () => AdminShellSettingsRoute,
 } as any)
+const AdminShellSettingsBackupsRoute =
+  AdminShellSettingsBackupsRouteImport.update({
+    id: '/backups',
+    path: '/backups',
+    getParentRoute: () => AdminShellSettingsRoute,
+  } as any)
 const AdminSitesSiteIdSettingsIndexRoute =
   AdminSitesSiteIdSettingsIndexRouteImport.update({
     id: '/',
@@ -131,6 +139,12 @@ const AdminSitesSiteIdSettingsMembersRoute =
   AdminSitesSiteIdSettingsMembersRouteImport.update({
     id: '/members',
     path: '/members',
+    getParentRoute: () => AdminSitesSiteIdSettingsRoute,
+  } as any)
+const AdminSitesSiteIdSettingsBackupsRoute =
+  AdminSitesSiteIdSettingsBackupsRouteImport.update({
+    id: '/backups',
+    path: '/backups',
     getParentRoute: () => AdminSitesSiteIdSettingsRoute,
   } as any)
 const AdminSitesSiteIdSettingsApiKeysRoute =
@@ -172,6 +186,7 @@ export interface FileRoutesByFullPath {
   '/account': typeof AdminShellAccountRoute
   '/settings': typeof AdminShellSettingsRouteWithChildren
   '/sites/$siteId': typeof AdminSitesSiteIdRouteWithChildren
+  '/settings/backups': typeof AdminShellSettingsBackupsRoute
   '/settings/users': typeof AdminShellSettingsUsersRoute
   '/sites/$siteId/collections': typeof AdminSitesSiteIdCollectionsRoute
   '/sites/$siteId/files': typeof AdminSitesSiteIdFilesRoute
@@ -180,6 +195,7 @@ export interface FileRoutesByFullPath {
   '/sites/$siteId/': typeof AdminSitesSiteIdIndexRoute
   '/sites/$siteId/entries/$collectionSlug': typeof AdminSitesSiteIdEntriesCollectionSlugRouteWithChildren
   '/sites/$siteId/settings/api-keys': typeof AdminSitesSiteIdSettingsApiKeysRoute
+  '/sites/$siteId/settings/backups': typeof AdminSitesSiteIdSettingsBackupsRoute
   '/sites/$siteId/settings/members': typeof AdminSitesSiteIdSettingsMembersRoute
   '/sites/$siteId/settings/webhooks': typeof AdminSitesSiteIdSettingsWebhooksRoute
   '/sites/$siteId/singletons/$slug': typeof AdminSitesSiteIdSingletonsSlugRoute
@@ -194,12 +210,14 @@ export interface FileRoutesByTo {
   '/register': typeof RegisterRoute
   '/sites': typeof AdminSitesRouteWithChildren
   '/account': typeof AdminShellAccountRoute
+  '/settings/backups': typeof AdminShellSettingsBackupsRoute
   '/settings/users': typeof AdminShellSettingsUsersRoute
   '/sites/$siteId/collections': typeof AdminSitesSiteIdCollectionsRoute
   '/sites/$siteId/files': typeof AdminSitesSiteIdFilesRoute
   '/settings': typeof AdminShellSettingsIndexRoute
   '/sites/$siteId': typeof AdminSitesSiteIdIndexRoute
   '/sites/$siteId/settings/api-keys': typeof AdminSitesSiteIdSettingsApiKeysRoute
+  '/sites/$siteId/settings/backups': typeof AdminSitesSiteIdSettingsBackupsRoute
   '/sites/$siteId/settings/members': typeof AdminSitesSiteIdSettingsMembersRoute
   '/sites/$siteId/settings/webhooks': typeof AdminSitesSiteIdSettingsWebhooksRoute
   '/sites/$siteId/singletons/$slug': typeof AdminSitesSiteIdSingletonsSlugRoute
@@ -219,6 +237,7 @@ export interface FileRoutesById {
   '/_admin/_shell/settings': typeof AdminShellSettingsRouteWithChildren
   '/_admin/sites/$siteId': typeof AdminSitesSiteIdRouteWithChildren
   '/_admin/_shell/': typeof AdminShellIndexRoute
+  '/_admin/_shell/settings/backups': typeof AdminShellSettingsBackupsRoute
   '/_admin/_shell/settings/users': typeof AdminShellSettingsUsersRoute
   '/_admin/sites/$siteId/collections': typeof AdminSitesSiteIdCollectionsRoute
   '/_admin/sites/$siteId/files': typeof AdminSitesSiteIdFilesRoute
@@ -227,6 +246,7 @@ export interface FileRoutesById {
   '/_admin/sites/$siteId/': typeof AdminSitesSiteIdIndexRoute
   '/_admin/sites/$siteId/entries/$collectionSlug': typeof AdminSitesSiteIdEntriesCollectionSlugRouteWithChildren
   '/_admin/sites/$siteId/settings/api-keys': typeof AdminSitesSiteIdSettingsApiKeysRoute
+  '/_admin/sites/$siteId/settings/backups': typeof AdminSitesSiteIdSettingsBackupsRoute
   '/_admin/sites/$siteId/settings/members': typeof AdminSitesSiteIdSettingsMembersRoute
   '/_admin/sites/$siteId/settings/webhooks': typeof AdminSitesSiteIdSettingsWebhooksRoute
   '/_admin/sites/$siteId/singletons/$slug': typeof AdminSitesSiteIdSingletonsSlugRoute
@@ -245,6 +265,7 @@ export interface FileRouteTypes {
     | '/account'
     | '/settings'
     | '/sites/$siteId'
+    | '/settings/backups'
     | '/settings/users'
     | '/sites/$siteId/collections'
     | '/sites/$siteId/files'
@@ -253,6 +274,7 @@ export interface FileRouteTypes {
     | '/sites/$siteId/'
     | '/sites/$siteId/entries/$collectionSlug'
     | '/sites/$siteId/settings/api-keys'
+    | '/sites/$siteId/settings/backups'
     | '/sites/$siteId/settings/members'
     | '/sites/$siteId/settings/webhooks'
     | '/sites/$siteId/singletons/$slug'
@@ -267,12 +289,14 @@ export interface FileRouteTypes {
     | '/register'
     | '/sites'
     | '/account'
+    | '/settings/backups'
     | '/settings/users'
     | '/sites/$siteId/collections'
     | '/sites/$siteId/files'
     | '/settings'
     | '/sites/$siteId'
     | '/sites/$siteId/settings/api-keys'
+    | '/sites/$siteId/settings/backups'
     | '/sites/$siteId/settings/members'
     | '/sites/$siteId/settings/webhooks'
     | '/sites/$siteId/singletons/$slug'
@@ -291,6 +315,7 @@ export interface FileRouteTypes {
     | '/_admin/_shell/settings'
     | '/_admin/sites/$siteId'
     | '/_admin/_shell/'
+    | '/_admin/_shell/settings/backups'
     | '/_admin/_shell/settings/users'
     | '/_admin/sites/$siteId/collections'
     | '/_admin/sites/$siteId/files'
@@ -299,6 +324,7 @@ export interface FileRouteTypes {
     | '/_admin/sites/$siteId/'
     | '/_admin/sites/$siteId/entries/$collectionSlug'
     | '/_admin/sites/$siteId/settings/api-keys'
+    | '/_admin/sites/$siteId/settings/backups'
     | '/_admin/sites/$siteId/settings/members'
     | '/_admin/sites/$siteId/settings/webhooks'
     | '/_admin/sites/$siteId/singletons/$slug'
@@ -421,6 +447,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AdminShellSettingsUsersRouteImport
       parentRoute: typeof AdminShellSettingsRoute
     }
+    '/_admin/_shell/settings/backups': {
+      id: '/_admin/_shell/settings/backups'
+      path: '/backups'
+      fullPath: '/settings/backups'
+      preLoaderRoute: typeof AdminShellSettingsBackupsRouteImport
+      parentRoute: typeof AdminShellSettingsRoute
+    }
     '/_admin/sites/$siteId/settings/': {
       id: '/_admin/sites/$siteId/settings/'
       path: '/'
@@ -447,6 +480,13 @@ declare module '@tanstack/react-router' {
       path: '/members'
       fullPath: '/sites/$siteId/settings/members'
       preLoaderRoute: typeof AdminSitesSiteIdSettingsMembersRouteImport
+      parentRoute: typeof AdminSitesSiteIdSettingsRoute
+    }
+    '/_admin/sites/$siteId/settings/backups': {
+      id: '/_admin/sites/$siteId/settings/backups'
+      path: '/backups'
+      fullPath: '/sites/$siteId/settings/backups'
+      preLoaderRoute: typeof AdminSitesSiteIdSettingsBackupsRouteImport
       parentRoute: typeof AdminSitesSiteIdSettingsRoute
     }
     '/_admin/sites/$siteId/settings/api-keys': {
@@ -488,11 +528,13 @@ declare module '@tanstack/react-router' {
 }
 
 interface AdminShellSettingsRouteChildren {
+  AdminShellSettingsBackupsRoute: typeof AdminShellSettingsBackupsRoute
   AdminShellSettingsUsersRoute: typeof AdminShellSettingsUsersRoute
   AdminShellSettingsIndexRoute: typeof AdminShellSettingsIndexRoute
 }
 
 const AdminShellSettingsRouteChildren: AdminShellSettingsRouteChildren = {
+  AdminShellSettingsBackupsRoute: AdminShellSettingsBackupsRoute,
   AdminShellSettingsUsersRoute: AdminShellSettingsUsersRoute,
   AdminShellSettingsIndexRoute: AdminShellSettingsIndexRoute,
 }
@@ -518,6 +560,7 @@ const AdminShellRouteWithChildren = AdminShellRoute._addFileChildren(
 
 interface AdminSitesSiteIdSettingsRouteChildren {
   AdminSitesSiteIdSettingsApiKeysRoute: typeof AdminSitesSiteIdSettingsApiKeysRoute
+  AdminSitesSiteIdSettingsBackupsRoute: typeof AdminSitesSiteIdSettingsBackupsRoute
   AdminSitesSiteIdSettingsMembersRoute: typeof AdminSitesSiteIdSettingsMembersRoute
   AdminSitesSiteIdSettingsWebhooksRoute: typeof AdminSitesSiteIdSettingsWebhooksRoute
   AdminSitesSiteIdSettingsIndexRoute: typeof AdminSitesSiteIdSettingsIndexRoute
@@ -526,6 +569,7 @@ interface AdminSitesSiteIdSettingsRouteChildren {
 const AdminSitesSiteIdSettingsRouteChildren: AdminSitesSiteIdSettingsRouteChildren =
   {
     AdminSitesSiteIdSettingsApiKeysRoute: AdminSitesSiteIdSettingsApiKeysRoute,
+    AdminSitesSiteIdSettingsBackupsRoute: AdminSitesSiteIdSettingsBackupsRoute,
     AdminSitesSiteIdSettingsMembersRoute: AdminSitesSiteIdSettingsMembersRoute,
     AdminSitesSiteIdSettingsWebhooksRoute:
       AdminSitesSiteIdSettingsWebhooksRoute,

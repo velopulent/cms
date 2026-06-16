@@ -1,3 +1,4 @@
+import { useQuery } from "@tanstack/react-query";
 import {
   createFileRoute,
   Link,
@@ -23,7 +24,13 @@ export const Route = createFileRoute("/_admin/_shell/settings")({
 
 function InstanceSettingsLayout() {
   const pathname = useRouterState({ select: (s) => s.location.pathname });
-  const active = pathname.endsWith("/settings/users") ? "users" : "general";
+  const { data: me } = useQuery({ queryKey: ["me"], queryFn: getMe });
+  const isOwner = me?.instance_role === "instance_owner";
+  const active = pathname.endsWith("/settings/users")
+    ? "users"
+    : pathname.endsWith("/settings/backups")
+      ? "backups"
+      : "general";
 
   return (
     <main className="container mx-auto flex w-full max-w-5xl flex-col gap-6 p-4 sm:p-6">
@@ -50,6 +57,15 @@ function InstanceSettingsLayout() {
             >
               Users
             </TabsTrigger>
+            {isOwner && (
+              <TabsTrigger
+                value="backups"
+                nativeButton={false}
+                render={<Link to="/settings/backups" />}
+              >
+                Backups
+              </TabsTrigger>
+            )}
           </TabsList>
       </Tabs>
 

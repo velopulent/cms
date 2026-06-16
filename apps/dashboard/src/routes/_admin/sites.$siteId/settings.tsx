@@ -79,6 +79,20 @@ function SettingsLayout() {
                 Webhooks
               </TabsTrigger>
             )}
+            {canManage && (
+              <TabsTrigger
+                value="backups"
+                nativeButton={false}
+                render={
+                  <Link
+                    to="/sites/$siteId/settings/backups"
+                    params={{ siteId }}
+                  />
+                }
+              >
+                Backups
+              </TabsTrigger>
+            )}
           </TabsList>
       </Tabs>
 
