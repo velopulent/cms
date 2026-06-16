@@ -34,6 +34,7 @@ pub mod models {
 pub mod handlers {
     pub mod access_token_handler;
     pub mod auth_handler;
+    pub mod backup_handler;
     pub mod collection_handler;
     pub mod dashboard_handler;
     pub mod entry_handler;

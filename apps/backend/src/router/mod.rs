@@ -1,5 +1,6 @@
 mod access_tokens;
 mod auth;
+mod backup;
 mod collections;
 mod dashboard;
 mod docs;
@@ -32,6 +33,7 @@ use crate::middleware::rate_limit::RateLimiter;
 use crate::middleware::site_resolver::{api_site_resolver, dashboard_site_resolver};
 use crate::repository::Repository;
 use crate::services::Services;
+use crate::services::backup::BackupService;
 use crate::storage::StorageRegistry;
 use crate::tracing::trace_request;
 
@@ -63,6 +65,7 @@ fn dashboard_site_v1_routes(max_upload_bytes: usize) -> Router {
         .merge(singleton::dashboard_routes())
         .merge(webhooks::dashboard_routes())
         .merge(access_tokens::dashboard_routes())
+        .merge(backup::site_routes())
         .merge(files::dashboard_routes(max_upload_bytes));
 
     Router::new()
@@ -78,6 +81,7 @@ pub fn create_router(
     config: Config,
     storage_registry: Arc<StorageRegistry>,
     services: Services,
+    backup: Arc<BackupService>,
 ) -> Router {
     let rate_limiter = RateLimiter::new(
         config.rate_limit_max_requests,
@@ -139,6 +143,7 @@ pub fn create_router(
                 .nest("/sites/{site_id}", dashboard_site_v1_routes(max_upload_bytes))
                 .merge(sites::dashboard_list_routes())
                 .merge(instance::routes())
+                .merge(backup::instance_routes())
                 .layer(from_fn(dashboard_auth_middleware)),
         )
         // ── GraphQL (custom auth in handler) ──
@@ -156,6 +161,7 @@ pub fn create_router(
         .layer(Extension(config.clone()))
         .layer(Extension(storage_registry.clone()))
         .layer(Extension(services))
+        .layer(Extension(backup))
         .layer(Extension(rate_limiter));
 
     if mcp_enabled {
