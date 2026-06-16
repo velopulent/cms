@@ -48,7 +48,7 @@ Upload, organize, and serve images and files with automatic thumbnail generation
 
 ### 🔐 Secure & Scalable
 
-Role-based access control, JWT authentication, and rate limiting included out of the box. Whether you're running a personal blog or a multi-tenant platform, the security model adapts to your needs.
+Two-tier role-based access control, JWT authentication, and rate limiting included out of the box. Instance operators (owner and admins) manage the installation and its sites, while per-site collaborators get editor (write content) or viewer (read-only) access. Whether you're running a personal blog or a multi-tenant platform, the security model adapts to your needs.
 
 ### 💻 Modern Admin Dashboard
 
@@ -148,7 +148,7 @@ Use SQLite for simple deployments or connect to PostgreSQL or MySQL for producti
 
 ### Built for Teams
 
-Multi-site support and role-based permissions mean your content team, developers, and stakeholders can all work in the same system without stepping on each other.
+Multi-site support and two-tier role-based permissions mean your content team, developers, and stakeholders can all work in the same system without stepping on each other. Operators administer the instance and its sites; editors and viewers collaborate per site.
 
 ---
 

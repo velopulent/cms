@@ -51,7 +51,7 @@ bun run format               # Format all projects
 - Unit tests live inline in source files (19 modules) and in `apps/backend/tests/mock_user_repository.rs`, `apps/backend/tests/file_service_tests.rs`
 - Integration tests in `apps/backend/tests/` are black-box tests against a real server (no internal imports)
   - `tests/common/` — shared infrastructure: `TestServer` (random port, SQLite in-memory, temp storage, seeded admin), auth helpers, `TestClient` wrapper, fixture builders
-  - `tests/rest/` — REST API tests: `auth`, `sites`, `collections`, `entries`, `singletons`, `files`, `webhooks`, `access_tokens`
+  - `tests/rest/` — REST API tests: `auth`, `sites`, `collections`, `entries`, `singletons`, `files`, `webhooks`, `access_tokens`, `roles`
   - `tests/graphql/` — GraphQL API tests: `auth`, `sites`, `collections`, `entries`, `files`, `webhooks`
   - `tests/grpc/` — gRPC API tests: `collections`, `entries`, `singletons`, `files`, `sites`, `webhooks` (uses tonic clients with real auth interceptor)
   - Each test module gets its own server instance (isolated DB + storage)
@@ -181,10 +181,50 @@ Logging keys map to the `[log]` table: `RUST_LOG`→`log.level`, `LOG_OUTPUT`→
 
 ## First-Run Behavior
 
-On initial startup, the server seeds a default admin user:
+On initial startup, the server seeds a default admin user (the first user created
+is automatically granted the `instance_owner` role):
 - Username: `admin`
 - Password: `admin`
 **Change this password immediately in production.**
+
+## Authorization (RBAC)
+
+The access model has two independent tiers. The policy lives in
+`models/authorization.rs` (`Authorizer`, `Action`, `InstanceRole`, `SiteRole`) and
+is enforced by `middleware/authz.rs`; `require_*_action` helpers live in
+`middleware/auth.rs`.
+
+**Instance roles** (operators, span the whole installation; stored on
+`users.instance_role`):
+- `instance_owner` — strict superset of admin. Owner-only powers: granting/revoking
+  instance roles (`InstanceRolesGrant`); future instance backup/restore.
+- `instance_admin` — manage the instance and its users, create and delete sites.
+- A user with no instance role has no instance-level powers.
+
+Both operators have **implicit full authority over every site** without being a
+site member (the `allows_site_as_instance` override).
+
+**Site roles** (collaborators, per-site; stored in `site_members.role`):
+- `editor` — read everything on the site plus write content and files.
+- `viewer` — read-only.
+- Everything else on a site (schema, webhooks, API keys, member management, site
+  delete) is operator-only.
+- Instance operators are never added as site members — they already have full
+  access, so inviting one as a member is rejected (`SiteError::CannotInviteOperator`).
+
+**API keys** (site-scoped tokens): reads are always allowed; writes (content,
+schema, files, webhooks, site manage) are gated by the key's `can_write` flag. Keys
+never receive member or API-key management authority.
+
+Member management routes are nested under
+`/api/dashboard/sites/{site_id}/members`; the update (PUT) and remove (DELETE)
+endpoints take the path param `{member_user_id}` (must match the `MemberPath`
+extractor field name).
+
+The `roles_v2` migration (`migrations/*/20260616000000_roles_v2.sql`) widened
+`users.instance_role` to allow `instance_admin` and restricted `site_members.role`
+to `editor`/`viewer` (legacy `owner`/`admin` site members collapse to `editor`,
+since those operators now act through their instance role).
 
 ## Code Conventions
 
