@@ -1,16 +1,15 @@
 import { createFileRoute, redirect } from "@tanstack/react-router";
 import { WebhooksSection } from "@/components/site-settings/webhooks-section";
-import { getSites } from "@/lib/api";
+import { getMe, isOperator } from "@/lib/api";
 
 export const Route = createFileRoute("/_admin/sites/$siteId/settings/webhooks")(
   {
     beforeLoad: async ({ context, params }) => {
-      const sites = await context.queryClient.ensureQueryData({
-        queryKey: ["sites"],
-        queryFn: getSites,
+      const me = await context.queryClient.ensureQueryData({
+        queryKey: ["me"],
+        queryFn: getMe,
       });
-      const role = sites.find((s) => s.id === params.siteId)?.role;
-      if (role !== "owner" && role !== "admin") {
+      if (!isOperator(me.instance_role)) {
         throw redirect({
           to: "/sites/$siteId/settings",
           params: { siteId: params.siteId },

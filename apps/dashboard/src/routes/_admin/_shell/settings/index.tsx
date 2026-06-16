@@ -7,7 +7,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { getMe } from "@/lib/api";
+import { getMe, instanceRoleLabel } from "@/lib/api";
 
 export const Route = createFileRoute("/_admin/_shell/settings/")({
   component: GeneralInstanceSettings,
@@ -37,12 +37,7 @@ function GeneralInstanceSettings() {
       <CardContent className="divide-y">
         <Row label="Signed in as" value={me?.username ?? "—"} />
         <Row label="Email" value={me?.email ?? "—"} />
-        <Row
-          label="Access"
-          value={
-            me?.instance_role === "instance_owner" ? "Instance owner" : "User"
-          }
-        />
+        <Row label="Access" value={instanceRoleLabel(me?.instance_role)} />
       </CardContent>
     </Card>
   );

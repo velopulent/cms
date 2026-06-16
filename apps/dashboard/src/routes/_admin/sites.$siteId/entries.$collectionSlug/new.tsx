@@ -1,5 +1,5 @@
 import { useForm } from "@tanstack/react-form";
-import { useMutation, useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { ArrowLeft } from "lucide-react";
 import { useEffect, useState } from "react";
@@ -65,6 +65,7 @@ export const Route = createFileRoute(
 function CreateEntryPage() {
   const { siteId, collectionSlug } = Route.useParams();
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const [schemaReady, setSchemaReady] = useState(false);
 
   const { data: collection, isLoading } = useQuery({
@@ -115,6 +116,9 @@ function CreateEntryPage() {
       slug: string;
     }) => createEntry(siteId, { collection_id, data, slug }),
     onSuccess: () => {
+      queryClient.invalidateQueries({
+        queryKey: ["entries", siteId],
+      });
       toast.success("Entry created");
       navigate({
         to: "/sites/$siteId/entries/$collectionSlug",

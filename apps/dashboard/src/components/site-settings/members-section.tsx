@@ -1,17 +1,9 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { UserPlus } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-  AlertDialogTrigger,
-} from "@/components/ui/alert-dialog";
+import { CreateUserDialog } from "@/components/instance/create-user-dialog";
+import { UserCombobox } from "@/components/site-settings/user-combobox";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -22,7 +14,6 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Field, FieldLabel } from "@/components/ui/field";
-import { Input } from "@/components/ui/input";
 import {
   Select,
   SelectContent,
@@ -32,36 +23,57 @@ import {
 } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
+  getInstanceUsers,
+  getMe,
   getSiteMembers,
   inviteMember,
+  isOperator,
   removeMember,
-  transferOwnership,
+  siteRoleLabel,
   updateMemberRole,
 } from "@/lib/api";
 
 export function MembersSection({
   siteId,
-  currentRole,
+  canManage,
 }: {
   siteId: string;
-  currentRole: "owner" | "admin" | "editor" | "viewer";
+  canManage: boolean;
 }) {
   const queryClient = useQueryClient();
-  const [username, setUsername] = useState("");
-  const [role, setRole] = useState<"admin" | "editor" | "viewer">("viewer");
+  const [selectedUserId, setSelectedUserId] = useState<string | null>(null);
+  const [role, setRole] = useState<"editor" | "viewer">("editor");
+
   const { data: members, isLoading } = useQuery({
     queryKey: ["site-members", siteId],
     queryFn: () => getSiteMembers(siteId),
   });
-  const canManage = currentRole === "owner" || currentRole === "admin";
+  const { data: me } = useQuery({ queryKey: ["me"], queryFn: getMe });
+  // Only operators may manage members and may read the instance user list.
+  const { data: instanceUsers } = useQuery({
+    queryKey: ["instance-users"],
+    queryFn: getInstanceUsers,
+    enabled: canManage,
+  });
+
+  const currentIsOwner = me?.instance_role === "instance_owner";
+  const operators = (instanceUsers ?? []).filter((user) =>
+    isOperator(user.instance_role),
+  );
+  const memberUserIds = new Set((members ?? []).map((m) => m.user_id));
+  // Candidates exclude operators (they already have full access) and existing members.
+  const candidates = (instanceUsers ?? []).filter(
+    (user) => !isOperator(user.instance_role) && !memberUserIds.has(user.id),
+  );
 
   const invalidate = () =>
     queryClient.invalidateQueries({ queryKey: ["site-members", siteId] });
+
   const inviteMutation = useMutation({
-    mutationFn: () => inviteMember(siteId, { username, role }),
+    mutationFn: (username: string) => inviteMember(siteId, { username, role }),
     onSuccess: () => {
       invalidate();
-      setUsername("");
+      setSelectedUserId(null);
       toast.success("Member added");
     },
     onError: (error: Error) => toast.error(error.message),
@@ -83,67 +95,74 @@ export function MembersSection({
     },
     onError: (error: Error) => toast.error(error.message),
   });
-  const transferMutation = useMutation({
-    mutationFn: (userId: string) => transferOwnership(siteId, userId),
-    onSuccess: () => {
-      invalidate();
-      queryClient.invalidateQueries({ queryKey: ["sites"] });
-      toast.success("Ownership transferred");
-    },
-    onError: (error: Error) => toast.error(error.message),
-  });
+
+  const handleAdd = () => {
+    const user = candidates.find((candidate) => candidate.id === selectedUserId);
+    if (user) inviteMutation.mutate(user.username);
+  };
 
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Members and ownership</CardTitle>
+        <CardTitle>Members</CardTitle>
         <CardDescription>
-          Editors manage content and files. Admins also manage schemas,
-          webhooks, keys, and site settings.
+          Editors create and edit content and files. Viewers have read-only
+          access. Instance operators have full access to every site and cannot
+          be added as members.
         </CardDescription>
       </CardHeader>
-      <CardContent className="flex flex-col gap-4">
+      <CardContent className="flex flex-col gap-5">
         {canManage && (
-          <form
-            className="flex flex-col gap-3 sm:flex-row sm:items-end"
-            onSubmit={(event) => {
-              event.preventDefault();
-              inviteMutation.mutate();
-            }}
-          >
+          <div className="flex flex-col gap-3 rounded-lg border bg-muted/30 p-3 sm:flex-row sm:items-end">
             <Field className="flex-1">
-              <FieldLabel htmlFor="member-username">Username</FieldLabel>
-              <Input
-                id="member-username"
-                value={username}
-                onChange={(event) => setUsername(event.target.value)}
-                required
+              <FieldLabel>Add a member</FieldLabel>
+              <UserCombobox
+                users={candidates}
+                value={selectedUserId}
+                onChange={setSelectedUserId}
+                placeholder="Select a user…"
+                emptyText="No users left to add."
+                footer={
+                  <CreateUserDialog
+                    currentUserIsOwner={currentIsOwner}
+                    onCreated={(user) => setSelectedUserId(user.id)}
+                    trigger={
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        className="w-full justify-start"
+                      >
+                        <UserPlus data-icon="inline-start" />
+                        Create new user
+                      </Button>
+                    }
+                  />
+                }
               />
             </Field>
-            <Field className="sm:w-44">
+            <Field className="sm:w-40">
               <FieldLabel htmlFor="member-role">Role</FieldLabel>
               <Select
                 value={role}
-                onValueChange={(value) =>
-                  setRole(value as "admin" | "editor" | "viewer")
-                }
+                onValueChange={(value) => setRole(value as "editor" | "viewer")}
               >
                 <SelectTrigger id="member-role">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  {currentRole === "owner" && (
-                    <SelectItem value="admin">Admin</SelectItem>
-                  )}
                   <SelectItem value="editor">Editor</SelectItem>
                   <SelectItem value="viewer">Viewer</SelectItem>
                 </SelectContent>
               </Select>
             </Field>
-            <Button type="submit" disabled={inviteMutation.isPending}>
+            <Button
+              type="button"
+              onClick={handleAdd}
+              disabled={!selectedUserId || inviteMutation.isPending}
+            >
               Add member
             </Button>
-          </form>
+          </div>
         )}
 
         {isLoading ? (
@@ -159,102 +178,79 @@ export function MembersSection({
                 </tr>
               </thead>
               <tbody>
-                {members?.map((member) => {
-                  const targetIsAdmin = member.role === "admin";
-                  const editable =
-                    canManage &&
-                    member.role !== "owner" &&
-                    (!targetIsAdmin || currentRole === "owner");
-                  return (
-                    <tr className="border-b last:border-0" key={member.id}>
-                      <td className="p-3">
-                        <div className="font-medium">{member.username}</div>
-                        <div className="text-muted-foreground">
-                          {member.email}
-                        </div>
-                      </td>
-                      <td className="p-3">
-                        {editable ? (
-                          <Select
-                            value={member.role}
-                            onValueChange={(nextRole) => {
-                              if (nextRole) {
-                                roleMutation.mutate({
-                                  userId: member.user_id,
-                                  nextRole,
-                                });
-                              }
-                            }}
-                          >
-                            <SelectTrigger className="w-36">
-                              <SelectValue />
-                            </SelectTrigger>
-                            <SelectContent>
-                              {currentRole === "owner" && (
-                                <SelectItem value="admin">Admin</SelectItem>
-                              )}
-                              <SelectItem value="editor">Editor</SelectItem>
-                              <SelectItem value="viewer">Viewer</SelectItem>
-                            </SelectContent>
-                          </Select>
-                        ) : (
-                          <Badge variant="secondary">{member.role}</Badge>
-                        )}
-                      </td>
-                      <td className="p-3 text-right">
-                        <div className="flex justify-end gap-2">
-                          {currentRole === "owner" &&
-                            member.role !== "owner" && (
-                              <AlertDialog>
-                                <AlertDialogTrigger
-                                  render={
-                                    <Button variant="outline" size="sm" />
-                                  }
-                                >
-                                  Transfer ownership
-                                </AlertDialogTrigger>
-                                <AlertDialogContent>
-                                  <AlertDialogHeader>
-                                    <AlertDialogTitle>
-                                      Transfer site ownership?
-                                    </AlertDialogTitle>
-                                    <AlertDialogDescription>
-                                      {member.username} becomes owner. Your role
-                                      becomes admin.
-                                    </AlertDialogDescription>
-                                  </AlertDialogHeader>
-                                  <AlertDialogFooter>
-                                    <AlertDialogCancel>
-                                      Cancel
-                                    </AlertDialogCancel>
-                                    <AlertDialogAction
-                                      onClick={() =>
-                                        transferMutation.mutate(member.user_id)
-                                      }
-                                    >
-                                      Transfer ownership
-                                    </AlertDialogAction>
-                                  </AlertDialogFooter>
-                                </AlertDialogContent>
-                              </AlertDialog>
-                            )}
-                          {editable && (
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              disabled={removeMutation.isPending}
-                              onClick={() =>
-                                removeMutation.mutate(member.user_id)
-                              }
-                            >
-                              Remove
-                            </Button>
-                          )}
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })}
+                {operators.map((user) => (
+                  <tr className="border-b last:border-0" key={user.id}>
+                    <td className="p-3">
+                      <div className="font-medium">{user.username}</div>
+                      <div className="text-muted-foreground">{user.email}</div>
+                    </td>
+                    <td className="p-3">
+                      <Badge>{siteRoleLabel(user.instance_role)}</Badge>
+                    </td>
+                    <td className="p-3 text-right text-xs text-muted-foreground">
+                      Full access
+                    </td>
+                  </tr>
+                ))}
+                {members?.map((member) => (
+                  <tr className="border-b last:border-0" key={member.id}>
+                    <td className="p-3">
+                      <div className="font-medium">{member.username}</div>
+                      <div className="text-muted-foreground">
+                        {member.email}
+                      </div>
+                    </td>
+                    <td className="p-3">
+                      {canManage ? (
+                        <Select
+                          value={member.role}
+                          onValueChange={(nextRole) => {
+                            if (nextRole) {
+                              roleMutation.mutate({
+                                userId: member.user_id,
+                                nextRole,
+                              });
+                            }
+                          }}
+                        >
+                          <SelectTrigger className="w-36">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="editor">Editor</SelectItem>
+                            <SelectItem value="viewer">Viewer</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      ) : (
+                        <Badge variant="secondary">
+                          {siteRoleLabel(member.role)}
+                        </Badge>
+                      )}
+                    </td>
+                    <td className="p-3 text-right">
+                      {canManage && (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          disabled={removeMutation.isPending}
+                          onClick={() => removeMutation.mutate(member.user_id)}
+                        >
+                          Remove
+                        </Button>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+                {operators.length === 0 && (members?.length ?? 0) === 0 && (
+                  <tr>
+                    <td
+                      className="p-6 text-center text-muted-foreground"
+                      colSpan={3}
+                    >
+                      No members yet.
+                    </td>
+                  </tr>
+                )}
               </tbody>
             </table>
           </div>

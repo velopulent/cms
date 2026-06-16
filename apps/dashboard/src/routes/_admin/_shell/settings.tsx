@@ -6,7 +6,7 @@ import {
   useRouterState,
 } from "@tanstack/react-router";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { getMe } from "@/lib/api";
+import { getMe, isOperator } from "@/lib/api";
 
 export const Route = createFileRoute("/_admin/_shell/settings")({
   beforeLoad: async ({ context }) => {
@@ -14,7 +14,7 @@ export const Route = createFileRoute("/_admin/_shell/settings")({
       queryKey: ["me"],
       queryFn: getMe,
     });
-    if (user.instance_role !== "instance_owner") {
+    if (!isOperator(user.instance_role)) {
       throw redirect({ to: "/" });
     }
   },

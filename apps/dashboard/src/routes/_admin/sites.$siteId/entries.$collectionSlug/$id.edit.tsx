@@ -117,6 +117,9 @@ function EditEntryPage() {
       queryClient.invalidateQueries({
         queryKey: ["entry", siteId, id],
       });
+      queryClient.invalidateQueries({
+        queryKey: ["entries", siteId],
+      });
       toast.success("Entry updated");
       setChangeSummary("");
       navigate({
