@@ -50,6 +50,7 @@ impl GrpcTestContext {
         config.public_registration_enabled = true;
         config.bcrypt_cost = bcrypt::DEFAULT_COST;
         config.webhook_allow_private_targets = true;
+        config.backup_local_path = Some(format!("{storage_path}/backups"));
 
         let pool = init_db_with_config(&config)
             .await
@@ -76,11 +77,21 @@ impl GrpcTestContext {
         let axum_port = axum_listener.local_addr().unwrap().port();
         let rest_base_url = format!("http://127.0.0.1:{}", axum_port);
 
+        let backup_destination =
+            cms::services::backup::build_backup_destination(&config).expect("Failed to init backup destination");
+        let backup_service = Arc::new(cms::services::backup::BackupService::new(
+            pool.clone(),
+            storage_registry.clone(),
+            backup_destination,
+            &config,
+        ));
+
         let app = create_router(
             repository.clone(),
             (*config).clone(),
             storage_registry.clone(),
             Services::new(repository_arc.clone(), &config),
+            backup_service,
         );
 
         let (axum_shutdown_tx, axum_shutdown_rx) = tokio::sync::oneshot::channel::<()>();
