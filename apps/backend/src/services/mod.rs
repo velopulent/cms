@@ -1,6 +1,7 @@
 pub mod access_token;
 pub mod auth;
 pub mod authorization;
+pub mod backup;
 pub mod collection;
 pub mod definition_validation;
 pub mod entry;
