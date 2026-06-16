@@ -65,6 +65,54 @@ pub enum Command {
         #[command(subcommand)]
         action: AdminAction,
     },
+    /// Create or list backups (runs offline, without the HTTP server).
+    Backup {
+        #[command(subcommand)]
+        action: BackupAction,
+    },
+    /// Restore a backup artifact (runs offline; destructive — replaces data in scope).
+    Restore {
+        /// Path to the backup artifact (`.cmsbak`).
+        #[arg(long, value_name = "PATH")]
+        file: PathBuf,
+        /// Restore scope: `instance` (whole instance) or `site` (a single site).
+        #[arg(long, default_value = "instance", value_name = "SCOPE")]
+        scope: String,
+        /// Site id to restore (required when --scope site, or to extract one site
+        /// from an instance backup).
+        #[arg(long, value_name = "SITE_ID")]
+        site: Option<String>,
+        /// Import the site under fresh ids instead of replacing in place.
+        #[arg(long)]
+        import_as_new: bool,
+        /// Skip the destructive-action confirmation prompt.
+        #[arg(long)]
+        yes: bool,
+    },
+}
+
+#[derive(Subcommand, Debug)]
+pub enum BackupAction {
+    /// Create a backup.
+    Create {
+        /// `instance` (everything) or `site` (one site).
+        #[arg(long, default_value = "instance", value_name = "SCOPE")]
+        scope: String,
+        /// Site id (required when --scope site).
+        #[arg(long, value_name = "SITE_ID")]
+        site: Option<String>,
+        /// Write the artifact to this file instead of the configured destination.
+        #[arg(long, value_name = "PATH")]
+        out: Option<PathBuf>,
+        /// Exclude uploaded files from the backup.
+        #[arg(long = "no-files")]
+        no_files: bool,
+        /// Encrypt the artifact (requires a backup encryption key).
+        #[arg(long)]
+        encrypt: bool,
+    },
+    /// List recorded backups.
+    List,
 }
 
 #[derive(Subcommand, Debug)]
