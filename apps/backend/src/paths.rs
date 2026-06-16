@@ -62,6 +62,11 @@ pub fn storage_dir() -> PathBuf {
     home().join("storage")
 }
 
+/// `~/.cms/backups` — default local destination for backup artifacts.
+pub fn backups_dir() -> PathBuf {
+    home().join("backups")
+}
+
 /// Build the default `DATABASE_URL` (`sqlite://<home>/cms.db`).
 ///
 /// SQLite URLs use forward slashes, so backslashes are normalized for Windows.
