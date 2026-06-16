@@ -16,6 +16,7 @@
 - `apps/backend/src/grpc/` - gRPC service implementations (generated from `libs/proto/*.proto`)
 - `apps/backend/src/mcp/` - MCP server (tools/`*.rs`, `schema.rs`, `server.rs`, `auth.rs`, `transports/`)
 - `apps/backend/src/repository/` - Data access layer
+- `apps/backend/src/services/backup/` - Backup & restore engine (dump/restore, scheduler, metadata)
 - `apps/backend/src/router/` - Route composition
 - `apps/backend/tests/common/` - Shared integration test infrastructure
 - `apps/backend/tests/rest/` - REST API integration tests
@@ -51,7 +52,7 @@ bun run format               # Format all projects
 - Unit tests live inline in source files (19 modules) and in `apps/backend/tests/mock_user_repository.rs`, `apps/backend/tests/file_service_tests.rs`
 - Integration tests in `apps/backend/tests/` are black-box tests against a real server (no internal imports)
   - `tests/common/` — shared infrastructure: `TestServer` (random port, SQLite in-memory, temp storage, seeded admin), auth helpers, `TestClient` wrapper, fixture builders
-  - `tests/rest/` — REST API tests: `auth`, `sites`, `collections`, `entries`, `singletons`, `files`, `webhooks`, `access_tokens`, `roles`
+  - `tests/rest/` — REST API tests: `auth`, `sites`, `collections`, `entries`, `singletons`, `files`, `webhooks`, `access_tokens`, `roles`, `backups`
   - `tests/graphql/` — GraphQL API tests: `auth`, `sites`, `collections`, `entries`, `files`, `webhooks`
   - `tests/grpc/` — gRPC API tests: `collections`, `entries`, `singletons`, `files`, `sites`, `webhooks` (uses tonic clients with real auth interceptor)
   - Each test module gets its own server instance (isolated DB + storage)
@@ -71,7 +72,14 @@ cms config init [--force] [--path P]  # write a default config.toml (non-secrets
 cms config show                       # print effective merged config (secrets redacted)
 cms config path                       # print resolved config file + search order
 cms admin reset-password --username U --password P
+cms backup create [--scope instance|site] [--site ID] [--out FILE] [--no-files] [--encrypt]
+cms backup list                       # list recorded backups
+cms restore --file PATH [--scope instance|site] [--site ID] [--import-as-new] --yes
 ```
+
+`backup`/`restore` run offline (no HTTP server) against the configured database —
+the disaster-recovery path when the instance won't boot. `restore` is destructive
+and requires `--yes`.
 
 Global flags (highest precedence): `--config <PATH>`, `--bind <ADDR>`, `--database-url <URL>`, `--log-level <LEVEL>`.
 
@@ -111,8 +119,9 @@ is read-only: it never creates the home dir, database, or secrets file.
 
 Env-only secrets (never read from `config.toml` by convention, omitted from
 `config init`): `DATABASE_URL`, `JWT_SECRET`, `HMAC_SECRET`, `S3_ACCESS_KEY_ID`,
-`S3_SECRET_ACCESS_KEY`. (`JWT_SECRET`/`HMAC_SECRET` are auto-persisted to
-`secrets.toml`; the others remain env-only.)
+`S3_SECRET_ACCESS_KEY`, `BACKUP_S3_ACCESS_KEY_ID`, `BACKUP_S3_SECRET_ACCESS_KEY`,
+`BACKUP_ENCRYPTION_KEY`. (`JWT_SECRET`/`HMAC_SECRET` and a random backup encryption
+key are auto-persisted to `secrets.toml`; the others remain env-only.)
 
 Sample `config.toml` (generate with `cms config init`):
 
@@ -157,6 +166,15 @@ Logging keys map to the `[log]` table: `RUST_LOG`→`log.level`, `LOG_OUTPUT`→
 | `S3_REGION` | `us-east-1` | S3 region |
 | `S3_ENDPOINT` | - | S3 endpoint (for S3-compatible services) |
 | `S3_PUBLIC_URL` | - | Public URL for S3 assets |
+| `BACKUP_ENABLED` | `true` | Run the scheduled-backup poller / allow backups |
+| `BACKUP_DESTINATION` | `filesystem` | Backup destination: `filesystem` or `s3` |
+| `BACKUP_LOCAL_PATH` | `~/.cms/backups` | Local backup dir (when destination is filesystem) |
+| `BACKUP_ZSTD_LEVEL` | `12` | zstd compression level for backups |
+| `BACKUP_DEFAULT_RETENTION` | `7` | Default "keep last N" for new schedules |
+| `BACKUP_S3_BUCKET` / `_REGION` / `_ENDPOINT` / `_PUBLIC_URL` | - | S3 backup destination (non-secret parts) |
+| `BACKUP_S3_ACCESS_KEY_ID` | - | S3 backup access key (secret, env-only) |
+| `BACKUP_S3_SECRET_ACCESS_KEY` | - | S3 backup secret key (secret, env-only) |
+| `BACKUP_ENCRYPTION_KEY` | auto | AES-256 backup key (hex); auto-generated to `secrets.toml` |
 | `MAX_UPLOAD_SIZE_MB` | `50` | Max upload size in MB |
 | `COOKIE_SECURE` | `false` | Require HTTPS cookies |
 | `DB_MAX_CONNECTIONS` | `10` | Max DB connections |
@@ -197,8 +215,10 @@ is enforced by `middleware/authz.rs`; `require_*_action` helpers live in
 **Instance roles** (operators, span the whole installation; stored on
 `users.instance_role`):
 - `instance_owner` — strict superset of admin. Owner-only powers: granting/revoking
-  instance roles (`InstanceRolesGrant`); future instance backup/restore.
-- `instance_admin` — manage the instance and its users, create and delete sites.
+  instance roles (`InstanceRolesGrant`); instance-wide backup/restore
+  (`InstanceBackup`/`InstanceRestore`).
+- `instance_admin` — manage the instance and its users, create and delete sites,
+  and back up / restore individual sites (`SiteBackup`/`SiteRestore`).
 - A user with no instance role has no instance-level powers.
 
 Both operators have **implicit full authority over every site** without being a
@@ -225,6 +245,37 @@ The `roles_v2` migration (`migrations/*/20260616000000_roles_v2.sql`) widened
 `users.instance_role` to allow `instance_admin` and restricted `site_members.role`
 to `editor`/`viewer` (legacy `owner`/`admin` site members collapse to `editor`,
 since those operators now act through their instance role).
+
+## Backups & Restore
+
+A logical backup/restore subsystem lives in `apps/backend/src/services/backup/`:
+- `schema.rs` — table registry + cross-backend dump/restore. Every value is
+  normalized to **text** (Postgres casts `::text`/`::int`; restore casts back with
+  `::jsonb`/`::timestamptz`/`::bigint`/`::int::boolean`), so a backup is a portable,
+  DB-agnostic set of NDJSON rows that restores into any of the three backends.
+- `mod.rs` — `BackupService`: a snapshot read (REPEATABLE READ / WAL) dumps tables →
+  tar → zstd → optional AES-256-GCM, written to a destination `StorageProvider`.
+  Restore is full-replace within the chosen scope in one transaction (site filter,
+  user-ref reconciliation, optional id remap for "import as new site").
+- `meta.rs` — CRUD for the `backups`, `backup_schedules`, `restore_jobs` tables
+  (migration `migrations/*/20260617000000_backups.sql`; these tables are **not**
+  part of a backup payload).
+- `scheduler.rs` — background poller spawned from `serve` that runs due cron
+  schedules and prunes per-schedule retention; `schedule.rs` wraps cron (`croner`).
+
+Scope is `instance` (every site + users/roles; excludes sessions and `secrets.toml`)
+or `site` (one self-contained site). REST handlers are in
+`handlers/backup_handler.rs`, routes in `router/backup.rs`: instance routes are
+**owner-only** under `/api/dashboard/instance/{backups,restore,backup-schedules}`;
+site routes are **operator-only** under
+`/api/dashboard/sites/{site_id}/{backups,restore,backup-schedules}`. Restore
+endpoints require a typed `confirm: "RESTORE"`. The dashboard exposes a **Backups**
+tab in both site and instance settings (`components/backups/backups-section.tsx`).
+
+Encryption is optional AES-256-GCM using a key from `BACKUP_ENCRYPTION_KEY` (else a
+random key auto-persisted to `secrets.toml`), kept separate from the backup
+destination. The manifest stamps the format + DB migration version; restore refuses
+a backup taken on a **newer** schema and relies on additive migrations otherwise.
 
 ## Code Conventions
 

@@ -46,6 +46,10 @@ Your content is instantly available via REST, GraphQL, gRPC, and MCP (Model Cont
 
 Upload, organize, and serve images and files with automatic thumbnail generation. Works with local storage or connect your own S3-compatible storage.
 
+### 💾 Backups & Disaster Recovery
+
+Create on-demand or scheduled backups of a single site or the whole instance. Backups are compressed, optionally encrypted (AES-256-GCM), and stored on local disk or a separate S3 bucket — keep the last N automatically. Restore in place or import a site as a copy, from the dashboard or offline with `cms restore` when the server won't even boot. Backups are a portable logical dump, so you can move data between SQLite, PostgreSQL, and MySQL.
+
 ### 🔐 Secure & Scalable
 
 Two-tier role-based access control, JWT authentication, and rate limiting included out of the box. Instance operators (owner and admins) manage the installation and its sites, while per-site collaborators get editor (write content) or viewer (read-only) access. Whether you're running a personal blog or a multi-tenant platform, the security model adapts to your needs.
