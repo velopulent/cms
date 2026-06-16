@@ -507,6 +507,158 @@ export async function updateInstanceRole(
   });
 }
 
+// --- Backup & Restore API ---
+
+export type BackupScope =
+  | { kind: "instance" }
+  | { kind: "site"; siteId: string };
+
+export function backupScopePrefix(scope: BackupScope): string {
+  return scope.kind === "instance" ? "/instance" : `/sites/${scope.siteId}`;
+}
+
+/** A stable, serializable query-key segment for a backup scope. */
+export function backupScopeKey(scope: BackupScope): string {
+  return scope.kind === "instance" ? "instance" : `site:${scope.siteId}`;
+}
+
+export interface BackupInfo {
+  id: string;
+  schedule_id: string | null;
+  scope: "instance" | "site";
+  site_id: string | null;
+  status: "pending" | "running" | "success" | "failed";
+  schema_version: string | null;
+  size_bytes: number;
+  file_count: number;
+  includes_files: boolean;
+  encrypted: boolean;
+  checksum: string | null;
+  error: string | null;
+  created_by: string | null;
+  completed_at: string | null;
+  created_at: string;
+}
+
+export interface BackupSchedule {
+  id: string;
+  scope: "instance" | "site";
+  site_id: string | null;
+  cron: string;
+  retention_n: number;
+  include_files: boolean;
+  encrypt: boolean;
+  enabled: boolean;
+  last_run_at: string | null;
+  next_run_at: string | null;
+  created_at: string;
+}
+
+export interface CreateBackupInput {
+  include_files?: boolean;
+  encrypt?: boolean;
+}
+
+export interface ScheduleInput {
+  cron: string;
+  retention_n: number;
+  include_files: boolean;
+  encrypt: boolean;
+  enabled: boolean;
+}
+
+export interface RestoreInput {
+  backup_id?: string;
+  destination_key?: string;
+  mode?: "instance" | "site";
+  site_id?: string;
+  import_as_new?: boolean;
+  confirm: string;
+}
+
+export async function listBackups(scope: BackupScope) {
+  return api<BackupInfo[]>(`${backupScopePrefix(scope)}/backups`);
+}
+
+export async function createBackup(scope: BackupScope, input: CreateBackupInput) {
+  return api<BackupInfo>(`${backupScopePrefix(scope)}/backups`, {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+}
+
+export async function deleteBackup(scope: BackupScope, backupId: string) {
+  return api<void>(`${backupScopePrefix(scope)}/backups/${backupId}`, {
+    method: "DELETE",
+  });
+}
+
+/** Same-origin URL for downloading a backup artifact (auth via cookie). */
+export function backupDownloadUrl(scope: BackupScope, backupId: string): string {
+  return `${BASE_URL}${backupScopePrefix(scope)}/backups/${backupId}/download`;
+}
+
+export async function restoreBackup(scope: BackupScope, input: RestoreInput) {
+  return api<void>(`${backupScopePrefix(scope)}/restore`, {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+}
+
+export async function restoreBackupUpload(
+  scope: BackupScope,
+  file: File,
+  opts: { mode?: "instance" | "site"; site_id?: string; import_as_new?: boolean; confirm: string },
+) {
+  const formData = new FormData();
+  formData.append("file", file);
+  if (opts.mode) formData.append("mode", opts.mode);
+  if (opts.site_id) formData.append("site_id", opts.site_id);
+  formData.append("import_as_new", opts.import_as_new ? "true" : "false");
+  formData.append("confirm", opts.confirm);
+  const csrfToken = getCsrfToken();
+  const res = await fetch(`${BASE_URL}${backupScopePrefix(scope)}/restore/upload`, {
+    method: "POST",
+    credentials: "include",
+    body: formData,
+    headers: csrfToken ? { "X-CSRF-Token": csrfToken } : undefined,
+  });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new ApiError(res.status, body.message || body.error || "Restore failed", body);
+  }
+}
+
+export async function listBackupSchedules(scope: BackupScope) {
+  return api<BackupSchedule[]>(`${backupScopePrefix(scope)}/backup-schedules`);
+}
+
+export async function createBackupSchedule(scope: BackupScope, input: ScheduleInput) {
+  return api<BackupSchedule>(`${backupScopePrefix(scope)}/backup-schedules`, {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+}
+
+export async function updateBackupSchedule(scope: BackupScope, id: string, input: ScheduleInput) {
+  return api<void>(`${backupScopePrefix(scope)}/backup-schedules/${id}`, {
+    method: "PUT",
+    body: JSON.stringify(input),
+  });
+}
+
+export async function deleteBackupSchedule(scope: BackupScope, id: string) {
+  return api<void>(`${backupScopePrefix(scope)}/backup-schedules/${id}`, {
+    method: "DELETE",
+  });
+}
+
+export async function runBackupSchedule(scope: BackupScope, id: string) {
+  return api<BackupInfo>(`${backupScopePrefix(scope)}/backup-schedules/${id}/run`, {
+    method: "POST",
+  });
+}
+
 // --- Sites API ---
 
 export async function getSites() {
