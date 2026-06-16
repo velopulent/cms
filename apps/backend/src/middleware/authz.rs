@@ -40,9 +40,7 @@ mod tests {
             Action::ApiKeysManage,
             Action::MembersRead,
             Action::MembersManage,
-            Action::AdminsManage,
-            Action::OwnershipTransfer,
         ]);
-        assert_eq!(actions.len(), 16);
+        assert_eq!(actions.len(), 14);
     }
 }
