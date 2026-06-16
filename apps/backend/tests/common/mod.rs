@@ -47,6 +47,17 @@ impl TestServer {
         config.public_registration_enabled = true;
         config.bcrypt_cost = bcrypt::DEFAULT_COST;
         config.webhook_allow_private_targets = true;
+        config.backup_local_path = Some(
+            storage_dir
+                .path()
+                .join("backups")
+                .to_string_lossy()
+                .into_owned(),
+        );
+        // Deterministic 32-byte (hex) key so encrypted-backup tests can round-trip.
+        config.backup_encryption_key =
+            Some("00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff".to_string());
+        config.backup_enabled = false; // don't run the poller during tests
 
         let pool = init_db_with_config(&config)
             .await
@@ -64,7 +75,22 @@ impl TestServer {
 
         let services = Services::new(Arc::new(repository.clone()), &config);
 
-        let app = create_router(repository.clone(), config.clone(), storage_registry, services);
+        let backup_destination =
+            cms::services::backup::build_backup_destination(&config).expect("Failed to init backup destination");
+        let backup_service = Arc::new(cms::services::backup::BackupService::new(
+            pool.clone(),
+            storage_registry.clone(),
+            backup_destination,
+            &config,
+        ));
+
+        let app = create_router(
+            repository.clone(),
+            config.clone(),
+            storage_registry,
+            services,
+            backup_service,
+        );
 
         let (shutdown_tx, shutdown_rx) = tokio::sync::oneshot::channel::<()>();
 

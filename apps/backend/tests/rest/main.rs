@@ -3,6 +3,7 @@ mod common;
 
 mod access_tokens_tests;
 mod auth_tests;
+mod backups_tests;
 mod collections_tests;
 mod entries_tests;
 mod files_tests;
