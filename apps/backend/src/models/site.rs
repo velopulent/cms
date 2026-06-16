@@ -55,8 +55,3 @@ pub struct InviteMember {
 pub struct UpdateMemberRole {
     pub role: String,
 }
-
-#[derive(Deserialize, ToSchema)]
-pub struct TransferOwnership {
-    pub new_owner_user_id: String,
-}
