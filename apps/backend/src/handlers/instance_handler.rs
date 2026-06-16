@@ -34,13 +34,19 @@ pub async fn create_user(
     if let Err((status, error)) = require_instance_action(&auth, &repository, Action::InstanceManage).await {
         return (status, error).into_response();
     }
+    // Only an instance owner may mint another instance owner; admins may grant instance_admin.
+    if payload.instance_role.as_deref() == Some("instance_owner")
+        && let Err((status, error)) = require_instance_action(&auth, &repository, Action::InstanceRolesGrant).await
+    {
+        return (status, error).into_response();
+    }
     match services
         .auth
         .create_managed_user(
             &payload.username,
             &payload.email,
             &payload.temporary_password,
-            payload.instance_owner,
+            payload.instance_role.as_deref(),
         )
         .await
     {
@@ -59,7 +65,21 @@ pub async fn update_instance_role(
     if let Err((status, error)) = require_instance_action(&auth, &repository, Action::InstanceManage).await {
         return (status, error).into_response();
     }
-    match services.auth.set_instance_owner(&user_id, payload.instance_owner).await {
+    // Anything that grants or revokes the owner role is owner-only.
+    let target_is_owner = matches!(
+        repository.user.find_by_id(&user_id).await,
+        Ok(Some(user)) if user.instance_role.as_deref() == Some("instance_owner")
+    );
+    if (payload.instance_role.as_deref() == Some("instance_owner") || target_is_owner)
+        && let Err((status, error)) = require_instance_action(&auth, &repository, Action::InstanceRolesGrant).await
+    {
+        return (status, error).into_response();
+    }
+    match services
+        .auth
+        .set_instance_role(&user_id, payload.instance_role.as_deref())
+        .await
+    {
         Ok(()) => StatusCode::NO_CONTENT.into_response(),
         Err(error) => error.into_response(),
     }

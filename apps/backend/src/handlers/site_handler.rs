@@ -12,7 +12,7 @@ use crate::middleware::auth::{
     AuthContext, RequestContext, require_instance_action, require_site_action, require_user_action,
 };
 use crate::models::authorization::Action;
-use crate::models::site::{CreateSite, InviteMember, TransferOwnership, UpdateMemberRole, UpdateSite};
+use crate::models::site::{CreateSite, InviteMember, UpdateMemberRole, UpdateSite};
 use crate::repository::Repository;
 use crate::services::Services;
 
@@ -116,7 +116,7 @@ pub async fn delete_site(
     Extension(repository): Extension<Repository>,
     Extension(services): Extension<Services>,
 ) -> Response {
-    if let Err((status, err)) = require_site_action(&ctx, &repository, Action::SiteDelete).await {
+    if let Err((status, err)) = require_instance_action(&ctx.auth, &repository, Action::SiteDelete).await {
         return (status, err).into_response();
     }
 
@@ -157,11 +157,6 @@ pub async fn invite_member(
         Ok(actor_id) => actor_id,
         Err((status, err)) => return (status, err).into_response(),
     };
-    if payload.role == "admin"
-        && let Err((status, err)) = require_user_action(&ctx, &repository, Action::AdminsManage).await
-    {
-        return (status, err).into_response();
-    }
 
     match services
         .site
@@ -188,11 +183,6 @@ pub async fn update_member_role(
         Ok(actor_id) => actor_id,
         Err((status, err)) => return (status, err).into_response(),
     };
-    if payload.role == "admin"
-        && let Err((status, err)) = require_user_action(&ctx, &repository, Action::AdminsManage).await
-    {
-        return (status, err).into_response();
-    }
 
     match services
         .site
@@ -228,27 +218,5 @@ pub async fn remove_member(
         Ok(0) => (StatusCode::NOT_FOUND, Json(json!({"error": "Member not found"}))).into_response(),
         Ok(_) => StatusCode::NO_CONTENT.into_response(),
         Err(e) => e.into_response(),
-    }
-}
-
-#[instrument(skip(repository, services, ctx, payload))]
-pub async fn transfer_ownership(
-    ctx: RequestContext,
-    Path(site_id): Path<String>,
-    Extension(repository): Extension<Repository>,
-    Extension(services): Extension<Services>,
-    Json(payload): Json<TransferOwnership>,
-) -> Response {
-    let current_owner_id = match require_user_action(&ctx, &repository, Action::OwnershipTransfer).await {
-        Ok(user_id) => user_id,
-        Err((status, error)) => return (status, error).into_response(),
-    };
-    match services
-        .site
-        .transfer_ownership(&site_id, &current_owner_id, &payload.new_owner_user_id)
-        .await
-    {
-        Ok(()) => StatusCode::NO_CONTENT.into_response(),
-        Err(error) => error.into_response(),
     }
 }
