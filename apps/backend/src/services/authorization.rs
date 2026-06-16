@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use crate::middleware::auth::Actor;
-use crate::models::authorization::{Action, Authorizer, SiteRole};
+use crate::models::authorization::{Action, Authorizer, InstanceRole, SiteRole};
 use crate::repository::traits::UserRepository;
 use crate::services::error::ServiceError;
 
@@ -40,6 +40,22 @@ impl AuthorizationService {
     }
 
     async fn check_site_access(&self, user_id: &str, site_id: &str, action: Action) -> Result<(), ServiceError> {
+        // Instance operators (Owner/Admin) have full authority over every site.
+        if let Some(account) = self
+            .user_repo
+            .find_by_id(user_id)
+            .await
+            .map_err(|e| ServiceError::Internal(e.to_string()))?
+        {
+            let instance_role = account
+                .instance_role
+                .as_deref()
+                .and_then(|value| value.parse::<InstanceRole>().ok());
+            if Authorizer::allows_site_as_instance(instance_role, action) {
+                return Ok(());
+            }
+        }
+
         let role = self
             .user_repo
             .get_role(user_id, site_id)
