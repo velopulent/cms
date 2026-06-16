@@ -27,7 +27,7 @@ import {
   SidebarRail,
 } from "@/components/ui/sidebar";
 import { useAuth } from "@/contexts/auth-context";
-import { getCollections, getSites } from "@/lib/api";
+import { getCollections, getSites, siteRoleLabel } from "@/lib/api";
 
 export function AppSidebar({ ...props }: ComponentProps<typeof Sidebar>) {
   const { siteId } = useParams({ from: "/_admin/sites/$siteId" as any });
@@ -50,7 +50,7 @@ export function AppSidebar({ ...props }: ComponentProps<typeof Sidebar>) {
       (sites ?? []).map((site) => ({
         name: site.name,
         id: site.id,
-        plan: site.role,
+        plan: siteRoleLabel(site.role),
         icon: <GalleryVerticalEnd className="size-4" />,
       })),
     [sites],

@@ -8,6 +8,6 @@ export const Route = createFileRoute("/_admin/sites/$siteId/settings/members")({
 
 function MembersSettings() {
   const { siteId } = Route.useParams();
-  const { role } = useSiteRole(siteId);
-  return <MembersSection siteId={siteId} currentRole={role} />;
+  const { canManage } = useSiteRole(siteId);
+  return <MembersSection siteId={siteId} canManage={canManage} />;
 }

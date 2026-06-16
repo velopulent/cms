@@ -13,11 +13,12 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { useAuth } from "@/contexts/auth-context";
+import { isOperator } from "@/lib/api";
 
 export function DashboardHeader() {
   const auth = useAuth();
   const navigate = useNavigate();
-  const isOwner = auth.user?.instance_role === "instance_owner";
+  const showInstanceSettings = isOperator(auth.user?.instance_role);
   const name = auth.user?.username ?? "User";
   const email = auth.user?.email ?? "";
 
@@ -40,7 +41,7 @@ export function DashboardHeader() {
 
       <div className="flex items-center gap-2">
         <ModeToggle />
-        {isOwner && (
+        {showInstanceSettings && (
           <Link
             to="/settings"
             title="Instance settings"

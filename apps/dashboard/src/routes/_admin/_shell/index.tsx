@@ -41,7 +41,13 @@ import {
 } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useAuth } from "@/contexts/auth-context";
-import { createSite, getSites, type SiteWithRole } from "@/lib/api";
+import {
+  createSite,
+  getSites,
+  isOperator,
+  siteRoleLabel,
+  type SiteWithRole,
+} from "@/lib/api";
 
 export const Route = createFileRoute("/_admin/_shell/")({
   validateSearch: z.object({
@@ -88,7 +94,7 @@ function SiteCard({ site }: { site: SiteWithRole }) {
         </div>
       </CardHeader>
       <CardContent className="flex items-center justify-between pt-0">
-        <Badge variant="outline">{site.role}</Badge>
+        <Badge variant="outline">{siteRoleLabel(site.role)}</Badge>
       </CardContent>
     </Card>
   );
@@ -277,7 +283,7 @@ function HomePage() {
   const navigate = useNavigate();
   const search = useSearch({ from: "/_admin/_shell/" });
   const [createOpen, setCreateOpen] = useState(false);
-  const canCreateSite = user?.instance_role === "instance_owner";
+  const canCreateSite = isOperator(user?.instance_role);
 
   const { data: sites, isLoading } = useQuery({
     queryKey: ["sites"],
