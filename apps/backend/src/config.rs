@@ -28,6 +28,21 @@ pub struct Config {
     pub s3_endpoint: Option<String>,
     pub s3_public_url: Option<String>,
 
+    // Backup destination + options (independent of the site-files storage above)
+    pub backup_enabled: bool,
+    pub backup_destination: String, // "filesystem" | "s3"
+    pub backup_local_path: Option<String>,
+    pub backup_zstd_level: i32,
+    pub backup_default_retention: i64,
+    pub backup_s3_access_key_id: Option<String>,
+    pub backup_s3_secret_access_key: Option<String>,
+    pub backup_s3_bucket: Option<String>,
+    pub backup_s3_region: Option<String>,
+    pub backup_s3_endpoint: Option<String>,
+    pub backup_s3_public_url: Option<String>,
+    /// AES-256 backup key (hex). From `BACKUP_ENCRYPTION_KEY` or persisted secrets.
+    pub backup_encryption_key: Option<String>,
+
     // Upload limits
     pub max_upload_size_bytes: usize,
 
@@ -96,6 +111,20 @@ struct RawConfig {
     s3_region: Option<String>,
     s3_endpoint: Option<String>,
     s3_public_url: Option<String>,
+
+    #[serde(default, deserialize_with = "de_opt_lenient_bool")]
+    backup_enabled: Option<bool>,
+    backup_destination: Option<String>,
+    backup_local_path: Option<String>,
+    backup_zstd_level: Option<i32>,
+    backup_default_retention: Option<i64>,
+    backup_s3_access_key_id: Option<String>,
+    backup_s3_secret_access_key: Option<String>,
+    backup_s3_bucket: Option<String>,
+    backup_s3_region: Option<String>,
+    backup_s3_endpoint: Option<String>,
+    backup_s3_public_url: Option<String>,
+    backup_encryption_key: Option<String>,
 
     max_upload_size_mb: Option<usize>,
 
@@ -205,6 +234,13 @@ impl Config {
 
     pub fn has_s3(&self) -> bool {
         self.s3_access_key_id.is_some() && self.s3_secret_access_key.is_some() && self.s3_bucket.is_some()
+    }
+
+    /// Whether a dedicated S3 backup destination is fully configured.
+    pub fn has_backup_s3(&self) -> bool {
+        self.backup_s3_access_key_id.is_some()
+            && self.backup_s3_secret_access_key.is_some()
+            && self.backup_s3_bucket.is_some()
     }
 
     pub fn validate_security(&self) -> Result<(), String> {
@@ -360,6 +396,18 @@ impl RawConfig {
             s3_region: self.s3_region,
             s3_endpoint: self.s3_endpoint,
             s3_public_url: self.s3_public_url,
+            backup_enabled: self.backup_enabled.unwrap_or(true),
+            backup_destination: self.backup_destination.unwrap_or_else(|| "filesystem".into()),
+            backup_local_path: self.backup_local_path,
+            backup_zstd_level: self.backup_zstd_level.unwrap_or(12),
+            backup_default_retention: self.backup_default_retention.unwrap_or(7),
+            backup_s3_access_key_id: self.backup_s3_access_key_id,
+            backup_s3_secret_access_key: self.backup_s3_secret_access_key,
+            backup_s3_bucket: self.backup_s3_bucket,
+            backup_s3_region: self.backup_s3_region,
+            backup_s3_endpoint: self.backup_s3_endpoint,
+            backup_s3_public_url: self.backup_s3_public_url,
+            backup_encryption_key: self.backup_encryption_key,
             max_upload_size_bytes: self.max_upload_size_mb.unwrap_or(50) * 1024 * 1024,
             cookie_secure: self.cookie_secure.unwrap_or(false),
             session_lifetime_hours: self.session_lifetime_hours.unwrap_or(24),
@@ -463,6 +511,22 @@ pub fn default_config_toml() -> String {
          # --- Webhooks ---\n\
          # Allow webhooks to target private/loopback addresses (SSRF guard off)\n\
          webhook_allow_private_targets = false\n\n\
+         # --- Backups ---\n\
+         # Run the scheduled-backup poller and allow on-demand backups.\n\
+         backup_enabled = true\n\
+         # Destination for backup artifacts: \"filesystem\" (default, under ~/.cms/backups)\n\
+         # or \"s3\". S3 credentials are secrets — set them via env (see below).\n\
+         backup_destination = \"filesystem\"\n\
+         # backup_local_path = \"./backups\"\n\
+         backup_zstd_level = 12\n\
+         backup_default_retention = 7\n\
+         # S3 backup destination (non-secret parts; keep it in a SEPARATE account/bucket\n\
+         # from your site-files S3 for blast-radius isolation):\n\
+         # backup_s3_bucket = \"my-cms-backups\"\n\
+         # backup_s3_region = \"us-east-1\"\n\
+         # backup_s3_endpoint = \"https://s3.example.com\"\n\
+         # Secrets via env: BACKUP_S3_ACCESS_KEY_ID, BACKUP_S3_SECRET_ACCESS_KEY,\n\
+         # and BACKUP_ENCRYPTION_KEY (else auto-generated into secrets.toml).\n\n\
          # --- MCP ---\n\
          mcp_enabled = true\n\
          mcp_allowed_hosts = [{hosts}]\n\

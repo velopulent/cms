@@ -20,6 +20,11 @@ use crate::paths;
 pub struct PersistedSecrets {
     pub jwt_secret: String,
     pub hmac_secret: String,
+    /// AES-256 key (hex, 64 chars) used to encrypt backup artifacts. Added in a
+    /// later release, so existing `secrets.toml` files may lack it; [`ensure`]
+    /// backfills and persists it on next run. Overridable via `BACKUP_ENCRYPTION_KEY`.
+    #[serde(default)]
+    pub backup_encryption_key: Option<String>,
 }
 
 /// Read the persisted secrets file if it exists.
@@ -42,24 +47,35 @@ pub fn load() -> Result<Option<PersistedSecrets>, Box<dyn std::error::Error>> {
 /// Read-only commands (`mcp stdio`) must use [`load`] instead and never create
 /// the file.
 pub fn ensure() -> Result<PersistedSecrets, Box<dyn std::error::Error>> {
-    if let Some(existing) = load()? {
+    if let Some(mut existing) = load()? {
+        // Backfill the backup key for instances created before it existed.
+        if existing.backup_encryption_key.is_none() {
+            existing.backup_encryption_key = Some(random_hex(32));
+            persist(&existing)?;
+        }
         return Ok(existing);
     }
 
     let secrets = PersistedSecrets {
         jwt_secret: random_hex(32),
         hmac_secret: random_hex(32),
+        backup_encryption_key: Some(random_hex(32)),
     };
 
+    persist(&secrets)?;
+    Ok(secrets)
+}
+
+/// Write the secrets file with owner-only permissions.
+fn persist(secrets: &PersistedSecrets) -> Result<(), Box<dyn std::error::Error>> {
     let path = paths::secrets_file();
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent)?;
     }
-    let body = toml::to_string_pretty(&secrets)?;
+    let body = toml::to_string_pretty(secrets)?;
     std::fs::write(&path, body)?;
     restrict_permissions(&path)?;
-
-    Ok(secrets)
+    Ok(())
 }
 
 /// Generate `n` random bytes, hex-encoded (so a 32-byte secret is 64 chars).
