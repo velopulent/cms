@@ -110,13 +110,8 @@ impl UserRepository for InMemoryUserRepository {
         Ok(users.iter().any(|u| u.username == username))
     }
 
-    async fn get_role(&self, user_id: &str, _site_id: &str) -> Result<Option<String>, RepositoryError> {
-        let role = if matches!(user_id, "user-123" | "user-1") {
-            "owner"
-        } else {
-            "editor"
-        };
-        Ok(Some(role.to_string()))
+    async fn get_role(&self, _user_id: &str, _site_id: &str) -> Result<Option<String>, RepositoryError> {
+        Ok(Some("editor".to_string()))
     }
 
     async fn count(&self) -> Result<i64, RepositoryError> {
@@ -396,26 +391,6 @@ impl SiteRepository for InMemorySiteRepository {
         let len = members.len();
         members.retain(|m| !(m.site_id == site_id && m.user_id == user_id));
         Ok((len - members.len()) as u64)
-    }
-
-    async fn transfer_ownership(
-        &self,
-        site_id: &str,
-        current_owner_id: &str,
-        new_owner_id: &str,
-    ) -> Result<(), RepositoryError> {
-        let mut members = self.members.lock().unwrap();
-        let new_owner = members
-            .iter_mut()
-            .find(|member| member.site_id == site_id && member.user_id == new_owner_id)
-            .ok_or(RepositoryError::NotFound)?;
-        new_owner.role = "owner".to_string();
-        let old_owner = members
-            .iter_mut()
-            .find(|member| member.site_id == site_id && member.user_id == current_owner_id)
-            .ok_or(RepositoryError::NotFound)?;
-        old_owner.role = "admin".to_string();
-        Ok(())
     }
 }
 
