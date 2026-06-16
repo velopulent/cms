@@ -39,12 +39,16 @@ pub struct CreateManagedUser {
     pub username: String,
     pub email: String,
     pub temporary_password: String,
-    pub instance_owner: bool,
+    /// `"instance_owner"`, `"instance_admin"`, or `null` for a non-operator user.
+    #[serde(default)]
+    pub instance_role: Option<String>,
 }
 
 #[derive(Deserialize, ToSchema)]
 pub struct UpdateInstanceRole {
-    pub instance_owner: bool,
+    /// `"instance_owner"`, `"instance_admin"`, or `null` to clear the operator role.
+    #[serde(default)]
+    pub instance_role: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
