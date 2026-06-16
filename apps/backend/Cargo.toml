@@ -63,6 +63,9 @@ clap = { version = "4.6.1", features = ["derive", "env"] }
 figment = { version = "0.10.19", features = ["toml", "env"] }
 toml = "1.1.2"
 directories = "6.0.0"
+zstd = "0.13"
+tar = "0.4"
+croner = "2"
 
 [build-dependencies]
 tonic-build = "0.14"
