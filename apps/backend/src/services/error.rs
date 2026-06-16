@@ -79,10 +79,9 @@ impl ServiceError {
                     StatusCode::BAD_REQUEST
                 }
                 SiteError::CannotRemoveSelf => StatusCode::BAD_REQUEST,
-                SiteError::OwnerProtected | SiteError::AdminProtected => StatusCode::FORBIDDEN,
                 SiteError::UserNotFound => StatusCode::NOT_FOUND,
                 SiteError::AlreadyMember => StatusCode::CONFLICT,
-                SiteError::MemberNotFound => StatusCode::NOT_FOUND,
+                SiteError::CannotInviteOperator => StatusCode::BAD_REQUEST,
                 SiteError::DatabaseError(_) => StatusCode::INTERNAL_SERVER_ERROR,
             },
             ServiceError::Collection(e) => match e {
