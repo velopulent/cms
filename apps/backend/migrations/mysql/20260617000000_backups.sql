@@ -19,7 +19,8 @@ CREATE TABLE IF NOT EXISTS backup_schedules (
     updated_at VARCHAR(40) NOT NULL,
     FOREIGN KEY (site_id) REFERENCES sites(id) ON DELETE CASCADE,
     FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL,
-    CHECK (scope IN ('instance', 'site'))
+    CHECK (scope IN ('instance', 'site')),
+    CHECK ((scope = 'instance' AND site_id IS NULL) OR (scope = 'site' AND site_id IS NOT NULL))
 );
 
 CREATE INDEX idx_backup_schedules_site ON backup_schedules(site_id);
@@ -47,7 +48,8 @@ CREATE TABLE IF NOT EXISTS backups (
     FOREIGN KEY (schedule_id) REFERENCES backup_schedules(id) ON DELETE SET NULL,
     FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL,
     CHECK (scope IN ('instance', 'site')),
-    CHECK (status IN ('pending', 'running', 'success', 'failed'))
+    CHECK (status IN ('pending', 'running', 'success', 'failed')),
+    CHECK ((scope = 'instance' AND site_id IS NULL) OR (scope = 'site' AND site_id IS NOT NULL))
 );
 
 CREATE INDEX idx_backups_schedule ON backups(schedule_id);
@@ -56,7 +58,7 @@ CREATE INDEX idx_backups_created ON backups(created_at);
 
 CREATE TABLE IF NOT EXISTS restore_jobs (
     id VARCHAR(36) PRIMARY KEY NOT NULL,
-    source VARCHAR(64) NOT NULL,
+    source TEXT NOT NULL,
     scope VARCHAR(20) NOT NULL,
     target_site_id VARCHAR(36) NULL,
     status VARCHAR(20) NOT NULL,
@@ -65,8 +67,11 @@ CREATE TABLE IF NOT EXISTS restore_jobs (
     started_at VARCHAR(40) NULL,
     completed_at VARCHAR(40) NULL,
     created_at VARCHAR(40) NOT NULL,
+    FOREIGN KEY (target_site_id) REFERENCES sites(id) ON DELETE SET NULL,
     FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL,
-    CHECK (status IN ('pending', 'running', 'success', 'failed'))
+    CHECK (scope IN ('instance', 'site')),
+    CHECK (status IN ('pending', 'running', 'success', 'failed')),
+    CHECK ((scope = 'instance' AND target_site_id IS NULL) OR (scope = 'site' AND target_site_id IS NOT NULL))
 );
 
 CREATE INDEX idx_restore_jobs_created ON restore_jobs(created_at);
