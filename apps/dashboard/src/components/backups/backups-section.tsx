@@ -144,7 +144,7 @@ export function BackupsSection({ scope }: { scope: BackupScope }) {
       const opts = {
         mode: isInstance ? restoreMode : ("site" as const),
         site_id: isInstance && restoreMode === "site" ? restoreSiteId : undefined,
-        import_as_new: importAsNew,
+        ...(restoreMode === "site" && { import_as_new: importAsNew }),
         confirm: RESTORE_WORD,
       };
       if (restoreSource?.type === "upload") {
