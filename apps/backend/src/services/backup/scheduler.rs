@@ -37,7 +37,9 @@ async fn tick(service: &BackupService) -> Result<(), BackupError> {
 
         // Advance next_run before running so a long backup can't re-trigger.
         let next = schedule::next_run_iso(&sched.cron).ok();
-        let _ = super::meta::set_schedule_runs(service.pool(), &sched.id, &now, next.as_deref()).await;
+        if let Err(e) = super::meta::set_schedule_runs(service.pool(), &sched.id, &now, next.as_deref()).await {
+            tracing::error!(schedule = %sched.id, error = %e, "failed to update schedule next run time");
+        }
 
         let opts = CreateBackupOptions {
             scope,
