@@ -528,10 +528,22 @@ impl BackupService {
 /// site-files storage). Falls back to a local `backups/` directory.
 pub fn build_backup_destination(config: &Config) -> Result<Arc<dyn StorageProvider>, BackupError> {
     if config.backup_destination == "s3" && config.has_backup_s3() {
+        let access_key = config
+            .backup_s3_access_key_id
+            .as_deref()
+            .ok_or_else(|| BackupError::Storage("backup_s3_access_key_id is missing".into()))?;
+        let secret_key = config
+            .backup_s3_secret_access_key
+            .as_deref()
+            .ok_or_else(|| BackupError::Storage("backup_s3_secret_access_key is missing".into()))?;
+        let bucket = config
+            .backup_s3_bucket
+            .as_deref()
+            .ok_or_else(|| BackupError::Storage("backup_s3_bucket is missing".into()))?;
         let s3 = S3Storage::new(
-            config.backup_s3_access_key_id.as_deref().unwrap(),
-            config.backup_s3_secret_access_key.as_deref().unwrap(),
-            config.backup_s3_bucket.as_deref().unwrap(),
+            access_key,
+            secret_key,
+            bucket,
             config.backup_s3_region.as_deref().unwrap_or("us-east-1"),
             config.backup_s3_endpoint.as_deref(),
             config.backup_s3_public_url.as_deref(),
