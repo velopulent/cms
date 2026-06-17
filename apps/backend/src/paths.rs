@@ -67,6 +67,11 @@ pub fn backups_dir() -> PathBuf {
     home().join("backups")
 }
 
+/// `~/.cms/search` — default location for the Tantivy full-text search index.
+pub fn search_dir() -> PathBuf {
+    home().join("search")
+}
+
 /// Build the default `DATABASE_URL` (`sqlite://<home>/cms.db`).
 ///
 /// SQLite URLs use forward slashes, so backslashes are normalized for Windows.
