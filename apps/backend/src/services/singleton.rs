@@ -8,6 +8,7 @@ use tracing::{debug, error, info, warn};
 
 use crate::models::collection::{Collection, SingletonResponse};
 use crate::repository::traits::{CollectionRepository, EntryRepository, FileRepository};
+use crate::services::search::queue::{OP_UPSERT, SearchQueue};
 use crate::storage::StorageProvider;
 
 #[derive(Clone)]
@@ -15,6 +16,8 @@ pub struct SingletonService {
     collection_repo: Arc<dyn CollectionRepository>,
     entry_repo: Arc<dyn EntryRepository>,
     file_repo: Arc<dyn FileRepository>,
+    /// Write-side index queue kept in sync with singleton-entry writes.
+    search_queue: Option<Arc<SearchQueue>>,
 }
 
 #[derive(Error, Debug)]
@@ -63,7 +66,14 @@ impl SingletonService {
             collection_repo,
             entry_repo,
             file_repo,
+            search_queue: None,
         }
+    }
+
+    /// Attach the write-side index queue so singleton-entry writes stay indexed.
+    pub fn with_queue(mut self, queue: Option<Arc<SearchQueue>>) -> Self {
+        self.search_queue = queue;
+        self
     }
 
     fn build_response(c: &Collection, entry: Option<&crate::models::entry::Entry>) -> SingletonResponse {
@@ -203,6 +213,16 @@ impl SingletonService {
                 error!("Failed to upsert singleton entry: id={}, error={}", collection.id, e);
                 SingletonError::DatabaseError(e.to_string())
             })?;
+
+        // Enqueue for the server's indexer (best-effort; the index is rebuildable).
+        if let Some(queue) = &self.search_queue
+            && let Err(e) = queue.enqueue(&entry.id, &entry.site_id, OP_UPSERT).await
+        {
+            warn!(
+                "Failed to enqueue singleton entry {} for search indexing: {}",
+                entry.id, e
+            );
+        }
 
         info!("Singleton updated successfully: id={}", collection.id);
         Ok(Self::build_response(&collection, Some(&entry)))

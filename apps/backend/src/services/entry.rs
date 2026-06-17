@@ -12,6 +12,8 @@ use crate::repository::error::RepositoryError;
 use crate::repository::traits::{
     CollectionRepository, EntriesListResult, EntryRepository, FileRepository, ListEntriesParams, RevisionsListResult,
 };
+use crate::services::search::queue::{OP_DELETE, OP_UPSERT, SearchQueue};
+use crate::services::search::{SearchError, SearchParams, SearchService};
 use crate::storage::StorageProvider;
 
 #[derive(Clone)]
@@ -19,6 +21,10 @@ pub struct EntryService {
     entry_repo: Arc<dyn EntryRepository>,
     file_repo: Arc<dyn FileRepository>,
     collection_repo: Arc<dyn CollectionRepository>,
+    /// Read side: ranked queries against the index. `None` falls back to SQL `LIKE`.
+    search: Option<Arc<SearchService>>,
+    /// Write side: enqueue index updates for the server's indexer to apply.
+    search_queue: Option<Arc<SearchQueue>>,
 }
 
 #[derive(Error, Debug)]
@@ -65,14 +71,118 @@ impl EntryService {
             entry_repo,
             file_repo,
             collection_repo,
+            search: None,
+            search_queue: None,
+        }
+    }
+
+    /// Attach the read-side search engine for ranked querying. Builder form keeps
+    /// the `new` signature stable for tests.
+    pub fn with_search(mut self, search: Option<Arc<SearchService>>) -> Self {
+        self.search = search;
+        self
+    }
+
+    /// Attach the write-side index queue. Content writes enqueue here for the
+    /// server's indexer to apply.
+    pub fn with_queue(mut self, queue: Option<Arc<SearchQueue>>) -> Self {
+        self.search_queue = queue;
+        self
+    }
+
+    /// Best-effort enqueue of an entry upsert. Enqueue failures are logged but never
+    /// fail the originating write — the index is derived and rebuildable.
+    async fn enqueue_upsert(&self, entry: &Entry) {
+        if let Some(queue) = &self.search_queue
+            && let Err(e) = queue.enqueue(&entry.id, &entry.site_id, OP_UPSERT).await
+        {
+            warn!("Failed to enqueue entry {} for search indexing: {}", entry.id, e);
+        }
+    }
+
+    /// Best-effort enqueue of an entry deletion.
+    async fn enqueue_delete(&self, id: &str, site_id: &str) {
+        if let Some(queue) = &self.search_queue
+            && let Err(e) = queue.enqueue(id, site_id, OP_DELETE).await
+        {
+            warn!("Failed to enqueue entry {} deletion for search indexing: {}", id, e);
         }
     }
 
     pub async fn list_entries(&self, params: ListEntriesParams<'_>) -> Result<EntriesListResult, EntryError> {
+        // When a search index is available and a query is provided, use ranked
+        // full-text search; otherwise fall back to the repository's SQL filter.
+        if let (Some(search), Some(query)) = (&self.search, params.search)
+            && !query.trim().is_empty()
+        {
+            match self.search_via_index(search, &params, query).await {
+                Ok(result) => return Ok(result),
+                Err(e) => warn!("Search index query failed; falling back to SQL: {}", e),
+            }
+        }
+
         self.entry_repo
             .list(params)
             .await
             .map_err(|e| EntryError::DatabaseError(e.to_string()))
+    }
+
+    /// Resolve a ranked search against the index, then hydrate full rows from the
+    /// database in rank order. `collection_slug` is resolved to an id first since
+    /// the index filters by collection id.
+    async fn search_via_index(
+        &self,
+        search: &SearchService,
+        params: &ListEntriesParams<'_>,
+        query: &str,
+    ) -> Result<EntriesListResult, SearchError> {
+        let mut collection_id = params.collection_id.map(str::to_string);
+        if collection_id.is_none()
+            && let Some(slug) = params.collection_slug
+        {
+            match self.collection_repo.get_by_slug(params.site_id, slug).await {
+                Ok(Some(c)) => collection_id = Some(c.id),
+                // Unknown collection slug → no possible matches.
+                Ok(None) => {
+                    return Ok(EntriesListResult {
+                        items: Vec::new(),
+                        total: 0,
+                        page: params.page,
+                        per_page: params.per_page,
+                    });
+                }
+                Err(e) => return Err(SearchError::Repository(e.to_string())),
+            }
+        }
+
+        let hits = search.search_entries(&SearchParams {
+            site_id: params.site_id,
+            collection_id: collection_id.as_deref(),
+            status: params.status,
+            published_only: params.published_only,
+            query,
+            page: params.page,
+            per_page: params.per_page,
+        })?;
+
+        let mut items = Vec::with_capacity(hits.ids.len());
+        for id in &hits.ids {
+            // Re-check site + publish scope at the DB; the index may briefly lag.
+            if let Ok(Some(entry)) = self
+                .entry_repo
+                .get_by_id(id, params.site_id, params.published_only)
+                .await
+            {
+                items.push(entry);
+            }
+        }
+
+        Ok(EntriesListResult {
+            items,
+            total: hits.total as i64,
+            page: params.page,
+            per_page: params.per_page,
+        })
     }
 
     pub async fn get_entry(&self, id: &str, site_id: &str, published_only: bool) -> Result<Option<Entry>, EntryError> {
@@ -156,6 +266,7 @@ impl EntryService {
                     "Entry created successfully: id={}, site_id={}, slug={}",
                     id, site_id, slug
                 );
+                self.enqueue_upsert(&entry).await;
                 Ok(entry)
             }
             Ok(None) => {
@@ -254,6 +365,7 @@ impl EntryService {
         match self.entry_repo.get_by_id(id, site_id, false).await {
             Ok(Some(entry)) => {
                 info!("Entry updated successfully: id={}, site_id={}", id, site_id);
+                self.enqueue_upsert(&entry).await;
                 Ok(entry)
             }
             Ok(None) => {
@@ -273,6 +385,7 @@ impl EntryService {
         match self.entry_repo.delete(id, site_id).await {
             Ok(deleted_count) => {
                 info!("Entry deleted successfully: id={}, deleted_count={}", id, deleted_count);
+                self.enqueue_delete(id, site_id).await;
                 Ok(deleted_count)
             }
             Err(e) => {
@@ -285,25 +398,29 @@ impl EntryService {
     pub async fn publish_entry(&self, id: &str, site_id: &str) -> Result<Entry, EntryError> {
         info!("Publishing entry: id={}, site_id={}", id, site_id);
 
-        self.entry_repo.publish(id, site_id).await.map_err(|e| {
+        let entry = self.entry_repo.publish(id, site_id).await.map_err(|e| {
             error!("Failed to publish entry: error={}", e);
             match e {
                 RepositoryError::NotFound => EntryError::NotFound,
                 _ => EntryError::DatabaseError(e.to_string()),
             }
-        })
+        })?;
+        self.enqueue_upsert(&entry).await;
+        Ok(entry)
     }
 
     pub async fn unpublish_entry(&self, id: &str, site_id: &str) -> Result<Entry, EntryError> {
         info!("Unpublishing entry: id={}, site_id={}", id, site_id);
 
-        self.entry_repo.unpublish(id, site_id).await.map_err(|e| {
+        let entry = self.entry_repo.unpublish(id, site_id).await.map_err(|e| {
             error!("Failed to unpublish entry: error={}", e);
             match e {
                 RepositoryError::NotFound => EntryError::NotFound,
                 _ => EntryError::DatabaseError(e.to_string()),
             }
-        })
+        })?;
+        self.enqueue_upsert(&entry).await;
+        Ok(entry)
     }
 
     pub async fn list_revisions(
@@ -356,13 +473,16 @@ impl EntryService {
             .map_err(|e| EntryError::DatabaseError(e.to_string()))?
             .ok_or(EntryError::NotFound)?;
 
-        self.entry_repo
+        let entry = self
+            .entry_repo
             .restore_revision(entry_id, revision_number, created_by)
             .await
             .map_err(|e| match e {
                 RepositoryError::NotFound => EntryError::RevisionNotFound,
                 _ => EntryError::DatabaseError(e.to_string()),
-            })
+            })?;
+        self.enqueue_upsert(&entry).await;
+        Ok(entry)
     }
 
     pub async fn resolve_entry_files(
