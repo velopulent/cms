@@ -19,16 +19,12 @@ use crate::services::Services;
 use crate::storage::StorageRegistry;
 
 pub async fn start_grpc_server(
-    repository: Repository,
-    config: Config,
+    services: Services,
+    repository: Arc<Repository>,
+    config: Arc<Config>,
     storage_registry: Arc<StorageRegistry>,
     grpc_addr: SocketAddr,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-    let repository = Arc::new(repository);
-    let config = Arc::new(config);
-
-    let services = Services::new(repository.clone(), &config);
-
     let collection_svc = CollectionServiceImpl::new(services.collection.clone(), repository.clone());
     let entry_svc = EntryServiceImpl::new(services.entry.clone(), repository.clone());
     let singleton_svc = SingletonServiceImpl::new(services.singleton.clone(), storage_registry, repository.clone());
@@ -101,10 +97,17 @@ pub async fn start_grpc_server(
 }
 
 pub fn spawn_grpc_server(
-    repository: Repository,
-    config: Config,
+    services: Services,
+    repository: Arc<Repository>,
+    config: Arc<Config>,
     storage_registry: Arc<StorageRegistry>,
     grpc_addr: SocketAddr,
 ) -> Pin<Box<dyn Future<Output = Result<(), Box<dyn std::error::Error + Send + Sync>>> + Send>> {
-    Box::pin(start_grpc_server(repository, config, storage_registry, grpc_addr))
+    Box::pin(start_grpc_server(
+        services,
+        repository,
+        config,
+        storage_registry,
+        grpc_addr,
+    ))
 }
