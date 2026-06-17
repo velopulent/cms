@@ -7,6 +7,6 @@ CREATE TABLE IF NOT EXISTS search_index_queue (
     entry_id VARCHAR(36) NOT NULL,
     site_id VARCHAR(36) NOT NULL,
     op VARCHAR(16) NOT NULL,
-    enqueued_at VARCHAR(40) NOT NULL,
+    enqueued_at VARCHAR(40) NOT NULL DEFAULT (NOW()),
     INDEX idx_search_index_queue_entry (entry_id)
 );
