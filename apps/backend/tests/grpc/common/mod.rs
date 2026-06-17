@@ -90,7 +90,7 @@ impl GrpcTestContext {
             repository.clone(),
             (*config).clone(),
             storage_registry.clone(),
-            Services::new(repository_arc.clone(), &pool, &config),
+            services.clone(),
             backup_service,
         );
 
