@@ -16,7 +16,8 @@ CREATE TABLE IF NOT EXISTS backup_schedules (
     next_run_at TEXT,
     created_by TEXT REFERENCES users(id) ON DELETE SET NULL,
     created_at TEXT NOT NULL DEFAULT (NOW()::text),
-    updated_at TEXT NOT NULL DEFAULT (NOW()::text)
+    updated_at TEXT NOT NULL DEFAULT (NOW()::text),
+    CHECK ((scope = 'instance' AND site_id IS NULL) OR (scope = 'site' AND site_id IS NOT NULL))
 );
 
 CREATE INDEX IF NOT EXISTS idx_backup_schedules_site ON backup_schedules(site_id);
@@ -40,7 +41,8 @@ CREATE TABLE IF NOT EXISTS backups (
     created_by TEXT REFERENCES users(id) ON DELETE SET NULL,
     started_at TEXT,
     completed_at TEXT,
-    created_at TEXT NOT NULL DEFAULT (NOW()::text)
+    created_at TEXT NOT NULL DEFAULT (NOW()::text),
+    CHECK ((scope = 'instance' AND site_id IS NULL) OR (scope = 'site' AND site_id IS NOT NULL))
 );
 
 CREATE INDEX IF NOT EXISTS idx_backups_schedule ON backups(schedule_id);
@@ -50,14 +52,15 @@ CREATE INDEX IF NOT EXISTS idx_backups_created ON backups(created_at DESC);
 CREATE TABLE IF NOT EXISTS restore_jobs (
     id TEXT PRIMARY KEY NOT NULL,
     source TEXT NOT NULL,
-    scope TEXT NOT NULL,
-    target_site_id TEXT,
+    scope TEXT NOT NULL CHECK(scope IN ('instance', 'site')),
+    target_site_id TEXT REFERENCES sites(id) ON DELETE SET NULL,
     status TEXT NOT NULL CHECK(status IN ('pending', 'running', 'success', 'failed')),
     error TEXT,
     created_by TEXT REFERENCES users(id) ON DELETE SET NULL,
     started_at TEXT,
     completed_at TEXT,
-    created_at TEXT NOT NULL DEFAULT (NOW()::text)
+    created_at TEXT NOT NULL DEFAULT (NOW()::text),
+    CHECK ((scope = 'instance' AND target_site_id IS NULL) OR (scope = 'site' AND target_site_id IS NOT NULL))
 );
 
 CREATE INDEX IF NOT EXISTS idx_restore_jobs_created ON restore_jobs(created_at DESC);

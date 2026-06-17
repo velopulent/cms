@@ -11,12 +11,15 @@
 -- `op` is advisory; the consumer re-derives the action by looking the entry up in
 -- the database (present => upsert, absent => delete).
 
+-- NOTE: Foreign keys on entry_id/site_id are intentionally omitted so the queue
+-- survives entry/site deletion — stale rows are harmless and cleaned up on drain.
 CREATE TABLE IF NOT EXISTS search_index_queue (
     id TEXT PRIMARY KEY NOT NULL,
     entry_id TEXT NOT NULL,
     site_id TEXT NOT NULL,
-    op TEXT NOT NULL,
+    op TEXT NOT NULL CHECK(op IN ('index', 'delete')),
     enqueued_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
 CREATE INDEX IF NOT EXISTS idx_search_index_queue_entry ON search_index_queue(entry_id);
+CREATE INDEX IF NOT EXISTS idx_search_index_queue_enqueued ON search_index_queue(enqueued_at);
