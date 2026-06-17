@@ -17,6 +17,7 @@
 - `apps/backend/src/mcp/` - MCP server (tools/`*.rs`, `schema.rs`, `server.rs`, `auth.rs`, `transports/`)
 - `apps/backend/src/repository/` - Data access layer
 - `apps/backend/src/services/backup/` - Backup & restore engine (dump/restore, scheduler, metadata)
+- `apps/backend/src/services/search/` - Full-text search engine (Tantivy index over entries)
 - `apps/backend/src/router/` - Route composition
 - `apps/backend/tests/common/` - Shared integration test infrastructure
 - `apps/backend/tests/rest/` - REST API integration tests
@@ -109,6 +110,7 @@ creates it on first run. Resolution lives in `apps/backend/src/paths.rs`.
   cms.db          # default SQLite database (+ -wal / -shm)
   logs/           # rolling logs when [log] output = "file"
   storage/        # default filesystem storage for uploads
+  search/         # Tantivy full-text search index (derived; rebuildable)
 ```
 
 Secrets: on first `serve`/`admin`, random `JWT_SECRET`/`HMAC_SECRET` are generated
@@ -133,6 +135,7 @@ cookie_secure = false
 session_lifetime_hours = 24
 db_max_connections = 10
 rate_limit_max_requests = 100
+search_enabled = true
 mcp_enabled = true
 mcp_allowed_hosts = ["localhost", "127.0.0.1"]
 
@@ -175,6 +178,8 @@ Logging keys map to the `[log]` table: `RUST_LOG`→`log.level`, `LOG_OUTPUT`→
 | `BACKUP_S3_ACCESS_KEY_ID` | - | S3 backup access key (secret, env-only) |
 | `BACKUP_S3_SECRET_ACCESS_KEY` | - | S3 backup secret key (secret, env-only) |
 | `BACKUP_ENCRYPTION_KEY` | auto | AES-256 backup key (hex); auto-generated to `secrets.toml` |
+| `SEARCH_ENABLED` | `true` | Build/use the Tantivy full-text index for entry search (else SQL `LIKE`) |
+| `SEARCH_INDEX_PATH` | `~/.cms/search` | Directory for the Tantivy search index |
 | `MAX_UPLOAD_SIZE_MB` | `50` | Max upload size in MB |
 | `COOKIE_SECURE` | `false` | Require HTTPS cookies |
 | `DB_MAX_CONNECTIONS` | `10` | Max DB connections |
@@ -276,6 +281,53 @@ Encryption is optional AES-256-GCM using a key from `BACKUP_ENCRYPTION_KEY` (els
 random key auto-persisted to `secrets.toml`), kept separate from the backup
 destination. The manifest stamps the format + DB migration version; restore refuses
 a backup taken on a **newer** schema and relies on additive migrations otherwise.
+
+## Full-text search
+
+Entry search is backed by an embedded [Tantivy](https://github.com/quickwit-oss/tantivy)
+index in `apps/backend/src/services/search/` — one engine that gives ranked,
+tokenized, stemmed search identically across SQLite/Postgres/MySQL (native per-DB
+FTS would mean three implementations). The DB stays the source of truth; the index
+is **derived** and fully rebuildable.
+
+**Reads vs writes are split** so the single-writer limit never blocks *searching*:
+
+- `schema.rs` — fixed schema over the schema-less `entries.data`: `id`, `site_id`,
+  `collection_id`, `status` (exact-match filters), `slug`, and `body` (the flattened
+  scalar text of `data`, English-stemmed, BM25-ranked). `fields_from` re-resolves the
+  schema when opening an existing index read-only.
+- `mod.rs` — `SearchService`. **Reading** needs no lock: `open_read_only` (reader
+  only) lets *any* process search the index, including a separate `cms mcp stdio`
+  running next to the server. **Writing** requires the directory lock: `open`
+  (reader + writer) is held only by the running server. `index_doc`/`delete_doc`
+  stage uncommitted ops; `commit` flushes; `rebuild_all`/`rebuild_site` reindex from
+  the DB by reusing `EntryRepository::list` (covers singletons too). Write/commit on
+  a read-only instance returns `SearchError::ReadOnly`.
+- `queue.rs` — `SearchQueue` over the `search_index_queue` table (migration
+  `20260618000000`). Content writes from *any* process enqueue here
+  (`enqueue`/`dequeue_batch`/`delete_ids`); UUIDv7 ids order the queue chronologically.
+- `indexer.rs` — the **single consumer**, spawned once by the server (it owns the
+  writer). Drains the queue in batches (present in DB ⇒ upsert doc, absent ⇒ delete
+  doc — `op` is advisory), commits per batch, deletes processed rows. Wakes instantly
+  on a local enqueue (`Notify`) and polls every 2s to catch other processes' enqueues.
+
+Wiring: `Services` holds `search: Option<Arc<SearchService>>` (reads) and
+`search_queue: Option<Arc<SearchQueue>>` (writes). `Services::new` opens the index
+read-write (server); `Services::new_read_only` opens it read-only (`cms mcp stdio`).
+`EntryService`/`SingletonService` **enqueue** on write; `EntryService::list_entries`
+queries the index — so REST, GraphQL, gRPC, and MCP all get ranked search via the
+existing `search` param with **no handler changes**. Indexing is asynchronous
+(enqueue → indexer), typically sub-second. When search is disabled
+(`SEARCH_ENABLED=false`) or the index can't open, it falls back to SQL `LIKE`. The
+index builds on startup when empty, rebuilds after a restore, and exposes
+owner/operator reindex routes: `POST /api/dashboard/instance/search/reindex` and
+`POST /api/dashboard/sites/{site_id}/search/reindex`.
+
+This is the cross-process model: writes from `cms mcp stdio` (or any process) land in
+the durable queue and the running server indexes them; if the server is down they
+drain on its next start. The remaining hard limit is *concurrent writers* — only one
+process indexes at a time. Typo tolerance is a deliberate follow-up (Tantivy fuzzy
+queries score by constant, which flattens ranking).
 
 ## Code Conventions
 
