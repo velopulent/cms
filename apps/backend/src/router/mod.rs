@@ -122,6 +122,13 @@ pub fn create_router(
     };
 
     let mcp_enabled = config.mcp_enabled;
+    // Share the single `Services` (and its single-writer search index) with the
+    // MCP HTTP server instead of constructing a second one.
+    let mcp_services = if mcp_enabled {
+        Some(Arc::new(services.clone()))
+    } else {
+        None
+    };
 
     let mut router = Router::new()
         // ── Auth (no middleware) ──
@@ -166,7 +173,13 @@ pub fn create_router(
 
     if mcp_enabled {
         let mcp_ct = CancellationToken::new();
-        let mcp_router = mcp::mcp_routes(Arc::new(repository), Arc::new(config), storage_registry, mcp_ct);
+        let mcp_router = mcp::mcp_routes(
+            mcp_services.expect("mcp services present when mcp enabled"),
+            Arc::new(repository),
+            Arc::new(config),
+            storage_registry,
+            mcp_ct,
+        );
         router = router.merge(mcp_router);
         info!("MCP HTTP endpoint enabled at /mcp");
     } else {
