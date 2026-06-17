@@ -208,6 +208,166 @@ async fn test_list_entries_with_search() {
     );
 }
 
+// ───────────────────────── Full-text search (Tantivy) ─────────────────────────
+
+/// GET entries with a `search` query, returning the matching slugs in result
+/// (rank) order.
+async fn search_slugs(server: &TestServer, jwt: &str, csrf: &str, site_id: &str, query: &str) -> Vec<String> {
+    let client = reqwest::Client::builder().build().unwrap();
+    let resp = client
+        .get(format!(
+            "{}/api/dashboard/sites/{}/entries?search={}",
+            server.base_url, site_id, query
+        ))
+        .headers(auth_header(jwt, csrf))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), 200);
+    let body: Value = resp.json().await.unwrap();
+    body["items"]
+        .as_array()
+        .expect("items array")
+        .iter()
+        .filter_map(|i| i["slug"].as_str().map(String::from))
+        .collect()
+}
+
+/// Indexing is asynchronous (writes enqueue; the indexer applies them), so poll
+/// the search endpoint until `pred` holds or a timeout elapses, returning the last
+/// observed slugs.
+async fn search_until(
+    server: &TestServer,
+    jwt: &str,
+    csrf: &str,
+    site_id: &str,
+    query: &str,
+    pred: impl Fn(&[String]) -> bool,
+) -> Vec<String> {
+    let mut slugs = Vec::new();
+    for _ in 0..100 {
+        slugs = search_slugs(server, jwt, csrf, site_id, query).await;
+        if pred(&slugs) {
+            return slugs;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+    }
+    slugs
+}
+
+#[tokio::test]
+async fn test_search_stemmed_match_like_would_miss() {
+    let server = TestServer::start_with_search().await;
+    let (jwt, csrf, site_id) = setup(&server).await;
+    let col_id = create_collection_and_get_id(&server, &jwt, &csrf, &site_id).await;
+
+    create_entry(
+        &server,
+        &jwt,
+        &csrf,
+        &site_id,
+        &col_id,
+        "runner",
+        json!({"title": "I love to run"}),
+    )
+    .await;
+
+    // Stemming reduces both "running" and "run" to the same root. A SQL
+    // LIKE '%running%' over the stored text "...run" would find nothing.
+    let slugs = search_until(&server, &jwt, &csrf, &site_id, "running", |s| {
+        s.contains(&"runner".to_string())
+    })
+    .await;
+    assert!(
+        slugs.contains(&"runner".to_string()),
+        "stemmed search missed: {:?}",
+        slugs
+    );
+}
+
+#[tokio::test]
+async fn test_search_ranks_by_relevance() {
+    let server = TestServer::start_with_search().await;
+    let (jwt, csrf, site_id) = setup(&server).await;
+    let col_id = create_collection_and_get_id(&server, &jwt, &csrf, &site_id).await;
+
+    create_entry(
+        &server,
+        &jwt,
+        &csrf,
+        &site_id,
+        &col_id,
+        "sparse",
+        json!({"title": "alpha lone"}),
+    )
+    .await;
+    create_entry(
+        &server,
+        &jwt,
+        &csrf,
+        &site_id,
+        &col_id,
+        "dense",
+        json!({"title": "alpha alpha alpha"}),
+    )
+    .await;
+
+    // Wait until both are indexed, then assert the higher term-frequency one ranks first.
+    let slugs = search_until(&server, &jwt, &csrf, &site_id, "alpha", |s| s.len() >= 2).await;
+    assert_eq!(
+        slugs.first().map(String::as_str),
+        Some("dense"),
+        "expected the higher term-frequency entry ranked first, got: {:?}",
+        slugs
+    );
+}
+
+#[tokio::test]
+async fn test_search_index_syncs_on_delete() {
+    let server = TestServer::start_with_search().await;
+    let (jwt, csrf, site_id) = setup(&server).await;
+    let col_id = create_collection_and_get_id(&server, &jwt, &csrf, &site_id).await;
+
+    let entry = create_entry(
+        &server,
+        &jwt,
+        &csrf,
+        &site_id,
+        &col_id,
+        "ephemeral",
+        json!({"title": "vanishing content"}),
+    )
+    .await;
+    let entry_id = entry["id"].as_str().unwrap();
+
+    // Becomes searchable once the indexer drains the enqueued write.
+    let present = search_until(&server, &jwt, &csrf, &site_id, "vanishing", |s| {
+        s.contains(&"ephemeral".to_string())
+    })
+    .await;
+    assert!(present.contains(&"ephemeral".to_string()), "entry should be searchable");
+
+    let client = reqwest::Client::builder().build().unwrap();
+    let resp = client
+        .delete(format!(
+            "{}/api/dashboard/sites/{}/entries/{}",
+            server.base_url, site_id, entry_id
+        ))
+        .headers(auth_header(&jwt, &csrf))
+        .send()
+        .await
+        .unwrap();
+    assert!(resp.status().is_success(), "delete failed: {}", resp.status());
+
+    // And drops out of the index once the delete is drained.
+    let after = search_until(&server, &jwt, &csrf, &site_id, "vanishing", |s| s.is_empty()).await;
+    assert!(
+        after.is_empty(),
+        "entry should be gone from the index after deletion: {:?}",
+        after
+    );
+}
+
 #[tokio::test]
 async fn test_create_entry_validation_failed_missing_required() {
     let server = TestServer::start().await;

@@ -19,7 +19,18 @@ pub struct TestServer {
 }
 
 impl TestServer {
+    /// Start a server with full-text search disabled (entry search uses SQL `LIKE`).
     pub async fn start() -> Self {
+        Self::start_inner(false).await
+    }
+
+    /// Start a server with the Tantivy full-text search index enabled, isolated to
+    /// this server's temp directory.
+    pub async fn start_with_search() -> Self {
+        Self::start_inner(true).await
+    }
+
+    async fn start_inner(search_enabled: bool) -> Self {
         let listener = TcpListener::bind("127.0.0.1:0")
             .await
             .expect("Failed to bind random port");
@@ -47,17 +58,13 @@ impl TestServer {
         config.public_registration_enabled = true;
         config.bcrypt_cost = bcrypt::DEFAULT_COST;
         config.webhook_allow_private_targets = true;
-        config.backup_local_path = Some(
-            storage_dir
-                .path()
-                .join("backups")
-                .to_string_lossy()
-                .into_owned(),
-        );
+        config.backup_local_path = Some(storage_dir.path().join("backups").to_string_lossy().into_owned());
         // Deterministic 32-byte (hex) key so encrypted-backup tests can round-trip.
         config.backup_encryption_key =
             Some("00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff".to_string());
         config.backup_enabled = false; // don't run the poller during tests
+        config.search_enabled = search_enabled;
+        config.search_index_path = Some(storage_dir.path().join("search").to_string_lossy().into_owned());
 
         let pool = init_db_with_config(&config)
             .await
@@ -73,7 +80,19 @@ impl TestServer {
         storage_registry.register(STORAGE_KIND_FILESYSTEM, Arc::new(fs_storage));
         let storage_registry = Arc::new(storage_registry);
 
-        let services = Services::new(Arc::new(repository.clone()), &config);
+        let services = Services::new(Arc::new(repository.clone()), &pool, &config);
+
+        // In search-enabled tests, run the indexer (single consumer) so enqueued
+        // writes get applied to the index — mirroring `cms serve`.
+        if let (Some(search), Some(queue)) = (services.search.clone(), services.search_queue.clone()) {
+            let repo = Arc::new(repository.clone());
+            tokio::spawn(async move {
+                if search.is_empty() {
+                    let _ = search.rebuild_all(&repo).await;
+                }
+                cms::services::search::indexer::run(search, queue, repo).await;
+            });
+        }
 
         let backup_destination =
             cms::services::backup::build_backup_destination(&config).expect("Failed to init backup destination");
