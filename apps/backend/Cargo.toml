@@ -66,6 +66,7 @@ directories = "6.0.0"
 zstd = "0.13"
 tar = "0.4"
 croner = "2"
+tantivy = "0.22"
 
 [build-dependencies]
 tonic-build = "0.14"
