@@ -13,12 +13,15 @@ use crate::handlers::backup_handler as h;
 
 pub fn instance_routes() -> Router {
     Router::new()
-        .route("/instance/backups", get(h::list_instance_backups).post(h::create_instance_backup))
         .route(
-            "/instance/backups/{backup_id}",
-            delete(h::delete_instance_backup),
+            "/instance/backups",
+            get(h::list_instance_backups).post(h::create_instance_backup),
         )
-        .route("/instance/backups/{backup_id}/download", get(h::download_instance_backup))
+        .route("/instance/backups/{backup_id}", delete(h::delete_instance_backup))
+        .route(
+            "/instance/backups/{backup_id}/download",
+            get(h::download_instance_backup),
+        )
         .route("/instance/restore", post(h::restore_instance))
         .route("/instance/restore/upload", post(h::restore_instance_upload))
         .route(
@@ -29,7 +32,11 @@ pub fn instance_routes() -> Router {
             "/instance/backup-schedules/{schedule_id}",
             put(h::update_instance_schedule).delete(h::delete_instance_schedule),
         )
-        .route("/instance/backup-schedules/{schedule_id}/run", post(h::run_instance_schedule))
+        .route(
+            "/instance/backup-schedules/{schedule_id}/run",
+            post(h::run_instance_schedule),
+        )
+        .route("/instance/search/reindex", post(h::reindex_instance))
 }
 
 pub fn site_routes() -> Router {
@@ -48,4 +55,5 @@ pub fn site_routes() -> Router {
             put(h::update_site_schedule).delete(h::delete_site_schedule),
         )
         .route("/backup-schedules/{schedule_id}/run", post(h::run_site_schedule))
+        .route("/search/reindex", post(h::reindex_site))
 }

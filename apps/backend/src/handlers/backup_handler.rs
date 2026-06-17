@@ -22,9 +22,12 @@ use serde_json::json;
 use crate::middleware::auth::{AuthContext, RequestContext, require_instance_action, require_user_action};
 use crate::models::authorization::Action;
 use crate::repository::Repository;
+use crate::services::Services;
 use crate::services::backup::{
-    BackupError, BackupService, CreateBackupOptions, RestoreRequest, RestoreSource, RestoreTarget, Scope, meta, schedule,
+    BackupError, BackupService, CreateBackupOptions, RestoreRequest, RestoreSource, RestoreTarget, Scope, meta,
+    schedule,
 };
+use crate::services::search::{SearchError, SearchService};
 use crate::storage::StorageRegistry;
 
 // ── Request bodies ──
@@ -173,28 +176,71 @@ async fn download_backup(backup: &BackupService, id: &str, expect_site: Option<&
     };
     let filename = format!("{id}.cmsbak");
     let mut resp = Response::new(Body::from(bytes));
-    resp.headers_mut()
-        .insert(header::CONTENT_TYPE, header::HeaderValue::from_static("application/octet-stream"));
+    resp.headers_mut().insert(
+        header::CONTENT_TYPE,
+        header::HeaderValue::from_static("application/octet-stream"),
+    );
     if let Ok(v) = header::HeaderValue::from_str(&format!("attachment; filename=\"{filename}\"")) {
         resp.headers_mut().insert(header::CONTENT_DISPOSITION, v);
     }
     resp
 }
 
-async fn run_restore(backup: &BackupService, source: RestoreSource, target: RestoreTarget, created_by: Option<String>) -> Response {
-    match backup.restore(RestoreRequest { source, target, created_by }).await {
-        Ok(()) => StatusCode::NO_CONTENT.into_response(),
+async fn run_restore(
+    backup: &BackupService,
+    source: RestoreSource,
+    target: RestoreTarget,
+    created_by: Option<String>,
+    repository: &Repository,
+    search: Option<Arc<SearchService>>,
+) -> Response {
+    // Capture the reindex scope before `target` is consumed by the restore.
+    let reindex_site = match &target {
+        RestoreTarget::Site { site_id, .. } => Some(site_id.clone()),
+        RestoreTarget::WholeInstance => None,
+    };
+    match backup
+        .restore(RestoreRequest {
+            source,
+            target,
+            created_by,
+        })
+        .await
+    {
+        Ok(()) => {
+            // The search index is derived data excluded from backups, so rebuild
+            // the affected scope after a restore to reflect the restored content.
+            if let Some(search) = search {
+                let result = match reindex_site {
+                    Some(site_id) => search.rebuild_site(repository, &site_id).await.map(|_| ()),
+                    None => search.rebuild_all(repository).await.map(|_| ()),
+                };
+                if let Err(e) = result {
+                    tracing::warn!("Post-restore search reindex failed: {}", e);
+                }
+            }
+            StatusCode::NO_CONTENT.into_response()
+        }
         Err(e) => err_response(e),
     }
 }
 
 fn bad_request(msg: &str) -> Response {
-    (StatusCode::BAD_REQUEST, Json(json!({ "error": "bad_request", "message": msg }))).into_response()
+    (
+        StatusCode::BAD_REQUEST,
+        Json(json!({ "error": "bad_request", "message": msg })),
+    )
+        .into_response()
 }
 
 // ── Schedule core ──
 
-async fn create_schedule(backup: &BackupService, scope: Scope, body: ScheduleBody, created_by: Option<String>) -> Response {
+async fn create_schedule(
+    backup: &BackupService,
+    scope: Scope,
+    body: ScheduleBody,
+    created_by: Option<String>,
+) -> Response {
     if let Err(e) = schedule::validate_cron(&body.cron) {
         return err_response(e);
     }
@@ -291,7 +337,12 @@ async fn delete_schedule(backup: &BackupService, id: &str, expect_site: Option<&
     }
 }
 
-async fn run_schedule_now(backup: &BackupService, id: &str, expect_site: Option<&str>, created_by: Option<String>) -> Response {
+async fn run_schedule_now(
+    backup: &BackupService,
+    id: &str,
+    expect_site: Option<&str>,
+    created_by: Option<String>,
+) -> Response {
     let row = match meta::get_schedule(backup.pool(), id).await {
         Ok(Some(r)) => r,
         Ok(None) => return err_response(BackupError::NotFound),
@@ -368,7 +419,13 @@ async fn parse_restore_upload(mut multipart: Multipart) -> Result<UploadedRestor
     let Some(bytes) = bytes else {
         return Err(bad_request("no backup file provided"));
     };
-    Ok(UploadedRestore { bytes, mode, site_id, import_as_new, confirm })
+    Ok(UploadedRestore {
+        bytes,
+        mode,
+        site_id,
+        import_as_new,
+        confirm,
+    })
 }
 
 // ───────────────────────────── Instance handlers ─────────────────────────────
@@ -432,6 +489,7 @@ pub async fn restore_instance(
     auth: AuthContext,
     Extension(repository): Extension<Repository>,
     Extension(backup): Extension<Arc<BackupService>>,
+    Extension(services): Extension<Services>,
     Json(body): Json<RestoreBody>,
 ) -> Response {
     let user = match require_instance(&auth, &repository, Action::InstanceRestore).await {
@@ -447,18 +505,30 @@ pub async fn restore_instance(
     };
     let target = match body.mode.as_deref() {
         Some("site") => match body.site_id {
-            Some(sid) => RestoreTarget::Site { site_id: sid, import_as_new: body.import_as_new },
+            Some(sid) => RestoreTarget::Site {
+                site_id: sid,
+                import_as_new: body.import_as_new,
+            },
             None => return bad_request("site restore requires site_id"),
         },
         _ => RestoreTarget::WholeInstance,
     };
-    run_restore(&backup, source, target, Some(user)).await
+    run_restore(
+        &backup,
+        source,
+        target,
+        Some(user),
+        &repository,
+        services.search.clone(),
+    )
+    .await
 }
 
 pub async fn restore_instance_upload(
     auth: AuthContext,
     Extension(repository): Extension<Repository>,
     Extension(backup): Extension<Arc<BackupService>>,
+    Extension(services): Extension<Services>,
     multipart: Multipart,
 ) -> Response {
     let user = match require_instance(&auth, &repository, Action::InstanceRestore).await {
@@ -474,12 +544,23 @@ pub async fn restore_instance_upload(
     }
     let target = match upload.mode.as_deref() {
         Some("site") => match upload.site_id {
-            Some(sid) => RestoreTarget::Site { site_id: sid, import_as_new: upload.import_as_new },
+            Some(sid) => RestoreTarget::Site {
+                site_id: sid,
+                import_as_new: upload.import_as_new,
+            },
             None => return bad_request("site restore requires site_id"),
         },
         _ => RestoreTarget::WholeInstance,
     };
-    run_restore(&backup, RestoreSource::Bytes(upload.bytes), target, Some(user)).await
+    run_restore(
+        &backup,
+        RestoreSource::Bytes(upload.bytes),
+        target,
+        Some(user),
+        &repository,
+        services.search.clone(),
+    )
+    .await
 }
 
 pub async fn list_instance_schedules(
@@ -544,6 +625,19 @@ pub async fn run_instance_schedule(
     run_schedule_now(&backup, &schedule_id, None, Some(user)).await
 }
 
+/// Rebuild the entire search index from the database (owner/admin only). A manual
+/// recovery path for any index drift.
+pub async fn reindex_instance(
+    auth: AuthContext,
+    Extension(repository): Extension<Repository>,
+    Extension(services): Extension<Services>,
+) -> Response {
+    if let Err(r) = require_instance(&auth, &repository, Action::InstanceBackup).await {
+        return r;
+    }
+    reindex_response(reindex_run(&services, &repository, None).await)
+}
+
 // ───────────────────────────── Site handlers ─────────────────────────────
 
 async fn require_site(ctx: &RequestContext, repo: &Repository, action: Action) -> Result<String, Response> {
@@ -605,6 +699,7 @@ pub async fn restore_site(
     ctx: RequestContext,
     Extension(repository): Extension<Repository>,
     Extension(backup): Extension<Arc<BackupService>>,
+    Extension(services): Extension<Services>,
     Json(body): Json<RestoreBody>,
 ) -> Response {
     let user = match require_site(&ctx, &repository, Action::SiteRestore).await {
@@ -622,13 +717,22 @@ pub async fn restore_site(
         site_id: ctx.site_id.clone(),
         import_as_new: body.import_as_new,
     };
-    run_restore(&backup, source, target, Some(user)).await
+    run_restore(
+        &backup,
+        source,
+        target,
+        Some(user),
+        &repository,
+        services.search.clone(),
+    )
+    .await
 }
 
 pub async fn restore_site_upload(
     ctx: RequestContext,
     Extension(repository): Extension<Repository>,
     Extension(backup): Extension<Arc<BackupService>>,
+    Extension(services): Extension<Services>,
     multipart: Multipart,
 ) -> Response {
     let user = match require_site(&ctx, &repository, Action::SiteRestore).await {
@@ -646,7 +750,15 @@ pub async fn restore_site_upload(
         site_id: ctx.site_id.clone(),
         import_as_new: upload.import_as_new,
     };
-    run_restore(&backup, RestoreSource::Bytes(upload.bytes), target, Some(user)).await
+    run_restore(
+        &backup,
+        RestoreSource::Bytes(upload.bytes),
+        target,
+        Some(user),
+        &repository,
+        services.search.clone(),
+    )
+    .await
 }
 
 pub async fn list_site_schedules(
@@ -709,4 +821,48 @@ pub async fn run_site_schedule(
         Err(r) => return r,
     };
     run_schedule_now(&backup, &path.schedule_id, Some(&ctx.site_id), Some(user)).await
+}
+
+/// Rebuild the search index for a single site (operator only).
+pub async fn reindex_site(
+    ctx: RequestContext,
+    Extension(repository): Extension<Repository>,
+    Extension(services): Extension<Services>,
+) -> Response {
+    if let Err(r) = require_site(&ctx, &repository, Action::SiteBackup).await {
+        return r;
+    }
+    reindex_response(reindex_run(&services, &repository, Some(&ctx.site_id)).await)
+}
+
+// ── Reindex helpers ──
+
+/// Run a rebuild over the whole instance (`site_id = None`) or one site. Returns
+/// `None` when search is disabled, else the (re)indexed document count.
+async fn reindex_run(
+    services: &Services,
+    repository: &Repository,
+    site_id: Option<&str>,
+) -> Option<Result<usize, SearchError>> {
+    let search = services.search.as_ref()?;
+    Some(match site_id {
+        Some(site_id) => search.rebuild_site(repository, site_id).await,
+        None => search.rebuild_all(repository).await,
+    })
+}
+
+fn reindex_response(result: Option<Result<usize, SearchError>>) -> Response {
+    match result {
+        Some(Ok(n)) => (StatusCode::OK, Json(json!({ "reindexed": n }))).into_response(),
+        Some(Err(e)) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({ "error": "reindex_failed", "message": e.to_string() })),
+        )
+            .into_response(),
+        None => (
+            StatusCode::SERVICE_UNAVAILABLE,
+            Json(json!({ "error": "search_disabled", "message": "Full-text search is disabled" })),
+        )
+            .into_response(),
+    }
 }

@@ -32,9 +32,7 @@ async fn graphql_handler(
 
     let gql_ctx = GqlContext::from_request(repository, services, auth_header, &config.hmac_secret).await;
 
-    let response = schema
-        .execute(req.into_inner().data(gql_ctx).data(entry_loader))
-        .await;
+    let response = schema.execute(req.into_inner().data(gql_ctx).data(entry_loader)).await;
     async_graphql_axum::GraphQLResponse::from(response)
 }
 
