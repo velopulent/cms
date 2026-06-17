@@ -49,7 +49,10 @@ async fn create_site(server: &TestServer, jwt: &str, csrf: &str) -> String {
 async fn create_collection(server: &TestServer, jwt: &str, csrf: &str, site_id: &str) -> String {
     let client = reqwest::Client::new();
     let resp = client
-        .post(format!("{}/api/dashboard/sites/{}/collections", server.base_url, site_id))
+        .post(format!(
+            "{}/api/dashboard/sites/{}/collections",
+            server.base_url, site_id
+        ))
         .headers(auth_header(jwt, csrf))
         .json(&json!({
             "name": "Posts",
@@ -83,7 +86,10 @@ async fn create_entry(server: &TestServer, jwt: &str, csrf: &str, site_id: &str,
 async fn get_entry_status(server: &TestServer, jwt: &str, csrf: &str, site_id: &str, entry_id: &str) -> u16 {
     let client = reqwest::Client::new();
     client
-        .get(format!("{}/api/dashboard/sites/{}/entries/{}", server.base_url, site_id, entry_id))
+        .get(format!(
+            "{}/api/dashboard/sites/{}/entries/{}",
+            server.base_url, site_id, entry_id
+        ))
         .headers(auth_header(jwt, csrf))
         .send()
         .await
@@ -95,7 +101,10 @@ async fn get_entry_status(server: &TestServer, jwt: &str, csrf: &str, site_id: &
 async fn delete_entry(server: &TestServer, jwt: &str, csrf: &str, site_id: &str, entry_id: &str) {
     let client = reqwest::Client::new();
     client
-        .delete(format!("{}/api/dashboard/sites/{}/entries/{}", server.base_url, site_id, entry_id))
+        .delete(format!(
+            "{}/api/dashboard/sites/{}/entries/{}",
+            server.base_url, site_id, entry_id
+        ))
         .headers(auth_header(jwt, csrf))
         .send()
         .await
@@ -262,7 +271,10 @@ async fn schedule_retention_prunes_old_backups() {
 
     // A schedule that keeps only the most recent 1 backup.
     let sched: Value = client
-        .post(format!("{}/api/dashboard/sites/{}/backup-schedules", server.base_url, site_id))
+        .post(format!(
+            "{}/api/dashboard/sites/{}/backup-schedules",
+            server.base_url, site_id
+        ))
         .headers(auth_header(&jwt, &csrf))
         .json(&json!({
             "cron": "0 0 * * *",

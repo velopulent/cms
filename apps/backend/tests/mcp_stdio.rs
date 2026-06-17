@@ -181,7 +181,12 @@ async fn setup_home_instance(home: &std::path::Path) -> String {
         .await
         .expect("create site");
     let token = AccessTokenService::new(repository.access_token.clone(), hmac_secret, 4)
-        .create_site_token("home-site", "home".to_string(), AccessTokenPermission::Write, Some("home-user"))
+        .create_site_token(
+            "home-site",
+            "home".to_string(),
+            AccessTokenPermission::Write,
+            Some("home-user"),
+        )
         .await
         .expect("create token");
     drop(repository);

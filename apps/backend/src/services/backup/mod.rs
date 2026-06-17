@@ -153,10 +153,7 @@ impl BackupService {
         destination: Arc<dyn StorageProvider>,
         config: &Config,
     ) -> Self {
-        let encryption_key = config
-            .backup_encryption_key
-            .as_deref()
-            .and_then(parse_key_hex);
+        let encryption_key = config.backup_encryption_key.as_deref().and_then(parse_key_hex);
         Self {
             pool,
             storage,
@@ -220,8 +217,8 @@ impl BackupService {
         };
 
         let tar_bytes = build_tar(&manifest, &tar_tables, &file_blobs)?;
-        let compressed = zstd::stream::encode_all(&tar_bytes[..], self.zstd_level)
-            .map_err(|e| BackupError::Io(e.to_string()))?;
+        let compressed =
+            zstd::stream::encode_all(&tar_bytes[..], self.zstd_level).map_err(|e| BackupError::Io(e.to_string()))?;
         let outer = self.wrap(compressed, encrypt)?;
         Ok((manifest, outer))
     }
@@ -280,7 +277,9 @@ impl BackupService {
         id: &str,
         opts: &CreateBackupOptions,
     ) -> Result<(Vec<u8>, Manifest, String), BackupError> {
-        let (manifest, bytes) = self.build_artifact(&opts.scope, opts.include_files, opts.encrypt).await?;
+        let (manifest, bytes) = self
+            .build_artifact(&opts.scope, opts.include_files, opts.encrypt)
+            .await?;
         let key = match &opts.scope {
             Scope::Instance => format!("instance/{id}.cmsbak"),
             Scope::Site(sid) => format!("site/{sid}/{id}.cmsbak"),
@@ -457,7 +456,11 @@ impl BackupService {
                 continue;
             };
             if let Err(e) = provider
-                .put(&f.storage_key, bytes::Bytes::from(data.clone()), "application/octet-stream")
+                .put(
+                    &f.storage_key,
+                    bytes::Bytes::from(data.clone()),
+                    "application/octet-stream",
+                )
                 .await
             {
                 tracing::warn!(key = %f.storage_key, error = %e, "restore: failed to write file");
@@ -490,7 +493,10 @@ impl BackupService {
     }
 
     /// Decrypt/decompress an artifact into (manifest, table NDJSON, file blobs).
-    fn open(&self, bytes: &[u8]) -> Result<(Manifest, HashMap<String, Vec<u8>>, HashMap<String, Vec<u8>>), BackupError> {
+    fn open(
+        &self,
+        bytes: &[u8],
+    ) -> Result<(Manifest, HashMap<String, Vec<u8>>, HashMap<String, Vec<u8>>), BackupError> {
         if bytes.len() < MAGIC.len() + 1 || &bytes[..MAGIC.len()] != MAGIC {
             return Err(BackupError::Invalid("not a CMS backup artifact".into()));
         }
@@ -665,7 +671,15 @@ fn filter_to_site(tables: &Tables, site_id: &str) -> Tables {
     };
 
     out.insert("sites".into(), keep_by(tables.get("sites"), "id", site_id));
-    for t in ["site_members", "collections", "entries", "files", "entry_file_references", "access_tokens", "site_webhooks"] {
+    for t in [
+        "site_members",
+        "collections",
+        "entries",
+        "files",
+        "entry_file_references",
+        "access_tokens",
+        "site_webhooks",
+    ] {
         out.insert(t.into(), keep_by(tables.get(t), "site_id", site_id));
     }
 
@@ -729,7 +743,9 @@ fn reconcile_user_refs(tables: &mut Tables, existing: &HashSet<String>, fallback
 
     if let Some(sites) = tables.get_mut("sites") {
         for m in sites.iter_mut() {
-            let missing = str_field(m, "created_by").map(|u| !existing.contains(u)).unwrap_or(true);
+            let missing = str_field(m, "created_by")
+                .map(|u| !existing.contains(u))
+                .unwrap_or(true);
             if missing {
                 if let Some(fb) = fallback_user {
                     m.insert("created_by".to_string(), serde_json::Value::String(fb.to_string()));
@@ -785,9 +801,19 @@ fn remap_ids(tables: &mut Tables) {
     for (table, cols) in [
         ("site_members", vec![("site_id", &sites)]),
         ("collections", vec![("site_id", &sites)]),
-        ("entries", vec![("site_id", &sites), ("collection_id", &collections), ("singleton_collection_id", &collections)]),
+        (
+            "entries",
+            vec![
+                ("site_id", &sites),
+                ("collection_id", &collections),
+                ("singleton_collection_id", &collections),
+            ],
+        ),
         ("files", vec![("site_id", &sites)]),
-        ("entry_file_references", vec![("site_id", &sites), ("entry_id", &entries), ("file_id", &files)]),
+        (
+            "entry_file_references",
+            vec![("site_id", &sites), ("entry_id", &entries), ("file_id", &files)],
+        ),
         ("entry_revisions", vec![("entry_id", &entries)]),
         ("access_tokens", vec![("site_id", &sites)]),
         ("site_webhooks", vec![("site_id", &sites)]),
@@ -875,7 +901,9 @@ fn read_tar(tar_bytes: &[u8]) -> Result<(Manifest, HashMap<String, Vec<u8>>, Has
             .to_string_lossy()
             .replace('\\', "/");
         let mut data = Vec::new();
-        entry.read_to_end(&mut data).map_err(|e| BackupError::Io(e.to_string()))?;
+        entry
+            .read_to_end(&mut data)
+            .map_err(|e| BackupError::Io(e.to_string()))?;
 
         if path == "manifest.json" {
             manifest = Some(serde_json::from_slice(&data).map_err(|e| BackupError::Invalid(e.to_string()))?);

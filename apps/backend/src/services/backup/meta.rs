@@ -212,10 +212,15 @@ pub async fn get_backup(pool: &DbPool, id: &str) -> Result<Option<BackupRow>, Ba
 }
 
 /// List backups, optionally filtered to a scope/site.
-pub async fn list_backups(pool: &DbPool, scope: Option<&str>, site_id: Option<&str>) -> Result<Vec<BackupRow>, BackupError> {
+pub async fn list_backups(
+    pool: &DbPool,
+    scope: Option<&str>,
+    site_id: Option<&str>,
+) -> Result<Vec<BackupRow>, BackupError> {
     let rows = match (scope, site_id) {
         (Some(sc), Some(sid)) => {
-            let sql = format!("SELECT {BACKUP_COLS} FROM backups WHERE scope = ? AND site_id = ? ORDER BY created_at DESC");
+            let sql =
+                format!("SELECT {BACKUP_COLS} FROM backups WHERE scope = ? AND site_id = ? ORDER BY created_at DESC");
             fetch_all_as!(pool, BackupRow, &sql, sc.to_string(), sid.to_string())
         }
         (Some(sc), None) => {
@@ -362,7 +367,12 @@ pub async fn update_schedule(
     Ok(())
 }
 
-pub async fn set_schedule_runs(pool: &DbPool, id: &str, last_run_at: &str, next_run_at: Option<&str>) -> Result<(), BackupError> {
+pub async fn set_schedule_runs(
+    pool: &DbPool,
+    id: &str,
+    last_run_at: &str,
+    next_run_at: Option<&str>,
+) -> Result<(), BackupError> {
     exec!(
         pool,
         "UPDATE backup_schedules SET last_run_at = ?, next_run_at = ? WHERE id = ?",
@@ -383,10 +393,16 @@ pub async fn get_schedule(pool: &DbPool, id: &str) -> Result<Option<BackupSchedu
     Ok(fetch_opt_as!(pool, BackupScheduleRow, &sql, id.to_string()))
 }
 
-pub async fn list_schedules(pool: &DbPool, scope: Option<&str>, site_id: Option<&str>) -> Result<Vec<BackupScheduleRow>, BackupError> {
+pub async fn list_schedules(
+    pool: &DbPool,
+    scope: Option<&str>,
+    site_id: Option<&str>,
+) -> Result<Vec<BackupScheduleRow>, BackupError> {
     let rows = match (scope, site_id) {
         (Some(sc), Some(sid)) => {
-            let sql = format!("SELECT {SCHEDULE_COLS} FROM backup_schedules WHERE scope = ? AND site_id = ? ORDER BY created_at DESC");
+            let sql = format!(
+                "SELECT {SCHEDULE_COLS} FROM backup_schedules WHERE scope = ? AND site_id = ? ORDER BY created_at DESC"
+            );
             fetch_all_as!(pool, BackupScheduleRow, &sql, sc.to_string(), sid.to_string())
         }
         (Some(sc), None) => {
@@ -437,7 +453,13 @@ pub async fn insert_restore_running(
     Ok(())
 }
 
-pub async fn mark_restore_done(pool: &DbPool, id: &str, status: &str, error: Option<&str>, now: &str) -> Result<(), BackupError> {
+pub async fn mark_restore_done(
+    pool: &DbPool,
+    id: &str,
+    status: &str,
+    error: Option<&str>,
+    now: &str,
+) -> Result<(), BackupError> {
     exec!(
         pool,
         "UPDATE restore_jobs SET status = ?, error = ?, completed_at = ? WHERE id = ?",

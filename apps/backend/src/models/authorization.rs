@@ -132,10 +132,7 @@ impl Authorizer {
     /// Instance operators (Owner/Admin) have full authority over every site.
     /// This is the override that lets operators manage all sites without membership.
     pub const fn allows_site_as_instance(role: Option<InstanceRole>, _action: Action) -> bool {
-        matches!(
-            role,
-            Some(InstanceRole::InstanceOwner | InstanceRole::InstanceAdmin)
-        )
+        matches!(role, Some(InstanceRole::InstanceOwner | InstanceRole::InstanceAdmin))
     }
 
     /// Site-scoped collaborator authority. Editors write content/files; Viewers read.
@@ -200,8 +197,14 @@ mod tests {
             Action::MembersManage,
             Action::ContentWrite,
         ] {
-            assert!(Authorizer::allows_site_as_instance(Some(InstanceRole::InstanceOwner), action));
-            assert!(Authorizer::allows_site_as_instance(Some(InstanceRole::InstanceAdmin), action));
+            assert!(Authorizer::allows_site_as_instance(
+                Some(InstanceRole::InstanceOwner),
+                action
+            ));
+            assert!(Authorizer::allows_site_as_instance(
+                Some(InstanceRole::InstanceAdmin),
+                action
+            ));
             assert!(!Authorizer::allows_site_as_instance(None, action));
         }
     }
@@ -217,8 +220,14 @@ mod tests {
             Action::InstanceRolesGrant
         ));
         // Admins can still create and delete sites and manage users.
-        assert!(Authorizer::allows_instance(Some(InstanceRole::InstanceAdmin), Action::SiteCreate));
-        assert!(Authorizer::allows_instance(Some(InstanceRole::InstanceAdmin), Action::SiteDelete));
+        assert!(Authorizer::allows_instance(
+            Some(InstanceRole::InstanceAdmin),
+            Action::SiteCreate
+        ));
+        assert!(Authorizer::allows_instance(
+            Some(InstanceRole::InstanceAdmin),
+            Action::SiteDelete
+        ));
         assert!(Authorizer::allows_instance(
             Some(InstanceRole::InstanceAdmin),
             Action::InstanceManage

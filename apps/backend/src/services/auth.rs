@@ -301,7 +301,8 @@ impl AuthService {
             return Err(AuthError::ValidationError("Invalid username or email".into()));
         }
         let id = Uuid::now_v7().to_string();
-        let password_hash = hash(temporary_password, self.bcrypt_cost).map_err(|e| AuthError::HashError(e.to_string()))?;
+        let password_hash =
+            hash(temporary_password, self.bcrypt_cost).map_err(|e| AuthError::HashError(e.to_string()))?;
         self.user_repo
             .create(&id, username, email, &password_hash)
             .await

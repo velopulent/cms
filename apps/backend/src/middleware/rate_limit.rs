@@ -45,7 +45,8 @@ impl RateLimiter {
         // Bound memory: drop expired buckets once the map grows large. Done
         // before taking a shard lock on `key` to avoid a self-deadlock.
         if self.state.len() > EVICTION_THRESHOLD {
-            self.state.retain(|_, e| now.duration_since(e.window_start) <= self.window);
+            self.state
+                .retain(|_, e| now.duration_since(e.window_start) <= self.window);
         }
 
         let mut entry = self.state.entry(key.to_string()).or_insert(RateLimitEntry {
@@ -59,7 +60,11 @@ impl RateLimiter {
         }
         entry.count += 1;
 
-        if entry.count > self.max_requests { Err(()) } else { Ok(()) }
+        if entry.count > self.max_requests {
+            Err(())
+        } else {
+            Ok(())
+        }
     }
 
     /// Derive the rate-limit bucket key for a request. When `trust_proxy_headers`

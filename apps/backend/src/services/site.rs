@@ -283,7 +283,10 @@ impl SiteService {
         // Instance operators (owner/admin) already have full access to every site;
         // they must not be added as editors/viewers.
         if user.instance_role.is_some() {
-            warn!("Invite member rejected: user is an instance operator, username={}", username);
+            warn!(
+                "Invite member rejected: user is an instance operator, username={}",
+                username
+            );
             return Err(SiteError::CannotInviteOperator);
         }
 
@@ -389,7 +392,6 @@ impl SiteService {
             }
         }
     }
-
 }
 
 #[cfg(test)]
