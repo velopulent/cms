@@ -1,7 +1,6 @@
 import { Link, useNavigate } from "@tanstack/react-router";
 import { LogOut, Settings, User } from "lucide-react";
 import { ModeToggle } from "@/components/theme-toggle";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button, buttonVariants } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -12,6 +11,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { UserAvatar } from "@/components/user-avatar";
 import { useAuth } from "@/contexts/auth-context";
 import { isOperator } from "@/lib/api";
 
@@ -57,19 +57,13 @@ export function DashboardHeader() {
               <Button variant="ghost" size="icon" className="rounded-full" />
             }
           >
-            <Avatar className="size-8">
-              <AvatarFallback>{name.slice(0, 2).toUpperCase()}</AvatarFallback>
-            </Avatar>
+            <UserAvatar username={name} />
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" className="min-w-56 rounded-lg">
             <DropdownMenuGroup>
               <DropdownMenuLabel className="p-0 font-normal">
                 <div className="flex items-center gap-2 px-1 py-1.5 text-left text-sm">
-                  <Avatar className="size-8">
-                    <AvatarFallback>
-                      {name.slice(0, 2).toUpperCase()}
-                    </AvatarFallback>
-                  </Avatar>
+                  <UserAvatar username={name} />
                   <div className="grid flex-1 leading-tight">
                     <span className="truncate font-medium">{name}</span>
                     <span className="truncate text-xs text-muted-foreground">
