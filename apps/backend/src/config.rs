@@ -73,6 +73,10 @@ pub struct Config {
     // Hash secret for access token fast lookup
     pub hmac_secret: String,
 
+    // Full-text search (Tantivy)
+    pub search_enabled: bool,
+    pub search_index_path: Option<String>,
+
     // MCP configuration
     pub mcp_enabled: bool,
     pub mcp_allowed_hosts: Vec<String>,
@@ -151,6 +155,10 @@ struct RawConfig {
     trust_proxy_headers: Option<bool>,
     #[serde(default, deserialize_with = "de_opt_lenient_bool")]
     webhook_allow_private_targets: Option<bool>,
+
+    #[serde(default, deserialize_with = "de_opt_lenient_bool")]
+    search_enabled: Option<bool>,
+    search_index_path: Option<String>,
 
     #[serde(default, deserialize_with = "de_opt_lenient_bool")]
     mcp_enabled: Option<bool>,
@@ -423,6 +431,8 @@ impl RawConfig {
             bcrypt_cost: self.bcrypt_cost.unwrap_or(bcrypt::DEFAULT_COST),
             trust_proxy_headers: self.trust_proxy_headers.unwrap_or(false),
             webhook_allow_private_targets: self.webhook_allow_private_targets.unwrap_or(false),
+            search_enabled: self.search_enabled.unwrap_or(true),
+            search_index_path: self.search_index_path,
             mcp_enabled: self.mcp_enabled.unwrap_or(true),
             mcp_allowed_hosts: self.mcp_allowed_hosts.unwrap_or_else(default_mcp_allowed_hosts),
             mcp_allowed_origins: self.mcp_allowed_origins.unwrap_or_default(),
@@ -527,6 +537,11 @@ pub fn default_config_toml() -> String {
          # backup_s3_endpoint = \"https://s3.example.com\"\n\
          # Secrets via env: BACKUP_S3_ACCESS_KEY_ID, BACKUP_S3_SECRET_ACCESS_KEY,\n\
          # and BACKUP_ENCRYPTION_KEY (else auto-generated into secrets.toml).\n\n\
+         # --- Full-text search (Tantivy) ---\n\
+         # Build a local inverted index so entry search is ranked + tokenized.\n\
+         # When false, search falls back to a basic SQL LIKE match.\n\
+         search_enabled = true\n\
+         # search_index_path = \"./search\"   # defaults to ~/.cms/search\n\n\
          # --- MCP ---\n\
          mcp_enabled = true\n\
          mcp_allowed_hosts = [{hosts}]\n\
