@@ -72,7 +72,14 @@ async fn create_user(
         .unwrap()
 }
 
-async fn invite_member(server: &TestServer, jwt: &str, csrf: &str, site_id: &str, username: &str, role: &str) -> reqwest::Response {
+async fn invite_member(
+    server: &TestServer,
+    jwt: &str,
+    csrf: &str,
+    site_id: &str,
+    username: &str,
+    role: &str,
+) -> reqwest::Response {
     let client = reqwest::Client::builder().build().unwrap();
     client
         .post(format!("{}/api/dashboard/sites/{}/members", server.base_url, site_id))
@@ -126,7 +133,10 @@ async fn remove_member(
 async fn create_collection(server: &TestServer, jwt: &str, csrf: &str, site_id: &str, slug: &str) -> reqwest::Response {
     let client = reqwest::Client::builder().build().unwrap();
     client
-        .post(format!("{}/api/dashboard/sites/{}/collections", server.base_url, site_id))
+        .post(format!(
+            "{}/api/dashboard/sites/{}/collections",
+            server.base_url, site_id
+        ))
         .headers(auth_header(jwt, csrf))
         .json(&json!({
             "name": slug,
@@ -148,7 +158,14 @@ async fn get_site(server: &TestServer, jwt: &str, csrf: &str, site_id: &str) -> 
         .unwrap()
 }
 
-async fn create_entry(server: &TestServer, jwt: &str, csrf: &str, site_id: &str, collection_id: &str, slug: &str) -> reqwest::Response {
+async fn create_entry(
+    server: &TestServer,
+    jwt: &str,
+    csrf: &str,
+    site_id: &str,
+    collection_id: &str,
+    slug: &str,
+) -> reqwest::Response {
     let client = reqwest::Client::builder().build().unwrap();
     client
         .post(format!("{}/api/dashboard/sites/{}/entries", server.base_url, site_id))
@@ -199,18 +216,43 @@ async fn editor_writes_content_but_not_schema_or_members() {
         .unwrap();
     let col_id = col["id"].as_str().unwrap();
 
-    assert_eq!(create_user(&server, &admin_jwt, &admin_csrf, "editor1", None).await.status(), 201);
-    assert_eq!(invite_member(&server, &admin_jwt, &admin_csrf, &site_id, "editor1", "editor").await.status(), 201);
+    assert_eq!(
+        create_user(&server, &admin_jwt, &admin_csrf, "editor1", None)
+            .await
+            .status(),
+        201
+    );
+    assert_eq!(
+        invite_member(&server, &admin_jwt, &admin_csrf, &site_id, "editor1", "editor")
+            .await
+            .status(),
+        201
+    );
 
     let (ed_jwt, ed_csrf) = login(&server, "editor1", "password123").await;
 
     // Can read the site and write content.
     assert_eq!(get_site(&server, &ed_jwt, &ed_csrf, &site_id).await.status(), 200);
-    assert!(create_entry(&server, &ed_jwt, &ed_csrf, &site_id, col_id, "first").await.status().is_success());
+    assert!(
+        create_entry(&server, &ed_jwt, &ed_csrf, &site_id, col_id, "first")
+            .await
+            .status()
+            .is_success()
+    );
 
     // Cannot manage schema or members on its own site.
-    assert_eq!(create_collection(&server, &ed_jwt, &ed_csrf, &site_id, "extra").await.status(), 403);
-    assert_eq!(invite_member(&server, &ed_jwt, &ed_csrf, &site_id, "admin", "viewer").await.status(), 403);
+    assert_eq!(
+        create_collection(&server, &ed_jwt, &ed_csrf, &site_id, "extra")
+            .await
+            .status(),
+        403
+    );
+    assert_eq!(
+        invite_member(&server, &ed_jwt, &ed_csrf, &site_id, "admin", "viewer")
+            .await
+            .status(),
+        403
+    );
 
     // Cannot touch a site it is not a member of.
     assert_eq!(get_site(&server, &ed_jwt, &ed_csrf, &other_site).await.status(), 404);
@@ -231,12 +273,27 @@ async fn viewer_is_read_only() {
         .unwrap();
     let col_id = col["id"].as_str().unwrap();
 
-    assert_eq!(create_user(&server, &admin_jwt, &admin_csrf, "viewer1", None).await.status(), 201);
-    assert_eq!(invite_member(&server, &admin_jwt, &admin_csrf, &site_id, "viewer1", "viewer").await.status(), 201);
+    assert_eq!(
+        create_user(&server, &admin_jwt, &admin_csrf, "viewer1", None)
+            .await
+            .status(),
+        201
+    );
+    assert_eq!(
+        invite_member(&server, &admin_jwt, &admin_csrf, &site_id, "viewer1", "viewer")
+            .await
+            .status(),
+        201
+    );
 
     let (v_jwt, v_csrf) = login(&server, "viewer1", "password123").await;
     assert_eq!(get_site(&server, &v_jwt, &v_csrf, &site_id).await.status(), 200);
-    assert_eq!(create_entry(&server, &v_jwt, &v_csrf, &site_id, col_id, "nope").await.status(), 403);
+    assert_eq!(
+        create_entry(&server, &v_jwt, &v_csrf, &site_id, col_id, "nope")
+            .await
+            .status(),
+        403
+    );
 }
 
 // ── only an instance owner may grant the owner role ──
@@ -246,13 +303,28 @@ async fn only_owner_grants_instance_owner() {
     let server = TestServer::start().await;
     let (owner_jwt, owner_csrf) = login(&server, "admin", "admin").await;
 
-    assert_eq!(create_user(&server, &owner_jwt, &owner_csrf, "admin2", Some("instance_admin")).await.status(), 201);
+    assert_eq!(
+        create_user(&server, &owner_jwt, &owner_csrf, "admin2", Some("instance_admin"))
+            .await
+            .status(),
+        201
+    );
     let (a2_jwt, a2_csrf) = login(&server, "admin2", "password123").await;
 
     // An instance_admin can create another admin...
-    assert_eq!(create_user(&server, &a2_jwt, &a2_csrf, "admin3", Some("instance_admin")).await.status(), 201);
+    assert_eq!(
+        create_user(&server, &a2_jwt, &a2_csrf, "admin3", Some("instance_admin"))
+            .await
+            .status(),
+        201
+    );
     // ...but cannot mint an instance_owner.
-    assert_eq!(create_user(&server, &a2_jwt, &a2_csrf, "wouldbeowner", Some("instance_owner")).await.status(), 403);
+    assert_eq!(
+        create_user(&server, &a2_jwt, &a2_csrf, "wouldbeowner", Some("instance_owner"))
+            .await
+            .status(),
+        403
+    );
 }
 
 // ── operator can update and remove a member (PUT/DELETE /members/{member_user_id}) ──
@@ -263,7 +335,12 @@ async fn operator_updates_and_removes_member() {
     let (admin_jwt, admin_csrf) = login(&server, "admin", "admin").await;
 
     let site_id = create_site(&server, &admin_jwt, &admin_csrf, "Members Site").await;
-    assert_eq!(create_user(&server, &admin_jwt, &admin_csrf, "member1", None).await.status(), 201);
+    assert_eq!(
+        create_user(&server, &admin_jwt, &admin_csrf, "member1", None)
+            .await
+            .status(),
+        201
+    );
 
     let member: Value = invite_member(&server, &admin_jwt, &admin_csrf, &site_id, "member1", "editor")
         .await
@@ -327,8 +404,18 @@ async fn editor_cannot_delete_site() {
     let (admin_jwt, admin_csrf) = login(&server, "admin", "admin").await;
 
     let site_id = create_site(&server, &admin_jwt, &admin_csrf, "Doomed Site").await;
-    assert_eq!(create_user(&server, &admin_jwt, &admin_csrf, "editor2", None).await.status(), 201);
-    assert_eq!(invite_member(&server, &admin_jwt, &admin_csrf, &site_id, "editor2", "editor").await.status(), 201);
+    assert_eq!(
+        create_user(&server, &admin_jwt, &admin_csrf, "editor2", None)
+            .await
+            .status(),
+        201
+    );
+    assert_eq!(
+        invite_member(&server, &admin_jwt, &admin_csrf, &site_id, "editor2", "editor")
+            .await
+            .status(),
+        201
+    );
 
     let (ed_jwt, ed_csrf) = login(&server, "editor2", "password123").await;
     let client = reqwest::Client::builder().build().unwrap();

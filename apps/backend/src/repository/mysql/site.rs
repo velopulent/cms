@@ -172,5 +172,4 @@ impl SiteRepository for MysqlSiteRepository {
 
         Ok(result.rows_affected())
     }
-
 }

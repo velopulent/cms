@@ -23,8 +23,8 @@ impl Collection {
         ctx: &async_graphql::Context<'_>,
         status: Option<String>,
     ) -> async_graphql::Result<Vec<Entry>> {
-        use async_graphql::dataloader::DataLoader;
         use crate::graphql::loaders::{EntriesByCollection, EntryLoader};
+        use async_graphql::dataloader::DataLoader;
 
         let gql_ctx = ctx.data::<crate::graphql::context::GqlContext>()?;
         let published_only = gql_ctx.site_id.is_some();

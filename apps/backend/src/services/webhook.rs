@@ -274,8 +274,8 @@ impl WebhookService {
         // resolve to a private address (DNS rebinding). Pin the connection to a
         // vetted IP and refuse redirects so it can't be bounced internally.
         validate_url(&webhook.url, self.allow_private_targets)?;
-        let parsed_url = url::Url::parse(&webhook.url)
-            .map_err(|_| WebhookError::InvalidUrl("Invalid URL format".into()))?;
+        let parsed_url =
+            url::Url::parse(&webhook.url).map_err(|_| WebhookError::InvalidUrl("Invalid URL format".into()))?;
         let safe_addr = resolve_safe_addr(&parsed_url, self.allow_private_targets).await?;
         let host = parsed_url.host_str().unwrap_or_default().to_string();
 
@@ -428,10 +428,15 @@ fn validate_url(url: &str, allow_private: bool) -> Result<(), WebhookError> {
         return Err(WebhookError::InvalidUrl("URL host is not allowed".into()));
     }
     // IP literal? validate the address directly.
-    if let Ok(ip) = host_lower.trim_start_matches('[').trim_end_matches(']').parse::<IpAddr>()
+    if let Ok(ip) = host_lower
+        .trim_start_matches('[')
+        .trim_end_matches(']')
+        .parse::<IpAddr>()
         && is_disallowed_ip(ip)
     {
-        return Err(WebhookError::InvalidUrl("URL host resolves to a disallowed address".into()));
+        return Err(WebhookError::InvalidUrl(
+            "URL host resolves to a disallowed address".into(),
+        ));
     }
     Ok(())
 }
@@ -454,7 +459,9 @@ async fn resolve_safe_addr(parsed: &url::Url, allow_private: bool) -> Result<std
     let mut chosen = None;
     for addr in addrs {
         if !allow_private && is_disallowed_ip(addr.ip()) {
-            return Err(WebhookError::InvalidUrl("URL host resolves to a disallowed address".into()));
+            return Err(WebhookError::InvalidUrl(
+                "URL host resolves to a disallowed address".into(),
+            ));
         }
         chosen.get_or_insert(addr);
     }

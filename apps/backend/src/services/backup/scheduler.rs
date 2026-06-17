@@ -8,7 +8,7 @@
 use std::sync::Arc;
 use std::time::Duration;
 
-use super::{now_iso, schedule, BackupError, BackupService, CreateBackupOptions, Scope};
+use super::{BackupError, BackupService, CreateBackupOptions, Scope, now_iso, schedule};
 
 const POLL_INTERVAL: Duration = Duration::from_secs(60);
 
