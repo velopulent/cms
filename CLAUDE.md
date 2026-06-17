@@ -326,8 +326,33 @@ owner/operator reindex routes: `POST /api/dashboard/instance/search/reindex` and
 This is the cross-process model: writes from `cms mcp stdio` (or any process) land in
 the durable queue and the running server indexes them; if the server is down they
 drain on its next start. The remaining hard limit is *concurrent writers* — only one
-process indexes at a time. Typo tolerance is a deliberate follow-up (Tantivy fuzzy
-queries score by constant, which flattens ranking).
+process indexes at a time.
+
+### No typo tolerance (deliberate) — and how to add it
+
+Search has stemming + BM25 ranking + phrase/multi-field, but **no fuzzy / typo
+tolerance**. These are different things: **stemming** maps word *forms* to a root
+("running"→"run") so different grammatical forms match — it does **not** fix
+misspellings ("runnnig" still matches nothing). **Fuzzy** matches within an edit
+distance and is what handles typos.
+
+Fuzzy is omitted on purpose. The obvious switch — `QueryParser::set_field_fuzzy` —
+turns every term into a Tantivy `FuzzyTermQuery`, which scores by a **constant**
+instead of BM25. That flattens relevance ranking: a doc mentioning the term three
+times no longer outranks one mentioning it once (the `ranks_frequent_term_higher`
+unit test in `services/search/mod.rs` catches exactly this). Since ranking is the
+whole reason we moved off SQL `LIKE`, we kept ranking over fuzzy.
+
+It can be added later **without losing ranking**, contained to `search_entries` in
+`services/search/mod.rs` (no schema/migration/index changes — the index already holds
+the stemmed terms):
+- **Zero-hit fallback** (simplest): run the normal BM25 query; only retry with a fuzzy
+  query when it returns nothing. Correct spellings keep perfect ranking; typos still
+  return results. Won't rescue a typo buried in an otherwise-matching multi-word query.
+- **Boosted exact-OR-fuzzy**: always search `(exact/stemmed)^high OR (fuzzy)^low` so
+  exact matches keep their BM25 order and sort above fuzzy near-matches, while
+  misspellings still surface via the low-boost arm. Always-on, ranking intact; slightly
+  more query cost.
 
 ## Code Conventions
 
