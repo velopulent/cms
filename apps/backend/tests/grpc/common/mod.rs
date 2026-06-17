@@ -68,7 +68,7 @@ impl GrpcTestContext {
 
         let config = Arc::new(config);
         let repository_arc = Arc::new(repository.clone());
-        let services = Services::new(repository_arc.clone(), &config);
+        let services = Services::new(repository_arc.clone(), &pool, &config);
 
         // Start Axum server for REST-based seeding
         let axum_listener = TcpListener::bind("127.0.0.1:0")
@@ -90,7 +90,7 @@ impl GrpcTestContext {
             repository.clone(),
             (*config).clone(),
             storage_registry.clone(),
-            Services::new(repository_arc.clone(), &config),
+            Services::new(repository_arc.clone(), &pool, &config),
             backup_service,
         );
 
