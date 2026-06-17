@@ -61,7 +61,11 @@ async fn run_serve(cli: &Cli) -> Result<(), Box<dyn Error>> {
     seed_admin(&repository).await;
 
     let storage_registry = initialize_storage(&config);
-    let services = Services::new(Arc::new(repository.clone()), &config);
+    // Build these once and share them: the REST router and the gRPC server use the
+    // same `Services` so the single-writer search index is opened only once.
+    let repository_arc = Arc::new(repository.clone());
+    let config_arc = Arc::new(config.clone());
+    let services = Services::new(repository_arc.clone(), &pool, &config);
 
     let backup_destination = cms::services::backup::build_backup_destination(&config)
         .map_err(|e| format!("Failed to initialize backup destination: {e}"))?;
@@ -88,6 +92,22 @@ async fn run_serve(cli: &Cli) -> Result<(), Box<dyn Error>> {
         info!("Backup scheduler started");
     }
 
+    // The search indexer is the single writer/consumer: it rebuilds the index when
+    // empty (first run / wiped), then drains the cross-process queue forever.
+    if let (Some(search), Some(queue)) = (services.search.clone(), services.search_queue.clone()) {
+        let repo = repository_arc.clone();
+        tokio::spawn(async move {
+            if search.is_empty() {
+                info!("Search index is empty; building from database...");
+                match search.rebuild_all(&repo).await {
+                    Ok(n) => info!("Search index built: {} entries", n),
+                    Err(e) => tracing::error!("Search index build failed: {}", e),
+                }
+            }
+            cms::services::search::indexer::run(search, queue, repo).await;
+        });
+    }
+
     let addr: SocketAddr = config.bind_address.parse().expect("Invalid BIND_ADDRESS");
     info!("REST API server running on {}", addr);
 
@@ -109,8 +129,9 @@ async fn run_serve(cli: &Cli) -> Result<(), Box<dyn Error>> {
     });
 
     let grpc_handle = tokio::spawn(spawn_grpc_server(
-        repository.clone(),
-        config.clone(),
+        services.clone(),
+        repository_arc.clone(),
+        config_arc.clone(),
         storage_registry.clone(),
         grpc_addr,
     ));
@@ -135,9 +156,7 @@ async fn run_mcp_stdio(cli: &Cli) -> Result<(), Box<dyn Error>> {
     // Read-only: never create the home dir, database, or secrets file here. The
     // persisted secrets written by `cms serve` are what make this process verify
     // the site token with the same HMAC secret the server signed it with.
-    if cms::secrets::load()?.is_none()
-        && std::env::var("JWT_SECRET").is_err()
-        && std::env::var("HMAC_SECRET").is_err()
+    if cms::secrets::load()?.is_none() && std::env::var("JWT_SECRET").is_err() && std::env::var("HMAC_SECRET").is_err()
     {
         return Err("No instance secrets found. Run `cms serve` once to initialize \
                     ~/.cms (or set JWT_SECRET and HMAC_SECRET) before `cms mcp stdio`."
@@ -181,7 +200,9 @@ async fn run_mcp_stdio(cli: &Cli) -> Result<(), Box<dyn Error>> {
     let storage_registry = initialize_storage(&config);
     let repository = Arc::new(repository);
     let config = Arc::new(config);
-    let services = Arc::new(Services::new(repository.clone(), &config));
+    // Read-only search: stdio can run alongside the server without contending for
+    // the writer lock; its content writes enqueue for the server to index.
+    let services = Arc::new(Services::new_read_only(repository.clone(), &pool, &config));
     let server = cms::mcp::server::CmsServer::new_stdio(services, repository, storage_registry, config, token);
 
     let result = cms::mcp::transports::stdio::serve(server).await;
@@ -376,7 +397,9 @@ async fn run_restore(
     yes: bool,
     cli: &Cli,
 ) -> Result<(), Box<dyn Error>> {
-    use cms::services::backup::{BackupService, RestoreRequest, RestoreSource, RestoreTarget, build_backup_destination};
+    use cms::services::backup::{
+        BackupService, RestoreRequest, RestoreSource, RestoreTarget, build_backup_destination,
+    };
 
     if !yes {
         return Err("Restore is destructive and replaces data within the chosen scope. \
@@ -396,9 +419,7 @@ async fn run_restore(
     let target = match scope {
         "instance" => RestoreTarget::WholeInstance,
         "site" => {
-            let sid = site
-                .clone()
-                .ok_or("--site <SITE_ID> is required for --scope site")?;
+            let sid = site.clone().ok_or("--site <SITE_ID> is required for --scope site")?;
             RestoreTarget::Site {
                 site_id: sid,
                 import_as_new,
