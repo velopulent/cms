@@ -8,6 +8,7 @@ type SiteAvatarProps = {
   size?: number;
   siteLogo?: string | null;
   className?: string | undefined;
+  animate?: boolean;
 };
 
 export function SiteAvatar({
@@ -15,8 +16,10 @@ export function SiteAvatar({
   size = 32,
   siteLogo,
   className,
+  animate,
 }: SiteAvatarProps) {
   const [isHovered, setIsHovered] = useState(false);
+  const shouldAnimate = animate !== undefined ? animate : isHovered;
 
   return (
     <Avatar
@@ -30,7 +33,7 @@ export function SiteAvatar({
           size={size}
           hash={siteName}
           mode="dither"
-          animated={isHovered}
+          animated={shouldAnimate}
           className="rounded-lg!"
           dotScale={2.5}
         />
