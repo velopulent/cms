@@ -1,19 +1,8 @@
 use serde_json::{Value, json};
 
-use crate::common::TestServer;
+use crate::common::{TestServer, auth::auth_header};
 
 // ── helpers ──
-
-fn auth_header(jwt: &str, csrf: &str) -> reqwest::header::HeaderMap {
-    let mut headers = reqwest::header::HeaderMap::new();
-    let cookie_val = format!("token={}; csrf={}", jwt, csrf);
-    headers.insert(
-        reqwest::header::COOKIE,
-        reqwest::header::HeaderValue::from_str(&cookie_val).unwrap(),
-    );
-    headers.insert("X-CSRF-Token", reqwest::header::HeaderValue::from_str(csrf).unwrap());
-    headers
-}
 
 async fn login(server: &TestServer, username: &str, password: &str) -> (String, String) {
     let client = reqwest::Client::builder().build().unwrap();

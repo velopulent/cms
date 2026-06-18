@@ -2,7 +2,7 @@ use cms::grpc::cms::v1::collection_service_client::CollectionServiceClient;
 use cms::grpc::cms::v1::singleton_service_client::SingletonServiceClient;
 use cms::grpc::cms::v1::{CreateCollectionRequest, GetSingletonRequest, UpdateSingletonRequest};
 
-use crate::common::{GrpcTestContext, auth_interceptor};
+use crate::common::{GrpcTestContext, grpc::auth_interceptor};
 
 async fn setup() -> (GrpcTestContext, String, String) {
     let ctx = GrpcTestContext::start().await;

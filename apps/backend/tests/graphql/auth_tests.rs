@@ -262,7 +262,7 @@ async fn test_valid_read_token_query() {
     let resp = gql(&server, Some(&token), "{ currentSite { id name } }").await;
     let body: Value = resp.json().await.unwrap();
     assert!(body["data"].is_object());
-    assert!(body["errors"].is_null() || !body["errors"].as_array().unwrap().is_empty() == false);
+    assert!(body["errors"].is_null() || body["errors"].as_array().unwrap().is_empty());
 }
 
 #[tokio::test]

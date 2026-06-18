@@ -1,4 +1,4 @@
-use crate::mcp_helpers::*;
+use crate::common::mcp::*;
 
 async fn setup_singleton(base_url: &str, token: &str, slug: &str) {
     let result = mcp_call_tool(

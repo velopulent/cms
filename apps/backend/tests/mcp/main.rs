@@ -1,8 +1,6 @@
 #[path = "../common/mod.rs"]
 mod common;
 
-mod mcp_helpers;
-
 mod collection_tests;
 mod entry_tests;
 mod file_tests;
