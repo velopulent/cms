@@ -24,6 +24,11 @@ pub fn instance_routes() -> Router {
         )
         .route("/instance/restore", post(h::restore_instance))
         .route("/instance/restore/upload", post(h::restore_instance_upload))
+        .route("/instance/restore/inspect", post(h::inspect_instance_backup))
+        .route(
+            "/instance/restore/inspect/upload",
+            post(h::inspect_instance_backup_upload),
+        )
         .route(
             "/instance/backup-schedules",
             get(h::list_instance_schedules).post(h::create_instance_schedule),
