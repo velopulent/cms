@@ -17,7 +17,7 @@ use crate::database::pool::DbPool;
 
 /// Advisory op labels stored on the queue row (the consumer re-derives the real
 /// action from the database, so these are for observability only).
-pub const OP_UPSERT: &str = "upsert";
+pub const OP_INDEX: &str = "index";
 pub const OP_DELETE: &str = "delete";
 
 /// A pending queue entry. Only `id` (for deletion after processing) and
@@ -179,5 +179,39 @@ impl SearchQueue {
             }
         }
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{OP_DELETE, OP_INDEX, SearchQueue};
+    use crate::database::init_db;
+
+    /// The `search_index_queue.op` column carries a DB `CHECK (op IN ('index',
+    /// 'delete'))`. Producer constants must stay inside that set: a drift (e.g. an
+    /// `"upsert"` value) makes every enqueue INSERT fail, and because enqueue is
+    /// best-effort the failure is swallowed — silently dropping all index updates.
+    /// This guards the constants against the constraint directly.
+    #[tokio::test]
+    async fn enqueue_accepts_known_ops_and_rejects_unknown() {
+        let dir = tempfile::tempdir().expect("temp dir");
+        let db_path = dir.path().join("queue.db");
+        let url = format!("sqlite://{}", db_path.to_string_lossy().replace('\\', "/"));
+        let pool = init_db(&url).await.expect("migrated database");
+        let queue = SearchQueue::new(pool);
+
+        queue
+            .enqueue("entry-1", "site-1", OP_INDEX)
+            .await
+            .expect("OP_INDEX must satisfy the op CHECK constraint");
+        queue
+            .enqueue("entry-1", "site-1", OP_DELETE)
+            .await
+            .expect("OP_DELETE must satisfy the op CHECK constraint");
+
+        assert!(
+            queue.enqueue("entry-1", "site-1", "upsert").await.is_err(),
+            "an op outside the CHECK set must be rejected, not silently accepted"
+        );
     }
 }
