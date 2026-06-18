@@ -24,8 +24,8 @@ use crate::models::authorization::Action;
 use crate::repository::Repository;
 use crate::services::Services;
 use crate::services::backup::{
-    BackupError, BackupService, CreateBackupOptions, RestoreRequest, RestoreSource, RestoreTarget, Scope, meta,
-    schedule,
+    BackupError, BackupService, CreateBackupOptions, Manifest, RestoreRequest, RestoreSource, RestoreTarget, Scope,
+    SiteRef, TEMP_RESTORE_PREFIX, meta, schedule,
 };
 use crate::services::search::{SearchError, SearchService};
 use crate::storage::StorageRegistry;
@@ -56,9 +56,20 @@ pub struct RestoreBody {
     /// "instance" or "site". For site-scope endpoints this is ignored (always site).
     pub mode: Option<String>,
     pub site_id: Option<String>,
+    /// Sites to restore when `mode = "site"` (preferred over `site_id`). Restored
+    /// atomically in one transaction.
+    #[serde(default)]
+    pub site_ids: Option<Vec<String>>,
     #[serde(default)]
     pub import_as_new: bool,
     pub confirm: Option<String>,
+}
+
+/// Request body for inspecting a stored backup's contained sites.
+#[derive(Deserialize)]
+pub struct InspectBody {
+    pub backup_id: Option<String>,
+    pub destination_key: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -195,8 +206,10 @@ async fn run_restore(
     search: Option<Arc<SearchService>>,
 ) -> Response {
     // Capture the reindex scope before `target` is consumed by the restore.
-    let reindex_site = match &target {
-        RestoreTarget::Site { site_id, .. } => Some(site_id.clone()),
+    // `None` means whole-instance (rebuild everything); `Some(ids)` rebuilds each site.
+    let reindex_sites = match &target {
+        RestoreTarget::Site { site_id, .. } => Some(vec![site_id.clone()]),
+        RestoreTarget::Sites { site_ids, .. } => Some(site_ids.clone()),
         RestoreTarget::WholeInstance => None,
     };
     match backup
@@ -211,8 +224,17 @@ async fn run_restore(
             // The search index is derived data excluded from backups, so rebuild
             // the affected scope after a restore to reflect the restored content.
             if let Some(search) = search {
-                let result = match reindex_site {
-                    Some(site_id) => search.rebuild_site(repository, &site_id).await.map(|_| ()),
+                let result = match reindex_sites {
+                    Some(site_ids) => {
+                        let mut res = Ok(());
+                        for site_id in &site_ids {
+                            res = search.rebuild_site(repository, site_id).await.map(|_| ());
+                            if res.is_err() {
+                                break;
+                            }
+                        }
+                        res
+                    }
                     None => search.rebuild_all(repository).await.map(|_| ()),
                 };
                 if let Err(e) = result {
@@ -485,6 +507,32 @@ pub async fn download_instance_backup(
     download_backup(&backup, &backup_id, None).await
 }
 
+/// Build the restore target for an instance-scope restore. `mode = "site"` prefers
+/// the `site_ids` list (multi-select) and falls back to a single `site_id`.
+fn instance_restore_target(
+    mode: Option<&str>,
+    site_id: Option<String>,
+    site_ids: Option<Vec<String>>,
+    import_as_new: bool,
+) -> Result<RestoreTarget, Response> {
+    match mode {
+        Some("site") => {
+            let ids = match site_ids {
+                Some(ids) if !ids.is_empty() => ids,
+                _ => match site_id {
+                    Some(s) => vec![s],
+                    None => return Err(bad_request("site restore requires site_ids or site_id")),
+                },
+            };
+            Ok(RestoreTarget::Sites {
+                site_ids: ids,
+                import_as_new,
+            })
+        }
+        _ => Ok(RestoreTarget::WholeInstance),
+    }
+}
+
 pub async fn restore_instance(
     auth: AuthContext,
     Extension(repository): Extension<Repository>,
@@ -503,17 +551,16 @@ pub async fn restore_instance(
         Ok(s) => s,
         Err(r) => return r,
     };
-    let target = match body.mode.as_deref() {
-        Some("site") => match body.site_id {
-            Some(sid) => RestoreTarget::Site {
-                site_id: sid,
-                import_as_new: body.import_as_new,
-            },
-            None => return bad_request("site restore requires site_id"),
-        },
-        _ => RestoreTarget::WholeInstance,
+    let target = match instance_restore_target(
+        body.mode.as_deref(),
+        body.site_id.clone(),
+        body.site_ids.clone(),
+        body.import_as_new,
+    ) {
+        Ok(t) => t,
+        Err(r) => return r,
     };
-    run_restore(
+    let resp = run_restore(
         &backup,
         source,
         target,
@@ -521,7 +568,14 @@ pub async fn restore_instance(
         &repository,
         services.search.clone(),
     )
-    .await
+    .await;
+    // Clean up any single-use staged upload referenced by this restore.
+    if let Some(key) = body.destination_key.as_deref() {
+        if key.starts_with(TEMP_RESTORE_PREFIX) {
+            backup.delete_destination(key).await;
+        }
+    }
+    resp
 }
 
 pub async fn restore_instance_upload(
@@ -561,6 +615,98 @@ pub async fn restore_instance_upload(
         services.search.clone(),
     )
     .await
+}
+
+// ── Inspect (list sites in a backup) ──
+
+fn inspect_response(result: Result<(Manifest, Vec<SiteRef>), BackupError>, staging_key: Option<String>) -> Response {
+    match result {
+        Ok((manifest, sites)) => (
+            StatusCode::OK,
+            Json(json!({
+                "scope": manifest.scope,
+                "site_id": manifest.site_id,
+                "sites": sites,
+                "staging_key": staging_key,
+            })),
+        )
+            .into_response(),
+        Err(e) => err_response(e),
+    }
+}
+
+/// Load a stored backup's bytes (by id or destination key) for inspection.
+async fn read_inspect_bytes(backup: &BackupService, body: &InspectBody) -> Result<Vec<u8>, Response> {
+    let key = if let Some(id) = &body.backup_id {
+        match meta::get_backup(backup.pool(), id).await {
+            Ok(Some(r)) => r.destination_key.ok_or_else(|| err_response(BackupError::NotFound))?,
+            Ok(None) => return Err(err_response(BackupError::NotFound)),
+            Err(e) => return Err(err_response(e)),
+        }
+    } else if let Some(k) = &body.destination_key {
+        k.clone()
+    } else {
+        return Err(bad_request("provide backup_id or destination_key"));
+    };
+    backup.read_destination(&key).await.map_err(err_response)
+}
+
+/// Read just the uploaded `file` field from a multipart body.
+async fn parse_upload_file(mut multipart: Multipart) -> Result<Vec<u8>, Response> {
+    while let Ok(Some(field)) = multipart.next_field().await {
+        if field.name() == Some("file") {
+            return field
+                .bytes()
+                .await
+                .map(|b| b.to_vec())
+                .map_err(|_| bad_request("could not read uploaded file"));
+        }
+    }
+    Err(bad_request("no backup file provided"))
+}
+
+/// Inspect a stored backup and list the sites it contains (owner-only).
+pub async fn inspect_instance_backup(
+    auth: AuthContext,
+    Extension(repository): Extension<Repository>,
+    Extension(backup): Extension<Arc<BackupService>>,
+    Json(body): Json<InspectBody>,
+) -> Response {
+    if let Err(r) = require_instance(&auth, &repository, Action::InstanceRestore).await {
+        return r;
+    }
+    let bytes = match read_inspect_bytes(&backup, &body).await {
+        Ok(b) => b,
+        Err(r) => return r,
+    };
+    inspect_response(backup.inspect_sites(&bytes), None)
+}
+
+/// Inspect an uploaded backup file, list its sites, and stage the bytes so the
+/// follow-up restore can reference them without re-uploading (owner-only).
+pub async fn inspect_instance_backup_upload(
+    auth: AuthContext,
+    Extension(repository): Extension<Repository>,
+    Extension(backup): Extension<Arc<BackupService>>,
+    multipart: Multipart,
+) -> Response {
+    if let Err(r) = require_instance(&auth, &repository, Action::InstanceRestore).await {
+        return r;
+    }
+    let bytes = match parse_upload_file(multipart).await {
+        Ok(b) => b,
+        Err(r) => return r,
+    };
+    // Validate + read the site list before staging, so a bad file is rejected
+    // without leaving an orphan temp object.
+    let (manifest, sites) = match backup.inspect_sites(&bytes) {
+        Ok(v) => v,
+        Err(e) => return err_response(e),
+    };
+    match backup.stage_upload(bytes).await {
+        Ok(key) => inspect_response(Ok((manifest, sites)), Some(key)),
+        Err(e) => err_response(e),
+    }
 }
 
 pub async fn list_instance_schedules(
