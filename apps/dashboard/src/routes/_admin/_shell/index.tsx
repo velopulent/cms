@@ -68,10 +68,13 @@ function formatDate(dateStr: string) {
 
 function SiteCard({ site }: { site: SiteWithRole }) {
   const navigate = useNavigate();
+  const [isHovered, setIsHovered] = useState(false);
 
   return (
     <Card
       className="cursor-pointer transition-all hover:border-primary/50 hover:shadow-md"
+      onMouseEnter={() => setIsHovered(true)}
+      onMouseLeave={() => setIsHovered(false)}
       onClick={() =>
         navigate({
           to: "/sites/$siteId",
@@ -81,7 +84,7 @@ function SiteCard({ site }: { site: SiteWithRole }) {
     >
       <CardHeader className="pb-3">
         <div className="flex items-center gap-3">
-          <SiteAvatar siteName={site.name} size={40} />
+          <SiteAvatar siteName={site.name} size={40} animate={isHovered} />
           <div className="min-w-0">
             <CardTitle className="truncate text-lg font-semibold">
               {site.name}
