@@ -94,22 +94,7 @@ pub fn ensure() -> std::io::Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    /// `CMS_HOME` is process-global; serialize tests that mutate it.
-    fn with_home<T>(value: &std::path::Path, f: impl FnOnce() -> T) -> T {
-        use std::sync::Mutex;
-        static LOCK: Mutex<()> = Mutex::new(());
-        let _guard = LOCK.lock().unwrap_or_else(|e| e.into_inner());
-        let previous = std::env::var_os(CMS_HOME_ENV);
-        // SAFETY: guarded by LOCK so no other test reads/writes the env concurrently.
-        unsafe { std::env::set_var(CMS_HOME_ENV, value) };
-        let result = f();
-        match previous {
-            Some(v) => unsafe { std::env::set_var(CMS_HOME_ENV, v) },
-            None => unsafe { std::env::remove_var(CMS_HOME_ENV) },
-        }
-        result
-    }
+    use crate::test_helpers::with_home;
 
     #[test]
     fn cms_home_env_overrides_root() {
