@@ -8,7 +8,7 @@ use tracing::{debug, error, info, warn};
 
 use crate::models::collection::{Collection, SingletonResponse};
 use crate::repository::traits::{CollectionRepository, EntryRepository, FileRepository};
-use crate::services::search::queue::{OP_UPSERT, SearchQueue};
+use crate::services::search::queue::{OP_INDEX, SearchQueue};
 use crate::storage::StorageProvider;
 
 #[derive(Clone)]
@@ -216,7 +216,7 @@ impl SingletonService {
 
         // Enqueue for the server's indexer (best-effort; the index is rebuildable).
         if let Some(queue) = &self.search_queue
-            && let Err(e) = queue.enqueue(&entry.id, &entry.site_id, OP_UPSERT).await
+            && let Err(e) = queue.enqueue(&entry.id, &entry.site_id, OP_INDEX).await
         {
             warn!(
                 "Failed to enqueue singleton entry {} for search indexing: {}",

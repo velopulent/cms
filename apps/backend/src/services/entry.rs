@@ -12,7 +12,7 @@ use crate::repository::error::RepositoryError;
 use crate::repository::traits::{
     CollectionRepository, EntriesListResult, EntryRepository, FileRepository, ListEntriesParams, RevisionsListResult,
 };
-use crate::services::search::queue::{OP_DELETE, OP_UPSERT, SearchQueue};
+use crate::services::search::queue::{OP_DELETE, OP_INDEX, SearchQueue};
 use crate::services::search::{SearchError, SearchParams, SearchService};
 use crate::storage::StorageProvider;
 
@@ -94,7 +94,7 @@ impl EntryService {
     /// fail the originating write — the index is derived and rebuildable.
     async fn enqueue_upsert(&self, entry: &Entry) {
         if let Some(queue) = &self.search_queue
-            && let Err(e) = queue.enqueue(&entry.id, &entry.site_id, OP_UPSERT).await
+            && let Err(e) = queue.enqueue(&entry.id, &entry.site_id, OP_INDEX).await
         {
             warn!("Failed to enqueue entry {} for search indexing: {}", entry.id, e);
         }
