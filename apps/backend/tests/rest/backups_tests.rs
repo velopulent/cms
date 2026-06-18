@@ -34,11 +34,15 @@ async fn login(server: &TestServer, username: &str, password: &str) -> (String, 
 }
 
 async fn create_site(server: &TestServer, jwt: &str, csrf: &str) -> String {
+    create_site_named(server, jwt, csrf, "Backup Site").await
+}
+
+async fn create_site_named(server: &TestServer, jwt: &str, csrf: &str, name: &str) -> String {
     let client = reqwest::Client::new();
     let resp = client
         .post(format!("{}/api/dashboard/sites", server.base_url))
         .headers(auth_header(jwt, csrf))
-        .json(&json!({"name": "Backup Site", "storage_provider": "filesystem"}))
+        .json(&json!({"name": name, "storage_provider": "filesystem"}))
         .send()
         .await
         .unwrap();
@@ -365,6 +369,119 @@ async fn backup_rbac_matrix() {
         403,
         "editor must not create instance backups"
     );
+}
+
+#[tokio::test]
+async fn inspect_lists_sites_and_multi_site_restore_round_trips() {
+    let server = TestServer::start().await;
+    let (jwt, csrf) = login(&server, "admin", "admin").await;
+    let client = reqwest::Client::new();
+
+    // Two sites, each with an entry.
+    let site_a = create_site_named(&server, &jwt, &csrf, "Alpha").await;
+    let col_a = create_collection(&server, &jwt, &csrf, &site_a).await;
+    let entry_a = create_entry(&server, &jwt, &csrf, &site_a, &col_a).await;
+
+    let site_b = create_site_named(&server, &jwt, &csrf, "Bravo").await;
+    let col_b = create_collection(&server, &jwt, &csrf, &site_b).await;
+    let entry_b = create_entry(&server, &jwt, &csrf, &site_b, &col_b).await;
+
+    // One instance backup that captures both sites.
+    let backup: Value = client
+        .post(format!("{}/api/dashboard/instance/backups", server.base_url))
+        .headers(auth_header(&jwt, &csrf))
+        .json(&json!({}))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    let backup_id = backup["id"].as_str().unwrap().to_string();
+
+    // Inspect lists both sites (with names).
+    let inspected: Value = client
+        .post(format!("{}/api/dashboard/instance/restore/inspect", server.base_url))
+        .headers(auth_header(&jwt, &csrf))
+        .json(&json!({"backup_id": backup_id}))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    assert_eq!(inspected["scope"], "instance");
+    let sites = inspected["sites"].as_array().unwrap();
+    let ids: Vec<&str> = sites.iter().filter_map(|s| s["id"].as_str()).collect();
+    assert!(ids.contains(&site_a.as_str()) && ids.contains(&site_b.as_str()), "both sites listed");
+    let names: Vec<&str> = sites.iter().filter_map(|s| s["name"].as_str()).collect();
+    assert!(names.contains(&"Alpha") && names.contains(&"Bravo"), "site names surfaced");
+
+    // Wipe both entries.
+    delete_entry(&server, &jwt, &csrf, &site_a, &entry_a).await;
+    delete_entry(&server, &jwt, &csrf, &site_b, &entry_b).await;
+    assert_eq!(get_entry_status(&server, &jwt, &csrf, &site_a, &entry_a).await, 404);
+    assert_eq!(get_entry_status(&server, &jwt, &csrf, &site_b, &entry_b).await, 404);
+
+    // Restore both selected sites in one call.
+    let resp = client
+        .post(format!("{}/api/dashboard/instance/restore", server.base_url))
+        .headers(auth_header(&jwt, &csrf))
+        .json(&json!({
+            "backup_id": backup_id,
+            "mode": "site",
+            "site_ids": [site_a, site_b],
+            "confirm": "RESTORE",
+        }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), 204, "multi-site restore");
+
+    assert_eq!(get_entry_status(&server, &jwt, &csrf, &site_a, &entry_a).await, 200);
+    assert_eq!(get_entry_status(&server, &jwt, &csrf, &site_b, &entry_b).await, 200);
+}
+
+#[tokio::test]
+async fn multi_site_restore_with_bad_id_is_atomic() {
+    let server = TestServer::start().await;
+    let (jwt, csrf) = login(&server, "admin", "admin").await;
+    let client = reqwest::Client::new();
+
+    let site_id = create_site_named(&server, &jwt, &csrf, "Alpha").await;
+    let col_id = create_collection(&server, &jwt, &csrf, &site_id).await;
+    let entry_id = create_entry(&server, &jwt, &csrf, &site_id, &col_id).await;
+
+    let backup: Value = client
+        .post(format!("{}/api/dashboard/instance/backups", server.base_url))
+        .headers(auth_header(&jwt, &csrf))
+        .json(&json!({}))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    let backup_id = backup["id"].as_str().unwrap().to_string();
+
+    delete_entry(&server, &jwt, &csrf, &site_id, &entry_id).await;
+
+    // A valid id plus a bogus one: the whole restore must fail, nothing written.
+    let resp = client
+        .post(format!("{}/api/dashboard/instance/restore", server.base_url))
+        .headers(auth_header(&jwt, &csrf))
+        .json(&json!({
+            "backup_id": backup_id,
+            "mode": "site",
+            "site_ids": [site_id, "00000000-0000-0000-0000-000000000000"],
+            "confirm": "RESTORE",
+        }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), 400, "bad site id rejects the whole restore");
+    // The valid site was NOT partially restored.
+    assert_eq!(get_entry_status(&server, &jwt, &csrf, &site_id, &entry_id).await, 404);
 }
 
 #[tokio::test]
