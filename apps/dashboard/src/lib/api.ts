@@ -572,8 +572,25 @@ export interface RestoreInput {
   destination_key?: string;
   mode?: "instance" | "site";
   site_id?: string;
+  /** Sites to restore when mode = "site" (multi-select). Preferred over site_id. */
+  site_ids?: string[];
   import_as_new?: boolean;
   confirm: string;
+}
+
+/** A site contained in a backup, for the restore pick-list. */
+export interface BackupSiteRef {
+  id: string;
+  name: string | null;
+}
+
+/** Result of inspecting a backup before restore: its scope and the sites it holds. */
+export interface InspectResult {
+  scope: "instance" | "site";
+  site_id: string | null;
+  sites: BackupSiteRef[];
+  /** Set when an uploaded file was staged server-side; pass as destination_key to restore. */
+  staging_key: string | null;
 }
 
 export async function listBackups(scope: BackupScope) {
@@ -627,6 +644,39 @@ export async function restoreBackupUpload(
     const body = await res.json().catch(() => ({}));
     throw new ApiError(res.status, body.message || body.error || "Restore failed", body);
   }
+}
+
+/** Inspect a stored backup (by id or key) to list the sites it contains. */
+export async function inspectBackup(
+  scope: BackupScope,
+  input: { backup_id?: string; destination_key?: string },
+) {
+  return api<InspectResult>(`${backupScopePrefix(scope)}/restore/inspect`, {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+}
+
+/**
+ * Inspect an uploaded backup file: lists its sites and stages the bytes
+ * server-side (returned as `staging_key`) so the follow-up restore can reference
+ * them without re-uploading the file.
+ */
+export async function inspectBackupUpload(scope: BackupScope, file: File) {
+  const formData = new FormData();
+  formData.append("file", file);
+  const csrfToken = getCsrfToken();
+  const res = await fetch(`${BASE_URL}${backupScopePrefix(scope)}/restore/inspect/upload`, {
+    method: "POST",
+    credentials: "include",
+    body: formData,
+    headers: csrfToken ? { "X-CSRF-Token": csrfToken } : undefined,
+  });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new ApiError(res.status, body.message || body.error || "Could not read backup file", body);
+  }
+  return (await res.json()) as InspectResult;
 }
 
 export async function listBackupSchedules(scope: BackupScope) {
