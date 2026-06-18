@@ -31,6 +31,9 @@ pub use schema::TABLES;
 /// On-disk backup format version. Bumped only on breaking artifact-layout changes.
 pub const FORMAT_VERSION: i64 = 1;
 const MAGIC: &[u8] = b"CMSBKP1";
+/// Destination key prefix for backup bytes staged during an inspect-then-restore
+/// flow (uploaded once, consumed by the follow-up restore, then deleted).
+pub const TEMP_RESTORE_PREFIX: &str = "tmp/restore/";
 const FLAG_ENCRYPTED: u8 = 0b0000_0001;
 
 #[derive(Debug, thiserror::Error)]
@@ -127,6 +130,17 @@ pub enum RestoreTarget {
     /// Restore a single site. `site_id` is the site within the backup. When
     /// `import_as_new`, all ids are remapped so the site is added as a copy.
     Site { site_id: String, import_as_new: bool },
+    /// Restore several sites from the backup in one atomic transaction. Each id is
+    /// a site within the backup; `import_as_new` applies to all of them.
+    Sites { site_ids: Vec<String>, import_as_new: bool },
+}
+
+/// A site contained in a backup, surfaced by [`BackupService::inspect_sites`] so a
+/// caller can present a pick-list instead of asking for a raw id.
+#[derive(Serialize, Clone)]
+pub struct SiteRef {
+    pub id: String,
+    pub name: Option<String>,
 }
 
 pub struct RestoreRequest {
@@ -369,6 +383,47 @@ impl BackupService {
         Ok(manifest)
     }
 
+    /// Inspect a backup artifact and list the sites it contains, so a caller can
+    /// offer a pick-list. An instance backup yields every site in its `sites`
+    /// table; a site backup yields its single site.
+    pub fn inspect_sites(&self, bytes: &[u8]) -> Result<(Manifest, Vec<SiteRef>), BackupError> {
+        let (manifest, tables_ndjson, _) = self.open(bytes)?;
+        let sites = match tables_ndjson.get("sites") {
+            Some(ndjson) => parse_ndjson(ndjson)?
+                .iter()
+                .filter_map(|m| {
+                    str_field(m, "id").map(|id| SiteRef {
+                        id: id.to_string(),
+                        name: str_field(m, "name").map(String::from),
+                    })
+                })
+                .collect(),
+            None => manifest
+                .site_id
+                .clone()
+                .map(|id| vec![SiteRef { id, name: None }])
+                .unwrap_or_default(),
+        };
+        Ok((manifest, sites))
+    }
+
+    /// Stage uploaded backup bytes at a temporary destination key so a follow-up
+    /// restore can reference it without re-uploading the file. Cleaned up by
+    /// [`delete_destination`](Self::delete_destination) after the restore.
+    pub async fn stage_upload(&self, bytes: Vec<u8>) -> Result<String, BackupError> {
+        let key = format!("{TEMP_RESTORE_PREFIX}{}.cmsbak", new_id());
+        self.destination
+            .put(&key, bytes::Bytes::from(bytes), "application/octet-stream")
+            .await
+            .map_err(|e| BackupError::Storage(e.to_string()))?;
+        Ok(key)
+    }
+
+    /// Best-effort delete of a destination object (used to clean up staged uploads).
+    pub async fn delete_destination(&self, key: &str) {
+        let _ = self.destination.delete(key).await;
+    }
+
     /// Read a backup artifact from the configured destination.
     pub async fn read_destination(&self, key: &str) -> Result<Vec<u8>, BackupError> {
         let bytes = self
@@ -403,7 +458,7 @@ impl BackupService {
             });
         }
 
-        let mut tables = parse_all_tables(&tables_ndjson)?;
+        let tables = parse_all_tables(&tables_ndjson)?;
 
         let plan = match &req.target {
             RestoreTarget::WholeInstance => {
@@ -415,22 +470,15 @@ impl BackupService {
                 build_instance_plan(self.pool.backend(), &tables)
             }
             RestoreTarget::Site { site_id, import_as_new } => {
-                // Extract the single site's subtree if the source is an instance backup.
-                if manifest.scope == "instance" {
-                    tables = filter_to_site(&tables, site_id);
+                self.build_site_restore_plan(&manifest, &tables, &[site_id.clone()], *import_as_new, &req)
+                    .await?
+            }
+            RestoreTarget::Sites { site_ids, import_as_new } => {
+                if site_ids.is_empty() {
+                    return Err(BackupError::Invalid("site restore requires at least one site".into()));
                 }
-                let existing = schema::existing_user_ids(&self.pool).await?;
-                let fallback = pick_fallback_user(req.created_by.as_deref(), &existing);
-                let exists = schema::site_exists(&self.pool, site_id).await?;
-                build_site_plan(
-                    self.pool.backend(),
-                    &mut tables,
-                    site_id,
-                    exists,
-                    *import_as_new,
-                    &existing,
-                    fallback.as_deref(),
-                )
+                self.build_site_restore_plan(&manifest, &tables, site_ids, *import_as_new, &req)
+                    .await?
             }
         };
 
@@ -439,6 +487,68 @@ impl BackupService {
         // Restore file blobs (best-effort: a missing blob is non-fatal).
         self.restore_files(&manifest, &file_blobs).await;
         Ok(())
+    }
+
+    /// Build a merged, atomic restore plan for one or more sites extracted from the
+    /// backup. Each site's subtree is filtered independently (so an `import_as_new`
+    /// id-remap stays isolated per site) and the per-site plans are concatenated so
+    /// they apply in a single transaction.
+    async fn build_site_restore_plan(
+        &self,
+        manifest: &Manifest,
+        tables: &Tables,
+        site_ids: &[String],
+        import_as_new: bool,
+        req: &RestoreRequest,
+    ) -> Result<schema::RestorePlan, BackupError> {
+        // For an instance backup, validate every requested site is actually present
+        // before touching the DB, so a bad id fails the whole restore instead of
+        // silently creating an empty site. (Site backups carry exactly one site and
+        // the target id is authoritative, matching the legacy single-site path.)
+        if manifest.scope == "instance" {
+            let present: HashSet<&str> = tables
+                .get("sites")
+                .map(|rows| rows.iter().filter_map(|m| str_field(m, "id")).collect())
+                .unwrap_or_default();
+            for site_id in site_ids {
+                if !present.contains(site_id.as_str()) {
+                    return Err(BackupError::Invalid(format!(
+                        "site {site_id} is not present in this backup"
+                    )));
+                }
+            }
+        }
+
+        let existing = schema::existing_user_ids(&self.pool).await?;
+        let fallback = pick_fallback_user(req.created_by.as_deref(), &existing);
+        let backend = self.pool.backend();
+
+        let mut plan = schema::RestorePlan {
+            deletes: Vec::new(),
+            inserts: Vec::new(),
+        };
+        for site_id in site_ids {
+            // Extract just this site's subtree from an instance backup; a site
+            // backup already holds a single site.
+            let mut subtree = if manifest.scope == "instance" {
+                filter_to_site(tables, site_id)
+            } else {
+                tables.clone()
+            };
+            let exists = schema::site_exists(&self.pool, site_id).await?;
+            let site_plan = build_site_plan(
+                backend,
+                &mut subtree,
+                site_id,
+                exists,
+                import_as_new,
+                &existing,
+                fallback.as_deref(),
+            );
+            plan.deletes.extend(site_plan.deletes);
+            plan.inserts.extend(site_plan.inserts);
+        }
+        Ok(plan)
     }
 
     async fn restore_files(&self, manifest: &Manifest, blobs: &HashMap<String, Vec<u8>>) {
