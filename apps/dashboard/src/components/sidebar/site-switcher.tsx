@@ -1,6 +1,7 @@
 import { useNavigate, useParams } from "@tanstack/react-router";
 import { ChevronsUpDown, LayoutDashboard, Plus } from "lucide-react";
 import type * as React from "react";
+import { useState } from "react";
 
 import {
   DropdownMenu,
@@ -37,6 +38,8 @@ export function SiteSwitcher({
   const { isMobile } = useSidebar();
   const navigate = useNavigate();
   const { siteId } = useParams({ from: "/_admin/sites/$siteId" as any });
+  const [sidebarHovered, setSidebarHovered] = useState(false);
+  const [hoveredSiteId, setHoveredSiteId] = useState<string | null>(null);
 
   const activeSite = sites.find((t) => t.id === siteId) ?? sites[0];
 
@@ -69,10 +72,12 @@ export function SiteSwitcher({
               <SidebarMenuButton
                 size="lg"
                 className="data-open:bg-sidebar-accent data-open:text-sidebar-accent-foreground"
+                onMouseEnter={() => setSidebarHovered(true)}
+                onMouseLeave={() => setSidebarHovered(false)}
               />
             }
           >
-            <SiteAvatar siteName={activeSite.name} />
+            <SiteAvatar siteName={activeSite.name} animate={sidebarHovered} />
             <div className="grid flex-1 text-left text-sm leading-tight">
               <span className="truncate font-medium">{activeSite.name}</span>
               <span className="truncate text-xs">{activeSite.plan}</span>
@@ -104,6 +109,8 @@ export function SiteSwitcher({
               {sites.map((team) => (
                 <DropdownMenuItem
                   key={team.id}
+                  onMouseEnter={() => setHoveredSiteId(team.id)}
+                  onMouseLeave={() => setHoveredSiteId(null)}
                   onClick={() =>
                     navigate({
                       to: "/sites/$siteId",
@@ -113,7 +120,7 @@ export function SiteSwitcher({
                   className="gap-3 px-3 py-2.5"
                 >
                   <div className="flex size-6 items-center justify-center rounded-md border">
-                    <SiteAvatar siteName={team.name} className="size-4" />
+                    <SiteAvatar siteName={team.name} className="size-4" animate={hoveredSiteId === team.id} />
                   </div>
                   {team.name}
                 </DropdownMenuItem>
