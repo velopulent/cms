@@ -1,12 +1,5 @@
-"use client";
-
 import { useNavigate, useParams } from "@tanstack/react-router";
-import {
-  ChevronsUpDown,
-  GalleryVerticalEnd,
-  LayoutDashboard,
-  Plus,
-} from "lucide-react";
+import { ChevronsUpDown, LayoutDashboard, Plus } from "lucide-react";
 import type * as React from "react";
 
 import {
@@ -25,6 +18,7 @@ import {
   useSidebar,
 } from "@/components/ui/sidebar";
 import { Skeleton } from "@/components/ui/skeleton";
+import { SiteAvatar } from "../site-avatar";
 
 interface Site {
   name: string;
@@ -78,9 +72,7 @@ export function SiteSwitcher({
               />
             }
           >
-            <div className="flex aspect-square size-8 items-center justify-center rounded-lg bg-sidebar-primary text-sidebar-primary-foreground">
-              <GalleryVerticalEnd className="size-4" />
-            </div>
+            <SiteAvatar siteName={activeSite.name} />
             <div className="grid flex-1 text-left text-sm leading-tight">
               <span className="truncate font-medium">{activeSite.name}</span>
               <span className="truncate text-xs">{activeSite.plan}</span>
@@ -118,10 +110,10 @@ export function SiteSwitcher({
                       params: { siteId: team.id },
                     })
                   }
-                  className="gap-2 p-2"
+                  className="gap-3 px-3 py-2.5"
                 >
                   <div className="flex size-6 items-center justify-center rounded-md border">
-                    <GalleryVerticalEnd className="size-4" />
+                    <SiteAvatar siteName={team.name} className="size-4" />
                   </div>
                   {team.name}
                 </DropdownMenuItem>

@@ -48,6 +48,7 @@ import {
   siteRoleLabel,
   type SiteWithRole,
 } from "@/lib/api";
+import { SiteAvatar } from "@/components/site-avatar";
 
 export const Route = createFileRoute("/_admin/_shell/")({
   validateSearch: z.object({
@@ -80,9 +81,7 @@ function SiteCard({ site }: { site: SiteWithRole }) {
     >
       <CardHeader className="pb-3">
         <div className="flex items-center gap-3">
-          <div className="flex size-10 items-center justify-center rounded-lg bg-primary/10">
-            <Globe className="size-5 text-primary" />
-          </div>
+          <SiteAvatar siteName={site.name} size={40} />
           <div className="min-w-0">
             <CardTitle className="truncate text-lg font-semibold">
               {site.name}
