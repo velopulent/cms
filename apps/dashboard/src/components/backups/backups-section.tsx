@@ -31,6 +31,7 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import {
   Select,
   SelectContent,
@@ -50,12 +51,16 @@ import {
 import {
   type BackupInfo,
   type BackupScope,
+  type BackupSiteRef,
   backupDownloadUrl,
   backupScopeKey,
   createBackup,
   createBackupSchedule,
   deleteBackup,
   deleteBackupSchedule,
+  type InspectResult,
+  inspectBackup,
+  inspectBackupUpload,
   listBackupSchedules,
   listBackups,
   restoreBackup,
@@ -103,9 +108,13 @@ export function BackupsSection({ scope }: { scope: BackupScope }) {
 
   const [restoreSource, setRestoreSource] = useState<RestoreSource | null>(null);
   const [restoreMode, setRestoreMode] = useState<"instance" | "site">(isInstance ? "instance" : "site");
-  const [restoreSiteId, setRestoreSiteId] = useState("");
+  const [selectedSiteIds, setSelectedSiteIds] = useState<string[]>([]);
   const [importAsNew, setImportAsNew] = useState(false);
   const [confirmText, setConfirmText] = useState("");
+  // Sites contained in the chosen backup (instance scope only); null while loading.
+  const [inspect, setInspect] = useState<InspectResult | null>(null);
+  const [inspecting, setInspecting] = useState(false);
+  const [inspectError, setInspectError] = useState<string | null>(null);
 
   const backupsQuery = useQuery({
     queryKey: ["backups", scopeKey],
@@ -141,17 +150,38 @@ export function BackupsSection({ scope }: { scope: BackupScope }) {
 
   const restoreMutation = useMutation({
     mutationFn: async () => {
-      const opts = {
-        mode: isInstance ? restoreMode : ("site" as const),
-        site_id: isInstance && restoreMode === "site" ? restoreSiteId : undefined,
-        ...(restoreMode === "site" && { import_as_new: importAsNew }),
-        confirm: RESTORE_WORD,
-      };
-      if (restoreSource?.type === "upload") {
-        await restoreBackupUpload(scope, restoreSource.file, opts);
-      } else if (restoreSource?.type === "backup") {
-        await restoreBackup(scope, { backup_id: restoreSource.backup.id, ...opts });
+      if (!restoreSource) return;
+      // Site-settings scope: always restores into the current site (id from URL).
+      if (!isInstance) {
+        const opts = { mode: "site" as const, import_as_new: importAsNew, confirm: RESTORE_WORD };
+        if (restoreSource.type === "upload") {
+          await restoreBackupUpload(scope, restoreSource.file, opts);
+        } else {
+          await restoreBackup(scope, { backup_id: restoreSource.backup.id, ...opts });
+        }
+        return;
       }
+
+      // Instance scope: a site backup restores its single site; an instance backup
+      // restores either the whole instance or the selected sites.
+      const singleSite = inspect?.scope === "site";
+      const mode: "instance" | "site" = singleSite ? "site" : restoreMode;
+      const site_ids = singleSite
+        ? inspect?.sites.map((s) => s.id)
+        : restoreMode === "site"
+          ? selectedSiteIds
+          : undefined;
+      const input = {
+        mode,
+        site_ids,
+        ...(mode === "site" && { import_as_new: importAsNew }),
+        confirm: RESTORE_WORD,
+        // Uploads were staged during inspect — restore by key, no re-upload.
+        ...(restoreSource.type === "upload"
+          ? { destination_key: inspect?.staging_key ?? undefined }
+          : { backup_id: restoreSource.backup.id }),
+      };
+      await restoreBackup(scope, input);
     },
     onSuccess: () => {
       closeRestore();
@@ -162,22 +192,48 @@ export function BackupsSection({ scope }: { scope: BackupScope }) {
     onError: (e: Error) => toast.error(e.message),
   });
 
-  function openRestore(source: RestoreSource) {
+  async function openRestore(source: RestoreSource) {
     setRestoreSource(source);
     setRestoreMode(isInstance ? "instance" : "site");
-    setRestoreSiteId("");
+    setSelectedSiteIds([]);
     setImportAsNew(false);
     setConfirmText("");
+    setInspect(null);
+    setInspectError(null);
+    // Only instance restores need to know which sites a backup contains.
+    if (!isInstance) return;
+    setInspecting(true);
+    try {
+      const result =
+        source.type === "upload"
+          ? await inspectBackupUpload(scope, source.file)
+          : await inspectBackup(scope, { backup_id: source.backup.id });
+      setInspect(result);
+      // A single-site backup forces "site" mode; an instance backup keeps the picker.
+      if (result.scope === "site") setRestoreMode("site");
+    } catch (e) {
+      setInspectError((e as Error).message);
+    } finally {
+      setInspecting(false);
+    }
   }
   function closeRestore() {
     setRestoreSource(null);
   }
 
+  function toggleSite(id: string) {
+    setSelectedSiteIds((prev) => (prev.includes(id) ? prev.filter((s) => s !== id) : [...prev, id]));
+  }
+
   const backups = backupsQuery.data ?? [];
   const schedules = schedulesQuery.data ?? [];
+  // For an instance backup picking sites, at least one site must be selected.
+  const needsSitePick = isInstance && inspect?.scope === "instance" && restoreMode === "site";
   const confirmReady =
     confirmText === RESTORE_WORD &&
-    (!isInstance || restoreMode === "instance" || restoreSiteId.trim().length > 0);
+    !inspecting &&
+    (!isInstance || (!inspectError && inspect !== null)) &&
+    (!needsSitePick || selectedSiteIds.length > 0);
 
   return (
     <div className="flex flex-col gap-6">
@@ -214,7 +270,7 @@ export function BackupsSection({ scope }: { scope: BackupScope }) {
                 <input
                   type="file"
                   className="hidden"
-                  accept=".cmsbak,application/octet-stream"
+                  accept=".cmsbak"
                   onChange={(e) => {
                     const file = e.target.files?.[0];
                     if (file) openRestore({ type: "upload", file });
@@ -347,7 +403,28 @@ export function BackupsSection({ scope }: { scope: BackupScope }) {
           </DialogHeader>
 
           <div className="flex flex-col gap-4">
-            {isInstance && (
+            {isInstance && inspecting && (
+              <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                <Skeleton className="h-9 w-full" />
+              </div>
+            )}
+            {isInstance && inspectError && (
+              <p className="text-sm text-destructive">Could not read this backup: {inspectError}</p>
+            )}
+
+            {/* A single-site backup: no picker, just name the site being restored. */}
+            {isInstance && inspect?.scope === "site" && (
+              <p className="text-sm text-muted-foreground">
+                Restores the site{" "}
+                <span className="font-medium text-foreground">
+                  {inspect.sites[0]?.name ?? inspect.sites[0]?.id ?? "in this backup"}
+                </span>
+                .
+              </p>
+            )}
+
+            {/* An instance backup: choose whole instance or specific sites. */}
+            {isInstance && inspect?.scope === "instance" && (
               <div className="flex flex-col gap-2">
                 <Label>What to restore</Label>
                 <Select value={restoreMode} onValueChange={(v) => setRestoreMode(v as "instance" | "site")}>
@@ -356,20 +433,21 @@ export function BackupsSection({ scope }: { scope: BackupScope }) {
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="instance">Whole instance</SelectItem>
-                    <SelectItem value="site">A single site</SelectItem>
+                    <SelectItem value="site">Selected sites</SelectItem>
                   </SelectContent>
                 </Select>
                 {restoreMode === "site" && (
-                  <Input
-                    placeholder="Site ID to restore"
-                    value={restoreSiteId}
-                    onChange={(e) => setRestoreSiteId(e.target.value)}
+                  <SitePicker
+                    sites={inspect.sites}
+                    selected={selectedSiteIds}
+                    onToggle={toggleSite}
+                    onToggleAll={(all) => setSelectedSiteIds(all ? inspect.sites.map((s) => s.id) : [])}
                   />
                 )}
               </div>
             )}
 
-            {(restoreMode === "site" || !isInstance) && (
+            {((isInstance && restoreMode === "site") || !isInstance) && (
               <label className="flex items-center gap-2 text-sm">
                 <Checkbox checked={importAsNew} onCheckedChange={(v) => setImportAsNew(Boolean(v))} />
                 Import as a new site (keep the existing one)
@@ -403,6 +481,48 @@ export function BackupsSection({ scope }: { scope: BackupScope }) {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+    </div>
+  );
+}
+
+/** Multi-select list of the sites contained in a backup. */
+function SitePicker({
+  sites,
+  selected,
+  onToggle,
+  onToggleAll,
+}: {
+  sites: BackupSiteRef[];
+  selected: string[];
+  onToggle: (id: string) => void;
+  onToggleAll: (all: boolean) => void;
+}) {
+  if (sites.length === 0) {
+    return <p className="text-sm text-muted-foreground">This backup contains no sites.</p>;
+  }
+  const allSelected = selected.length === sites.length;
+  return (
+    <div className="rounded-md border">
+      <label className="flex items-center gap-2 border-b px-3 py-2 text-sm font-medium">
+        <Checkbox checked={allSelected} onCheckedChange={(v) => onToggleAll(Boolean(v))} />
+        Select all ({selected.length}/{sites.length})
+      </label>
+      <ScrollArea className="max-h-48">
+        <div className="flex flex-col">
+          {sites.map((s) => (
+            <label
+              key={s.id}
+              className="flex items-center gap-2 px-3 py-2 text-sm hover:bg-muted/50"
+            >
+              <Checkbox checked={selected.includes(s.id)} onCheckedChange={() => onToggle(s.id)} />
+              <span className="flex flex-col">
+                <span className="font-medium">{s.name ?? "(unnamed site)"}</span>
+                <span className="font-mono text-xs text-muted-foreground">{s.id}</span>
+              </span>
+            </label>
+          ))}
+        </div>
+      </ScrollArea>
     </div>
   );
 }
