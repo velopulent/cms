@@ -4,7 +4,7 @@ use cms::grpc::cms::v1::{
     UpdateCollectionRequest,
 };
 
-use crate::common::{GrpcTestContext, auth_interceptor};
+use crate::common::{GrpcTestContext, grpc::auth_interceptor};
 
 async fn setup() -> (GrpcTestContext, String, String) {
     let ctx = GrpcTestContext::start().await;

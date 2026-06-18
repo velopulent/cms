@@ -1,50 +1,18 @@
-use serde_json::Value;
-
-use crate::common::TestServer;
+//! MCP (Streamable HTTP) JSON-RPC helpers: request dispatch, SSE parsing, and
+//! result/tool extraction, plus a few content fixtures used by the MCP suite.
 
 use std::sync::atomic::{AtomicU32, Ordering};
+
+use serde_json::Value;
+
+use super::client::http_client;
+use super::fixtures::create_site_and_token;
+use super::server::TestServer;
 
 static REQUEST_ID: AtomicU32 = AtomicU32::new(0);
 
 fn next_id() -> u32 {
     REQUEST_ID.fetch_add(1, Ordering::Relaxed) + 1
-}
-
-fn extract_cookies(resp: &reqwest::Response) -> (String, String) {
-    let mut jwt = String::new();
-    let mut csrf = String::new();
-    for cookie in resp.headers().get_all("set-cookie").iter() {
-        if let Ok(val) = cookie.to_str() {
-            if val.starts_with("token=") {
-                jwt = val
-                    .split(';')
-                    .next()
-                    .and_then(|c| c.strip_prefix("token="))
-                    .unwrap_or("")
-                    .to_string();
-            }
-            if val.starts_with("csrf=") {
-                csrf = val
-                    .split(';')
-                    .next()
-                    .and_then(|c| c.strip_prefix("csrf="))
-                    .unwrap_or("")
-                    .to_string();
-            }
-        }
-    }
-    (jwt, csrf)
-}
-
-fn auth_header(jwt: &str, csrf: &str) -> reqwest::header::HeaderMap {
-    let mut headers = reqwest::header::HeaderMap::new();
-    let cookie_val = format!("token={}; csrf={}", jwt, csrf);
-    headers.insert(
-        reqwest::header::COOKIE,
-        reqwest::header::HeaderValue::from_str(&cookie_val).unwrap(),
-    );
-    headers.insert("X-CSRF-Token", reqwest::header::HeaderValue::from_str(csrf).unwrap());
-    headers
 }
 
 pub async fn start_mcp_server() -> TestServer {
@@ -59,48 +27,8 @@ pub async fn setup_site_read_token(server: &TestServer) -> (String, String) {
     create_site_and_token(server, "read").await
 }
 
-async fn create_site_and_token(server: &TestServer, permission: &str) -> (String, String) {
-    let client = reqwest::Client::builder().build().unwrap();
-    let resp = server.login_user(&client, "admin", "admin").await;
-    let (jwt, csrf) = extract_cookies(&resp);
-
-    let resp = client
-        .post(format!("{}/api/dashboard/sites", server.base_url))
-        .headers(auth_header(&jwt, &csrf))
-        .json(&serde_json::json!({"name": "Test Site", "storage_provider": "filesystem"}))
-        .send()
-        .await
-        .unwrap();
-    assert!(
-        resp.status().is_success(),
-        "Create site failed: {} {}",
-        resp.status(),
-        resp.text().await.unwrap_or_default()
-    );
-    let site: serde_json::Value = resp.json().await.unwrap();
-    let site_id = site["id"].as_str().unwrap().to_string();
-
-    let resp = client
-        .post(format!("{}/api/dashboard/sites/{}/tokens", server.base_url, site_id))
-        .headers(auth_header(&jwt, &csrf))
-        .json(&serde_json::json!({"name": "Test Token", "permission": permission}))
-        .send()
-        .await
-        .unwrap();
-    assert!(
-        resp.status().is_success(),
-        "Create token failed: {} {}",
-        resp.status(),
-        resp.text().await.unwrap_or_default()
-    );
-    let token_val: serde_json::Value = resp.json().await.unwrap();
-    let token = token_val["token"].as_str().unwrap().to_string();
-
-    (site_id, token)
-}
-
 pub async fn mcp_request(base_url: &str, token: &str, method: &str, params: Option<Value>) -> Value {
-    let client = reqwest::Client::builder().build().unwrap();
+    let client = http_client();
     let id = next_id();
     let mut body = serde_json::json!({
         "jsonrpc": "2.0",

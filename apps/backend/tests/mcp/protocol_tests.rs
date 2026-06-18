@@ -1,4 +1,4 @@
-use crate::mcp_helpers::*;
+use crate::common::mcp::*;
 
 #[tokio::test]
 async fn test_initialize_returns_server_info() {

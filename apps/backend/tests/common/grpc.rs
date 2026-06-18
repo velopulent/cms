@@ -1,6 +1,10 @@
+//! `GrpcTestContext`: a tonic gRPC server (with the real `AuthInterceptor`)
+//! plus a sibling Axum server for REST-based seeding, sharing one DB/storage.
+
 use std::net::SocketAddr;
 use std::str::FromStr;
 use std::sync::Arc;
+use std::time::Duration;
 
 use cms::config::Config;
 use cms::database::init_db_with_config;
@@ -19,6 +23,10 @@ use tokio::net::TcpListener;
 use tokio_stream::wrappers::TcpListenerStream;
 use tonic::Request;
 use tonic::transport::Channel;
+
+use super::auth::extract_cookies;
+use super::client::http_client;
+use super::server::seed_admin;
 
 pub struct GrpcTestContext {
     pub grpc_addr: SocketAddr,
@@ -74,8 +82,8 @@ impl GrpcTestContext {
         let axum_listener = TcpListener::bind("127.0.0.1:0")
             .await
             .expect("Failed to bind random port");
-        let axum_port = axum_listener.local_addr().unwrap().port();
-        let rest_base_url = format!("http://127.0.0.1:{}", axum_port);
+        let axum_addr = axum_listener.local_addr().unwrap();
+        let rest_base_url = format!("http://127.0.0.1:{}", axum_addr.port());
 
         let backup_destination =
             cms::services::backup::build_backup_destination(&config).expect("Failed to init backup destination");
@@ -162,7 +170,8 @@ impl GrpcTestContext {
                 .unwrap();
         });
 
-        tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+        super::wait_for_tcp(axum_addr, Duration::from_secs(5)).await;
+        super::wait_for_tcp(grpc_addr, Duration::from_secs(5)).await;
 
         GrpcTestContext {
             grpc_addr,
@@ -182,7 +191,7 @@ impl GrpcTestContext {
     }
 
     pub async fn setup_site_and_token(&self) -> (String, String) {
-        let client = reqwest::Client::builder().build().unwrap();
+        let client = http_client();
 
         // Login as admin
         let resp = client
@@ -231,7 +240,7 @@ impl GrpcTestContext {
         content: &[u8],
         mime_type: &str,
     ) -> serde_json::Value {
-        let client = reqwest::Client::builder().build().unwrap();
+        let client = http_client();
 
         let resp = client
             .post(format!("{}/api/auth/login", self.rest_base_url))
@@ -267,33 +276,6 @@ impl GrpcTestContext {
     }
 }
 
-fn extract_cookies(resp: &reqwest::Response) -> (String, String) {
-    let headers = resp.headers();
-    let mut jwt = String::new();
-    let mut csrf = String::new();
-    for cookie in headers.get_all("set-cookie").iter() {
-        if let Ok(val) = cookie.to_str() {
-            if val.starts_with("token=") {
-                jwt = val
-                    .split(';')
-                    .next()
-                    .and_then(|c| c.strip_prefix("token="))
-                    .unwrap_or("")
-                    .to_string();
-            }
-            if val.starts_with("csrf=") {
-                csrf = val
-                    .split(';')
-                    .next()
-                    .and_then(|c| c.strip_prefix("csrf="))
-                    .unwrap_or("")
-                    .to_string();
-            }
-        }
-    }
-    (jwt, csrf)
-}
-
 pub fn auth_interceptor(token: &str) -> impl tonic::service::Interceptor + Clone + use<> {
     let token = token.to_string();
     move |mut req: Request<()>| {
@@ -302,20 +284,5 @@ pub fn auth_interceptor(token: &str) -> impl tonic::service::Interceptor + Clone
             tonic::metadata::MetadataValue::from_str(&format!("Bearer {}", token)).unwrap(),
         );
         Ok(req)
-    }
-}
-
-async fn seed_admin(repo: &Repository) {
-    if !repo.user.exists("admin").await.unwrap_or(false) {
-        let id = uuid::Uuid::now_v7().to_string();
-        let password_hash = bcrypt::hash("admin", bcrypt::DEFAULT_COST).expect("Failed to hash password");
-        repo.user
-            .create(&id, "admin", "admin@cms.local", &password_hash)
-            .await
-            .expect("Failed to seed admin user");
-        repo.user
-            .set_instance_role(&id, Some("instance_owner"))
-            .await
-            .expect("Failed to promote test admin");
     }
 }

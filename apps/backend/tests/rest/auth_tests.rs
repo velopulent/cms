@@ -59,11 +59,11 @@ fn extract_token_from_cookies(resp: &reqwest::Response) -> Option<String> {
     let headers = resp.headers();
     let cookies = headers.get_all("set-cookie").iter();
     for cookie in cookies {
-        if let Ok(val) = cookie.to_str() {
-            if val.starts_with("token=") {
-                let token_val = val.split(';').next()?.strip_prefix("token=")?;
-                return Some(token_val.to_string());
-            }
+        if let Ok(val) = cookie.to_str()
+            && val.starts_with("token=")
+        {
+            let token_val = val.split(';').next()?.strip_prefix("token=")?;
+            return Some(token_val.to_string());
         }
     }
     None
@@ -73,11 +73,11 @@ fn extract_csrf_from_cookies(resp: &reqwest::Response) -> Option<String> {
     let headers = resp.headers();
     let cookies = headers.get_all("set-cookie").iter();
     for cookie in cookies {
-        if let Ok(val) = cookie.to_str() {
-            if val.starts_with("csrf=") {
-                let csrf_val = val.split(';').next()?.strip_prefix("csrf=")?;
-                return Some(csrf_val.to_string());
-            }
+        if let Ok(val) = cookie.to_str()
+            && val.starts_with("csrf=")
+        {
+            let csrf_val = val.split(';').next()?.strip_prefix("csrf=")?;
+            return Some(csrf_val.to_string());
         }
     }
     None

@@ -1,4 +1,4 @@
-use crate::mcp_helpers::*;
+use crate::common::mcp::*;
 
 async fn setup_collection(base_url: &str, token: &str) -> String {
     let result = create_test_collection(base_url, token, "Posts", "posts").await;
