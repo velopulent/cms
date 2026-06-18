@@ -101,21 +101,7 @@ fn restrict_permissions(_path: &std::path::Path) -> std::io::Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    fn with_home<T>(value: &std::path::Path, f: impl FnOnce() -> T) -> T {
-        use std::sync::Mutex;
-        static LOCK: Mutex<()> = Mutex::new(());
-        let _guard = LOCK.lock().unwrap_or_else(|e| e.into_inner());
-        let previous = std::env::var_os(paths::CMS_HOME_ENV);
-        // SAFETY: guarded by LOCK so no other test reads/writes the env concurrently.
-        unsafe { std::env::set_var(paths::CMS_HOME_ENV, value) };
-        let result = f();
-        match previous {
-            Some(v) => unsafe { std::env::set_var(paths::CMS_HOME_ENV, v) },
-            None => unsafe { std::env::remove_var(paths::CMS_HOME_ENV) },
-        }
-        result
-    }
+    use crate::test_helpers::with_home;
 
     #[test]
     fn load_returns_none_when_absent() {
