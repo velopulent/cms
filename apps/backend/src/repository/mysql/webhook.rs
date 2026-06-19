@@ -19,7 +19,7 @@ impl MysqlWebhookRepository {
 impl WebhookRepository for MysqlWebhookRepository {
     async fn list_for_site(&self, site_id: &str) -> Result<Vec<SiteWebhook>, RepositoryError> {
         let result = sqlx::query_as::<_, SiteWebhook>(
-            "SELECT id, site_id, label, url, headers_encrypted, created_by, created_at, updated_at FROM site_webhooks WHERE site_id = ? ORDER BY created_at",
+            "SELECT id, site_id, label, url, headers_encrypted, created_by, CAST(created_at AS CHAR) AS created_at, CAST(updated_at AS CHAR) AS updated_at FROM site_webhooks WHERE site_id = ? ORDER BY created_at",
         )
         .bind(site_id)
         .fetch_all(&self.pool)
@@ -30,7 +30,7 @@ impl WebhookRepository for MysqlWebhookRepository {
 
     async fn get_by_id(&self, id: &str, site_id: &str) -> Result<Option<SiteWebhook>, RepositoryError> {
         let result = sqlx::query_as::<_, SiteWebhook>(
-            "SELECT id, site_id, label, url, headers_encrypted, created_by, created_at, updated_at FROM site_webhooks WHERE id = ? AND site_id = ?",
+            "SELECT id, site_id, label, url, headers_encrypted, created_by, CAST(created_at AS CHAR) AS created_at, CAST(updated_at AS CHAR) AS updated_at FROM site_webhooks WHERE id = ? AND site_id = ?",
         )
         .bind(id)
         .bind(site_id)
@@ -122,7 +122,7 @@ impl WebhookRepository for MysqlWebhookRepository {
         .await?;
 
         sqlx::query_as::<_, WebhookDelivery>(
-            "SELECT id, webhook_id, status, status_code, response_body, duration_ms, triggered_by, triggered_at FROM site_webhook_deliveries WHERE id = ?",
+            "SELECT id, webhook_id, status, status_code, response_body, duration_ms, triggered_by, CAST(triggered_at AS CHAR) AS triggered_at FROM site_webhook_deliveries WHERE id = ?",
         )
         .bind(id)
         .fetch_one(&self.pool)
@@ -143,7 +143,7 @@ impl WebhookRepository for MysqlWebhookRepository {
 
         let offset = (page - 1) * per_page;
         let items = sqlx::query_as::<_, WebhookDelivery>(
-            "SELECT id, webhook_id, status, status_code, response_body, duration_ms, triggered_by, triggered_at FROM site_webhook_deliveries WHERE webhook_id = ? ORDER BY triggered_at DESC LIMIT ? OFFSET ?",
+            "SELECT id, webhook_id, status, status_code, response_body, duration_ms, triggered_by, CAST(triggered_at AS CHAR) AS triggered_at FROM site_webhook_deliveries WHERE webhook_id = ? ORDER BY triggered_at DESC LIMIT ? OFFSET ?",
         )
         .bind(webhook_id)
         .bind(per_page)
@@ -158,7 +158,7 @@ impl WebhookRepository for MysqlWebhookRepository {
 impl MysqlWebhookRepository {
     async fn get_by_id_unscoped(&self, id: &str) -> Result<Option<SiteWebhook>, RepositoryError> {
         sqlx::query_as::<_, SiteWebhook>(
-            "SELECT id, site_id, label, url, headers_encrypted, created_by, created_at, updated_at FROM site_webhooks WHERE id = ?",
+            "SELECT id, site_id, label, url, headers_encrypted, created_by, CAST(created_at AS CHAR) AS created_at, CAST(updated_at AS CHAR) AS updated_at FROM site_webhooks WHERE id = ?",
         )
         .bind(id)
         .fetch_optional(&self.pool)

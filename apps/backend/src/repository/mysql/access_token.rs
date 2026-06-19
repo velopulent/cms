@@ -19,7 +19,7 @@ impl MysqlAccessTokenRepository {
 impl AccessTokenRepository for MysqlAccessTokenRepository {
     async fn list(&self, site_id: &str) -> Result<Vec<AccessToken>, RepositoryError> {
         let rows = sqlx::query_as::<_, AccessToken>(
-            "SELECT id, site_id, name, token_prefix, permission, created_by_user_id, last_used_at, created_at, expires_at, revoked_at
+            "SELECT id, site_id, name, token_prefix, permission, created_by_user_id, CAST(last_used_at AS CHAR) AS last_used_at, CAST(created_at AS CHAR) AS created_at, CAST(expires_at AS CHAR) AS expires_at, CAST(revoked_at AS CHAR) AS revoked_at
              FROM access_tokens WHERE site_id = ? ORDER BY created_at DESC",
         )
         .bind(site_id)
@@ -71,7 +71,7 @@ impl AccessTokenRepository for MysqlAccessTokenRepository {
 
     async fn find_by_prefix(&self, prefix: &str) -> Result<Vec<AccessTokenLookupRow>, RepositoryError> {
         let rows = sqlx::query_as::<_, AccessTokenLookupRow>(
-            "SELECT id, site_id, token_hash, token_hmac, expires_at, revoked_at, permission
+            "SELECT id, site_id, token_hash, token_hmac, CAST(expires_at AS CHAR) AS expires_at, CAST(revoked_at AS CHAR) AS revoked_at, permission
              FROM access_tokens WHERE token_prefix = ?",
         )
         .bind(prefix)
