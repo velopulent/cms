@@ -17,6 +17,9 @@ pub struct TestServer {
     pub base_url: String,
     _shutdown: tokio::sync::oneshot::Sender<()>,
     _storage_dir: tempfile::TempDir,
+    // Dropped last: best-effort drops the per-test Postgres/MySQL database
+    // (no-op for the default SQLite `:memory:` backend).
+    _db: super::test_db::TestDbHandle,
 }
 
 impl TestServer {
@@ -41,21 +44,36 @@ impl TestServer {
         let storage_dir = tempfile::tempdir().expect("Failed to create temp storage dir");
         let storage_path = storage_dir.path().to_str().unwrap().to_string();
 
+        // Provision an isolated database for this server: `sqlite::memory:` by
+        // default, or a fresh `cms_test_<id>` Postgres/MySQL database when
+        // `TEST_DATABASE` selects one. The handle drops the database on teardown.
+        let (database_url, db_handle) = super::test_db::provision().await;
+
         let mut config = Config::default();
-        config.database_url = "sqlite::memory:".to_string();
+        config.database_url = database_url;
         config.jwt_secret = "test-jwt-secret-integration".to_string();
         config.hmac_secret = "test-hmac-secret-integration".to_string();
         config.storage_fs_path = Some(storage_path.clone());
         config.cookie_secure = false;
+        // Real config defaults this to 24h; `Config::default()` leaves it 0, which
+        // mints already-expired sessions. SQLite hid that (it compares the datetime
+        // columns lexicographically, where the stored `…T…+00:00` sorts above
+        // `datetime('now')`); Postgres/MySQL do a real timestamp compare and reject.
+        config.session_lifetime_hours = 24;
         config.mcp_enabled = true;
         config.mcp_allowed_hosts = vec!["127.0.0.1".to_string()];
         config.mcp_allowed_origins = vec![];
         config.rate_limit_max_requests = 10000;
         config.rate_limit_window_secs = 60;
-        config.db_max_connections = 5;
+        // Tests spin up many servers in parallel against one shared Postgres/MySQL
+        // instance. Keep each pool tiny and release idle connections fast so the
+        // aggregate stays well under the server's connection ceiling (Postgres
+        // defaults to 100); otherwise high-core CI runners intermittently exhaust
+        // it. A single TestServer needs almost no internal concurrency.
+        config.db_max_connections = 2;
         config.db_min_connections = 1;
         config.db_acquire_timeout_secs = 30;
-        config.db_idle_timeout_secs = 600;
+        config.db_idle_timeout_secs = 5;
         config.max_upload_size_bytes = 50 * 1024 * 1024;
         config.public_registration_enabled = true;
         config.bcrypt_cost = bcrypt::DEFAULT_COST;
@@ -134,6 +152,7 @@ impl TestServer {
             base_url: format!("http://127.0.0.1:{}", port),
             _shutdown: shutdown_tx,
             _storage_dir: storage_dir,
+            _db: db_handle,
         }
     }
 
