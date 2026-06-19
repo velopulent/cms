@@ -305,7 +305,7 @@ pub async fn fetch_rows(
 ) -> Result<Vec<Vec<Option<String>>>, BackupError> {
     macro_rules! run {
         ($p:expr) => {{
-            let mut q = sqlx::query(sql);
+            let mut q = sqlx::query(sqlx::AssertSqlSafe(sql));
             if let Some(v) = param {
                 q = q.bind(v.to_string());
             }
@@ -374,13 +374,13 @@ pub async fn apply_restore(pool: &DbPool, plan: &RestorePlan) -> Result<(), Back
         ($tx:expr) => {{
             for stmt in &plan.deletes {
                 if stmt.rows.is_empty() {
-                    sqlx::query(&stmt.sql)
+                    sqlx::query(sqlx::AssertSqlSafe(stmt.sql.as_str()))
                         .execute(&mut *$tx)
                         .await
                         .map_err(|e| BackupError::Db(e.to_string()))?;
                 } else {
                     for row in &stmt.rows {
-                        let mut q = sqlx::query(&stmt.sql);
+                        let mut q = sqlx::query(sqlx::AssertSqlSafe(stmt.sql.as_str()));
                         for v in row {
                             q = q.bind(v.clone());
                         }
@@ -390,7 +390,7 @@ pub async fn apply_restore(pool: &DbPool, plan: &RestorePlan) -> Result<(), Back
             }
             for stmt in &plan.inserts {
                 for row in &stmt.rows {
-                    let mut q = sqlx::query(&stmt.sql);
+                    let mut q = sqlx::query(sqlx::AssertSqlSafe(stmt.sql.as_str()));
                     for v in row {
                         q = q.bind(v.clone());
                     }

@@ -82,7 +82,7 @@ impl SearchQueue {
         );
         match &self.pool {
             DbPool::Sqlite(p) => {
-                sqlx::query(&sql)
+                sqlx::query(sqlx::AssertSqlSafe(sql.as_str()))
                     .bind(&id)
                     .bind(entry_id)
                     .bind(site_id)
@@ -93,7 +93,7 @@ impl SearchQueue {
                     .map_err(dberr)?;
             }
             DbPool::Postgres(p) => {
-                sqlx::query(&sql)
+                sqlx::query(sqlx::AssertSqlSafe(sql.as_str()))
                     .bind(&id)
                     .bind(entry_id)
                     .bind(site_id)
@@ -104,7 +104,7 @@ impl SearchQueue {
                     .map_err(dberr)?;
             }
             DbPool::MySql(p) => {
-                sqlx::query(&sql)
+                sqlx::query(sqlx::AssertSqlSafe(sql.as_str()))
                     .bind(&id)
                     .bind(entry_id)
                     .bind(site_id)
@@ -126,17 +126,17 @@ impl SearchQueue {
             "SELECT id, entry_id FROM search_index_queue ORDER BY id ASC LIMIT ?",
         );
         let rows = match &self.pool {
-            DbPool::Sqlite(p) => sqlx::query_as::<_, QueueRow>(&sql)
+            DbPool::Sqlite(p) => sqlx::query_as::<_, QueueRow>(sqlx::AssertSqlSafe(sql.as_str()))
                 .bind(limit)
                 .fetch_all(p)
                 .await
                 .map_err(dberr)?,
-            DbPool::Postgres(p) => sqlx::query_as::<_, QueueRow>(&sql)
+            DbPool::Postgres(p) => sqlx::query_as::<_, QueueRow>(sqlx::AssertSqlSafe(sql.as_str()))
                 .bind(limit)
                 .fetch_all(p)
                 .await
                 .map_err(dberr)?,
-            DbPool::MySql(p) => sqlx::query_as::<_, QueueRow>(&sql)
+            DbPool::MySql(p) => sqlx::query_as::<_, QueueRow>(sqlx::AssertSqlSafe(sql.as_str()))
                 .bind(limit)
                 .fetch_all(p)
                 .await
@@ -157,21 +157,21 @@ impl SearchQueue {
         );
         match &self.pool {
             DbPool::Sqlite(p) => {
-                let mut query = sqlx::query(&sql);
+                let mut query = sqlx::query(sqlx::AssertSqlSafe(sql.as_str()));
                 for id in ids {
                     query = query.bind(id);
                 }
                 query.execute(p).await.map_err(dberr)?;
             }
             DbPool::Postgres(p) => {
-                let mut query = sqlx::query(&sql);
+                let mut query = sqlx::query(sqlx::AssertSqlSafe(sql.as_str()));
                 for id in ids {
                     query = query.bind(id);
                 }
                 query.execute(p).await.map_err(dberr)?;
             }
             DbPool::MySql(p) => {
-                let mut query = sqlx::query(&sql);
+                let mut query = sqlx::query(sqlx::AssertSqlSafe(sql.as_str()));
                 for id in ids {
                     query = query.bind(id);
                 }

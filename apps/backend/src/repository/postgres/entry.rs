@@ -31,7 +31,7 @@ impl EntryRepository for PostgresEntryRepository {
             query.push_str(" AND status = 'published'");
         }
 
-        let result = sqlx::query_as::<_, Entry>(&query)
+        let result = sqlx::query_as::<_, Entry>(sqlx::AssertSqlSafe(query.as_str()))
             .bind(id)
             .bind(site_id)
             .fetch_optional(&self.pool)
@@ -101,7 +101,7 @@ impl EntryRepository for PostgresEntryRepository {
         }
 
         let total: i64 = {
-            let mut q = sqlx::query_scalar::<_, i64>(&count_query);
+            let mut q = sqlx::query_scalar::<_, i64>(sqlx::AssertSqlSafe(count_query.as_str()));
             for b in &bindings {
                 q = q.bind(b);
             }
@@ -115,7 +115,7 @@ impl EntryRepository for PostgresEntryRepository {
             param_index + 1
         ));
 
-        let mut q = sqlx::query_as::<_, Entry>(&query);
+        let mut q = sqlx::query_as::<_, Entry>(sqlx::AssertSqlSafe(query.as_str()));
         for b in &bindings {
             q = q.bind(b);
         }
@@ -153,7 +153,7 @@ impl EntryRepository for PostgresEntryRepository {
 
         query.push_str(" ORDER BY updated_at DESC");
 
-        let mut q = sqlx::query_as::<_, Entry>(&query);
+        let mut q = sqlx::query_as::<_, Entry>(sqlx::AssertSqlSafe(query.as_str()));
         for b in &bindings {
             q = q.bind(b);
         }
@@ -190,7 +190,7 @@ impl EntryRepository for PostgresEntryRepository {
 
         query.push_str(" ORDER BY updated_at DESC");
 
-        let mut q = sqlx::query_as::<_, Entry>(&query);
+        let mut q = sqlx::query_as::<_, Entry>(sqlx::AssertSqlSafe(query.as_str()));
         for b in &bindings {
             q = q.bind(b);
         }
