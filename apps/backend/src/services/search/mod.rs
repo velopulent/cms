@@ -32,7 +32,7 @@ use std::sync::Mutex;
 use tantivy::collector::{Count, TopDocs};
 use tantivy::directory::MmapDirectory;
 use tantivy::query::{BooleanQuery, Occur, Query, QueryParser, TermQuery};
-use tantivy::schema::{IndexRecordOption, OwnedValue, TantivyDocument};
+use tantivy::schema::{IndexRecordOption, TantivyDocument, Value};
 use tantivy::{Index, IndexReader, IndexWriter, ReloadPolicy, TantivyError, Term};
 
 use crate::models::entry::Entry;
@@ -205,13 +205,14 @@ impl SearchService {
 
         let per_page = params.per_page.max(1) as usize;
         let offset = ((params.page.max(1) - 1) * params.per_page.max(1)) as usize;
-        let (top, total) = searcher.search(&query, &(TopDocs::with_limit(offset + per_page), Count))?;
+        let top_docs = TopDocs::with_limit(per_page).and_offset(offset).order_by_score();
+        let (top, total) = searcher.search(&query, &(top_docs, Count))?;
 
         let mut ids = Vec::with_capacity(per_page);
-        for (_score, addr) in top.into_iter().skip(offset) {
+        for (_score, addr) in top {
             let doc: TantivyDocument = searcher.doc(addr)?;
-            if let Some(OwnedValue::Str(id)) = doc.get_first(self.fields.id) {
-                ids.push(id.clone());
+            if let Some(id) = doc.get_first(self.fields.id).and_then(|v| v.as_str()) {
+                ids.push(id.to_string());
             }
         }
         Ok(SearchHits { ids, total })
