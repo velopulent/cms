@@ -70,8 +70,11 @@ CREATE TABLE IF NOT EXISTS restore_jobs (
     FOREIGN KEY (target_site_id) REFERENCES sites(id) ON DELETE SET NULL,
     FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL,
     CHECK (scope IN ('instance', 'site')),
-    CHECK (status IN ('pending', 'running', 'success', 'failed')),
-    CHECK ((scope = 'instance' AND target_site_id IS NULL) OR (scope = 'site' AND target_site_id IS NOT NULL))
+    CHECK (status IN ('pending', 'running', 'success', 'failed'))
+    -- NOTE: the scope/target_site_id consistency CHECK that SQLite/Postgres carry is
+    -- omitted here: MySQL forbids a column from appearing in a CHECK when it is also
+    -- the target of an `ON DELETE SET NULL` foreign key. The application enforces the
+    -- same invariant (instance scope => no site, site scope => a site).
 );
 
 CREATE INDEX idx_restore_jobs_created ON restore_jobs(created_at);
