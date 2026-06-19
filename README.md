@@ -52,7 +52,7 @@ Create on-demand or scheduled backups of a single site or the whole instance. Ba
 
 ### 🔐 Secure & Scalable
 
-Two-tier role-based access control, JWT authentication, and rate limiting included out of the box. Instance operators (owner and admins) manage the installation and its sites, while per-site collaborators get editor (write content) or viewer (read-only) access. Whether you're running a personal blog or a multi-tenant platform, the security model adapts to your needs.
+Two-tier role-based access control, Session based authentication, and rate limiting included out of the box. Instance operators (owner and admins) manage the installation and its sites, while per-site collaborators get editor (write content) or viewer (read-only) access. Whether you're running a personal blog or a multi-tenant platform, the security model adapts to your needs.
 
 ### 💻 Modern Admin Dashboard
 
