@@ -18,7 +18,7 @@ use std::sync::Arc;
 use aes_gcm::aead::{Aead, KeyInit};
 use aes_gcm::{Aes256Gcm, Key, Nonce};
 use chrono::Utc;
-use rand::RngCore;
+use rand::Rng;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
@@ -591,7 +591,7 @@ impl BackupService {
             out.push(FLAG_ENCRYPTED);
             let cipher = Aes256Gcm::new(Key::<Aes256Gcm>::from_slice(&key));
             let mut nonce_bytes = [0u8; 12];
-            rand::thread_rng().fill_bytes(&mut nonce_bytes);
+            rand::rng().fill_bytes(&mut nonce_bytes);
             let nonce = Nonce::from_slice(&nonce_bytes);
             let ciphertext = cipher
                 .encrypt(nonce, compressed.as_ref())

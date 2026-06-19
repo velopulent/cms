@@ -7,7 +7,7 @@ use aes_gcm::aead::{Aead, KeyInit};
 use aes_gcm::{Aes256Gcm, Key, Nonce};
 use axum::{Json, http::StatusCode, response::IntoResponse};
 use base64::{Engine, engine::general_purpose::STANDARD as BASE64_STANDARD};
-use rand::RngCore;
+use rand::Rng;
 use serde_json::json;
 use sha2::{Digest, Sha256};
 use thiserror::Error;
@@ -514,7 +514,7 @@ fn encrypt_headers(headers: &HashMap<String, String>, key: &[u8; 32]) -> String 
     let json = serde_json::to_string(headers).unwrap_or_default();
     let cipher = Aes256Gcm::new(Key::<Aes256Gcm>::from_slice(key));
     let mut nonce_bytes = [0u8; 12];
-    rand::thread_rng().fill_bytes(&mut nonce_bytes);
+    rand::rng().fill_bytes(&mut nonce_bytes);
     let nonce = Nonce::from_slice(&nonce_bytes);
     match cipher.encrypt(nonce, json.as_bytes()) {
         Ok(ciphertext) => {
