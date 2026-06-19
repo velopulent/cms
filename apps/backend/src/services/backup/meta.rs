@@ -37,9 +37,9 @@ macro_rules! exec {
     ($pool:expr, $sql:expr $(, $bind:expr)* $(,)?) => {{
         let sql = q($pool.backend(), $sql);
         match $pool {
-            DbPool::Sqlite(p) => { sqlx::query(&sql)$(.bind($bind))*.execute(p).await.map_err(dberr)?; }
-            DbPool::Postgres(p) => { sqlx::query(&sql)$(.bind($bind))*.execute(p).await.map_err(dberr)?; }
-            DbPool::MySql(p) => { sqlx::query(&sql)$(.bind($bind))*.execute(p).await.map_err(dberr)?; }
+            DbPool::Sqlite(p) => { sqlx::query(sqlx::AssertSqlSafe(sql.as_str()))$(.bind($bind))*.execute(p).await.map_err(dberr)?; }
+            DbPool::Postgres(p) => { sqlx::query(sqlx::AssertSqlSafe(sql.as_str()))$(.bind($bind))*.execute(p).await.map_err(dberr)?; }
+            DbPool::MySql(p) => { sqlx::query(sqlx::AssertSqlSafe(sql.as_str()))$(.bind($bind))*.execute(p).await.map_err(dberr)?; }
         }
     }};
 }
@@ -48,9 +48,9 @@ macro_rules! fetch_all_as {
     ($pool:expr, $ty:ty, $sql:expr $(, $bind:expr)* $(,)?) => {{
         let sql = q($pool.backend(), $sql);
         match $pool {
-            DbPool::Sqlite(p) => sqlx::query_as::<_, $ty>(&sql)$(.bind($bind))*.fetch_all(p).await.map_err(dberr)?,
-            DbPool::Postgres(p) => sqlx::query_as::<_, $ty>(&sql)$(.bind($bind))*.fetch_all(p).await.map_err(dberr)?,
-            DbPool::MySql(p) => sqlx::query_as::<_, $ty>(&sql)$(.bind($bind))*.fetch_all(p).await.map_err(dberr)?,
+            DbPool::Sqlite(p) => sqlx::query_as::<_, $ty>(sqlx::AssertSqlSafe(sql.as_str()))$(.bind($bind))*.fetch_all(p).await.map_err(dberr)?,
+            DbPool::Postgres(p) => sqlx::query_as::<_, $ty>(sqlx::AssertSqlSafe(sql.as_str()))$(.bind($bind))*.fetch_all(p).await.map_err(dberr)?,
+            DbPool::MySql(p) => sqlx::query_as::<_, $ty>(sqlx::AssertSqlSafe(sql.as_str()))$(.bind($bind))*.fetch_all(p).await.map_err(dberr)?,
         }
     }};
 }
@@ -59,9 +59,9 @@ macro_rules! fetch_opt_as {
     ($pool:expr, $ty:ty, $sql:expr $(, $bind:expr)* $(,)?) => {{
         let sql = q($pool.backend(), $sql);
         match $pool {
-            DbPool::Sqlite(p) => sqlx::query_as::<_, $ty>(&sql)$(.bind($bind))*.fetch_optional(p).await.map_err(dberr)?,
-            DbPool::Postgres(p) => sqlx::query_as::<_, $ty>(&sql)$(.bind($bind))*.fetch_optional(p).await.map_err(dberr)?,
-            DbPool::MySql(p) => sqlx::query_as::<_, $ty>(&sql)$(.bind($bind))*.fetch_optional(p).await.map_err(dberr)?,
+            DbPool::Sqlite(p) => sqlx::query_as::<_, $ty>(sqlx::AssertSqlSafe(sql.as_str()))$(.bind($bind))*.fetch_optional(p).await.map_err(dberr)?,
+            DbPool::Postgres(p) => sqlx::query_as::<_, $ty>(sqlx::AssertSqlSafe(sql.as_str()))$(.bind($bind))*.fetch_optional(p).await.map_err(dberr)?,
+            DbPool::MySql(p) => sqlx::query_as::<_, $ty>(sqlx::AssertSqlSafe(sql.as_str()))$(.bind($bind))*.fetch_optional(p).await.map_err(dberr)?,
         }
     }};
 }

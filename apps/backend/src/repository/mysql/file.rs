@@ -95,13 +95,13 @@ impl FileRepository for MysqlFileRepository {
         bindings.push(params.per_page.to_string());
         bindings.push(offset.to_string());
 
-        let mut count_q = sqlx::query_scalar::<_, i64>(&count_query);
+        let mut count_q = sqlx::query_scalar::<_, i64>(sqlx::AssertSqlSafe(count_query.as_str()));
         for b in &count_bindings {
             count_q = count_q.bind(b);
         }
         let total: i64 = count_q.fetch_optional(&self.pool).await.unwrap_or(Some(0)).unwrap_or(0);
 
-        let mut q = sqlx::query_as::<_, File>(&query);
+        let mut q = sqlx::query_as::<_, File>(sqlx::AssertSqlSafe(query.as_str()));
         for b in &bindings {
             q = q.bind(b);
         }
@@ -185,7 +185,7 @@ impl FileRepository for MysqlFileRepository {
             placeholders
         );
 
-        let mut q = sqlx::query(&query).bind(site_id);
+        let mut q = sqlx::query(sqlx::AssertSqlSafe(query.as_str())).bind(site_id);
         for id in ids {
             q = q.bind(id);
         }
@@ -205,7 +205,7 @@ impl FileRepository for MysqlFileRepository {
             placeholders
         );
 
-        let mut q = sqlx::query(&query).bind(site_id);
+        let mut q = sqlx::query(sqlx::AssertSqlSafe(query.as_str())).bind(site_id);
         for id in ids {
             q = q.bind(id);
         }
@@ -225,7 +225,7 @@ impl FileRepository for MysqlFileRepository {
             placeholders
         );
 
-        let mut q = sqlx::query_as::<_, File>(&query).bind(site_id);
+        let mut q = sqlx::query_as::<_, File>(sqlx::AssertSqlSafe(query.as_str())).bind(site_id);
         for id in ids {
             q = q.bind(id);
         }
@@ -245,7 +245,7 @@ impl FileRepository for MysqlFileRepository {
             placeholders
         );
 
-        let mut q = sqlx::query_as::<_, File>(&query).bind(site_id);
+        let mut q = sqlx::query_as::<_, File>(sqlx::AssertSqlSafe(query.as_str())).bind(site_id);
         for id in ids {
             q = q.bind(id);
         }
@@ -265,7 +265,7 @@ impl FileRepository for MysqlFileRepository {
             placeholders
         );
 
-        let mut q = sqlx::query(&query).bind(site_id);
+        let mut q = sqlx::query(sqlx::AssertSqlSafe(query.as_str())).bind(site_id);
         for id in ids {
             q = q.bind(id);
         }

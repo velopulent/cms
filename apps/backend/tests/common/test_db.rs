@@ -17,7 +17,7 @@
 //!   leftover `cms_test_*` databases from a previous aborted run, so local
 //!   re-runs are self-healing.
 
-use sqlx::{Connection, Executor};
+use sqlx::Connection;
 use tokio::sync::OnceCell;
 
 /// Prefix for every per-test database. Greppable and used by the leak sweep.
@@ -141,12 +141,14 @@ async fn create_database(admin_url: &str, db_name: &str, backend: Backend) -> Re
     match backend {
         Backend::Postgres => {
             let mut conn = sqlx::postgres::PgConnection::connect(admin_url).await?;
-            conn.execute(format!("CREATE DATABASE \"{db_name}\"").as_str()).await?;
+            let sql = format!("CREATE DATABASE \"{db_name}\"");
+            sqlx::query(sqlx::AssertSqlSafe(sql)).execute(&mut conn).await?;
             conn.close().await?;
         }
         Backend::MySql => {
             let mut conn = sqlx::mysql::MySqlConnection::connect(admin_url).await?;
-            conn.execute(format!("CREATE DATABASE `{db_name}`").as_str()).await?;
+            let sql = format!("CREATE DATABASE `{db_name}`");
+            sqlx::query(sqlx::AssertSqlSafe(sql)).execute(&mut conn).await?;
             conn.close().await?;
         }
         Backend::Sqlite => {}
@@ -162,14 +164,14 @@ async fn drop_database(admin_url: &str, db_name: &str, backend: Backend) -> Resu
         Backend::Postgres => {
             let mut conn = sqlx::postgres::PgConnection::connect(admin_url).await?;
             // FORCE (PG13+) evicts any straggler connections so the drop can't hang.
-            conn.execute(format!("DROP DATABASE IF EXISTS \"{db_name}\" WITH (FORCE)").as_str())
-                .await?;
+            let sql = format!("DROP DATABASE IF EXISTS \"{db_name}\" WITH (FORCE)");
+            sqlx::query(sqlx::AssertSqlSafe(sql)).execute(&mut conn).await?;
             conn.close().await?;
         }
         Backend::MySql => {
             let mut conn = sqlx::mysql::MySqlConnection::connect(admin_url).await?;
-            conn.execute(format!("DROP DATABASE IF EXISTS `{db_name}`").as_str())
-                .await?;
+            let sql = format!("DROP DATABASE IF EXISTS `{db_name}`");
+            sqlx::query(sqlx::AssertSqlSafe(sql)).execute(&mut conn).await?;
             conn.close().await?;
         }
         Backend::Sqlite => {}

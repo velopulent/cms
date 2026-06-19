@@ -109,11 +109,11 @@ async fn validate_connection_migrations<C>(conn: &mut C, migrator: &sqlx::migrat
 where
     C: Migrate,
 {
-    if let Some(version) = conn.dirty_version().await? {
+    if let Some(version) = conn.dirty_version(&migrator.table_name).await? {
         return Err(MigrateError::Dirty(version));
     }
 
-    let applied = conn.list_applied_migrations().await?;
+    let applied = conn.list_applied_migrations(&migrator.table_name).await?;
     let expected: Vec<_> = migrator
         .iter()
         .filter(|migration| !migration.migration_type.is_down_migration())
