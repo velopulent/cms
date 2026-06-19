@@ -2,14 +2,14 @@ use serde_json::{Value, json};
 
 use crate::common::{TestServer, auth::auth_header, fixtures::setup};
 
-async fn create_singleton(server: &TestServer, jwt: &str, csrf: &str, site_id: &str, slug: &str) -> Value {
+async fn create_singleton(server: &TestServer, token: &str, csrf: &str, site_id: &str, slug: &str) -> Value {
     let client = reqwest::Client::builder().build().unwrap();
     let resp = client
         .post(format!(
             "{}/api/dashboard/sites/{}/collections",
             server.base_url, site_id
         ))
-        .headers(auth_header(jwt, csrf))
+        .headers(auth_header(token, csrf))
         .json(&json!({
             "name": slug,
             "slug": slug,
@@ -25,17 +25,17 @@ async fn create_singleton(server: &TestServer, jwt: &str, csrf: &str, site_id: &
 #[tokio::test]
 async fn test_list_singletons() {
     let server = TestServer::start().await;
-    let (jwt, csrf, site_id) = setup(&server).await;
+    let (token, csrf, site_id) = setup(&server).await;
     let client = reqwest::Client::builder().build().unwrap();
 
-    create_singleton(&server, &jwt, &csrf, &site_id, "settings").await;
+    create_singleton(&server, &token, &csrf, &site_id, "settings").await;
 
     let resp = client
         .get(format!(
             "{}/api/dashboard/sites/{}/singletons",
             server.base_url, site_id
         ))
-        .headers(auth_header(&jwt, &csrf))
+        .headers(auth_header(&token, &csrf))
         .send()
         .await
         .unwrap();
@@ -49,17 +49,17 @@ async fn test_list_singletons() {
 #[tokio::test]
 async fn test_get_singleton() {
     let server = TestServer::start().await;
-    let (jwt, csrf, site_id) = setup(&server).await;
+    let (token, csrf, site_id) = setup(&server).await;
     let client = reqwest::Client::builder().build().unwrap();
 
-    create_singleton(&server, &jwt, &csrf, &site_id, "homepage").await;
+    create_singleton(&server, &token, &csrf, &site_id, "homepage").await;
 
     let resp = client
         .get(format!(
             "{}/api/dashboard/sites/{}/singletons/homepage",
             server.base_url, site_id
         ))
-        .headers(auth_header(&jwt, &csrf))
+        .headers(auth_header(&token, &csrf))
         .send()
         .await
         .unwrap();
@@ -72,17 +72,17 @@ async fn test_get_singleton() {
 #[tokio::test]
 async fn test_update_singleton() {
     let server = TestServer::start().await;
-    let (jwt, csrf, site_id) = setup(&server).await;
+    let (token, csrf, site_id) = setup(&server).await;
     let client = reqwest::Client::builder().build().unwrap();
 
-    create_singleton(&server, &jwt, &csrf, &site_id, "about").await;
+    create_singleton(&server, &token, &csrf, &site_id, "about").await;
 
     let resp = client
         .put(format!(
             "{}/api/dashboard/sites/{}/singletons/about",
             server.base_url, site_id
         ))
-        .headers(auth_header(&jwt, &csrf))
+        .headers(auth_header(&token, &csrf))
         .json(&json!({"data": {"title": "About Us", "body": "We are awesome"}}))
         .send()
         .await
@@ -100,7 +100,7 @@ async fn test_update_singleton() {
             "{}/api/dashboard/sites/{}/entries/{}/revisions",
             server.base_url, site_id, entry_id
         ))
-        .headers(auth_header(&jwt, &csrf))
+        .headers(auth_header(&token, &csrf))
         .send()
         .await
         .unwrap();
@@ -118,7 +118,7 @@ async fn test_update_singleton() {
 #[tokio::test]
 async fn test_get_singleton_not_found() {
     let server = TestServer::start().await;
-    let (jwt, csrf, site_id) = setup(&server).await;
+    let (token, csrf, site_id) = setup(&server).await;
     let client = reqwest::Client::builder().build().unwrap();
 
     let resp = client
@@ -126,7 +126,7 @@ async fn test_get_singleton_not_found() {
             "{}/api/dashboard/sites/{}/singletons/nonexistent",
             server.base_url, site_id
         ))
-        .headers(auth_header(&jwt, &csrf))
+        .headers(auth_header(&token, &csrf))
         .send()
         .await
         .unwrap();
@@ -137,7 +137,7 @@ async fn test_get_singleton_not_found() {
 #[tokio::test]
 async fn test_get_not_a_singleton() {
     let server = TestServer::start().await;
-    let (jwt, csrf, site_id) = setup(&server).await;
+    let (token, csrf, site_id) = setup(&server).await;
     let client = reqwest::Client::builder().build().unwrap();
 
     client
@@ -145,7 +145,7 @@ async fn test_get_not_a_singleton() {
             "{}/api/dashboard/sites/{}/collections",
             server.base_url, site_id
         ))
-        .headers(auth_header(&jwt, &csrf))
+        .headers(auth_header(&token, &csrf))
         .json(&json!({
             "name": "Posts",
             "slug": "posts",
@@ -161,7 +161,7 @@ async fn test_get_not_a_singleton() {
             "{}/api/dashboard/sites/{}/singletons/posts",
             server.base_url, site_id
         ))
-        .headers(auth_header(&jwt, &csrf))
+        .headers(auth_header(&token, &csrf))
         .send()
         .await
         .unwrap();
@@ -172,7 +172,7 @@ async fn test_get_not_a_singleton() {
 #[tokio::test]
 async fn test_update_singleton_validation_failed() {
     let server = TestServer::start().await;
-    let (jwt, csrf, site_id) = setup(&server).await;
+    let (token, csrf, site_id) = setup(&server).await;
     let client = reqwest::Client::builder().build().unwrap();
 
     client
@@ -180,7 +180,7 @@ async fn test_update_singleton_validation_failed() {
             "{}/api/dashboard/sites/{}/collections",
             server.base_url, site_id
         ))
-        .headers(auth_header(&jwt, &csrf))
+        .headers(auth_header(&token, &csrf))
         .json(&json!({
             "name": "Settings",
             "slug": "settings",
@@ -196,7 +196,7 @@ async fn test_update_singleton_validation_failed() {
             "{}/api/dashboard/sites/{}/singletons/settings",
             server.base_url, site_id
         ))
-        .headers(auth_header(&jwt, &csrf))
+        .headers(auth_header(&token, &csrf))
         .json(&json!({"data": {"count": "not-a-number"}}))
         .send()
         .await

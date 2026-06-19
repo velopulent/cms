@@ -2,14 +2,14 @@ use serde_json::{Value, json};
 
 use crate::common::{TestServer, auth::auth_header, fixtures::setup};
 
-async fn create_collection(server: &TestServer, jwt: &str, csrf: &str, site_id: &str, name: &str, slug: &str) -> Value {
+async fn create_collection(server: &TestServer, token: &str, csrf: &str, site_id: &str, name: &str, slug: &str) -> Value {
     let client = reqwest::Client::builder().build().unwrap();
     let resp = client
         .post(format!(
             "{}/api/dashboard/sites/{}/collections",
             server.base_url, site_id
         ))
-        .headers(auth_header(jwt, csrf))
+        .headers(auth_header(token, csrf))
         .json(&json!({
             "name": name,
             "slug": slug,
@@ -30,7 +30,7 @@ async fn create_collection(server: &TestServer, jwt: &str, csrf: &str, site_id: 
 #[tokio::test]
 async fn test_create_collection() {
     let server = TestServer::start().await;
-    let (jwt, csrf, site_id) = setup(&server).await;
+    let (token, csrf, site_id) = setup(&server).await;
     let client = reqwest::Client::builder().build().unwrap();
 
     let resp = client
@@ -38,7 +38,7 @@ async fn test_create_collection() {
             "{}/api/dashboard/sites/{}/collections",
             server.base_url, site_id
         ))
-        .headers(auth_header(&jwt, &csrf))
+        .headers(auth_header(&token, &csrf))
         .json(&json!({
             "name": "Posts",
             "slug": "posts",
@@ -58,17 +58,17 @@ async fn test_create_collection() {
 #[tokio::test]
 async fn test_list_collections() {
     let server = TestServer::start().await;
-    let (jwt, csrf, site_id) = setup(&server).await;
+    let (token, csrf, site_id) = setup(&server).await;
     let client = reqwest::Client::builder().build().unwrap();
 
-    create_collection(&server, &jwt, &csrf, &site_id, "Posts", "posts").await;
+    create_collection(&server, &token, &csrf, &site_id, "Posts", "posts").await;
 
     let resp = client
         .get(format!(
             "{}/api/dashboard/sites/{}/collections",
             server.base_url, site_id
         ))
-        .headers(auth_header(&jwt, &csrf))
+        .headers(auth_header(&token, &csrf))
         .send()
         .await
         .unwrap();
@@ -82,17 +82,17 @@ async fn test_list_collections() {
 #[tokio::test]
 async fn test_get_collection() {
     let server = TestServer::start().await;
-    let (jwt, csrf, site_id) = setup(&server).await;
+    let (token, csrf, site_id) = setup(&server).await;
     let client = reqwest::Client::builder().build().unwrap();
 
-    create_collection(&server, &jwt, &csrf, &site_id, "Pages", "pages").await;
+    create_collection(&server, &token, &csrf, &site_id, "Pages", "pages").await;
 
     let resp = client
         .get(format!(
             "{}/api/dashboard/sites/{}/collections/pages",
             server.base_url, site_id
         ))
-        .headers(auth_header(&jwt, &csrf))
+        .headers(auth_header(&token, &csrf))
         .send()
         .await
         .unwrap();
@@ -105,7 +105,7 @@ async fn test_get_collection() {
 #[tokio::test]
 async fn test_get_collection_not_found() {
     let server = TestServer::start().await;
-    let (jwt, csrf, site_id) = setup(&server).await;
+    let (token, csrf, site_id) = setup(&server).await;
     let client = reqwest::Client::builder().build().unwrap();
 
     let resp = client
@@ -113,7 +113,7 @@ async fn test_get_collection_not_found() {
             "{}/api/dashboard/sites/{}/collections/nonexistent",
             server.base_url, site_id
         ))
-        .headers(auth_header(&jwt, &csrf))
+        .headers(auth_header(&token, &csrf))
         .send()
         .await
         .unwrap();
@@ -124,17 +124,17 @@ async fn test_get_collection_not_found() {
 #[tokio::test]
 async fn test_update_collection() {
     let server = TestServer::start().await;
-    let (jwt, csrf, site_id) = setup(&server).await;
+    let (token, csrf, site_id) = setup(&server).await;
     let client = reqwest::Client::builder().build().unwrap();
 
-    create_collection(&server, &jwt, &csrf, &site_id, "Old Name", "old-name").await;
+    create_collection(&server, &token, &csrf, &site_id, "Old Name", "old-name").await;
 
     let resp = client
         .put(format!(
             "{}/api/dashboard/sites/{}/collections/old-name",
             server.base_url, site_id
         ))
-        .headers(auth_header(&jwt, &csrf))
+        .headers(auth_header(&token, &csrf))
         .json(&json!({
             "name": "New Name",
             "slug": "new-name",
@@ -152,17 +152,17 @@ async fn test_update_collection() {
 #[tokio::test]
 async fn test_delete_collection() {
     let server = TestServer::start().await;
-    let (jwt, csrf, site_id) = setup(&server).await;
+    let (token, csrf, site_id) = setup(&server).await;
     let client = reqwest::Client::builder().build().unwrap();
 
-    create_collection(&server, &jwt, &csrf, &site_id, "To Delete", "to-delete").await;
+    create_collection(&server, &token, &csrf, &site_id, "To Delete", "to-delete").await;
 
     let resp = client
         .delete(format!(
             "{}/api/dashboard/sites/{}/collections/to-delete",
             server.base_url, site_id
         ))
-        .headers(auth_header(&jwt, &csrf))
+        .headers(auth_header(&token, &csrf))
         .send()
         .await
         .unwrap();
@@ -174,7 +174,7 @@ async fn test_delete_collection() {
             "{}/api/dashboard/sites/{}/collections/to-delete",
             server.base_url, site_id
         ))
-        .headers(auth_header(&jwt, &csrf))
+        .headers(auth_header(&token, &csrf))
         .send()
         .await
         .unwrap();
@@ -184,14 +184,14 @@ async fn test_delete_collection() {
 #[tokio::test]
 async fn test_public_api_collections() {
     let server = TestServer::start().await;
-    let (jwt, csrf, site_id) = setup(&server).await;
+    let (token, csrf, site_id) = setup(&server).await;
     let client = reqwest::Client::builder().build().unwrap();
 
-    create_collection(&server, &jwt, &csrf, &site_id, "Public Col", "public-col").await;
+    create_collection(&server, &token, &csrf, &site_id, "Public Col", "public-col").await;
 
     let token_resp = client
         .post(format!("{}/api/dashboard/sites/{}/tokens", server.base_url, site_id))
-        .headers(auth_header(&jwt, &csrf))
+        .headers(auth_header(&token, &csrf))
         .json(&json!({"name": "Test Token", "permission": "read"}))
         .send()
         .await
@@ -214,7 +214,7 @@ async fn test_public_api_collections() {
 #[tokio::test]
 async fn test_create_collection_invalid_field_type() {
     let server = TestServer::start().await;
-    let (jwt, csrf, site_id) = setup(&server).await;
+    let (token, csrf, site_id) = setup(&server).await;
     let client = reqwest::Client::builder().build().unwrap();
 
     let resp = client
@@ -222,7 +222,7 @@ async fn test_create_collection_invalid_field_type() {
             "{}/api/dashboard/sites/{}/collections",
             server.base_url, site_id
         ))
-        .headers(auth_header(&jwt, &csrf))
+        .headers(auth_header(&token, &csrf))
         .json(&json!({
             "name": "Bad Def",
             "slug": "bad-def",
@@ -245,9 +245,9 @@ async fn test_create_collection_invalid_field_type() {
 #[tokio::test]
 async fn test_create_collection_duplicate_slug() {
     let server = TestServer::start().await;
-    let (jwt, csrf, site_id) = setup(&server).await;
+    let (token, csrf, site_id) = setup(&server).await;
 
-    create_collection(&server, &jwt, &csrf, &site_id, "Posts", "posts").await;
+    create_collection(&server, &token, &csrf, &site_id, "Posts", "posts").await;
 
     let client = reqwest::Client::builder().build().unwrap();
     let resp = client
@@ -255,7 +255,7 @@ async fn test_create_collection_duplicate_slug() {
             "{}/api/dashboard/sites/{}/collections",
             server.base_url, site_id
         ))
-        .headers(auth_header(&jwt, &csrf))
+        .headers(auth_header(&token, &csrf))
         .json(&json!({
             "name": "Posts Again",
             "slug": "posts",

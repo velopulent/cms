@@ -5,12 +5,12 @@ use crate::common::{TestServer, auth::auth_header, fixtures::setup};
 #[tokio::test]
 async fn test_create_token() {
     let server = TestServer::start().await;
-    let (jwt, csrf, site_id) = setup(&server).await;
+    let (token, csrf, site_id) = setup(&server).await;
     let client = reqwest::Client::builder().build().unwrap();
 
     let resp = client
         .post(format!("{}/api/dashboard/sites/{}/tokens", server.base_url, site_id))
-        .headers(auth_header(&jwt, &csrf))
+        .headers(auth_header(&token, &csrf))
         .json(&json!({"name": "Test Token", "permission": "read"}))
         .send()
         .await
@@ -26,12 +26,12 @@ async fn test_create_token() {
 #[tokio::test]
 async fn test_list_tokens() {
     let server = TestServer::start().await;
-    let (jwt, csrf, site_id) = setup(&server).await;
+    let (token, csrf, site_id) = setup(&server).await;
     let client = reqwest::Client::builder().build().unwrap();
 
     client
         .post(format!("{}/api/dashboard/sites/{}/tokens", server.base_url, site_id))
-        .headers(auth_header(&jwt, &csrf))
+        .headers(auth_header(&token, &csrf))
         .json(&json!({"name": "Token One", "permission": "read"}))
         .send()
         .await
@@ -39,7 +39,7 @@ async fn test_list_tokens() {
 
     let resp = client
         .get(format!("{}/api/dashboard/sites/{}/tokens", server.base_url, site_id))
-        .headers(auth_header(&jwt, &csrf))
+        .headers(auth_header(&token, &csrf))
         .send()
         .await
         .unwrap();
@@ -53,12 +53,12 @@ async fn test_list_tokens() {
 #[tokio::test]
 async fn test_delete_token() {
     let server = TestServer::start().await;
-    let (jwt, csrf, site_id) = setup(&server).await;
+    let (token, csrf, site_id) = setup(&server).await;
     let client = reqwest::Client::builder().build().unwrap();
 
     let create_resp = client
         .post(format!("{}/api/dashboard/sites/{}/tokens", server.base_url, site_id))
-        .headers(auth_header(&jwt, &csrf))
+        .headers(auth_header(&token, &csrf))
         .json(&json!({"name": "To Delete", "permission": "write"}))
         .send()
         .await
@@ -71,7 +71,7 @@ async fn test_delete_token() {
             "{}/api/dashboard/sites/{}/tokens/{}",
             server.base_url, site_id, token_id
         ))
-        .headers(auth_header(&jwt, &csrf))
+        .headers(auth_header(&token, &csrf))
         .send()
         .await
         .unwrap();
@@ -82,12 +82,12 @@ async fn test_delete_token() {
 #[tokio::test]
 async fn test_create_token_empty_name() {
     let server = TestServer::start().await;
-    let (jwt, csrf, site_id) = setup(&server).await;
+    let (token, csrf, site_id) = setup(&server).await;
     let client = reqwest::Client::builder().build().unwrap();
 
     let resp = client
         .post(format!("{}/api/dashboard/sites/{}/tokens", server.base_url, site_id))
-        .headers(auth_header(&jwt, &csrf))
+        .headers(auth_header(&token, &csrf))
         .json(&json!({"name": "   ", "permission": "read"}))
         .send()
         .await
@@ -99,12 +99,12 @@ async fn test_create_token_empty_name() {
 #[tokio::test]
 async fn test_token_can_authenticate_public_api() {
     let server = TestServer::start().await;
-    let (jwt, csrf, site_id) = setup(&server).await;
+    let (token, csrf, site_id) = setup(&server).await;
     let client = reqwest::Client::builder().build().unwrap();
 
     let token_resp = client
         .post(format!("{}/api/dashboard/sites/{}/tokens", server.base_url, site_id))
-        .headers(auth_header(&jwt, &csrf))
+        .headers(auth_header(&token, &csrf))
         .json(&json!({"name": "API Key", "permission": "read"}))
         .send()
         .await

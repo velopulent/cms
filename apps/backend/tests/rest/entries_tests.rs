@@ -2,14 +2,14 @@ use serde_json::{Value, json};
 
 use crate::common::{TestServer, auth::auth_header, fixtures::setup};
 
-async fn create_collection_and_get_id(server: &TestServer, jwt: &str, csrf: &str, site_id: &str) -> String {
+async fn create_collection_and_get_id(server: &TestServer, token: &str, csrf: &str, site_id: &str) -> String {
     let client = reqwest::Client::builder().build().unwrap();
     let resp = client
         .post(format!(
             "{}/api/dashboard/sites/{}/collections",
             server.base_url, site_id
         ))
-        .headers(auth_header(jwt, csrf))
+        .headers(auth_header(token, csrf))
         .json(&json!({
             "name": "Posts",
             "slug": "posts",
@@ -24,7 +24,7 @@ async fn create_collection_and_get_id(server: &TestServer, jwt: &str, csrf: &str
 
 async fn create_entry(
     server: &TestServer,
-    jwt: &str,
+    token: &str,
     csrf: &str,
     site_id: &str,
     collection_id: &str,
@@ -34,7 +34,7 @@ async fn create_entry(
     let client = reqwest::Client::builder().build().unwrap();
     let resp = client
         .post(format!("{}/api/dashboard/sites/{}/entries", server.base_url, site_id))
-        .headers(auth_header(jwt, csrf))
+        .headers(auth_header(token, csrf))
         .json(&json!({
             "collection_id": collection_id,
             "slug": slug,
@@ -55,12 +55,12 @@ async fn create_entry(
 #[tokio::test]
 async fn test_create_entry() {
     let server = TestServer::start().await;
-    let (jwt, csrf, site_id) = setup(&server).await;
-    let col_id = create_collection_and_get_id(&server, &jwt, &csrf, &site_id).await;
+    let (token, csrf, site_id) = setup(&server).await;
+    let col_id = create_collection_and_get_id(&server, &token, &csrf, &site_id).await;
 
     let entry = create_entry(
         &server,
-        &jwt,
+        &token,
         &csrf,
         &site_id,
         &col_id,
@@ -75,13 +75,13 @@ async fn test_create_entry() {
 #[tokio::test]
 async fn test_list_entries() {
     let server = TestServer::start().await;
-    let (jwt, csrf, site_id) = setup(&server).await;
-    let col_id = create_collection_and_get_id(&server, &jwt, &csrf, &site_id).await;
+    let (token, csrf, site_id) = setup(&server).await;
+    let col_id = create_collection_and_get_id(&server, &token, &csrf, &site_id).await;
     let client = reqwest::Client::builder().build().unwrap();
 
     create_entry(
         &server,
-        &jwt,
+        &token,
         &csrf,
         &site_id,
         &col_id,
@@ -92,7 +92,7 @@ async fn test_list_entries() {
 
     let resp = client
         .get(format!("{}/api/dashboard/sites/{}/entries", server.base_url, site_id))
-        .headers(auth_header(&jwt, &csrf))
+        .headers(auth_header(&token, &csrf))
         .send()
         .await
         .unwrap();
@@ -103,13 +103,13 @@ async fn test_list_entries() {
 #[tokio::test]
 async fn test_list_entries_with_search() {
     let server = TestServer::start().await;
-    let (jwt, csrf, site_id) = setup(&server).await;
-    let col_id = create_collection_and_get_id(&server, &jwt, &csrf, &site_id).await;
+    let (token, csrf, site_id) = setup(&server).await;
+    let col_id = create_collection_and_get_id(&server, &token, &csrf, &site_id).await;
     let client = reqwest::Client::builder().build().unwrap();
 
     let entry = create_entry(
         &server,
-        &jwt,
+        &token,
         &csrf,
         &site_id,
         &col_id,
@@ -124,7 +124,7 @@ async fn test_list_entries_with_search() {
             "{}/api/dashboard/sites/{}/entries/{}/publish",
             server.base_url, site_id, entry_id
         ))
-        .headers(auth_header(&jwt, &csrf))
+        .headers(auth_header(&token, &csrf))
         .send()
         .await
         .unwrap();
@@ -140,7 +140,7 @@ async fn test_list_entries_with_search() {
             "{}/api/dashboard/sites/{}/entries?search=Unique",
             server.base_url, site_id
         ))
-        .headers(auth_header(&jwt, &csrf))
+        .headers(auth_header(&token, &csrf))
         .send()
         .await
         .unwrap();
@@ -160,14 +160,14 @@ async fn test_list_entries_with_search() {
 
 /// GET entries with a `search` query, returning the matching slugs in result
 /// (rank) order.
-async fn search_slugs(server: &TestServer, jwt: &str, csrf: &str, site_id: &str, query: &str) -> Vec<String> {
+async fn search_slugs(server: &TestServer, token: &str, csrf: &str, site_id: &str, query: &str) -> Vec<String> {
     let client = reqwest::Client::builder().build().unwrap();
     let resp = client
         .get(format!(
             "{}/api/dashboard/sites/{}/entries?search={}",
             server.base_url, site_id, query
         ))
-        .headers(auth_header(jwt, csrf))
+        .headers(auth_header(token, csrf))
         .send()
         .await
         .unwrap();
@@ -186,7 +186,7 @@ async fn search_slugs(server: &TestServer, jwt: &str, csrf: &str, site_id: &str,
 /// observed slugs.
 async fn search_until(
     server: &TestServer,
-    jwt: &str,
+    token: &str,
     csrf: &str,
     site_id: &str,
     query: &str,
@@ -194,7 +194,7 @@ async fn search_until(
 ) -> Vec<String> {
     let mut slugs = Vec::new();
     for _ in 0..100 {
-        slugs = search_slugs(server, jwt, csrf, site_id, query).await;
+        slugs = search_slugs(server, token, csrf, site_id, query).await;
         if pred(&slugs) {
             return slugs;
         }
@@ -206,12 +206,12 @@ async fn search_until(
 #[tokio::test]
 async fn test_search_stemmed_match_like_would_miss() {
     let server = TestServer::start_with_search().await;
-    let (jwt, csrf, site_id) = setup(&server).await;
-    let col_id = create_collection_and_get_id(&server, &jwt, &csrf, &site_id).await;
+    let (token, csrf, site_id) = setup(&server).await;
+    let col_id = create_collection_and_get_id(&server, &token, &csrf, &site_id).await;
 
     create_entry(
         &server,
-        &jwt,
+        &token,
         &csrf,
         &site_id,
         &col_id,
@@ -222,7 +222,7 @@ async fn test_search_stemmed_match_like_would_miss() {
 
     // Stemming reduces both "running" and "run" to the same root. A SQL
     // LIKE '%running%' over the stored text "...run" would find nothing.
-    let slugs = search_until(&server, &jwt, &csrf, &site_id, "running", |s| {
+    let slugs = search_until(&server, &token, &csrf, &site_id, "running", |s| {
         s.contains(&"runner".to_string())
     })
     .await;
@@ -236,12 +236,12 @@ async fn test_search_stemmed_match_like_would_miss() {
 #[tokio::test]
 async fn test_search_ranks_by_relevance() {
     let server = TestServer::start_with_search().await;
-    let (jwt, csrf, site_id) = setup(&server).await;
-    let col_id = create_collection_and_get_id(&server, &jwt, &csrf, &site_id).await;
+    let (token, csrf, site_id) = setup(&server).await;
+    let col_id = create_collection_and_get_id(&server, &token, &csrf, &site_id).await;
 
     create_entry(
         &server,
-        &jwt,
+        &token,
         &csrf,
         &site_id,
         &col_id,
@@ -251,7 +251,7 @@ async fn test_search_ranks_by_relevance() {
     .await;
     create_entry(
         &server,
-        &jwt,
+        &token,
         &csrf,
         &site_id,
         &col_id,
@@ -261,7 +261,7 @@ async fn test_search_ranks_by_relevance() {
     .await;
 
     // Wait until both are indexed, then assert the higher term-frequency one ranks first.
-    let slugs = search_until(&server, &jwt, &csrf, &site_id, "alpha", |s| s.len() >= 2).await;
+    let slugs = search_until(&server, &token, &csrf, &site_id, "alpha", |s| s.len() >= 2).await;
     assert_eq!(
         slugs.first().map(String::as_str),
         Some("dense"),
@@ -273,12 +273,12 @@ async fn test_search_ranks_by_relevance() {
 #[tokio::test]
 async fn test_search_index_syncs_on_delete() {
     let server = TestServer::start_with_search().await;
-    let (jwt, csrf, site_id) = setup(&server).await;
-    let col_id = create_collection_and_get_id(&server, &jwt, &csrf, &site_id).await;
+    let (token, csrf, site_id) = setup(&server).await;
+    let col_id = create_collection_and_get_id(&server, &token, &csrf, &site_id).await;
 
     let entry = create_entry(
         &server,
-        &jwt,
+        &token,
         &csrf,
         &site_id,
         &col_id,
@@ -289,7 +289,7 @@ async fn test_search_index_syncs_on_delete() {
     let entry_id = entry["id"].as_str().unwrap();
 
     // Becomes searchable once the indexer drains the enqueued write.
-    let present = search_until(&server, &jwt, &csrf, &site_id, "vanishing", |s| {
+    let present = search_until(&server, &token, &csrf, &site_id, "vanishing", |s| {
         s.contains(&"ephemeral".to_string())
     })
     .await;
@@ -301,14 +301,14 @@ async fn test_search_index_syncs_on_delete() {
             "{}/api/dashboard/sites/{}/entries/{}",
             server.base_url, site_id, entry_id
         ))
-        .headers(auth_header(&jwt, &csrf))
+        .headers(auth_header(&token, &csrf))
         .send()
         .await
         .unwrap();
     assert!(resp.status().is_success(), "delete failed: {}", resp.status());
 
     // And drops out of the index once the delete is drained.
-    let after = search_until(&server, &jwt, &csrf, &site_id, "vanishing", |s| s.is_empty()).await;
+    let after = search_until(&server, &token, &csrf, &site_id, "vanishing", |s| s.is_empty()).await;
     assert!(
         after.is_empty(),
         "entry should be gone from the index after deletion: {:?}",
@@ -319,7 +319,7 @@ async fn test_search_index_syncs_on_delete() {
 #[tokio::test]
 async fn test_create_entry_validation_failed_missing_required() {
     let server = TestServer::start().await;
-    let (jwt, csrf, site_id) = setup(&server).await;
+    let (token, csrf, site_id) = setup(&server).await;
     let client = reqwest::Client::builder().build().unwrap();
 
     let resp = client
@@ -327,7 +327,7 @@ async fn test_create_entry_validation_failed_missing_required() {
             "{}/api/dashboard/sites/{}/collections",
             server.base_url, site_id
         ))
-        .headers(auth_header(&jwt, &csrf))
+        .headers(auth_header(&token, &csrf))
         .json(&json!({
             "name": "Required Fields",
             "slug": "required-fields",
@@ -341,7 +341,7 @@ async fn test_create_entry_validation_failed_missing_required() {
 
     let resp = client
         .post(format!("{}/api/dashboard/sites/{}/entries", server.base_url, site_id))
-        .headers(auth_header(&jwt, &csrf))
+        .headers(auth_header(&token, &csrf))
         .json(&json!({
             "collection_id": col_id,
             "slug": "missing-title",
@@ -364,7 +364,7 @@ async fn test_create_entry_validation_failed_missing_required() {
 #[tokio::test]
 async fn test_create_entry_validation_failed_wrong_type() {
     let server = TestServer::start().await;
-    let (jwt, csrf, site_id) = setup(&server).await;
+    let (token, csrf, site_id) = setup(&server).await;
     let client = reqwest::Client::builder().build().unwrap();
 
     let resp = client
@@ -372,7 +372,7 @@ async fn test_create_entry_validation_failed_wrong_type() {
             "{}/api/dashboard/sites/{}/collections",
             server.base_url, site_id
         ))
-        .headers(auth_header(&jwt, &csrf))
+        .headers(auth_header(&token, &csrf))
         .json(&json!({
             "name": "Number Field",
             "slug": "number-field",
@@ -386,7 +386,7 @@ async fn test_create_entry_validation_failed_wrong_type() {
 
     let resp = client
         .post(format!("{}/api/dashboard/sites/{}/entries", server.base_url, site_id))
-        .headers(auth_header(&jwt, &csrf))
+        .headers(auth_header(&token, &csrf))
         .json(&json!({
             "collection_id": col_id,
             "slug": "wrong-type",
@@ -409,12 +409,12 @@ async fn test_create_entry_validation_failed_wrong_type() {
 #[tokio::test]
 async fn test_create_entry_invalid_collection() {
     let server = TestServer::start().await;
-    let (jwt, csrf, site_id) = setup(&server).await;
+    let (token, csrf, site_id) = setup(&server).await;
     let client = reqwest::Client::builder().build().unwrap();
 
     let resp = client
         .post(format!("{}/api/dashboard/sites/{}/entries", server.base_url, site_id))
-        .headers(auth_header(&jwt, &csrf))
+        .headers(auth_header(&token, &csrf))
         .json(&json!({
             "collection_id": "nonexistent-collection",
             "slug": "orphan",
@@ -435,13 +435,13 @@ async fn test_create_entry_invalid_collection() {
 #[tokio::test]
 async fn test_get_entry() {
     let server = TestServer::start().await;
-    let (jwt, csrf, site_id) = setup(&server).await;
-    let col_id = create_collection_and_get_id(&server, &jwt, &csrf, &site_id).await;
+    let (token, csrf, site_id) = setup(&server).await;
+    let col_id = create_collection_and_get_id(&server, &token, &csrf, &site_id).await;
     let client = reqwest::Client::builder().build().unwrap();
 
     let entry = create_entry(
         &server,
-        &jwt,
+        &token,
         &csrf,
         &site_id,
         &col_id,
@@ -456,7 +456,7 @@ async fn test_get_entry() {
             "{}/api/dashboard/sites/{}/entries/{}",
             server.base_url, site_id, entry_id
         ))
-        .headers(auth_header(&jwt, &csrf))
+        .headers(auth_header(&token, &csrf))
         .send()
         .await
         .unwrap();
@@ -467,13 +467,13 @@ async fn test_get_entry() {
 #[tokio::test]
 async fn test_update_entry() {
     let server = TestServer::start().await;
-    let (jwt, csrf, site_id) = setup(&server).await;
-    let col_id = create_collection_and_get_id(&server, &jwt, &csrf, &site_id).await;
+    let (token, csrf, site_id) = setup(&server).await;
+    let col_id = create_collection_and_get_id(&server, &token, &csrf, &site_id).await;
     let client = reqwest::Client::builder().build().unwrap();
 
     let entry = create_entry(
         &server,
-        &jwt,
+        &token,
         &csrf,
         &site_id,
         &col_id,
@@ -488,7 +488,7 @@ async fn test_update_entry() {
             "{}/api/dashboard/sites/{}/entries/{}",
             server.base_url, site_id, entry_id
         ))
-        .headers(auth_header(&jwt, &csrf))
+        .headers(auth_header(&token, &csrf))
         .json(&json!({"data": {"title": "Updated"}}))
         .send()
         .await
@@ -503,13 +503,13 @@ async fn test_update_entry() {
 #[tokio::test]
 async fn test_publish_entry() {
     let server = TestServer::start().await;
-    let (jwt, csrf, site_id) = setup(&server).await;
-    let col_id = create_collection_and_get_id(&server, &jwt, &csrf, &site_id).await;
+    let (token, csrf, site_id) = setup(&server).await;
+    let col_id = create_collection_and_get_id(&server, &token, &csrf, &site_id).await;
     let client = reqwest::Client::builder().build().unwrap();
 
     let entry = create_entry(
         &server,
-        &jwt,
+        &token,
         &csrf,
         &site_id,
         &col_id,
@@ -524,7 +524,7 @@ async fn test_publish_entry() {
             "{}/api/dashboard/sites/{}/entries/{}/publish",
             server.base_url, site_id, entry_id
         ))
-        .headers(auth_header(&jwt, &csrf))
+        .headers(auth_header(&token, &csrf))
         .send()
         .await
         .unwrap();
@@ -537,13 +537,13 @@ async fn test_publish_entry() {
 #[tokio::test]
 async fn test_unpublish_entry() {
     let server = TestServer::start().await;
-    let (jwt, csrf, site_id) = setup(&server).await;
-    let col_id = create_collection_and_get_id(&server, &jwt, &csrf, &site_id).await;
+    let (token, csrf, site_id) = setup(&server).await;
+    let col_id = create_collection_and_get_id(&server, &token, &csrf, &site_id).await;
     let client = reqwest::Client::builder().build().unwrap();
 
     let entry = create_entry(
         &server,
-        &jwt,
+        &token,
         &csrf,
         &site_id,
         &col_id,
@@ -558,7 +558,7 @@ async fn test_unpublish_entry() {
             "{}/api/dashboard/sites/{}/entries/{}/publish",
             server.base_url, site_id, entry_id
         ))
-        .headers(auth_header(&jwt, &csrf))
+        .headers(auth_header(&token, &csrf))
         .send()
         .await
         .unwrap();
@@ -574,7 +574,7 @@ async fn test_unpublish_entry() {
             "{}/api/dashboard/sites/{}/entries/{}/unpublish",
             server.base_url, site_id, entry_id
         ))
-        .headers(auth_header(&jwt, &csrf))
+        .headers(auth_header(&token, &csrf))
         .send()
         .await
         .unwrap();
@@ -587,13 +587,13 @@ async fn test_unpublish_entry() {
 #[tokio::test]
 async fn test_delete_entry() {
     let server = TestServer::start().await;
-    let (jwt, csrf, site_id) = setup(&server).await;
-    let col_id = create_collection_and_get_id(&server, &jwt, &csrf, &site_id).await;
+    let (token, csrf, site_id) = setup(&server).await;
+    let col_id = create_collection_and_get_id(&server, &token, &csrf, &site_id).await;
     let client = reqwest::Client::builder().build().unwrap();
 
     let entry = create_entry(
         &server,
-        &jwt,
+        &token,
         &csrf,
         &site_id,
         &col_id,
@@ -608,7 +608,7 @@ async fn test_delete_entry() {
             "{}/api/dashboard/sites/{}/entries/{}",
             server.base_url, site_id, entry_id
         ))
-        .headers(auth_header(&jwt, &csrf))
+        .headers(auth_header(&token, &csrf))
         .send()
         .await
         .unwrap();
@@ -619,13 +619,13 @@ async fn test_delete_entry() {
 #[tokio::test]
 async fn test_list_revisions() {
     let server = TestServer::start().await;
-    let (jwt, csrf, site_id) = setup(&server).await;
-    let col_id = create_collection_and_get_id(&server, &jwt, &csrf, &site_id).await;
+    let (token, csrf, site_id) = setup(&server).await;
+    let col_id = create_collection_and_get_id(&server, &token, &csrf, &site_id).await;
     let client = reqwest::Client::builder().build().unwrap();
 
     let entry = create_entry(
         &server,
-        &jwt,
+        &token,
         &csrf,
         &site_id,
         &col_id,
@@ -640,7 +640,7 @@ async fn test_list_revisions() {
             "{}/api/dashboard/sites/{}/entries/{}",
             server.base_url, site_id, entry_id
         ))
-        .headers(auth_header(&jwt, &csrf))
+        .headers(auth_header(&token, &csrf))
         .json(&json!({"data": {"title": "V2"}}))
         .send()
         .await
@@ -657,7 +657,7 @@ async fn test_list_revisions() {
             "{}/api/dashboard/sites/{}/entries/{}/revisions",
             server.base_url, site_id, entry_id
         ))
-        .headers(auth_header(&jwt, &csrf))
+        .headers(auth_header(&token, &csrf))
         .send()
         .await
         .unwrap();
@@ -671,13 +671,13 @@ async fn test_list_revisions() {
 #[tokio::test]
 async fn test_restore_revision() {
     let server = TestServer::start().await;
-    let (jwt, csrf, site_id) = setup(&server).await;
-    let col_id = create_collection_and_get_id(&server, &jwt, &csrf, &site_id).await;
+    let (token, csrf, site_id) = setup(&server).await;
+    let col_id = create_collection_and_get_id(&server, &token, &csrf, &site_id).await;
     let client = reqwest::Client::builder().build().unwrap();
 
     let entry = create_entry(
         &server,
-        &jwt,
+        &token,
         &csrf,
         &site_id,
         &col_id,
@@ -692,7 +692,7 @@ async fn test_restore_revision() {
             "{}/api/dashboard/sites/{}/entries/{}",
             server.base_url, site_id, entry_id
         ))
-        .headers(auth_header(&jwt, &csrf))
+        .headers(auth_header(&token, &csrf))
         .json(&json!({"data": {"title": "Changed"}}))
         .send()
         .await
@@ -709,7 +709,7 @@ async fn test_restore_revision() {
             "{}/api/dashboard/sites/{}/entries/{}/revisions/1/restore",
             server.base_url, site_id, entry_id
         ))
-        .headers(auth_header(&jwt, &csrf))
+        .headers(auth_header(&token, &csrf))
         .send()
         .await
         .unwrap();
