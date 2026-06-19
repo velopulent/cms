@@ -100,7 +100,7 @@ pub async fn dashboard_site_resolver(request: Request, next: Next) -> Response {
 
     let auth = AuthContext {
         actor,
-        auth_method: AuthMethod::JwtSession,
+        auth_method: AuthMethod::Session,
     };
 
     let ctx = RequestContext { site_id, auth };
