@@ -473,7 +473,10 @@ impl BackupService {
                 self.build_site_restore_plan(&manifest, &tables, &[site_id.clone()], *import_as_new, &req)
                     .await?
             }
-            RestoreTarget::Sites { site_ids, import_as_new } => {
+            RestoreTarget::Sites {
+                site_ids,
+                import_as_new,
+            } => {
                 if site_ids.is_empty() {
                     return Err(BackupError::Invalid("site restore requires at least one site".into()));
                 }
