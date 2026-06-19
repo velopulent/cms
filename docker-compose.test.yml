@@ -1,0 +1,39 @@
+# Local databases for running the integration suite against Postgres and MySQL.
+#
+#   docker compose -f docker-compose.test.yml up -d
+#   bun run test:pg      # or: bun run test:mysql
+#   docker compose -f docker-compose.test.yml down -v
+#
+# Credentials/ports here match the TEST_DATABASE_URL defaults baked into
+# apps/backend/tests/common/test_db.rs, so the scripts work with no extra env.
+
+services:
+  postgres:
+    image: postgres:16
+    # Raise the connection ceiling: tests run database-per-test with many servers
+    # in parallel. The per-test pool is tiny (2), so standard machines stay well
+    # under even the default 100 — this is headroom for very-high-core dev boxes.
+    command: ["postgres", "-c", "max_connections=300"]
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: postgres
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 2s
+      timeout: 5s
+      retries: 15
+
+  mysql:
+    image: mysql:8
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+    ports:
+      - "3306:3306"
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-uroot", "-proot"]
+      interval: 2s
+      timeout: 5s
+      retries: 15
