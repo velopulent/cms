@@ -7,15 +7,15 @@ use super::client::http_client;
 use super::server::TestServer;
 
 /// Log in as the seeded admin and create a filesystem-backed "Test Site".
-/// Returns `(jwt, csrf, site_id)` — the common starting point for dashboard tests.
+/// Returns `(token, csrf, site_id)` — the common starting point for dashboard tests.
 pub async fn setup(server: &TestServer) -> (String, String, String) {
     let client = http_client();
     let resp = server.login_user(&client, "admin", "admin").await;
-    let (jwt, csrf) = extract_cookies(&resp);
+    let (token, csrf) = extract_cookies(&resp);
 
     let resp = client
         .post(format!("{}/api/dashboard/sites", server.base_url))
-        .headers(auth_header(&jwt, &csrf))
+        .headers(auth_header(&token, &csrf))
         .json(&json!({"name": "Test Site", "storage_provider": "filesystem"}))
         .send()
         .await
@@ -23,7 +23,7 @@ pub async fn setup(server: &TestServer) -> (String, String, String) {
     let site: serde_json::Value = resp.json().await.unwrap();
     let site_id = site["id"].as_str().unwrap().to_string();
 
-    (jwt, csrf, site_id)
+    (token, csrf, site_id)
 }
 
 /// Log in as admin, create a site, and mint a site access token with the given
@@ -31,11 +31,11 @@ pub async fn setup(server: &TestServer) -> (String, String, String) {
 pub async fn create_site_and_token(server: &TestServer, permission: &str) -> (String, String) {
     let client = http_client();
     let resp = server.login_user(&client, "admin", "admin").await;
-    let (jwt, csrf) = extract_cookies(&resp);
+    let (token, csrf) = extract_cookies(&resp);
 
     let resp = client
         .post(format!("{}/api/dashboard/sites", server.base_url))
-        .headers(auth_header(&jwt, &csrf))
+        .headers(auth_header(&token, &csrf))
         .json(&json!({"name": "Test Site", "storage_provider": "filesystem"}))
         .send()
         .await
@@ -51,7 +51,7 @@ pub async fn create_site_and_token(server: &TestServer, permission: &str) -> (St
 
     let resp = client
         .post(format!("{}/api/dashboard/sites/{}/tokens", server.base_url, site_id))
-        .headers(auth_header(&jwt, &csrf))
+        .headers(auth_header(&token, &csrf))
         .json(&json!({"name": "Test Token", "permission": permission}))
         .send()
         .await

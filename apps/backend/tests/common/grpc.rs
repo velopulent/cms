@@ -203,12 +203,12 @@ impl GrpcTestContext {
             .await
             .expect("Failed to login");
 
-        let (jwt, csrf) = extract_cookies(&resp);
+        let (token, csrf) = extract_cookies(&resp);
 
         // Create site
         let resp = client
             .post(format!("{}/api/dashboard/sites", self.rest_base_url))
-            .header("Cookie", format!("token={}; csrf={}", jwt, csrf))
+            .header("Cookie", format!("token={}; csrf={}", token, csrf))
             .header("X-CSRF-Token", &csrf)
             .json(&serde_json::json!({"name": "Test Site", "storage_provider": "filesystem"}))
             .send()
@@ -220,7 +220,7 @@ impl GrpcTestContext {
         // Create access token
         let resp = client
             .post(format!("{}/api/dashboard/sites/{}/tokens", self.rest_base_url, site_id))
-            .header("Cookie", format!("token={}; csrf={}", jwt, csrf))
+            .header("Cookie", format!("token={}; csrf={}", token, csrf))
             .header("X-CSRF-Token", &csrf)
             .json(&serde_json::json!({"name": "Test Token", "permission": "write"}))
             .send()
@@ -251,7 +251,7 @@ impl GrpcTestContext {
             .await
             .expect("Failed to login");
 
-        let (jwt, csrf) = extract_cookies(&resp);
+        let (token, csrf) = extract_cookies(&resp);
 
         let part = reqwest::multipart::Part::bytes(content.to_vec())
             .file_name(filename.to_string())
@@ -264,7 +264,7 @@ impl GrpcTestContext {
 
         let resp = client
             .post(format!("{}/api/dashboard/sites/{}/files", self.rest_base_url, site_id))
-            .header("Cookie", format!("token={}; csrf={}", jwt, csrf))
+            .header("Cookie", format!("token={}; csrf={}", token, csrf))
             .header("X-CSRF-Token", &csrf)
             .multipart(form)
             .send()
