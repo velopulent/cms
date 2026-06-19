@@ -77,7 +77,7 @@ CREATE TABLE IF NOT EXISTS access_tokens (
     id VARCHAR(36) PRIMARY KEY NOT NULL,
     site_id VARCHAR(36) NOT NULL,
     name VARCHAR(255) NOT NULL,
-    token_hash TEXT NOT NULL,
+    token_hash VARCHAR(255) NOT NULL,
     token_prefix VARCHAR(64) NOT NULL,
     token_hmac TEXT,
     permission VARCHAR(20) NOT NULL,
