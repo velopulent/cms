@@ -9,12 +9,12 @@ async fn setup(server: &TestServer) -> (String, String) {
 
     let resp = server.login_user(&client, "admin", "admin").await;
     let headers = resp.headers();
-    let mut jwt = String::new();
+    let mut token = String::new();
     let mut csrf = String::new();
     for cookie in headers.get_all("set-cookie").iter() {
         if let Ok(val) = cookie.to_str() {
             if val.starts_with("token=") {
-                jwt = val
+                token = val
                     .split(';')
                     .next()
                     .and_then(|c| c.strip_prefix("token="))
@@ -34,7 +34,7 @@ async fn setup(server: &TestServer) -> (String, String) {
 
     let resp = client
         .post(format!("{}/api/dashboard/sites", server.base_url))
-        .header("Cookie", format!("token={}; csrf={}", jwt, csrf))
+        .header("Cookie", format!("token={}; csrf={}", token, csrf))
         .header("X-CSRF-Token", &csrf)
         .json(&json!({"name": "Webhook Site", "storage_provider": "filesystem"}))
         .send()
@@ -45,7 +45,7 @@ async fn setup(server: &TestServer) -> (String, String) {
 
     let resp = client
         .post(format!("{}/api/dashboard/sites/{}/tokens", server.base_url, site_id))
-        .header("Cookie", format!("token={}; csrf={}", jwt, csrf))
+        .header("Cookie", format!("token={}; csrf={}", token, csrf))
         .header("X-CSRF-Token", &csrf)
         .json(&json!({"name": "Token", "permission": "write"}))
         .send()
