@@ -61,7 +61,7 @@ impl Actor {
 
 #[derive(Debug, Clone)]
 pub enum AuthMethod {
-    JwtSession,
+    Session,
     ApiKey,
 }
 
@@ -138,7 +138,7 @@ where
             let user = verify_session(&token, &repository, &config.hmac_secret).await?;
             return Ok(AuthContext {
                 actor: Actor::User(user),
-                auth_method: AuthMethod::JwtSession,
+                auth_method: AuthMethod::Session,
             });
         }
 
