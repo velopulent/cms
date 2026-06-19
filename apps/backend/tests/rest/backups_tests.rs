@@ -402,9 +402,15 @@ async fn inspect_lists_sites_and_multi_site_restore_round_trips() {
     assert_eq!(inspected["scope"], "instance");
     let sites = inspected["sites"].as_array().unwrap();
     let ids: Vec<&str> = sites.iter().filter_map(|s| s["id"].as_str()).collect();
-    assert!(ids.contains(&site_a.as_str()) && ids.contains(&site_b.as_str()), "both sites listed");
+    assert!(
+        ids.contains(&site_a.as_str()) && ids.contains(&site_b.as_str()),
+        "both sites listed"
+    );
     let names: Vec<&str> = sites.iter().filter_map(|s| s["name"].as_str()).collect();
-    assert!(names.contains(&"Alpha") && names.contains(&"Bravo"), "site names surfaced");
+    assert!(
+        names.contains(&"Alpha") && names.contains(&"Bravo"),
+        "site names surfaced"
+    );
 
     // Wipe both entries.
     delete_entry(&server, &jwt, &csrf, &site_a, &entry_a).await;
