@@ -47,7 +47,6 @@ impl StdioClient {
             .args(["mcp", "stdio"])
             .env_remove("DATABASE_URL")
             .env_remove("HMAC_SECRET")
-            .env_remove("JWT_SECRET")
             .env("CMS_HOME", home)
             .env("CMS_MCP_TOKEN", token)
             .env("DB_MIN_CONNECTIONS", "1")
@@ -151,7 +150,7 @@ async fn setup_home_instance(home: &std::path::Path) -> String {
     let hmac_secret = "home-instance-hmac-secret".to_string();
     std::fs::write(
         home.join("secrets.toml"),
-        format!("jwt_secret = \"home-instance-jwt-secret\"\nhmac_secret = \"{hmac_secret}\"\n"),
+        format!("hmac_secret = \"{hmac_secret}\"\n"),
     )
     .expect("write secrets.toml");
 
