@@ -13,6 +13,8 @@
     "dev:web": "nx run web:dev",
     "run": "nx run backend:run",
     "test": "nx run backend:test",
+    "test:pg": "nx run backend:test:pg",
+    "test:mysql": "nx run backend:test:mysql",
     "test:dashboard": "nx run dashboard:typecheck",
     "lint": "nx run-many -t lint",
     "format": "nx run-many -t format"
