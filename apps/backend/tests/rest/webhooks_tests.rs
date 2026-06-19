@@ -7,12 +7,12 @@ use crate::common::{TestServer, auth::auth_header, fixtures::setup};
 #[tokio::test]
 async fn test_create_webhook() {
     let server = TestServer::start().await;
-    let (jwt, csrf, site_id) = setup(&server).await;
+    let (token, csrf, site_id) = setup(&server).await;
     let client = reqwest::Client::builder().build().unwrap();
 
     let resp = client
         .post(format!("{}/api/dashboard/sites/{}/webhooks", server.base_url, site_id))
-        .headers(auth_header(&jwt, &csrf))
+        .headers(auth_header(&token, &csrf))
         .json(&json!({
             "label": "Test Hook",
             "url": "https://example.com/hook",
@@ -29,12 +29,12 @@ async fn test_create_webhook() {
 #[tokio::test]
 async fn test_list_webhooks() {
     let server = TestServer::start().await;
-    let (jwt, csrf, site_id) = setup(&server).await;
+    let (token, csrf, site_id) = setup(&server).await;
     let client = reqwest::Client::builder().build().unwrap();
 
     let resp = client
         .post(format!("{}/api/dashboard/sites/{}/webhooks", server.base_url, site_id))
-        .headers(auth_header(&jwt, &csrf))
+        .headers(auth_header(&token, &csrf))
         .json(&json!({"label": "Hook 1", "url": "https://example.com/h1"}))
         .send()
         .await
@@ -49,7 +49,7 @@ async fn test_list_webhooks() {
 
     let resp = client
         .get(format!("{}/api/dashboard/sites/{}/webhooks", server.base_url, site_id))
-        .headers(auth_header(&jwt, &csrf))
+        .headers(auth_header(&token, &csrf))
         .send()
         .await
         .unwrap();
@@ -63,12 +63,12 @@ async fn test_list_webhooks() {
 #[tokio::test]
 async fn test_get_webhook() {
     let server = TestServer::start().await;
-    let (jwt, csrf, site_id) = setup(&server).await;
+    let (token, csrf, site_id) = setup(&server).await;
     let client = reqwest::Client::builder().build().unwrap();
 
     let create_resp = client
         .post(format!("{}/api/dashboard/sites/{}/webhooks", server.base_url, site_id))
-        .headers(auth_header(&jwt, &csrf))
+        .headers(auth_header(&token, &csrf))
         .json(&json!({"label": "My Hook", "url": "https://example.com/hook"}))
         .send()
         .await
@@ -81,7 +81,7 @@ async fn test_get_webhook() {
             "{}/api/dashboard/sites/{}/webhooks/{}",
             server.base_url, site_id, hook_id
         ))
-        .headers(auth_header(&jwt, &csrf))
+        .headers(auth_header(&token, &csrf))
         .send()
         .await
         .unwrap();
@@ -92,12 +92,12 @@ async fn test_get_webhook() {
 #[tokio::test]
 async fn test_delete_webhook() {
     let server = TestServer::start().await;
-    let (jwt, csrf, site_id) = setup(&server).await;
+    let (token, csrf, site_id) = setup(&server).await;
     let client = reqwest::Client::builder().build().unwrap();
 
     let create_resp = client
         .post(format!("{}/api/dashboard/sites/{}/webhooks", server.base_url, site_id))
-        .headers(auth_header(&jwt, &csrf))
+        .headers(auth_header(&token, &csrf))
         .json(&json!({"label": "Delete Me", "url": "https://example.com/del"}))
         .send()
         .await
@@ -110,7 +110,7 @@ async fn test_delete_webhook() {
             "{}/api/dashboard/sites/{}/webhooks/{}",
             server.base_url, site_id, hook_id
         ))
-        .headers(auth_header(&jwt, &csrf))
+        .headers(auth_header(&token, &csrf))
         .send()
         .await
         .unwrap();
@@ -121,12 +121,12 @@ async fn test_delete_webhook() {
 #[tokio::test]
 async fn test_list_deliveries_empty() {
     let server = TestServer::start().await;
-    let (jwt, csrf, site_id) = setup(&server).await;
+    let (token, csrf, site_id) = setup(&server).await;
     let client = reqwest::Client::builder().build().unwrap();
 
     let create_resp = client
         .post(format!("{}/api/dashboard/sites/{}/webhooks", server.base_url, site_id))
-        .headers(auth_header(&jwt, &csrf))
+        .headers(auth_header(&token, &csrf))
         .json(&json!({"label": "Deliveries", "url": "https://example.com/d"}))
         .send()
         .await
@@ -139,7 +139,7 @@ async fn test_list_deliveries_empty() {
             "{}/api/dashboard/sites/{}/webhooks/{}/deliveries",
             server.base_url, site_id, hook_id
         ))
-        .headers(auth_header(&jwt, &csrf))
+        .headers(auth_header(&token, &csrf))
         .send()
         .await
         .unwrap();
@@ -159,12 +159,12 @@ async fn test_trigger_webhook() {
         .await;
 
     let server = TestServer::start().await;
-    let (jwt, csrf, site_id) = setup(&server).await;
+    let (token, csrf, site_id) = setup(&server).await;
     let client = reqwest::Client::builder().build().unwrap();
 
     let create_resp = client
         .post(format!("{}/api/dashboard/sites/{}/webhooks", server.base_url, site_id))
-        .headers(auth_header(&jwt, &csrf))
+        .headers(auth_header(&token, &csrf))
         .json(&json!({"label": "Trigger Me", "url": mock_server.uri()}))
         .send()
         .await
@@ -177,7 +177,7 @@ async fn test_trigger_webhook() {
             "{}/api/dashboard/sites/{}/webhooks/{}/trigger",
             server.base_url, site_id, hook_id
         ))
-        .headers(auth_header(&jwt, &csrf))
+        .headers(auth_header(&token, &csrf))
         .send()
         .await
         .unwrap();

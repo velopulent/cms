@@ -196,12 +196,12 @@ async fn test_me_authenticated() {
     let resp = server.login_user(&client, "testuser", "password123").await;
     assert_eq!(resp.status(), 200);
 
-    let jwt = extract_token_from_cookies(&resp).expect("No token cookie");
+    let token = extract_token_from_cookies(&resp).expect("No token cookie");
     let csrf = extract_csrf_from_cookies(&resp).expect("No csrf cookie");
 
     let me_resp = client
         .get(format!("{}/api/auth/me", server.base_url))
-        .header("Cookie", format!("token={}", jwt))
+        .header("Cookie", format!("token={}", token))
         .header("X-CSRF-Token", &csrf)
         .send()
         .await
@@ -231,12 +231,12 @@ async fn test_logout() {
     let resp = server.login_user(&client, "testuser", "password123").await;
     assert_eq!(resp.status(), 200);
 
-    let jwt = extract_token_from_cookies(&resp).expect("No token cookie");
+    let token = extract_token_from_cookies(&resp).expect("No token cookie");
     let csrf = extract_csrf_from_cookies(&resp).expect("No csrf cookie");
 
     let logout_resp = client
         .post(format!("{}/api/auth/logout", server.base_url))
-        .header("Cookie", format!("token={}; csrf={}", jwt, csrf))
+        .header("Cookie", format!("token={}; csrf={}", token, csrf))
         .header("X-CSRF-Token", &csrf)
         .send()
         .await

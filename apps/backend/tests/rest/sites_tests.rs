@@ -17,14 +17,14 @@ async fn login_and_get_cookies(
     );
 
     let headers = resp.headers();
-    let mut jwt = String::new();
+    let mut token = String::new();
     let mut csrf = String::new();
 
     let cookies = headers.get_all("set-cookie").iter();
     for cookie in cookies {
         if let Ok(val) = cookie.to_str() {
             if val.starts_with("token=") {
-                jwt = val
+                token = val
                     .split(';')
                     .next()
                     .and_then(|c| c.strip_prefix("token="))
@@ -42,14 +42,14 @@ async fn login_and_get_cookies(
         }
     }
 
-    (jwt, csrf)
+    (token, csrf)
 }
 
-async fn create_site(server: &TestServer, jwt: &str, csrf: &str, name: &str) -> Value {
+async fn create_site(server: &TestServer, token: &str, csrf: &str, name: &str) -> Value {
     let client = reqwest::Client::builder().build().unwrap();
     let resp = client
         .post(format!("{}/api/dashboard/sites", server.base_url))
-        .headers(auth_header(jwt, csrf))
+        .headers(auth_header(token, csrf))
         .json(&json!({
             "name": name,
             "storage_provider": "filesystem",
@@ -72,9 +72,9 @@ async fn create_site(server: &TestServer, jwt: &str, csrf: &str, name: &str) -> 
 async fn test_create_site() {
     let server = TestServer::start().await;
     let client = reqwest::Client::builder().build().unwrap();
-    let (jwt, csrf) = login_and_get_cookies(&server, &client, "admin", "admin").await;
+    let (token, csrf) = login_and_get_cookies(&server, &client, "admin", "admin").await;
 
-    let body = create_site(&server, &jwt, &csrf, "Test Site").await;
+    let body = create_site(&server, &token, &csrf, "Test Site").await;
     assert_eq!(body["name"], "Test Site");
     assert!(body["id"].is_string());
 }
@@ -83,13 +83,13 @@ async fn test_create_site() {
 async fn test_list_sites() {
     let server = TestServer::start().await;
     let client = reqwest::Client::builder().build().unwrap();
-    let (jwt, csrf) = login_and_get_cookies(&server, &client, "admin", "admin").await;
+    let (token, csrf) = login_and_get_cookies(&server, &client, "admin", "admin").await;
 
-    create_site(&server, &jwt, &csrf, "Site One").await;
+    create_site(&server, &token, &csrf, "Site One").await;
 
     let resp = client
         .get(format!("{}/api/dashboard/sites", server.base_url))
-        .headers(auth_header(&jwt, &csrf))
+        .headers(auth_header(&token, &csrf))
         .send()
         .await
         .unwrap();
@@ -105,14 +105,14 @@ async fn test_list_sites() {
 async fn test_get_site() {
     let server = TestServer::start().await;
     let client = reqwest::Client::builder().build().unwrap();
-    let (jwt, csrf) = login_and_get_cookies(&server, &client, "admin", "admin").await;
+    let (token, csrf) = login_and_get_cookies(&server, &client, "admin", "admin").await;
 
-    let created = create_site(&server, &jwt, &csrf, "My Site").await;
+    let created = create_site(&server, &token, &csrf, "My Site").await;
     let site_id = created["id"].as_str().unwrap();
 
     let resp = client
         .get(format!("{}/api/dashboard/sites/{}", server.base_url, site_id))
-        .headers(auth_header(&jwt, &csrf))
+        .headers(auth_header(&token, &csrf))
         .send()
         .await
         .unwrap();
@@ -126,14 +126,14 @@ async fn test_get_site() {
 async fn test_update_site() {
     let server = TestServer::start().await;
     let client = reqwest::Client::builder().build().unwrap();
-    let (jwt, csrf) = login_and_get_cookies(&server, &client, "admin", "admin").await;
+    let (token, csrf) = login_and_get_cookies(&server, &client, "admin", "admin").await;
 
-    let created = create_site(&server, &jwt, &csrf, "Old Name").await;
+    let created = create_site(&server, &token, &csrf, "Old Name").await;
     let site_id = created["id"].as_str().unwrap();
 
     let resp = client
         .put(format!("{}/api/dashboard/sites/{}", server.base_url, site_id))
-        .headers(auth_header(&jwt, &csrf))
+        .headers(auth_header(&token, &csrf))
         .json(&json!({
             "name": "New Name",
         }))
@@ -150,14 +150,14 @@ async fn test_update_site() {
 async fn test_delete_site() {
     let server = TestServer::start().await;
     let client = reqwest::Client::builder().build().unwrap();
-    let (jwt, csrf) = login_and_get_cookies(&server, &client, "admin", "admin").await;
+    let (token, csrf) = login_and_get_cookies(&server, &client, "admin", "admin").await;
 
-    let created = create_site(&server, &jwt, &csrf, "To Delete").await;
+    let created = create_site(&server, &token, &csrf, "To Delete").await;
     let site_id = created["id"].as_str().unwrap();
 
     let resp = client
         .delete(format!("{}/api/dashboard/sites/{}", server.base_url, site_id))
-        .headers(auth_header(&jwt, &csrf))
+        .headers(auth_header(&token, &csrf))
         .send()
         .await
         .unwrap();
@@ -169,14 +169,14 @@ async fn test_delete_site() {
 async fn test_list_members() {
     let server = TestServer::start().await;
     let client = reqwest::Client::builder().build().unwrap();
-    let (jwt, csrf) = login_and_get_cookies(&server, &client, "admin", "admin").await;
+    let (token, csrf) = login_and_get_cookies(&server, &client, "admin", "admin").await;
 
-    let created = create_site(&server, &jwt, &csrf, "Members Site").await;
+    let created = create_site(&server, &token, &csrf, "Members Site").await;
     let site_id = created["id"].as_str().unwrap();
 
     let resp = client
         .get(format!("{}/api/dashboard/sites/{}/members", server.base_url, site_id))
-        .headers(auth_header(&jwt, &csrf))
+        .headers(auth_header(&token, &csrf))
         .send()
         .await
         .unwrap();

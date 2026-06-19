@@ -11,11 +11,11 @@ fn api_key_header(api_key: &str) -> reqwest::header::HeaderMap {
     headers
 }
 
-async fn get_api_key(server: &TestServer, jwt: &str, csrf: &str, site_id: &str) -> String {
+async fn get_api_key(server: &TestServer, token: &str, csrf: &str, site_id: &str) -> String {
     let client = reqwest::Client::builder().build().unwrap();
     let resp = client
         .post(format!("{}/api/dashboard/sites/{}/tokens", server.base_url, site_id))
-        .headers(auth_header(jwt, csrf))
+        .headers(auth_header(token, csrf))
         .json(&json!({"name": "File Token", "permission": "write"}))
         .send()
         .await
@@ -27,8 +27,8 @@ async fn get_api_key(server: &TestServer, jwt: &str, csrf: &str, site_id: &str) 
 #[tokio::test]
 async fn test_upload_file() {
     let server = TestServer::start().await;
-    let (jwt, csrf, site_id) = setup(&server).await;
-    let api_key = get_api_key(&server, &jwt, &csrf, &site_id).await;
+    let (token, csrf, site_id) = setup(&server).await;
+    let api_key = get_api_key(&server, &token, &csrf, &site_id).await;
     let client = reqwest::Client::builder().build().unwrap();
 
     let file_content = b"Hello, this is a test file!";
@@ -56,8 +56,8 @@ async fn test_upload_file() {
 #[tokio::test]
 async fn test_list_files() {
     let server = TestServer::start().await;
-    let (jwt, csrf, site_id) = setup(&server).await;
-    let api_key = get_api_key(&server, &jwt, &csrf, &site_id).await;
+    let (token, csrf, site_id) = setup(&server).await;
+    let api_key = get_api_key(&server, &token, &csrf, &site_id).await;
     let client = reqwest::Client::builder().build().unwrap();
 
     let part = reqwest::multipart::Part::bytes(b"file content".to_vec())
@@ -96,8 +96,8 @@ async fn test_list_files() {
 #[tokio::test]
 async fn test_get_file() {
     let server = TestServer::start().await;
-    let (jwt, csrf, site_id) = setup(&server).await;
-    let api_key = get_api_key(&server, &jwt, &csrf, &site_id).await;
+    let (token, csrf, site_id) = setup(&server).await;
+    let api_key = get_api_key(&server, &token, &csrf, &site_id).await;
     let client = reqwest::Client::builder().build().unwrap();
 
     let part = reqwest::multipart::Part::bytes(b"content".to_vec())
@@ -131,8 +131,8 @@ async fn test_get_file() {
 #[tokio::test]
 async fn test_delete_file() {
     let server = TestServer::start().await;
-    let (jwt, csrf, site_id) = setup(&server).await;
-    let api_key = get_api_key(&server, &jwt, &csrf, &site_id).await;
+    let (token, csrf, site_id) = setup(&server).await;
+    let api_key = get_api_key(&server, &token, &csrf, &site_id).await;
     let client = reqwest::Client::builder().build().unwrap();
 
     let part = reqwest::multipart::Part::bytes(b"delete me".to_vec())
@@ -164,8 +164,8 @@ async fn test_delete_file() {
 #[tokio::test]
 async fn test_get_file_references() {
     let server = TestServer::start().await;
-    let (jwt, csrf, site_id) = setup(&server).await;
-    let api_key = get_api_key(&server, &jwt, &csrf, &site_id).await;
+    let (token, csrf, site_id) = setup(&server).await;
+    let api_key = get_api_key(&server, &token, &csrf, &site_id).await;
     let client = reqwest::Client::builder().build().unwrap();
 
     let part = reqwest::multipart::Part::bytes(b"ref content".to_vec())
@@ -197,8 +197,8 @@ async fn test_get_file_references() {
 #[tokio::test]
 async fn test_batch_delete_files() {
     let server = TestServer::start().await;
-    let (jwt, csrf, site_id) = setup(&server).await;
-    let api_key = get_api_key(&server, &jwt, &csrf, &site_id).await;
+    let (token, csrf, site_id) = setup(&server).await;
+    let api_key = get_api_key(&server, &token, &csrf, &site_id).await;
     let client = reqwest::Client::builder().build().unwrap();
 
     let mut ids = Vec::new();
@@ -236,8 +236,8 @@ async fn test_batch_delete_files() {
 #[tokio::test]
 async fn test_upload_file_invalid_mime_type() {
     let server = TestServer::start().await;
-    let (jwt, csrf, site_id) = setup(&server).await;
-    let api_key = get_api_key(&server, &jwt, &csrf, &site_id).await;
+    let (token, csrf, site_id) = setup(&server).await;
+    let api_key = get_api_key(&server, &token, &csrf, &site_id).await;
     let client = reqwest::Client::builder().build().unwrap();
 
     let part = reqwest::multipart::Part::bytes(b"executable content".to_vec())
