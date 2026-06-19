@@ -10,7 +10,7 @@
 //! `config.toml`: the TOML config is for non-secret settings, while this file is
 //! machine-managed and never scaffolded by `cms config init`.
 
-use rand::RngCore;
+use rand::Rng;
 use serde::{Deserialize, Serialize};
 
 use crate::paths;
@@ -79,7 +79,7 @@ fn persist(secrets: &PersistedSecrets) -> Result<(), Box<dyn std::error::Error>>
 /// Generate `n` random bytes, hex-encoded (so a 32-byte secret is 64 chars).
 fn random_hex(n: usize) -> String {
     let mut bytes = vec![0u8; n];
-    rand::thread_rng().fill_bytes(&mut bytes);
+    rand::rng().fill_bytes(&mut bytes);
     hex::encode(bytes)
 }
 
