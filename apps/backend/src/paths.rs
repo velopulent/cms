@@ -6,7 +6,7 @@
 //! ```text
 //! ~/.cms/
 //!   config.toml     # non-secret configuration
-//!   secrets.toml    # auto-generated JWT/HMAC secrets (0600)
+//!   secrets.toml    # auto-generated HMAC + backup encryption secrets (0600)
 //!   cms.db          # default SQLite database (+ -wal / -shm)
 //!   logs/           # rolling logs when log output = "file"
 //!   storage/        # default filesystem storage for uploads

@@ -14,14 +14,13 @@ use clap::{Parser, Subcommand};
         `cms serve` creates it on first run and generates secrets if absent.",
     after_help = "DATA DIRECTORY ($CMS_HOME, default ~/.cms):\n  \
         config.toml   non-secret config (written by `cms config init`)\n  \
-        secrets.toml  auto-generated JWT/HMAC secrets (0600 on unix)\n  \
+        secrets.toml  auto-generated HMAC + backup secrets (0600 on unix)\n  \
         cms.db        default SQLite database (+ -wal / -shm)\n  \
         logs/         rolling logs when [log] output = \"file\"\n  \
         storage/      default filesystem storage for uploads\n\n\
         KEY ENVIRONMENT (env overrides config; CLI flags override env):\n  \
         CMS_HOME      home directory                   [default: ~/.cms]\n  \
         DATABASE_URL  sqlite/postgres/mysql URL        [default: sqlite://~/.cms/cms.db]\n  \
-        JWT_SECRET    JWT signing secret               [auto-generated to secrets.toml]\n  \
         HMAC_SECRET   token-lookup HMAC key            [auto-generated to secrets.toml]"
 )]
 pub struct Cli {

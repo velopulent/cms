@@ -156,10 +156,9 @@ async fn run_mcp_stdio(cli: &Cli) -> Result<(), Box<dyn Error>> {
     // Read-only: never create the home dir, database, or secrets file here. The
     // persisted secrets written by `cms serve` are what make this process verify
     // the site token with the same HMAC secret the server signed it with.
-    if cms::secrets::load()?.is_none() && std::env::var("JWT_SECRET").is_err() && std::env::var("HMAC_SECRET").is_err()
-    {
+    if cms::secrets::load()?.is_none() && std::env::var("HMAC_SECRET").is_err() {
         return Err("No instance secrets found. Run `cms serve` once to initialize \
-                    ~/.cms (or set JWT_SECRET and HMAC_SECRET) before `cms mcp stdio`."
+                    ~/.cms (or set HMAC_SECRET) before `cms mcp stdio`."
             .into());
     }
 
