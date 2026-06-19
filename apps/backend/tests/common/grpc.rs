@@ -43,7 +43,6 @@ impl GrpcTestContext {
 
         let mut config = Config::default();
         config.database_url = "sqlite::memory:".to_string();
-        config.jwt_secret = "test-jwt-secret-integration".to_string();
         config.hmac_secret = "test-hmac-secret-integration".to_string();
         config.storage_fs_path = Some(storage_path.clone());
         config.cookie_secure = false;

@@ -13,7 +13,6 @@ use crate::secrets;
 #[derive(Clone, Debug, Default)]
 pub struct Config {
     pub database_url: String,
-    pub jwt_secret: String,
     pub bind_address: String,
     pub grpc_bind_address: String,
 
@@ -91,7 +90,6 @@ pub struct Config {
     pub log_dir: String,
 }
 
-static DEFAULT_JWT_SECRET: &str = "cms-jwt-secret-change-in-production";
 static DEFAULT_HMAC_SECRET: &str = "cms-hmac-secret-change-in-production";
 static DEFAULT_LOG_LEVEL: &str = "cms=debug,tower_http=debug,axum=debug";
 
@@ -102,7 +100,6 @@ static DEFAULT_LOG_LEVEL: &str = "cms=debug,tower_http=debug,axum=debug";
 #[derive(Debug, Default, Deserialize)]
 struct RawConfig {
     database_url: Option<String>,
-    jwt_secret: Option<String>,
     hmac_secret: Option<String>,
     bind_address: Option<String>,
     grpc_bind_address: Option<String>,
@@ -187,7 +184,7 @@ impl Config {
     pub fn load(cli: &Cli) -> Result<Self, figment::Error> {
         let mut figment = Figment::new();
 
-        // Lowest-precedence secret layer: persisted JWT/HMAC secrets from
+        // Lowest-precedence secret layer: persisted HMAC secret from
         // `~/.cms/secrets.toml`. Read-only here (generation happens in
         // `secrets::ensure()` during serve/admin). Best-effort: a missing or
         // unreadable file just leaves the built-in defaults in play. Env vars
@@ -252,18 +249,11 @@ impl Config {
     }
 
     pub fn validate_security(&self) -> Result<(), String> {
-        let jwt_default = self.jwt_secret == DEFAULT_JWT_SECRET;
         let hmac_default = self.hmac_secret == DEFAULT_HMAC_SECRET;
 
         if self.production {
-            if jwt_default {
-                return Err("JWT_SECRET must be changed in production".into());
-            }
             if hmac_default {
                 return Err("HMAC_SECRET must be changed in production".into());
-            }
-            if self.jwt_secret.len() < 32 {
-                return Err("JWT_SECRET must be at least 32 bytes long".into());
             }
             if self.hmac_secret.len() < 32 {
                 return Err("HMAC_SECRET must be at least 32 bytes long".into());
@@ -271,17 +261,17 @@ impl Config {
             if !self.cookie_secure {
                 return Err("COOKIE_SECURE must be enabled in production".into());
             }
-        } else if (jwt_default || hmac_default) && binds_publicly(&self.bind_address) {
-            // Not production, but exposing a public listener with built-in default
-            // secrets lets anyone reachable forge sessions/tokens. Warn loudly
+        } else if hmac_default && binds_publicly(&self.bind_address) {
+            // Not production, but exposing a public listener with the built-in default
+            // secret lets anyone reachable forge sessions/tokens. Warn loudly
             // rather than hard-fail so local default startup keeps working.
             eprintln!(
                 "\n\
                  ============================ SECURITY WARNING ============================\n\
                  Binding to public address {} while using the built-in default\n\
-                 JWT_SECRET/HMAC_SECRET. Anyone who can reach this port can forge\n\
+                 HMAC_SECRET. Anyone who can reach this port can forge\n\
                  sessions and access tokens.\n\
-                 Set JWT_SECRET and HMAC_SECRET (>=32 random bytes) before exposing this\n\
+                 Set HMAC_SECRET (>=32 random bytes) before exposing this\n\
                  server, or bind to 127.0.0.1 for local development.\n\
                  =========================================================================\n",
                 self.bind_address
@@ -297,7 +287,6 @@ impl Config {
         format!(
             "# Effective configuration (secrets redacted)\n\
              database_url = \"{}\"\n\
-             jwt_secret = \"{}\"\n\
              hmac_secret = \"{}\"\n\
              bind_address = \"{}\"\n\
              grpc_bind_address = \"{}\"\n\
@@ -340,7 +329,6 @@ impl Config {
              annotations = {}\n\
              dir = \"{}\"\n",
             self.database_url,
-            redact(&self.jwt_secret),
             redact(&self.hmac_secret),
             self.bind_address,
             self.grpc_bind_address,
@@ -380,10 +368,6 @@ impl Config {
 
 impl RawConfig {
     fn into_config(self) -> Config {
-        let jwt_secret = self.jwt_secret.unwrap_or_else(|| {
-            eprintln!("WARNING: Using default JWT secret. Set JWT_SECRET environment variable in production!");
-            DEFAULT_JWT_SECRET.to_string()
-        });
         let hmac_secret = self.hmac_secret.unwrap_or_else(|| {
             eprintln!("WARNING: Using default HMAC secret. Set HMAC_SECRET environment variable in production!");
             DEFAULT_HMAC_SECRET.to_string()
@@ -393,7 +377,6 @@ impl RawConfig {
 
         Config {
             database_url: self.database_url.unwrap_or_else(paths::default_database_url),
-            jwt_secret,
             hmac_secret,
             bind_address: self.bind_address.unwrap_or_else(|| "0.0.0.0:3000".into()),
             grpc_bind_address: self.grpc_bind_address.unwrap_or_else(|| "0.0.0.0:50051".into()),
@@ -486,7 +469,7 @@ pub fn default_config_toml() -> String {
          # environment (or a .env file). Precedence: CLI flag > env var > this file.\n\
          #\n\
          # Secrets are NOT read from this file by convention — set them via env:\n\
-         #   DATABASE_URL, JWT_SECRET, HMAC_SECRET,\n\
+         #   DATABASE_URL, HMAC_SECRET,\n\
          #   S3_ACCESS_KEY_ID, S3_SECRET_ACCESS_KEY\n\n\
          bind_address = \"0.0.0.0:3000\"\n\
          grpc_bind_address = \"0.0.0.0:50051\"\n\
