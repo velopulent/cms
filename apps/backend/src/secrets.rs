@@ -1,6 +1,6 @@
 //! Persisted instance secrets (`~/.cms/secrets.toml`).
 //!
-//! On first `serve`/`admin`, random `JWT_SECRET` and `HMAC_SECRET` values are
+//! On first `serve`/`admin`, a random `HMAC_SECRET` value is
 //! generated and written to `secrets.toml` (perms `0600` on unix). Every later
 //! process — including a `cms mcp stdio` child launched from an unknown working
 //! directory — reads the *same* values, so site-token verification matches the
@@ -18,7 +18,6 @@ use crate::paths;
 /// Auto-generated secrets persisted to disk.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PersistedSecrets {
-    pub jwt_secret: String,
     pub hmac_secret: String,
     /// AES-256 key (hex, 64 chars) used to encrypt backup artifacts. Added in a
     /// later release, so existing `secrets.toml` files may lack it; [`ensure`]
@@ -57,7 +56,6 @@ pub fn ensure() -> Result<PersistedSecrets, Box<dyn std::error::Error>> {
     }
 
     let secrets = PersistedSecrets {
-        jwt_secret: random_hex(32),
         hmac_secret: random_hex(32),
         backup_encryption_key: Some(random_hex(32)),
     };
@@ -116,14 +114,11 @@ mod tests {
         let dir = tempfile::tempdir().expect("temp dir");
         with_home(dir.path(), || {
             let first = ensure().expect("generate");
-            assert_eq!(first.jwt_secret.len(), 64);
             assert_eq!(first.hmac_secret.len(), 64);
-            assert_ne!(first.jwt_secret, first.hmac_secret);
             assert!(paths::secrets_file().exists());
 
             // A second call must return the persisted values, not regenerate.
             let second = ensure().expect("reuse");
-            assert_eq!(first.jwt_secret, second.jwt_secret);
             assert_eq!(first.hmac_secret, second.hmac_secret);
         });
     }
