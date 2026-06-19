@@ -14,6 +14,7 @@ pub mod fixtures;
 pub mod grpc;
 pub mod mcp;
 mod server;
+pub mod test_db;
 
 pub use grpc::GrpcTestContext;
 pub use server::TestServer;
