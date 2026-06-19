@@ -101,7 +101,7 @@ MCP protocol messages use stdout; structured process logs use stderr.
 
 Because the process is launched by the MCP client from an arbitrary working
 directory, it does **not** rely on a `.env` in the current directory. The
-database path and the `JWT_SECRET`/`HMAC_SECRET` it needs to verify the token are
+database path and the `HMAC_SECRET` it needs to verify the token are
 read from the CMS home directory (`~/.cms`, see [Data directory](#data-directory))
 that `cms serve` initialized. The client only needs to supply `CMS_MCP_TOKEN`
 (and `CMS_HOME` if you moved the home directory):
@@ -124,14 +124,14 @@ from any working directory. The location is `$CMS_HOME` when set, otherwise
 ```text
 ~/.cms/
   config.toml     # non-secret configuration (cms config init writes here)
-  secrets.toml    # auto-generated JWT_SECRET/HMAC_SECRET (0600 on unix)
+  secrets.toml    # auto-generated HMAC_SECRET + backup key (0600 on unix)
   cms.db          # default SQLite database (+ -wal / -shm)
   logs/           # rolling logs when [log] output = "file"
   storage/        # default filesystem storage for uploads
 ```
 
 `cms serve` creates this directory on first run and generates `secrets.toml` if
-absent. Environment variables (`DATABASE_URL`, `JWT_SECRET`, `HMAC_SECRET`,
+absent. Environment variables (`DATABASE_URL`, `HMAC_SECRET`,
 `STORAGE_FS_PATH`, S3 settings, …) still override these defaults.
 
 

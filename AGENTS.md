@@ -105,22 +105,22 @@ creates it on first run. Resolution lives in `apps/backend/src/paths.rs`.
 ```text
 ~/.cms/
   config.toml     # non-secret config (cms config init target)
-  secrets.toml    # auto-generated JWT_SECRET/HMAC_SECRET (0600 on unix)
+  secrets.toml    # auto-generated HMAC_SECRET + backup key (0600 on unix)
   cms.db          # default SQLite database (+ -wal / -shm)
   logs/           # rolling logs when [log] output = "file"
   storage/        # default filesystem storage for uploads
 ```
 
-Secrets: on first `serve`/`admin`, random `JWT_SECRET`/`HMAC_SECRET` are generated
+Secrets: on first `serve`/`admin`, a random `HMAC_SECRET` is generated
 and persisted to `secrets.toml` (`apps/backend/src/secrets.rs`), then loaded by
 every process — including `cms mcp stdio`, which is launched from an arbitrary cwd
 and so cannot rely on a cwd `.env`. Env vars still override the file. `mcp stdio`
 is read-only: it never creates the home dir, database, or secrets file.
 
 Env-only secrets (never read from `config.toml` by convention, omitted from
-`config init`): `DATABASE_URL`, `JWT_SECRET`, `HMAC_SECRET`, `S3_ACCESS_KEY_ID`,
+`config init`): `DATABASE_URL`, `HMAC_SECRET`, `S3_ACCESS_KEY_ID`,
 `S3_SECRET_ACCESS_KEY`, `BACKUP_S3_ACCESS_KEY_ID`, `BACKUP_S3_SECRET_ACCESS_KEY`,
-`BACKUP_ENCRYPTION_KEY`. (`JWT_SECRET`/`HMAC_SECRET` and a random backup encryption
+`BACKUP_ENCRYPTION_KEY`. (`HMAC_SECRET` and a random backup encryption
 key are auto-persisted to `secrets.toml`; the others remain env-only.)
 
 Sample `config.toml` (generate with `cms config init`):
@@ -155,7 +155,6 @@ Logging keys map to the `[log]` table: `RUST_LOG`→`log.level`, `LOG_OUTPUT`→
 | `CMS_CONFIG` | - | Explicit config file path (same as `--config`) |
 | `CMS_HOME` | `~/.cms` | CMS home directory (db, config, secrets, logs, storage) |
 | `DATABASE_URL` | `sqlite://~/.cms/cms.db` | Database URL: `sqlite:path`, `postgres://...`, `mysql://...` |
-| `JWT_SECRET` | `cms-jwt-secret-change-in-production` | JWT signing secret |
 | `HMAC_SECRET` | `cms-hmac-secret-change-in-production` | HMAC key for token lookup |
 | `BIND_ADDRESS` | `0.0.0.0:3000` | REST API listen address |
 | `GRPC_BIND_ADDRESS` | `0.0.0.0:50051` | gRPC server listen address |
@@ -188,8 +187,8 @@ Logging keys map to the `[log]` table: `RUST_LOG`→`log.level`, `LOG_OUTPUT`→
 | `LOG_ANNOTATIONS` | `false` | Include file + line numbers (`[log] annotations`) |
 | `LOG_DIR` | `~/.cms/logs` | Log directory when `output = file` (`[log] dir`) |
 
-**Note**: `JWT_SECRET`/`HMAC_SECRET` are auto-generated and persisted to
-`~/.cms/secrets.toml` on first run. Set them explicitly via env to override.
+**Note**: `HMAC_SECRET` is auto-generated and persisted to
+`~/.cms/secrets.toml` on first run. Set it explicitly via env to override.
 
 ## Proto Compilation
 
