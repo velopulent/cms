@@ -1,14 +1,14 @@
 //! Cron helpers for backup schedules.
 
+use std::str::FromStr as _;
+
 use chrono::Utc;
 use croner::Cron;
 
 use super::BackupError;
 
 fn parse(expr: &str) -> Result<Cron, BackupError> {
-    Cron::new(expr)
-        .parse()
-        .map_err(|e| BackupError::Invalid(format!("invalid cron expression: {e}")))
+    Cron::from_str(expr).map_err(|e| BackupError::Invalid(format!("invalid cron expression: {e}")))
 }
 
 /// Validate a cron expression without computing anything.
