@@ -23,7 +23,7 @@ impl MysqlEntryRepository {
 impl EntryRepository for MysqlEntryRepository {
     async fn get_by_id(&self, id: &str, site_id: &str, published_only: bool) -> Result<Option<Entry>, RepositoryError> {
         let mut query = String::from(
-            "SELECT id, site_id, collection_id, data, slug, status, singleton_collection_id, created_at, updated_at, published_at
+            "SELECT id, site_id, collection_id, CAST(data AS CHAR) AS data, slug, status, singleton_collection_id, CAST(created_at AS CHAR) AS created_at, CAST(updated_at AS CHAR) AS updated_at, CAST(published_at AS CHAR) AS published_at
              FROM entries WHERE id = ? AND site_id = ?",
         );
 
@@ -42,7 +42,7 @@ impl EntryRepository for MysqlEntryRepository {
 
     async fn get_by_id_any_site(&self, id: &str) -> Result<Option<Entry>, RepositoryError> {
         let result = sqlx::query_as::<_, Entry>(
-            "SELECT id, site_id, collection_id, data, slug, status, singleton_collection_id, created_at, updated_at, published_at
+            "SELECT id, site_id, collection_id, CAST(data AS CHAR) AS data, slug, status, singleton_collection_id, CAST(created_at AS CHAR) AS created_at, CAST(updated_at AS CHAR) AS updated_at, CAST(published_at AS CHAR) AS published_at
              FROM entries WHERE id = ?",
         )
         .bind(id)
@@ -59,7 +59,7 @@ impl EntryRepository for MysqlEntryRepository {
              WHERE e.site_id = ?",
         );
         let mut query = String::from(
-            "SELECT e.id, e.site_id, e.collection_id, e.data, e.slug, e.status, e.singleton_collection_id, e.created_at, e.updated_at, e.published_at
+            "SELECT e.id, e.site_id, e.collection_id, CAST(e.data AS CHAR) AS data, e.slug, e.status, e.singleton_collection_id, CAST(e.created_at AS CHAR) AS created_at, CAST(e.updated_at AS CHAR) AS updated_at, CAST(e.published_at AS CHAR) AS published_at
              FROM entries e
              JOIN collections col ON e.collection_id = col.id
              WHERE e.site_id = ?",
@@ -130,7 +130,7 @@ impl EntryRepository for MysqlEntryRepository {
         published_only: bool,
     ) -> Result<Vec<Entry>, RepositoryError> {
         let mut query = String::from(
-            "SELECT id, site_id, collection_id, data, slug, status, singleton_collection_id, created_at, updated_at, published_at
+            "SELECT id, site_id, collection_id, CAST(data AS CHAR) AS data, slug, status, singleton_collection_id, CAST(created_at AS CHAR) AS created_at, CAST(updated_at AS CHAR) AS updated_at, CAST(published_at AS CHAR) AS published_at
              FROM entries WHERE collection_id = ?",
         );
         let mut bindings: Vec<String> = vec![collection_id.to_string()];
@@ -164,7 +164,7 @@ impl EntryRepository for MysqlEntryRepository {
         }
         let placeholders = vec!["?"; collection_ids.len()].join(", ");
         let mut query = format!(
-            "SELECT id, site_id, collection_id, data, slug, status, singleton_collection_id, created_at, updated_at, published_at
+            "SELECT id, site_id, collection_id, CAST(data AS CHAR) AS data, slug, status, singleton_collection_id, CAST(created_at AS CHAR) AS created_at, CAST(updated_at AS CHAR) AS updated_at, CAST(published_at AS CHAR) AS published_at
              FROM entries WHERE collection_id IN ({placeholders})"
         );
         let mut bindings: Vec<String> = collection_ids.to_vec();
@@ -361,7 +361,7 @@ impl EntryRepository for MysqlEntryRepository {
 
         let offset = (page - 1) * per_page;
         let items = sqlx::query_as::<_, EntryRevision>(
-            "SELECT id, entry_id, revision_number, data, created_by, created_at, change_summary
+            "SELECT id, entry_id, revision_number, data, created_by, CAST(created_at AS CHAR) AS created_at, change_summary
              FROM entry_revisions WHERE entry_id = ? ORDER BY revision_number DESC LIMIT ? OFFSET ?",
         )
         .bind(entry_id)
@@ -384,7 +384,7 @@ impl EntryRepository for MysqlEntryRepository {
         revision_number: i64,
     ) -> Result<Option<EntryRevision>, RepositoryError> {
         let result = sqlx::query_as::<_, EntryRevision>(
-            "SELECT id, entry_id, revision_number, data, created_by, created_at, change_summary
+            "SELECT id, entry_id, revision_number, data, created_by, CAST(created_at AS CHAR) AS created_at, change_summary
              FROM entry_revisions WHERE entry_id = ? AND revision_number = ?",
         )
         .bind(entry_id)
@@ -411,7 +411,7 @@ impl EntryRepository for MysqlEntryRepository {
         .await?;
 
         let revision: Option<EntryRevision> = sqlx::query_as(
-            "SELECT id, entry_id, revision_number, data, created_by, created_at, change_summary
+            "SELECT id, entry_id, revision_number, data, created_by, CAST(created_at AS CHAR) AS created_at, change_summary
              FROM entry_revisions WHERE entry_id = ? AND revision_number = ?",
         )
         .bind(entry_id)
@@ -458,7 +458,7 @@ impl EntryRepository for MysqlEntryRepository {
 
     async fn get_singleton_entry(&self, site_id: &str, slug: &str) -> Result<Option<Entry>, RepositoryError> {
         let result = sqlx::query_as::<_, Entry>(
-            "SELECT e.id, e.site_id, e.collection_id, e.data, e.slug, e.status, e.singleton_collection_id, e.created_at, e.updated_at, e.published_at
+            "SELECT e.id, e.site_id, e.collection_id, CAST(e.data AS CHAR) AS data, e.slug, e.status, e.singleton_collection_id, CAST(e.created_at AS CHAR) AS created_at, CAST(e.updated_at AS CHAR) AS updated_at, CAST(e.published_at AS CHAR) AS published_at
              FROM entries e
              JOIN collections c ON c.id = e.singleton_collection_id
              WHERE e.site_id = ? AND c.slug = ?",
@@ -563,12 +563,13 @@ impl EntryRepository for MysqlEntryRepository {
     ) -> Result<(), RepositoryError> {
         let mut tx = self.pool.begin().await?;
 
-        let existing: Option<(String, String)> =
-            sqlx::query_as("SELECT id, data FROM entries WHERE singleton_collection_id = ? AND site_id = ?")
-                .bind(collection_id)
-                .bind(site_id)
-                .fetch_optional(&mut *tx)
-                .await?;
+        let existing: Option<(String, String)> = sqlx::query_as(
+            "SELECT id, CAST(data AS CHAR) AS data FROM entries WHERE singleton_collection_id = ? AND site_id = ?",
+        )
+        .bind(collection_id)
+        .bind(site_id)
+        .fetch_optional(&mut *tx)
+        .await?;
 
         if let Some((id, data_str)) = existing
             && let Ok(mut data) = serde_json::from_str::<serde_json::Value>(&data_str)

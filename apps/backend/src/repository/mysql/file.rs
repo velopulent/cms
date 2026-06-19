@@ -19,7 +19,7 @@ impl MysqlFileRepository {
 impl FileRepository for MysqlFileRepository {
     async fn get_by_id(&self, id: &str, site_id: &str) -> Result<Option<File>, RepositoryError> {
         let result = sqlx::query_as::<_, File>(
-            "SELECT id, site_id, filename, original_name, mime_type, size, storage_provider, storage_key, thumbnail_key, width, height, deleted_at, created_by, created_at
+            "SELECT id, site_id, filename, original_name, mime_type, size, storage_provider, storage_key, thumbnail_key, width, height, CAST(deleted_at AS CHAR) AS deleted_at, created_by, CAST(created_at AS CHAR) AS created_at
              FROM files WHERE id = ? AND site_id = ?",
         )
         .bind(id)
@@ -32,7 +32,7 @@ impl FileRepository for MysqlFileRepository {
 
     async fn get_by_id_any(&self, id: &str) -> Result<Option<File>, RepositoryError> {
         let result = sqlx::query_as::<_, File>(
-            "SELECT id, site_id, filename, original_name, mime_type, size, storage_provider, storage_key, thumbnail_key, width, height, deleted_at, created_by, created_at
+            "SELECT id, site_id, filename, original_name, mime_type, size, storage_provider, storage_key, thumbnail_key, width, height, CAST(deleted_at AS CHAR) AS deleted_at, created_by, CAST(created_at AS CHAR) AS created_at
              FROM files WHERE id = ?",
         )
         .bind(id)
@@ -50,7 +50,7 @@ impl FileRepository for MysqlFileRepository {
         };
 
         let mut query = format!(
-            "SELECT id, site_id, filename, original_name, mime_type, size, storage_provider, storage_key, thumbnail_key, width, height, deleted_at, created_by, created_at FROM files WHERE site_id = ? AND {}",
+            "SELECT id, site_id, filename, original_name, mime_type, size, storage_provider, storage_key, thumbnail_key, width, height, CAST(deleted_at AS CHAR) AS deleted_at, created_by, CAST(created_at AS CHAR) AS created_at FROM files WHERE site_id = ? AND {}",
             deleted_clause,
         );
         let mut count_query = format!("SELECT COUNT(*) FROM files WHERE site_id = ? AND {}", deleted_clause,);
@@ -221,7 +221,7 @@ impl FileRepository for MysqlFileRepository {
 
         let placeholders = ids.iter().map(|_| "?").collect::<Vec<_>>().join(",");
         let query = format!(
-            "SELECT id, site_id, filename, original_name, mime_type, size, storage_provider, storage_key, thumbnail_key, width, height, deleted_at, created_by, created_at FROM files WHERE site_id = ? AND id IN ({})",
+            "SELECT id, site_id, filename, original_name, mime_type, size, storage_provider, storage_key, thumbnail_key, width, height, CAST(deleted_at AS CHAR) AS deleted_at, created_by, CAST(created_at AS CHAR) AS created_at FROM files WHERE site_id = ? AND id IN ({})",
             placeholders
         );
 
@@ -241,7 +241,7 @@ impl FileRepository for MysqlFileRepository {
 
         let placeholders = ids.iter().map(|_| "?").collect::<Vec<_>>().join(",");
         let query = format!(
-            "SELECT id, site_id, filename, original_name, mime_type, size, storage_provider, storage_key, thumbnail_key, width, height, deleted_at, created_by, created_at FROM files WHERE site_id = ? AND id IN ({}) AND deleted_at IS NOT NULL",
+            "SELECT id, site_id, filename, original_name, mime_type, size, storage_provider, storage_key, thumbnail_key, width, height, CAST(deleted_at AS CHAR) AS deleted_at, created_by, CAST(created_at AS CHAR) AS created_at FROM files WHERE site_id = ? AND id IN ({}) AND deleted_at IS NOT NULL",
             placeholders
         );
 

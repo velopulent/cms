@@ -21,7 +21,7 @@ impl UserRepository for MysqlUserRepository {
     async fn find_by_username(&self, username: &str) -> Result<Option<User>, RepositoryError> {
         debug!("Finding user by username");
         let result = sqlx::query_as::<_, User>(
-            "SELECT id, username, email, password_hash, instance_role, must_change_password, created_at, updated_at FROM users WHERE username = ?",
+            "SELECT id, username, email, password_hash, instance_role, must_change_password, CAST(created_at AS CHAR) AS created_at, CAST(updated_at AS CHAR) AS updated_at FROM users WHERE username = ?",
         )
         .bind(username)
         .fetch_optional(&self.pool)
@@ -33,7 +33,7 @@ impl UserRepository for MysqlUserRepository {
 
     async fn find_by_id(&self, id: &str) -> Result<Option<User>, RepositoryError> {
         let result = sqlx::query_as::<_, User>(
-            "SELECT id, username, email, password_hash, instance_role, must_change_password, created_at, updated_at FROM users WHERE id = ?",
+            "SELECT id, username, email, password_hash, instance_role, must_change_password, CAST(created_at AS CHAR) AS created_at, CAST(updated_at AS CHAR) AS updated_at FROM users WHERE id = ?",
         )
         .bind(id)
         .fetch_optional(&self.pool)
@@ -44,7 +44,7 @@ impl UserRepository for MysqlUserRepository {
 
     async fn list(&self) -> Result<Vec<User>, RepositoryError> {
         Ok(sqlx::query_as::<_, User>(
-            "SELECT id, username, email, password_hash, instance_role, must_change_password, created_at, updated_at FROM users ORDER BY created_at, username"
+            "SELECT id, username, email, password_hash, instance_role, must_change_password, CAST(created_at AS CHAR) AS created_at, CAST(updated_at AS CHAR) AS updated_at FROM users ORDER BY created_at, username"
         ).fetch_all(&self.pool).await?)
     }
 

@@ -20,7 +20,7 @@ impl MysqlCollectionRepository {
 impl CollectionRepository for MysqlCollectionRepository {
     async fn list(&self, site_id: &str) -> Result<Vec<Collection>, RepositoryError> {
         let result = sqlx::query_as::<_, Collection>(
-            "SELECT id, site_id, name, slug, definition, is_singleton, created_at, updated_at FROM collections WHERE site_id = ? ORDER BY name",
+            "SELECT id, site_id, name, slug, CAST(definition AS CHAR) AS definition, is_singleton, CAST(created_at AS CHAR) AS created_at, CAST(updated_at AS CHAR) AS updated_at FROM collections WHERE site_id = ? ORDER BY name",
         )
         .bind(site_id)
         .fetch_all(&self.pool)
@@ -31,7 +31,7 @@ impl CollectionRepository for MysqlCollectionRepository {
 
     async fn list_singletons_only(&self, site_id: &str) -> Result<Vec<Collection>, RepositoryError> {
         let result = sqlx::query_as::<_, Collection>(
-            "SELECT id, site_id, name, slug, definition, is_singleton, created_at, updated_at FROM collections WHERE site_id = ? AND is_singleton = 1 ORDER BY name",
+            "SELECT id, site_id, name, slug, CAST(definition AS CHAR) AS definition, is_singleton, CAST(created_at AS CHAR) AS created_at, CAST(updated_at AS CHAR) AS updated_at FROM collections WHERE site_id = ? AND is_singleton = 1 ORDER BY name",
         )
         .bind(site_id)
         .fetch_all(&self.pool)
@@ -42,7 +42,7 @@ impl CollectionRepository for MysqlCollectionRepository {
 
     async fn get_by_slug(&self, site_id: &str, slug: &str) -> Result<Option<Collection>, RepositoryError> {
         let result = sqlx::query_as::<_, Collection>(
-            "SELECT id, site_id, name, slug, definition, is_singleton, created_at, updated_at FROM collections WHERE site_id = ? AND slug = ?",
+            "SELECT id, site_id, name, slug, CAST(definition AS CHAR) AS definition, is_singleton, CAST(created_at AS CHAR) AS created_at, CAST(updated_at AS CHAR) AS updated_at FROM collections WHERE site_id = ? AND slug = ?",
         )
         .bind(site_id)
         .bind(slug)
@@ -54,7 +54,7 @@ impl CollectionRepository for MysqlCollectionRepository {
 
     async fn get_by_id(&self, id: &str) -> Result<Option<Collection>, RepositoryError> {
         let result = sqlx::query_as::<_, Collection>(
-            "SELECT id, site_id, name, slug, definition, is_singleton, created_at, updated_at FROM collections WHERE id = ?",
+            "SELECT id, site_id, name, slug, CAST(definition AS CHAR) AS definition, is_singleton, CAST(created_at AS CHAR) AS created_at, CAST(updated_at AS CHAR) AS updated_at FROM collections WHERE id = ?",
         )
         .bind(id)
         .fetch_optional(&self.pool)
@@ -111,7 +111,7 @@ impl CollectionRepository for MysqlCollectionRepository {
 
     async fn get_content_for_migration(&self, collection_id: &str) -> Result<Vec<Entry>, RepositoryError> {
         let result = sqlx::query_as::<_, Entry>(
-            "SELECT id, site_id, collection_id, data, slug, status, singleton_collection_id, created_at, updated_at, published_at FROM entries WHERE collection_id = ?",
+            "SELECT id, site_id, collection_id, CAST(data AS CHAR) AS data, slug, status, singleton_collection_id, CAST(created_at AS CHAR) AS created_at, CAST(updated_at AS CHAR) AS updated_at, CAST(published_at AS CHAR) AS published_at FROM entries WHERE collection_id = ?",
         )
         .bind(collection_id)
         .fetch_all(&self.pool)
