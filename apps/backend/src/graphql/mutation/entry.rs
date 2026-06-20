@@ -32,15 +32,15 @@ impl EntryMutation {
         let entry = gql_ctx
             .services
             .entry
-            .update_entry(
-                &id,
+            .update_entry(crate::services::entry::UpdateEntryInput {
+                id: &id,
                 site_id,
-                input.data.as_ref().map(|d| &d.0),
-                input.slug.as_deref(),
-                input.status.as_deref(),
+                data: input.data.as_ref().map(|d| &d.0),
+                slug: input.slug.as_deref(),
+                status: input.status.as_deref(),
                 created_by,
-                input.change_summary.as_deref(),
-            )
+                change_summary: input.change_summary.as_deref(),
+            })
             .await
             .map_err(|e| async_graphql::Error::new(format!("Error: {}", e)))?;
 

@@ -24,14 +24,10 @@ use crate::storage::{StorageProvider, StorageRegistry};
 fn get_storage_for_site(
     site_storage_provider: &str,
     registry: &StorageRegistry,
-) -> Result<Arc<dyn StorageProvider>, Response> {
-    registry.get(site_storage_provider).ok_or_else(|| {
-        (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(json!({"error": "Storage not configured"})),
-        )
-            .into_response()
-    })
+) -> Result<Arc<dyn StorageProvider>, StatusCode> {
+    registry
+        .get(site_storage_provider)
+        .ok_or(StatusCode::INTERNAL_SERVER_ERROR)
 }
 
 #[utoipa::path(
@@ -91,7 +87,7 @@ pub async fn get_singleton(
         .unwrap_or_else(|_| "filesystem".into());
     let storage = match get_storage_for_site(&storage_provider, &storage_registry) {
         Ok(s) => s,
-        Err(resp) => return resp,
+        Err(status) => return (status, Json(json!({"error": "Storage not configured"}))).into_response(),
     };
 
     match services.singleton.get_singleton(&ctx.site_id, &slug, storage).await {

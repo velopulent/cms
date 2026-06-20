@@ -155,10 +155,10 @@ async fn load_scoped_backup(
         Ok(None) => return Err(err_response(BackupError::NotFound)),
         Err(e) => return Err(err_response(e)),
     };
-    if let Some(site) = expect_site {
-        if row.scope != "site" || row.site_id.as_deref() != Some(site) {
-            return Err(err_response(BackupError::NotFound));
-        }
+    if let Some(site) = expect_site
+        && (row.scope != "site" || row.site_id.as_deref() != Some(site))
+    {
+        return Err(err_response(BackupError::NotFound));
     }
     Ok(row)
 }
@@ -309,10 +309,10 @@ async fn list_schedules(backup: &BackupService, scope: &str, site_id: Option<&st
 async fn update_schedule(backup: &BackupService, id: &str, expect_site: Option<&str>, body: ScheduleBody) -> Response {
     match meta::get_schedule(backup.pool(), id).await {
         Ok(Some(row)) => {
-            if let Some(site) = expect_site {
-                if row.scope != "site" || row.site_id.as_deref() != Some(site) {
-                    return err_response(BackupError::NotFound);
-                }
+            if let Some(site) = expect_site
+                && (row.scope != "site" || row.site_id.as_deref() != Some(site))
+            {
+                return err_response(BackupError::NotFound);
             }
         }
         Ok(None) => return err_response(BackupError::NotFound),
@@ -344,10 +344,10 @@ async fn update_schedule(backup: &BackupService, id: &str, expect_site: Option<&
 async fn delete_schedule(backup: &BackupService, id: &str, expect_site: Option<&str>) -> Response {
     match meta::get_schedule(backup.pool(), id).await {
         Ok(Some(row)) => {
-            if let Some(site) = expect_site {
-                if row.scope != "site" || row.site_id.as_deref() != Some(site) {
-                    return err_response(BackupError::NotFound);
-                }
+            if let Some(site) = expect_site
+                && (row.scope != "site" || row.site_id.as_deref() != Some(site))
+            {
+                return err_response(BackupError::NotFound);
             }
         }
         Ok(None) => return err_response(BackupError::NotFound),
@@ -370,10 +370,10 @@ async fn run_schedule_now(
         Ok(None) => return err_response(BackupError::NotFound),
         Err(e) => return err_response(e),
     };
-    if let Some(site) = expect_site {
-        if row.scope != "site" || row.site_id.as_deref() != Some(site) {
-            return err_response(BackupError::NotFound);
-        }
+    if let Some(site) = expect_site
+        && (row.scope != "site" || row.site_id.as_deref() != Some(site))
+    {
+        return err_response(BackupError::NotFound);
     }
     let scope = match row.scope.as_str() {
         "site" => match row.site_id.clone() {
@@ -514,14 +514,14 @@ fn instance_restore_target(
     site_id: Option<String>,
     site_ids: Option<Vec<String>>,
     import_as_new: bool,
-) -> Result<RestoreTarget, Response> {
+) -> Result<RestoreTarget, Box<Response>> {
     match mode {
         Some("site") => {
             let ids = match site_ids {
                 Some(ids) if !ids.is_empty() => ids,
                 _ => match site_id {
                     Some(s) => vec![s],
-                    None => return Err(bad_request("site restore requires site_ids or site_id")),
+                    None => return Err(Box::new(bad_request("site restore requires site_ids or site_id"))),
                 },
             };
             Ok(RestoreTarget::Sites {
@@ -558,7 +558,7 @@ pub async fn restore_instance(
         body.import_as_new,
     ) {
         Ok(t) => t,
-        Err(r) => return r,
+        Err(r) => return *r,
     };
     let resp = run_restore(
         &backup,
@@ -570,10 +570,10 @@ pub async fn restore_instance(
     )
     .await;
     // Clean up any single-use staged upload referenced by this restore.
-    if let Some(key) = body.destination_key.as_deref() {
-        if key.starts_with(TEMP_RESTORE_PREFIX) {
-            backup.delete_destination(key).await;
-        }
+    if let Some(key) = body.destination_key.as_deref()
+        && key.starts_with(TEMP_RESTORE_PREFIX)
+    {
+        backup.delete_destination(key).await;
     }
     resp
 }
