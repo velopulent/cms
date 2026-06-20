@@ -3,7 +3,7 @@ use sqlx::MySqlPool;
 
 use crate::models::access_token::AccessToken;
 use crate::repository::error::RepositoryError;
-use crate::repository::traits::{AccessTokenLookupRow, AccessTokenRepository};
+use crate::repository::traits::{AccessTokenLookupRow, AccessTokenRepository, NewAccessToken};
 
 pub struct MysqlAccessTokenRepository {
     pool: MySqlPool,
@@ -29,17 +29,17 @@ impl AccessTokenRepository for MysqlAccessTokenRepository {
         Ok(rows)
     }
 
-    async fn create(
-        &self,
-        id: &str,
-        site_id: &str,
-        name: &str,
-        token_hash: &str,
-        token_prefix: &str,
-        token_hmac: &str,
-        permission: &str,
-        created_by_user_id: Option<&str>,
-    ) -> Result<(), RepositoryError> {
+    async fn create(&self, token: NewAccessToken<'_>) -> Result<(), RepositoryError> {
+        let NewAccessToken {
+            id,
+            site_id,
+            name,
+            token_hash,
+            token_prefix,
+            token_hmac,
+            permission,
+            created_by_user_id,
+        } = token;
         sqlx::query(
             "INSERT INTO access_tokens
              (id, site_id, name, token_hash, token_prefix, token_hmac, permission, created_by_user_id)

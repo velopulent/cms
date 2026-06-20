@@ -3,7 +3,7 @@ use sqlx::MySqlPool;
 
 use crate::models::file::{File, FileReference};
 use crate::repository::error::RepositoryError;
-use crate::repository::traits::{FileListResult, FileRepository, ListFilesParams};
+use crate::repository::traits::{FileListResult, FileRepository, ListFilesParams, NewFile};
 
 pub struct MysqlFileRepository {
     pool: MySqlPool,
@@ -116,21 +116,21 @@ impl FileRepository for MysqlFileRepository {
         })
     }
 
-    async fn create(
-        &self,
-        id: &str,
-        site_id: &str,
-        filename: &str,
-        original_name: &str,
-        mime_type: &str,
-        size: i64,
-        storage_provider: &str,
-        storage_key: &str,
-        thumbnail_key: Option<&str>,
-        width: Option<i32>,
-        height: Option<i32>,
-        created_by: Option<&str>,
-    ) -> Result<File, RepositoryError> {
+    async fn create(&self, file: NewFile<'_>) -> Result<File, RepositoryError> {
+        let NewFile {
+            id,
+            site_id,
+            filename,
+            original_name,
+            mime_type,
+            size,
+            storage_provider,
+            storage_key,
+            thumbnail_key,
+            width,
+            height,
+            created_by,
+        } = file;
         sqlx::query(
             "INSERT INTO files (id, site_id, filename, original_name, mime_type, size, storage_provider, storage_key, thumbnail_key, width, height, created_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         )
