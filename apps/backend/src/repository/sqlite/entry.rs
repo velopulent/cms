@@ -8,7 +8,9 @@ use uuid::Uuid;
 
 use crate::models::entry::{Entry, EntryRevision};
 use crate::repository::error::RepositoryError;
-use crate::repository::traits::{EntriesListResult, EntryRepository, ListEntriesParams, RevisionsListResult};
+use crate::repository::traits::{
+    EntriesListResult, EntryRepository, ListEntriesParams, RevisionsListResult, UpdateEntryParams,
+};
 
 static FILE_URL_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"/api/files/([^/]+)(?:/thumbnail)?").unwrap());
 
@@ -273,16 +275,16 @@ impl EntryRepository for SqliteEntryRepository {
         self.get_by_id_any_site(id).await?.ok_or(RepositoryError::NotFound)
     }
 
-    async fn update(
-        &self,
-        id: &str,
-        site_id: &str,
-        data: &str,
-        slug: &str,
-        status: &str,
-        created_by: Option<&str>,
-        change_summary: Option<&str>,
-    ) -> Result<Entry, RepositoryError> {
+    async fn update(&self, params: UpdateEntryParams<'_>) -> Result<Entry, RepositoryError> {
+        let UpdateEntryParams {
+            id,
+            site_id,
+            data,
+            slug,
+            status,
+            created_by,
+            change_summary,
+        } = params;
         let mut tx = self.pool.begin().await?;
 
         let next_number: i64 =
