@@ -11,7 +11,7 @@ export const Route = createFileRoute("/_admin")({
       if (user.must_change_password && location.pathname !== "/account") {
         throw redirect({ to: "/account" });
       }
-    } catch (err: any) {
+    } catch (err: unknown) {
       // Only redirect on auth failure
       if (err instanceof ApiError && err.status === 401) {
         throw redirect({ to: "/login" });

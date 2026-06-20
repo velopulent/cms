@@ -44,7 +44,6 @@ export function UserCombobox({
         render={
           <Button
             variant="outline"
-            // biome-ignore lint/a11y/useSemanticElements: combobox trigger pattern
             role="combobox"
             aria-expanded={open}
             className="w-full justify-between font-normal"

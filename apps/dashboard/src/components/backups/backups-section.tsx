@@ -253,17 +253,17 @@ export function BackupsSection({ scope }: { scope: BackupScope }) {
         <CardContent className="flex flex-col gap-4">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div className="flex flex-wrap items-center gap-4">
-              <label className="flex items-center gap-2 text-sm">
+              <span className="flex items-center gap-2 text-sm">
                 <Checkbox
                   checked={includeFiles}
                   onCheckedChange={(v) => setIncludeFiles(Boolean(v))}
                 />
                 Include uploaded files
-              </label>
-              <label className="flex items-center gap-2 text-sm">
+              </span>
+              <span className="flex items-center gap-2 text-sm">
                 <Checkbox checked={encrypt} onCheckedChange={(v) => setEncrypt(Boolean(v))} />
                 Encrypt
-              </label>
+              </span>
             </div>
             <div className="flex gap-2">
               <label>
@@ -328,10 +328,8 @@ export function BackupsSection({ scope }: { scope: BackupScope }) {
                                 variant="ghost"
                                 size="icon"
                                 title="Download"
-                                render={<a href={backupDownloadUrl(scope, b.id)} />}
-                              >
-                                <Download className="size-4" />
-                              </Button>
+                                render={<a href={backupDownloadUrl(scope, b.id)}><Download className="size-4" /></a>}
+                              />
                               <Button
                                 variant="ghost"
                                 size="icon"
@@ -448,10 +446,10 @@ export function BackupsSection({ scope }: { scope: BackupScope }) {
             )}
 
             {((isInstance && restoreMode === "site") || !isInstance) && (
-              <label className="flex items-center gap-2 text-sm">
+              <span className="flex items-center gap-2 text-sm">
                 <Checkbox checked={importAsNew} onCheckedChange={(v) => setImportAsNew(Boolean(v))} />
                 Import as a new site (keep the existing one)
-              </label>
+              </span>
             )}
 
             <div className="flex flex-col gap-2">
@@ -503,14 +501,14 @@ function SitePicker({
   const allSelected = selected.length === sites.length;
   return (
     <div className="rounded-md border">
-      <label className="flex items-center gap-2 border-b px-3 py-2 text-sm font-medium">
+      <span className="flex items-center gap-2 border-b px-3 py-2 text-sm font-medium">
         <Checkbox checked={allSelected} onCheckedChange={(v) => onToggleAll(Boolean(v))} />
         Select all ({selected.length}/{sites.length})
-      </label>
+      </span>
       <ScrollArea className="max-h-48">
         <div className="flex flex-col">
           {sites.map((s) => (
-            <label
+            <div
               key={s.id}
               className="flex items-center gap-2 px-3 py-2 text-sm hover:bg-muted/50"
             >
@@ -519,7 +517,7 @@ function SitePicker({
                 <span className="font-medium">{s.name ?? "(unnamed site)"}</span>
                 <span className="font-mono text-xs text-muted-foreground">{s.id}</span>
               </span>
-            </label>
+            </div>
           ))}
         </div>
       </ScrollArea>
@@ -608,14 +606,14 @@ function SchedulesCard({ schedules, loading, onCreate, onToggle, onRun, onDelete
             />
           </div>
           <div className="flex flex-col gap-2 sm:col-span-2 lg:col-span-1 lg:flex-row lg:items-center lg:gap-4 lg:pb-2">
-            <label className="flex items-center gap-2 text-sm">
+            <span className="flex items-center gap-2 text-sm">
               <Checkbox checked={includeFiles} onCheckedChange={(v) => setIncludeFiles(Boolean(v))} />
               Files
-            </label>
-            <label className="flex items-center gap-2 text-sm">
+            </span>
+            <span className="flex items-center gap-2 text-sm">
               <Checkbox checked={encrypt} onCheckedChange={(v) => setEncrypt(Boolean(v))} />
               Encrypt
-            </label>
+            </span>
           </div>
           <Button onClick={submit} disabled={submitting}>
             <Plus className="size-4" /> Add schedule

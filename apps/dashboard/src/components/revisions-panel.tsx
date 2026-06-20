@@ -390,10 +390,11 @@ export function RevisionsPanel({
 // ---------------------------------------------------------------------------
 
 function RevisionListSkeleton() {
+  const keys = useMemo(() => Array.from({ length: 5 }, (_, i) => i), []);
   return (
     <div className="flex flex-col gap-px py-1">
-      {Array.from({ length: 5 }, (_, i) => (
-        <div key={i} className="px-5 py-4">
+      {keys.map((k) => (
+        <div key={k} className="px-5 py-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
               <Skeleton className="h-5 w-14 rounded-md" />

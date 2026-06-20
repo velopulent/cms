@@ -480,7 +480,7 @@ function SortableFieldItem({
             <div className="flex flex-wrap gap-1">
               {(field.options ?? []).map((opt, optIdx) => (
                 <span
-                  key={optIdx}
+                  key={opt}
                   className="inline-flex items-center gap-1 rounded-md border border-border bg-background px-2 py-0.5 text-xs"
                 >
                   {opt}

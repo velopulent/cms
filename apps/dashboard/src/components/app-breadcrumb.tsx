@@ -70,7 +70,7 @@ function useSiteName(siteId: string | undefined) {
 
   const { data: site } = useQuery({
     queryKey: ["site", siteId],
-    queryFn: () => getSite(siteId!),
+    queryFn: () => getSite(siteId as string),
     enabled: !!siteId && !siteFromList,
   });
 
@@ -80,7 +80,7 @@ function useSiteName(siteId: string | undefined) {
 function useCollectionName(siteId: string | undefined, collectionSlug: string | undefined) {
   const { data: collections } = useQuery({
     queryKey: ["collections", siteId],
-    queryFn: () => getCollections(siteId!),
+    queryFn: () => getCollections(siteId as string),
     enabled: !!siteId && !!collectionSlug,
   });
 
@@ -90,7 +90,7 @@ function useCollectionName(siteId: string | undefined, collectionSlug: string | 
 function useSingletonName(siteId: string | undefined, slug: string | undefined) {
   const { data: collections } = useQuery({
     queryKey: ["collections", siteId],
-    queryFn: () => getCollections(siteId!),
+    queryFn: () => getCollections(siteId as string),
     enabled: !!siteId && !!slug,
   });
 
@@ -100,7 +100,7 @@ function useSingletonName(siteId: string | undefined, slug: string | undefined) 
 function useEntrySlugLabel(siteId: string | undefined, entryId: string | undefined) {
   const { data: entry } = useQuery({
     queryKey: ["entry", siteId, entryId],
-    queryFn: () => getEntryById(siteId!, entryId!),
+    queryFn: () => getEntryById(siteId as string, entryId as string),
     enabled: !!siteId && !!entryId,
   });
 
@@ -125,6 +125,8 @@ function useBreadcrumbLabels(defs: BreadcrumbDef[], params: Record<string, strin
         return singletonName ?? null;
       case "entrySlug":
         return entrySlug ?? null;
+      default:
+        return null;
     }
   });
 }
@@ -186,8 +188,8 @@ export function AppBreadcrumb() {
     return (
       <Breadcrumb>
         <BreadcrumbList>
-          {config.crumbs.map((_, i) => (
-            <Fragment key={i}>
+          {config.crumbs.map((def, i) => (
+            <Fragment key={`crumb-${"label" in def ? def.label : def.labelFrom}`}>
               {i > 0 && <BreadcrumbSeparator />}
               <BreadcrumbItem>
                 <Skeleton className="h-4 w-20" />
@@ -207,7 +209,7 @@ export function AppBreadcrumb() {
           const href = buildHref(routeId, params, i);
 
           return (
-            <Fragment key={i}>
+            <Fragment key={label}>
               {i > 0 && <BreadcrumbSeparator />}
               <BreadcrumbItem>
                 {isLast ? (

@@ -1,5 +1,7 @@
 import { Archive, FileText, Music } from "lucide-react";
-import React, {
+import type { AnyFieldApi } from "@tanstack/react-form";
+import type React from "react";
+import {
   Component,
   memo,
   useCallback,
@@ -228,6 +230,7 @@ export const DynamicForm = memo(function DynamicForm({
 
 interface DynamicFieldProps {
   field: ContentField;
+  // biome-ignore lint/suspicious/noExplicitAny: TanStack Form instance with complex generics
   form: any;
   prefix: string;
   siteId?: string;
@@ -247,7 +250,7 @@ const DynamicField = memo(function DynamicField({
 
   return (
     <form.Field name={fieldName}>
-      {(f: any) => {
+      {(f: AnyFieldApi) => {
         const isInvalid = f.state.meta.isTouched && !f.state.meta.isValid;
         return (
           <Field data-invalid={isInvalid || undefined}>
@@ -337,13 +340,16 @@ const FieldInput = memo(function FieldInput({
     onBlur,
   } as const;
 
+  const stableStringChange = useStableHandler(onChange, extractString);
+  const stableNumberChange = useStableHandler(onChange, extractNumber);
+
   switch (field.type) {
     case "text":
       return (
         <Input
           {...inputBaseProps}
           value={strValue}
-          onChange={useStableHandler(onChange, extractString)}
+          onChange={stableStringChange}
         />
       );
 
@@ -353,7 +359,7 @@ const FieldInput = memo(function FieldInput({
           {...inputBaseProps}
           value={strValue}
           rows={4}
-          onChange={useStableHandler(onChange, extractString)}
+          onChange={stableStringChange}
         />
       );
 
@@ -374,7 +380,7 @@ const FieldInput = memo(function FieldInput({
           {...inputBaseProps}
           type="number"
           value={numValue}
-          onChange={useStableHandler(onChange, extractNumber)}
+          onChange={stableNumberChange}
         />
       );
 
@@ -402,7 +408,7 @@ const FieldInput = memo(function FieldInput({
           {...inputBaseProps}
           type="date"
           value={strValue}
-          onChange={useStableHandler(onChange, extractString)}
+          onChange={stableStringChange}
         />
       );
 
@@ -441,7 +447,7 @@ const FieldInput = memo(function FieldInput({
             {...inputBaseProps}
             placeholder="https://…"
             value={strValue}
-            onChange={useStableHandler(onChange, extractString)}
+            onChange={stableStringChange}
           />
           {strValue && (
             <img
@@ -478,7 +484,7 @@ const FieldInput = memo(function FieldInput({
         <Input
           {...inputBaseProps}
           value={strValue}
-          onChange={useStableHandler(onChange, extractString)}
+          onChange={stableStringChange}
         />
       );
   }
@@ -711,7 +717,9 @@ const FilePreview = memo(function FilePreview({
         />
       )}
       {isAudio && value && (
-        <audio controls src={value} className="w-full" />
+        <audio controls src={value} className="w-full">
+          <track kind="captions" />
+        </audio>
       )}
     </div>
   );

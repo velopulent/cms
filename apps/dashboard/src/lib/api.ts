@@ -3,9 +3,9 @@ const AUTH_URL = "/api/auth";
 
 export class ApiError extends Error {
   status: number;
-  body?: any;
+  body?: Record<string, unknown>;
 
-  constructor(status: number, message?: string, body?: any) {
+  constructor(status: number, message?: string, body?: Record<string, unknown>) {
     super(message);
     this.status = status;
     this.body = body;

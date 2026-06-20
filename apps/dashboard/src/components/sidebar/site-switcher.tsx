@@ -37,7 +37,7 @@ export function SiteSwitcher({
 }) {
   const { isMobile } = useSidebar();
   const navigate = useNavigate();
-  const { siteId } = useParams({ from: "/_admin/sites/$siteId" as any });
+  const { siteId } = useParams({ from: "/_admin/sites/$siteId" });
   const [sidebarHovered, setSidebarHovered] = useState(false);
   const [hoveredSiteId, setHoveredSiteId] = useState<string | null>(null);
 
