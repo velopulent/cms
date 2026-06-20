@@ -10,7 +10,7 @@
 //! - `status`        — exact-match filter (`draft` / `published`).
 //! - `slug`          — tokenized + stored, lightly searchable.
 //! - `body`          — the flattened, tokenized text of all scalar values in
-//!                     `entries.data`; the main ranked field.
+//!   `entries.data`; the main ranked field.
 //!
 //! `body`/`slug` use an English-stemming analyzer so "running" matches "run".
 
