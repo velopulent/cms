@@ -9,7 +9,7 @@ use uuid::Uuid;
 
 use crate::middleware::auth::compute_key_hmac;
 use crate::models::access_token::{AccessToken, AccessTokenPermission, AccessTokenResponse};
-use crate::repository::traits::AccessTokenRepository;
+use crate::repository::traits::{AccessTokenRepository, NewAccessToken};
 
 const SITE_TOKEN_PREFIX: &str = "cms_site_";
 
@@ -91,16 +91,16 @@ impl AccessTokenService {
         let permission_str = permission.as_str();
 
         self.access_token_repo
-            .create(
-                &id,
+            .create(NewAccessToken {
+                id: &id,
                 site_id,
                 name,
-                &token_hash,
-                &prefix,
-                &token_hmac,
-                permission_str,
-                created_by,
-            )
+                token_hash: &token_hash,
+                token_prefix: &prefix,
+                token_hmac: &token_hmac,
+                permission: permission_str,
+                created_by_user_id: created_by,
+            })
             .await
             .map_err(|e| {
                 error!("Failed to create site token: site_id={}, error={}", site_id, e);
