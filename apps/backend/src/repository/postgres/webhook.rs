@@ -3,7 +3,7 @@ use sqlx::PgPool;
 
 use crate::models::webhook::{SiteWebhook, WebhookDelivery};
 use crate::repository::error::RepositoryError;
-use crate::repository::traits::WebhookRepository;
+use crate::repository::traits::{NewWebhookDelivery, WebhookRepository};
 
 pub struct PostgresWebhookRepository {
     pool: PgPool,
@@ -100,16 +100,16 @@ impl WebhookRepository for PostgresWebhookRepository {
         Ok(result.rows_affected())
     }
 
-    async fn create_delivery(
-        &self,
-        id: &str,
-        webhook_id: &str,
-        status: &str,
-        status_code: Option<i32>,
-        response_body: Option<&str>,
-        duration_ms: Option<i64>,
-        triggered_by: Option<&str>,
-    ) -> Result<WebhookDelivery, RepositoryError> {
+    async fn create_delivery(&self, delivery: NewWebhookDelivery<'_>) -> Result<WebhookDelivery, RepositoryError> {
+        let NewWebhookDelivery {
+            id,
+            webhook_id,
+            status,
+            status_code,
+            response_body,
+            duration_ms,
+            triggered_by,
+        } = delivery;
         sqlx::query(
             "INSERT INTO site_webhook_deliveries (id, webhook_id, status, status_code, response_body, duration_ms, triggered_by) VALUES ($1, $2, $3, $4, $5, $6, $7)",
         )
