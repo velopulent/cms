@@ -18,6 +18,9 @@ use crate::repository::Repository;
 use crate::services::Services;
 use crate::storage::StorageRegistry;
 
+/// Boxed, pinned future returned by [`spawn_grpc_server`] (the gRPC server task).
+type GrpcServerFuture = Pin<Box<dyn Future<Output = Result<(), Box<dyn std::error::Error + Send + Sync>>> + Send>>;
+
 pub async fn start_grpc_server(
     services: Services,
     repository: Arc<Repository>,
@@ -102,7 +105,7 @@ pub fn spawn_grpc_server(
     config: Arc<Config>,
     storage_registry: Arc<StorageRegistry>,
     grpc_addr: SocketAddr,
-) -> Pin<Box<dyn Future<Output = Result<(), Box<dyn std::error::Error + Send + Sync>>> + Send>> {
+) -> GrpcServerFuture {
     Box::pin(start_grpc_server(
         services,
         repository,

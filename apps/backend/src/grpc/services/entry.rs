@@ -14,6 +14,7 @@ use crate::models::entry::{Entry, EntryRevision};
 use crate::repository::Repository;
 use crate::repository::traits::ListEntriesParams;
 use crate::services::entry::EntryService as AppEntryService;
+use crate::services::entry::UpdateEntryInput;
 
 #[derive(Clone)]
 pub struct EntryServiceImpl {
@@ -112,15 +113,15 @@ impl EntryService for EntryServiceImpl {
 
         let entry = self
             .app_entry_service
-            .update_entry(
-                &req.id,
-                &site_id,
-                data.as_ref(),
-                req.slug.as_deref(),
-                req.status.as_deref(),
-                None,
-                req.change_summary.as_deref(),
-            )
+            .update_entry(UpdateEntryInput {
+                id: &req.id,
+                site_id: &site_id,
+                data: data.as_ref(),
+                slug: req.slug.as_deref(),
+                status: req.status.as_deref(),
+                created_by: None,
+                change_summary: req.change_summary.as_deref(),
+            })
             .await
             .map_err(|e| Status::internal(format!("Error: {}", e)))?;
 
