@@ -165,7 +165,7 @@ async fn test_delete_collection_mutation() {
 
     let body = gql(&server, &token, r#"mutation { deleteCollection(slug: "to-delete") }"#).await;
     assert!(body["errors"].is_null());
-    assert_eq!(body["data"]["deleteCollection"].as_bool().unwrap(), true);
+    assert!(body["data"]["deleteCollection"].as_bool().unwrap());
 }
 
 #[tokio::test]
@@ -177,7 +177,7 @@ async fn test_create_singleton_collection() {
     assert!(body["errors"].is_null(), "errors: {:?}", body["errors"]);
     assert_eq!(body["data"]["createCollection"]["name"].as_str().unwrap(), "Settings");
     assert_eq!(body["data"]["createCollection"]["slug"].as_str().unwrap(), "settings");
-    assert_eq!(body["data"]["createCollection"]["isSingleton"].as_bool().unwrap(), true);
+    assert!(body["data"]["createCollection"]["isSingleton"].as_bool().unwrap());
 }
 
 #[tokio::test]
@@ -225,5 +225,5 @@ async fn test_collection_not_singleton() {
 
     let body = gql(&server, &token, r#"{ collection(slug: "regular") { id isSingleton } }"#).await;
     assert!(body["errors"].is_null(), "errors: {:?}", body["errors"]);
-    assert_eq!(body["data"]["collection"]["isSingleton"].as_bool().unwrap(), false);
+    assert!(!body["data"]["collection"]["isSingleton"].as_bool().unwrap());
 }

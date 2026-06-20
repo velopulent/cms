@@ -41,23 +41,25 @@ impl GrpcTestContext {
         let storage_dir = tempfile::tempdir().expect("Failed to create temp storage dir");
         let storage_path = storage_dir.path().to_str().unwrap().to_string();
 
-        let mut config = Config::default();
-        config.database_url = "sqlite::memory:".to_string();
-        config.hmac_secret = "test-hmac-secret-integration".to_string();
-        config.storage_fs_path = Some(storage_path.clone());
-        config.cookie_secure = false;
-        config.mcp_enabled = false;
-        config.rate_limit_max_requests = 10000;
-        config.rate_limit_window_secs = 60;
-        config.db_max_connections = 5;
-        config.db_min_connections = 1;
-        config.db_acquire_timeout_secs = 30;
-        config.db_idle_timeout_secs = 600;
-        config.max_upload_size_bytes = 50 * 1024 * 1024;
-        config.public_registration_enabled = true;
-        config.bcrypt_cost = bcrypt::DEFAULT_COST;
-        config.webhook_allow_private_targets = true;
-        config.backup_local_path = Some(format!("{storage_path}/backups"));
+        let config = Config {
+            database_url: "sqlite::memory:".to_string(),
+            hmac_secret: "test-hmac-secret-integration".to_string(),
+            storage_fs_path: Some(storage_path.clone()),
+            cookie_secure: false,
+            mcp_enabled: false,
+            rate_limit_max_requests: 10000,
+            rate_limit_window_secs: 60,
+            db_max_connections: 5,
+            db_min_connections: 1,
+            db_acquire_timeout_secs: 30,
+            db_idle_timeout_secs: 600,
+            max_upload_size_bytes: 50 * 1024 * 1024,
+            public_registration_enabled: true,
+            bcrypt_cost: bcrypt::DEFAULT_COST,
+            webhook_allow_private_targets: true,
+            backup_local_path: Some(format!("{storage_path}/backups")),
+            ..Default::default()
+        };
 
         let pool = init_db_with_config(&config)
             .await

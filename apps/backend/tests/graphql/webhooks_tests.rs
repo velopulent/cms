@@ -162,7 +162,7 @@ async fn test_delete_webhook_mutation() {
     );
     let body = gql(&server, &token, &query).await;
     assert!(body["errors"].is_null());
-    assert_eq!(body["data"]["deleteWebhook"].as_bool().unwrap(), true);
+    assert!(body["data"]["deleteWebhook"].as_bool().unwrap());
 }
 
 #[tokio::test]
