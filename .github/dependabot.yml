@@ -1,0 +1,36 @@
+version: 2
+updates:
+  # Rust backend (workspace). Replaces hand-bumping deps.
+  - package-ecosystem: cargo
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 10
+    groups:
+      cargo-minor-patch:
+        update-types:
+          - minor
+          - patch
+
+  # Frontend + web (bun reads package.json; npm ecosystem covers the workspace).
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 10
+    groups:
+      npm-minor-patch:
+        update-types:
+          - minor
+          - patch
+
+  # Keep the SHA-pinned GitHub Actions current so pinning doesn't rot.
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 10
+    groups:
+      actions-all:
+        patterns:
+          - "*"
