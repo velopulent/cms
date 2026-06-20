@@ -106,6 +106,17 @@ pub trait CollectionRepository: Send + Sync {
     ) -> Result<(), RepositoryError>;
 }
 
+/// Fields for an entry update (see [`EntryRepository::update`]).
+pub struct UpdateEntryParams<'a> {
+    pub id: &'a str,
+    pub site_id: &'a str,
+    pub data: &'a str,
+    pub slug: &'a str,
+    pub status: &'a str,
+    pub created_by: Option<&'a str>,
+    pub change_summary: Option<&'a str>,
+}
+
 #[async_trait]
 pub trait EntryRepository: Send + Sync {
     async fn get_by_id(&self, id: &str, site_id: &str, published_only: bool) -> Result<Option<Entry>, RepositoryError>;
@@ -145,16 +156,7 @@ pub trait EntryRepository: Send + Sync {
         created_by: Option<&str>,
         change_summary: Option<&str>,
     ) -> Result<Entry, RepositoryError>;
-    async fn update(
-        &self,
-        id: &str,
-        site_id: &str,
-        data: &str,
-        slug: &str,
-        status: &str,
-        created_by: Option<&str>,
-        change_summary: Option<&str>,
-    ) -> Result<Entry, RepositoryError>;
+    async fn update(&self, params: UpdateEntryParams<'_>) -> Result<Entry, RepositoryError>;
     async fn delete(&self, id: &str, site_id: &str) -> Result<u64, RepositoryError>;
     async fn publish(&self, id: &str, site_id: &str) -> Result<Entry, RepositoryError>;
     async fn unpublish(&self, id: &str, site_id: &str) -> Result<Entry, RepositoryError>;
@@ -229,26 +231,28 @@ pub struct FileListResult {
     pub per_page: i64,
 }
 
+/// A new file record to persist (see [`FileRepository::create`]).
+pub struct NewFile<'a> {
+    pub id: &'a str,
+    pub site_id: &'a str,
+    pub filename: &'a str,
+    pub original_name: &'a str,
+    pub mime_type: &'a str,
+    pub size: i64,
+    pub storage_provider: &'a str,
+    pub storage_key: &'a str,
+    pub thumbnail_key: Option<&'a str>,
+    pub width: Option<i32>,
+    pub height: Option<i32>,
+    pub created_by: Option<&'a str>,
+}
+
 #[async_trait]
 pub trait FileRepository: Send + Sync {
     async fn get_by_id(&self, id: &str, site_id: &str) -> Result<Option<File>, RepositoryError>;
     async fn get_by_id_any(&self, id: &str) -> Result<Option<File>, RepositoryError>;
     async fn list(&self, params: ListFilesParams<'_>) -> Result<FileListResult, RepositoryError>;
-    async fn create(
-        &self,
-        id: &str,
-        site_id: &str,
-        filename: &str,
-        original_name: &str,
-        mime_type: &str,
-        size: i64,
-        storage_provider: &str,
-        storage_key: &str,
-        thumbnail_key: Option<&str>,
-        width: Option<i32>,
-        height: Option<i32>,
-        created_by: Option<&str>,
-    ) -> Result<File, RepositoryError>;
+    async fn create(&self, file: NewFile<'_>) -> Result<File, RepositoryError>;
     async fn soft_delete(&self, id: &str, site_id: &str) -> Result<u64, RepositoryError>;
     async fn restore(&self, id: &str, site_id: &str) -> Result<u64, RepositoryError>;
     async fn batch_soft_delete(&self, site_id: &str, ids: &[String]) -> Result<u64, RepositoryError>;
@@ -275,23 +279,36 @@ pub type AccessTokenLookupRow = (
     String,
 );
 
+/// A new access token to persist (see [`AccessTokenRepository::create`]).
+pub struct NewAccessToken<'a> {
+    pub id: &'a str,
+    pub site_id: &'a str,
+    pub name: &'a str,
+    pub token_hash: &'a str,
+    pub token_prefix: &'a str,
+    pub token_hmac: &'a str,
+    pub permission: &'a str,
+    pub created_by_user_id: Option<&'a str>,
+}
+
 #[async_trait]
 pub trait AccessTokenRepository: Send + Sync {
     async fn list(&self, site_id: &str) -> Result<Vec<AccessToken>, RepositoryError>;
-    async fn create(
-        &self,
-        id: &str,
-        site_id: &str,
-        name: &str,
-        token_hash: &str,
-        token_prefix: &str,
-        token_hmac: &str,
-        permission: &str,
-        created_by_user_id: Option<&str>,
-    ) -> Result<(), RepositoryError>;
+    async fn create(&self, token: NewAccessToken<'_>) -> Result<(), RepositoryError>;
     async fn delete(&self, id: &str, site_id: &str) -> Result<u64, RepositoryError>;
     async fn find_by_prefix(&self, prefix: &str) -> Result<Vec<AccessTokenLookupRow>, RepositoryError>;
     async fn update_last_used(&self, id: &str) -> Result<(), RepositoryError>;
+}
+
+/// A webhook delivery record to insert (see [`WebhookRepository::create_delivery`]).
+pub struct NewWebhookDelivery<'a> {
+    pub id: &'a str,
+    pub webhook_id: &'a str,
+    pub status: &'a str,
+    pub status_code: Option<i32>,
+    pub response_body: Option<&'a str>,
+    pub duration_ms: Option<i64>,
+    pub triggered_by: Option<&'a str>,
 }
 
 #[async_trait]
@@ -315,16 +332,7 @@ pub trait WebhookRepository: Send + Sync {
         headers_encrypted: Option<&str>,
     ) -> Result<SiteWebhook, RepositoryError>;
     async fn delete(&self, id: &str, site_id: &str) -> Result<u64, RepositoryError>;
-    async fn create_delivery(
-        &self,
-        id: &str,
-        webhook_id: &str,
-        status: &str,
-        status_code: Option<i32>,
-        response_body: Option<&str>,
-        duration_ms: Option<i64>,
-        triggered_by: Option<&str>,
-    ) -> Result<WebhookDelivery, RepositoryError>;
+    async fn create_delivery(&self, delivery: NewWebhookDelivery<'_>) -> Result<WebhookDelivery, RepositoryError>;
     async fn list_deliveries(
         &self,
         webhook_id: &str,
