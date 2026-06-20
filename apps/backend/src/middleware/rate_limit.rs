@@ -39,7 +39,9 @@ impl RateLimiter {
         }
     }
 
-    pub fn check(&self, key: &str) -> Result<(), ()> {
+    /// Records a request against `key`'s bucket and returns whether it is allowed
+    /// (`true`) or has exceeded the limit for the current window (`false`).
+    pub fn check(&self, key: &str) -> bool {
         let now = Instant::now();
 
         // Bound memory: drop expired buckets once the map grows large. Done
@@ -60,11 +62,7 @@ impl RateLimiter {
         }
         entry.count += 1;
 
-        if entry.count > self.max_requests {
-            Err(())
-        } else {
-            Ok(())
-        }
+        entry.count <= self.max_requests
     }
 
     /// Derive the rate-limit bucket key for a request. When `trust_proxy_headers`
@@ -110,12 +108,13 @@ pub async fn rate_limit_middleware(
 ) -> Response {
     let key = limiter.extract_client_key(&req);
 
-    match limiter.check(&key) {
-        Ok(()) => next.run(req).await,
-        Err(()) => (
+    if limiter.check(&key) {
+        next.run(req).await
+    } else {
+        (
             StatusCode::TOO_MANY_REQUESTS,
             Json(json!({"error": "Too many requests. Please try again later."})),
         )
-            .into_response(),
+            .into_response()
     }
 }
