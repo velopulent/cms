@@ -374,136 +374,6 @@ impl CmsServer {
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use std::collections::HashSet;
-
-    use super::CmsServer;
-    use crate::mcp::schema::clean_input_schema;
-
-    #[test]
-    fn tool_router_lists_registered_tools() {
-        let tools = CmsServer::tool_router().list_all();
-        assert!(tools.iter().any(|tool| tool.name == "get_site"));
-        assert!(!tools.iter().any(|tool| tool.name.contains("token")));
-        assert!(!tools.iter().any(|tool| tool.name == "list_sites"));
-        assert!(tools.len() > 15);
-    }
-
-    fn all_tools() -> Vec<rmcp::model::Tool> {
-        CmsServer::tool_router().list_all()
-    }
-
-    #[test]
-    fn no_type_null_in_schemas() {
-        for tool in all_tools() {
-            let cleaned = clean_input_schema(tool.input_schema);
-            assert_eq!(
-                cleaned.get("type").and_then(|v| v.as_str()),
-                Some("object"),
-                "tool '{}' input_schema must have type 'object'",
-                tool.name
-            );
-        }
-    }
-
-    #[test]
-    fn no_boolean_properties_in_schemas() {
-        for tool in all_tools() {
-            let cleaned = clean_input_schema(tool.input_schema);
-            if let Some(props) = cleaned.get("properties").and_then(|v| v.as_object()) {
-                for (key, value) in props {
-                    assert!(
-                        value.is_object() || value.is_array(),
-                        "tool '{}' property '{}' must be a schema object, got {:?}",
-                        tool.name,
-                        key,
-                        value
-                    );
-                }
-            }
-        }
-    }
-
-    #[test]
-    fn all_input_schemas_are_valid_objects() {
-        for tool in all_tools() {
-            let cleaned = clean_input_schema(tool.input_schema);
-            assert!(
-                cleaned.get("type").and_then(|v| v.as_str()) == Some("object"),
-                "tool '{}' input_schema must have type 'object'",
-                tool.name
-            );
-            let has_properties = cleaned.contains_key("properties");
-            let has_required = cleaned.contains_key("required");
-            assert!(
-                has_properties || !has_required,
-                "tool '{}' has 'required' but no 'properties'",
-                tool.name
-            );
-        }
-    }
-
-    #[test]
-    fn no_type_null_anywhere() {
-        for tool in all_tools() {
-            let schema_str = serde_json::to_string(&*tool.input_schema).unwrap();
-            if schema_str.contains(r#""type":"null""#) {
-                panic!("tool '{}' still contains \"type\":\"null\"", tool.name,);
-            }
-        }
-    }
-
-    #[test]
-    fn no_boolean_schema_values() {
-        for tool in all_tools() {
-            if let Some(props) = tool.input_schema.get("properties").and_then(|v| v.as_object()) {
-                for (key, value) in props {
-                    if value.is_boolean() {
-                        panic!("tool '{}' property '{}' is boolean {:?}", tool.name, key, value);
-                    }
-                }
-            }
-        }
-    }
-
-    #[test]
-    fn cleaned_schemas_have_no_schema_or_title() {
-        for tool in all_tools() {
-            let cleaned = clean_input_schema(tool.input_schema);
-            assert!(
-                !cleaned.contains_key("$schema"),
-                "tool '{}' still has $schema",
-                tool.name
-            );
-            assert!(!cleaned.contains_key("title"), "tool '{}' still has title", tool.name);
-        }
-    }
-
-    #[test]
-    fn required_fields_are_subset_of_properties() {
-        for tool in all_tools() {
-            let cleaned = clean_input_schema(tool.input_schema);
-            let props: HashSet<&str> = cleaned
-                .get("properties")
-                .and_then(|v| v.as_object())
-                .map(|m| m.keys().map(|k| k.as_str()).collect())
-                .unwrap_or_default();
-            if let Some(required) = cleaned.get("required").and_then(|v| v.as_array()) {
-                for req in required {
-                    let req_str = req.as_str().unwrap_or("");
-                    assert!(
-                        props.contains(req_str),
-                        "tool '{}' required field '{}' not in properties",
-                        tool.name,
-                        req_str
-                    );
-                }
-            }
-        }
-    }
-}
-
 use crate::mcp::schema::clean_input_schema;
 
 #[tool_handler]
@@ -649,5 +519,135 @@ impl CmsServer {
             .unwrap_or("http");
 
         Some(format!("{}://{}", proto, host).trim_end_matches('/').to_string())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::collections::HashSet;
+
+    use super::CmsServer;
+    use crate::mcp::schema::clean_input_schema;
+
+    #[test]
+    fn tool_router_lists_registered_tools() {
+        let tools = CmsServer::tool_router().list_all();
+        assert!(tools.iter().any(|tool| tool.name == "get_site"));
+        assert!(!tools.iter().any(|tool| tool.name.contains("token")));
+        assert!(!tools.iter().any(|tool| tool.name == "list_sites"));
+        assert!(tools.len() > 15);
+    }
+
+    fn all_tools() -> Vec<rmcp::model::Tool> {
+        CmsServer::tool_router().list_all()
+    }
+
+    #[test]
+    fn no_type_null_in_schemas() {
+        for tool in all_tools() {
+            let cleaned = clean_input_schema(tool.input_schema);
+            assert_eq!(
+                cleaned.get("type").and_then(|v| v.as_str()),
+                Some("object"),
+                "tool '{}' input_schema must have type 'object'",
+                tool.name
+            );
+        }
+    }
+
+    #[test]
+    fn no_boolean_properties_in_schemas() {
+        for tool in all_tools() {
+            let cleaned = clean_input_schema(tool.input_schema);
+            if let Some(props) = cleaned.get("properties").and_then(|v| v.as_object()) {
+                for (key, value) in props {
+                    assert!(
+                        value.is_object() || value.is_array(),
+                        "tool '{}' property '{}' must be a schema object, got {:?}",
+                        tool.name,
+                        key,
+                        value
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn all_input_schemas_are_valid_objects() {
+        for tool in all_tools() {
+            let cleaned = clean_input_schema(tool.input_schema);
+            assert!(
+                cleaned.get("type").and_then(|v| v.as_str()) == Some("object"),
+                "tool '{}' input_schema must have type 'object'",
+                tool.name
+            );
+            let has_properties = cleaned.contains_key("properties");
+            let has_required = cleaned.contains_key("required");
+            assert!(
+                has_properties || !has_required,
+                "tool '{}' has 'required' but no 'properties'",
+                tool.name
+            );
+        }
+    }
+
+    #[test]
+    fn no_type_null_anywhere() {
+        for tool in all_tools() {
+            let schema_str = serde_json::to_string(&*tool.input_schema).unwrap();
+            if schema_str.contains(r#""type":"null""#) {
+                panic!("tool '{}' still contains \"type\":\"null\"", tool.name,);
+            }
+        }
+    }
+
+    #[test]
+    fn no_boolean_schema_values() {
+        for tool in all_tools() {
+            if let Some(props) = tool.input_schema.get("properties").and_then(|v| v.as_object()) {
+                for (key, value) in props {
+                    if value.is_boolean() {
+                        panic!("tool '{}' property '{}' is boolean {:?}", tool.name, key, value);
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn cleaned_schemas_have_no_schema_or_title() {
+        for tool in all_tools() {
+            let cleaned = clean_input_schema(tool.input_schema);
+            assert!(
+                !cleaned.contains_key("$schema"),
+                "tool '{}' still has $schema",
+                tool.name
+            );
+            assert!(!cleaned.contains_key("title"), "tool '{}' still has title", tool.name);
+        }
+    }
+
+    #[test]
+    fn required_fields_are_subset_of_properties() {
+        for tool in all_tools() {
+            let cleaned = clean_input_schema(tool.input_schema);
+            let props: HashSet<&str> = cleaned
+                .get("properties")
+                .and_then(|v| v.as_object())
+                .map(|m| m.keys().map(|k| k.as_str()).collect())
+                .unwrap_or_default();
+            if let Some(required) = cleaned.get("required").and_then(|v| v.as_array()) {
+                for req in required {
+                    let req_str = req.as_str().unwrap_or("");
+                    assert!(
+                        props.contains(req_str),
+                        "tool '{}' required field '{}' not in properties",
+                        tool.name,
+                        req_str
+                    );
+                }
+            }
+        }
     }
 }

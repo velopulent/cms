@@ -11,6 +11,7 @@ use crate::mcp::schema::ArbitraryJson;
 use crate::middleware::auth::Actor;
 use crate::models::authorization::Action;
 use crate::repository::traits::ListEntriesParams as RepoListEntriesParams;
+use crate::services::entry::UpdateEntryInput;
 use crate::services::{Services, authorization::AuthorizationService};
 use crate::storage::StorageRegistry;
 
@@ -166,15 +167,15 @@ pub async fn update_entry(
     }
     match services
         .entry
-        .update_entry(
-            &params.0.id,
-            &site_id,
-            params.0.values.as_ref(),
-            params.0.slug.as_deref(),
-            params.0.published.map(|b| if b { "published" } else { "draft" }),
-            None,
-            params.0.change_summary.as_deref(),
-        )
+        .update_entry(UpdateEntryInput {
+            id: &params.0.id,
+            site_id: &site_id,
+            data: params.0.values.as_ref(),
+            slug: params.0.slug.as_deref(),
+            status: params.0.published.map(|b| if b { "published" } else { "draft" }),
+            created_by: None,
+            change_summary: params.0.change_summary.as_deref(),
+        })
         .await
     {
         Ok(entry) => ok_result(&entry),
