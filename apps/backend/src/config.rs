@@ -181,7 +181,7 @@ struct RawLog {
 impl Config {
     /// Load configuration by merging, in increasing precedence:
     /// built-in defaults < config file < environment variables < CLI flags.
-    pub fn load(cli: &Cli) -> Result<Self, figment::Error> {
+    pub fn load(cli: &Cli) -> Result<Self, Box<figment::Error>> {
         let mut figment = Figment::new();
 
         // Lowest-precedence secret layer: persisted HMAC secret from
@@ -228,7 +228,7 @@ impl Config {
             figment = figment.merge(Serialized::default("log.level", v));
         }
 
-        Ok(figment.extract::<RawConfig>()?.into_config())
+        Ok(figment.extract::<RawConfig>().map_err(Box::new)?.into_config())
     }
 
     /// Convenience for callers that only want env + defaults (no CLI flags).
