@@ -94,9 +94,9 @@ jobs:
           workspaces: apps/backend
           # Share the dependency cache with the linux test lanes (deps are
           # identical; clippy's final artifacts differ but the heavy 3rd-party
-          # layer is reused). Only main writes the cache.
+          # layer is reused). rust-cache prunes to deps before saving, so a
+          # single shared cache serves lint + all 3 db lanes.
           shared-key: linux
-          save-if: ${{ github.ref == 'refs/heads/main' }}
       - run: cargo fmt --all -- --check
       # --no-default-features drops `embed-dashboard`, whose RustEmbed derive needs
       # apps/dashboard/dist at compile time (not built in CI).
@@ -138,11 +138,11 @@ jobs:
           - db: postgres
             test_database: postgres
             test_database_url: postgres://postgres:postgres@localhost:5432/postgres
-            test_args: "--test-threads=4"
+            test_args: "-- --test-threads=4"
           - db: mysql
             test_database: mysql
             test_database_url: mysql://root:root@localhost:3306/mysql
-            test_args: "--test-threads=4"
+            test_args: "-- --test-threads=4"
     env:
       TEST_DATABASE: ${{ matrix.test_database }}
       TEST_DATABASE_URL: ${{ matrix.test_database_url }}
@@ -188,16 +188,12 @@ jobs:
           workspaces: apps/backend
           # All 3 db lanes compile an identical binary (db is chosen at runtime
           # via TEST_DATABASE), so one shared cache lets lanes 2 & 3 restore
-          # fully warm. Only main writes the cache.
+          # fully warm. Shared with the lint job too (deps are identical).
           shared-key: linux
-          save-if: ${{ github.ref == 'refs/heads/main' }}
-      - uses: taiki-e/install-action@8b3c737da4b541bf0fb5a3e0488ff20535badac9 # v2
-        with:
-          tool: nextest
       # --no-default-features drops `embed-dashboard` (RustEmbed needs a built
       # apps/dashboard/dist at compile time, which CI doesn't produce).
-      - name: cargo nextest
-        run: cargo nextest run --no-default-features --locked ${{ matrix.test_args }}
+      - name: cargo test
+        run: cargo test --no-default-features --locked ${{ matrix.test_args }}
 
   # Cross-platform coverage. The binary ships on Windows/macOS/Linux, so the suite
   # must run off Linux too. Service containers don't run on these runners, so only
@@ -230,13 +226,9 @@ jobs:
         with:
           workspaces: apps/backend
           shared-key: ${{ matrix.os }}
-          save-if: ${{ github.ref == 'refs/heads/main' }}
-      - uses: taiki-e/install-action@8b3c737da4b541bf0fb5a3e0488ff20535badac9 # v2
-        with:
-          tool: nextest
       # --no-default-features drops `embed-dashboard` (no built dashboard/dist in CI).
-      - name: cargo nextest
-        run: cargo nextest run --no-default-features --locked
+      - name: cargo test
+        run: cargo test --no-default-features --locked
 
   frontend:
     name: Frontend (dashboard)
