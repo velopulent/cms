@@ -54,7 +54,11 @@ export function DashboardHeader() {
         <DropdownMenu>
           <DropdownMenuTrigger
             render={
-              <Button variant="ghost" size={"icon-lg"} className="rounded-full" />
+              <Button
+                variant="ghost"
+                size={"icon-lg"}
+                className="rounded-full"
+              />
             }
           >
             <UserAvatar username={name} />

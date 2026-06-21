@@ -2,7 +2,14 @@ use serde_json::{Value, json};
 
 use crate::common::{TestServer, auth::auth_header, fixtures::setup};
 
-async fn create_collection(server: &TestServer, token: &str, csrf: &str, site_id: &str, name: &str, slug: &str) -> Value {
+async fn create_collection(
+    server: &TestServer,
+    token: &str,
+    csrf: &str,
+    site_id: &str,
+    name: &str,
+    slug: &str,
+) -> Value {
     let client = reqwest::Client::builder().build().unwrap();
     let resp = client
         .post(format!(

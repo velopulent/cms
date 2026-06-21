@@ -13,8 +13,8 @@ use crate::models::user::User;
 use crate::repository::error::RepositoryError;
 use crate::repository::traits::{
     AccessTokenLookupRow, AccessTokenRepository, CollectionRepository, EntriesListResult, EntryRepository,
-    FileListResult, FileRepository, ListEntriesParams, ListFilesParams, RevisionsListResult, SessionRepository,
-    SiteRepository, UserRepository,
+    FileListResult, FileRepository, ListEntriesParams, ListFilesParams, NewAccessToken, NewFile, NewWebhookDelivery,
+    RevisionsListResult, SessionRepository, SiteRepository, UpdateEntryParams, UserRepository,
 };
 
 pub fn now_timestamp() -> String {
@@ -661,18 +661,18 @@ impl EntryRepository for InMemoryEntryRepository {
         Ok(entry)
     }
 
-    async fn update(
-        &self,
-        id: &str,
-        _site_id: &str,
-        data: &str,
-        slug: &str,
-        status: &str,
-        created_by: Option<&str>,
-        change_summary: Option<&str>,
-    ) -> Result<Entry, RepositoryError> {
+    async fn update(&self, params: UpdateEntryParams<'_>) -> Result<Entry, RepositoryError> {
+        let UpdateEntryParams {
+            id,
+            site_id,
+            data,
+            slug,
+            status,
+            created_by,
+            change_summary,
+        } = params;
         let mut entries = self.entries.lock().unwrap();
-        if let Some(entry) = entries.iter_mut().find(|e| e.id == id) {
+        if let Some(entry) = entries.iter_mut().find(|e| e.id == id && e.site_id == site_id) {
             entry.data = data.to_string();
             entry.slug = slug.to_string();
             entry.status = status.to_string();
@@ -962,21 +962,21 @@ impl FileRepository for InMemoryFileRepository {
         })
     }
 
-    async fn create(
-        &self,
-        id: &str,
-        site_id: &str,
-        filename: &str,
-        original_name: &str,
-        mime_type: &str,
-        size: i64,
-        storage_provider: &str,
-        storage_key: &str,
-        thumbnail_key: Option<&str>,
-        width: Option<i32>,
-        height: Option<i32>,
-        created_by: Option<&str>,
-    ) -> Result<File, RepositoryError> {
+    async fn create(&self, file: NewFile<'_>) -> Result<File, RepositoryError> {
+        let NewFile {
+            id,
+            site_id,
+            filename,
+            original_name,
+            mime_type,
+            size,
+            storage_provider,
+            storage_key,
+            thumbnail_key,
+            width,
+            height,
+            created_by,
+        } = file;
         let mut files = self.files.lock().unwrap();
         let file = File {
             id: id.to_string(),
@@ -1118,17 +1118,17 @@ impl AccessTokenRepository for InMemoryAccessTokenRepository {
         Ok(tokens.iter().filter(|t| t.site_id == site_id).cloned().collect())
     }
 
-    async fn create(
-        &self,
-        id: &str,
-        site_id: &str,
-        name: &str,
-        _token_hash: &str,
-        token_prefix: &str,
-        token_hmac: &str,
-        permission: &str,
-        created_by_user_id: Option<&str>,
-    ) -> Result<(), RepositoryError> {
+    async fn create(&self, token: NewAccessToken<'_>) -> Result<(), RepositoryError> {
+        let NewAccessToken {
+            id,
+            site_id,
+            name,
+            token_hash: _,
+            token_prefix,
+            token_hmac,
+            permission,
+            created_by_user_id,
+        } = token;
         let mut tokens = self.tokens.lock().unwrap();
         let token = AccessToken {
             id: id.to_string(),
@@ -1277,14 +1277,17 @@ impl crate::repository::traits::WebhookRepository for InMemoryWebhookRepository 
 
     async fn create_delivery(
         &self,
-        id: &str,
-        webhook_id: &str,
-        status: &str,
-        status_code: Option<i32>,
-        response_body: Option<&str>,
-        duration_ms: Option<i64>,
-        triggered_by: Option<&str>,
+        delivery: NewWebhookDelivery<'_>,
     ) -> Result<crate::models::webhook::WebhookDelivery, RepositoryError> {
+        let NewWebhookDelivery {
+            id,
+            webhook_id,
+            status,
+            status_code,
+            response_body,
+            duration_ms,
+            triggered_by,
+        } = delivery;
         let mut deliveries = self.deliveries.lock().unwrap();
         let delivery = crate::models::webhook::WebhookDelivery {
             id: id.to_string(),

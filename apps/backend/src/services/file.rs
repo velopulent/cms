@@ -10,13 +10,24 @@ use uuid::Uuid;
 
 use crate::config::Config;
 use crate::models::file::{File, FileReference, FileWithUrl};
-use crate::repository::traits::{FileListResult, FileRepository, ListFilesParams};
+use crate::repository::traits::{FileListResult, FileRepository, ListFilesParams, NewFile};
 use crate::storage::StorageProvider;
 
 #[derive(Clone)]
 pub struct FileService {
     file_repo: Arc<dyn FileRepository>,
     config: Arc<Config>,
+}
+
+/// Inputs for [`FileService::upload_file`].
+pub struct UploadFileRequest<'a> {
+    pub site_id: &'a str,
+    pub data: Bytes,
+    pub filename: &'a str,
+    pub content_type: &'a str,
+    pub created_by: Option<&'a str>,
+    pub storage: Arc<dyn StorageProvider>,
+    pub storage_provider: &'a str,
 }
 
 #[derive(Error, Debug)]
@@ -97,16 +108,16 @@ impl FileService {
             .map_err(|e| FileError::DatabaseError(e.to_string()))
     }
 
-    pub async fn upload_file(
-        &self,
-        site_id: &str,
-        data: Bytes,
-        filename: &str,
-        content_type: &str,
-        created_by: Option<&str>,
-        storage: Arc<dyn StorageProvider>,
-        storage_provider: &str,
-    ) -> Result<FileWithUrl, FileError> {
+    pub async fn upload_file(&self, req: UploadFileRequest<'_>) -> Result<FileWithUrl, FileError> {
+        let UploadFileRequest {
+            site_id,
+            data,
+            filename,
+            content_type,
+            created_by,
+            storage,
+            storage_provider,
+        } = req;
         info!(
             "Uploading file: site_id={}, content_type={}, size={} bytes",
             site_id,
@@ -228,20 +239,20 @@ impl FileService {
         debug!("Creating file record in repository: id={}", file_id);
         let file = self
             .file_repo
-            .create(
-                &file_id,
+            .create(NewFile {
+                id: &file_id,
                 site_id,
-                &generated_filename,
-                &original_name,
-                &mime_type,
-                file_size,
+                filename: &generated_filename,
+                original_name: &original_name,
+                mime_type: &mime_type,
+                size: file_size,
                 storage_provider,
-                &storage_key,
-                thumb_key_str,
+                storage_key: &storage_key,
+                thumbnail_key: thumb_key_str,
                 width,
                 height,
                 created_by,
-            )
+            })
             .await
             .map_err(|e| {
                 error!(
@@ -595,7 +606,15 @@ mod tests {
         let data = Bytes::from(&[0u8; 200][..]);
 
         let result = service
-            .upload_file("site-123", data, "test.txt", "text/plain", None, storage, "filesystem")
+            .upload_file(UploadFileRequest {
+                site_id: "site-123",
+                data,
+                filename: "test.txt",
+                content_type: "text/plain",
+                created_by: None,
+                storage,
+                storage_provider: "filesystem",
+            })
             .await;
 
         assert!(matches!(result, Err(FileError::FileTooLarge(_))));

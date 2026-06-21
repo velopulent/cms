@@ -30,7 +30,7 @@ import { useAuth } from "@/contexts/auth-context";
 import { getCollections, getSites, siteRoleLabel } from "@/lib/api";
 
 export function AppSidebar({ ...props }: ComponentProps<typeof Sidebar>) {
-  const { siteId } = useParams({ from: "/_admin/sites/$siteId" as any });
+  const { siteId } = useParams({ from: "/_admin/sites/$siteId" });
   const auth = useAuth();
   const pathname = useRouterState({ select: (s) => s.location.pathname });
 

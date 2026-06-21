@@ -514,5 +514,8 @@ async fn instance_backup_and_restore_round_trip() {
 
     // Instance restore wipes sessions; re-login, then verify the data is back.
     let (token2, csrf2) = login(&server, "admin", "admin").await;
-    assert_eq!(get_entry_status(&server, &token2, &csrf2, &site_id, &entry_id).await, 200);
+    assert_eq!(
+        get_entry_status(&server, &token2, &csrf2, &site_id, &entry_id).await,
+        200
+    );
 }

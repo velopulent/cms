@@ -20,7 +20,7 @@ pub enum StorageKind {
 }
 
 impl StorageKind {
-    pub fn from_str(s: &str) -> Option<Self> {
+    pub fn parse(s: &str) -> Option<Self> {
         match s {
             STORAGE_KIND_FILESYSTEM => Some(StorageKind::Filesystem),
             STORAGE_KIND_S3 => Some(StorageKind::S3),
@@ -150,9 +150,9 @@ mod tests {
 
     #[test]
     fn test_storage_kind_from_str() {
-        assert_eq!(StorageKind::from_str("filesystem"), Some(StorageKind::Filesystem));
-        assert_eq!(StorageKind::from_str("s3"), Some(StorageKind::S3));
-        assert_eq!(StorageKind::from_str("unknown"), None);
+        assert_eq!(StorageKind::parse("filesystem"), Some(StorageKind::Filesystem));
+        assert_eq!(StorageKind::parse("s3"), Some(StorageKind::S3));
+        assert_eq!(StorageKind::parse("unknown"), None);
     }
 
     #[test]

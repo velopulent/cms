@@ -24,6 +24,7 @@ use crate::models::file::{BatchFileIds, FileWithUrl};
 use crate::repository::Repository;
 use crate::repository::traits::ListFilesParams;
 use crate::services::Services;
+use crate::services::file::UploadFileRequest;
 use crate::storage::{StorageProvider, StorageRegistry};
 
 #[derive(Deserialize, utoipa::IntoParams)]
@@ -204,15 +205,15 @@ pub async fn upload_file(
 
     match services
         .file
-        .upload_file(
-            &site_id,
-            file_data,
-            &file_name,
-            &content_type,
+        .upload_file(UploadFileRequest {
+            site_id: &site_id,
+            data: file_data,
+            filename: &file_name,
+            content_type: &content_type,
             created_by,
             storage,
-            &storage_provider,
-        )
+            storage_provider: &storage_provider,
+        })
         .await
     {
         Ok(file) => (StatusCode::CREATED, Json(file)).into_response(),

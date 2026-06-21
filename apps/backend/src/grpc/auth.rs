@@ -10,15 +10,19 @@ pub struct AuthContext {
     pub hmac: String,
 }
 
+/// Returned when a raw Bearer token fails format validation.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct InvalidToken;
+
 /// Parse and validate the raw Bearer token format.
 ///
-/// Returns an `AuthContext` on success, or `()` on any validation failure.
-pub fn parse_token(token: &str, config: &Config) -> Result<AuthContext, ()> {
+/// Returns an `AuthContext` on success, or `InvalidToken` on any validation failure.
+pub fn parse_token(token: &str, config: &Config) -> Result<AuthContext, InvalidToken> {
     if !token.starts_with("cms_site_") {
-        return Err(());
+        return Err(InvalidToken);
     }
 
-    let prefix = token.get(..24).ok_or(())?.to_string();
+    let prefix = token.get(..24).ok_or(InvalidToken)?.to_string();
     let hmac = compute_key_hmac(token, &config.hmac_secret);
 
     Ok(AuthContext {

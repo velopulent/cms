@@ -1,30 +1,35 @@
 "use client";
 
+import Image from "next/image";
 import { useEffect, useRef, useState } from "react";
 
 const features = [
   {
     number: "01",
     title: "Single Binary Deployment",
-    description: "Deploy Velopulent CMS as a single binary with built-in embedded dashboard. No dependencies, no complex setup required. Perfect for individuals, agencies, and enterprises.",
+    description:
+      "Deploy Velopulent CMS as a single binary with built-in embedded dashboard. No dependencies, no complex setup required. Perfect for individuals, agencies, and enterprises.",
     stats: { value: "<15MB", label: "memory footprint" },
   },
   {
     number: "02",
     title: "Multi-Protocol Support",
-    description: "Built-in REST, GraphQL, gRPC and MCP protocols in a single binary. Connect to any framework or tech stack with zero integration hassle.",
+    description:
+      "Built-in REST, GraphQL, gRPC and MCP protocols in a single binary. Connect to any framework or tech stack with zero integration hassle.",
     stats: { value: "4", label: "protocols supported" },
   },
   {
     number: "03",
     title: "Flexible Database Support",
-    description: "Works seamlessly with SQLite, MySQL, PostgreSQL and more. Configure once and scale across your infrastructure.",
+    description:
+      "Works seamlessly with SQLite, MySQL, PostgreSQL and more. Configure once and scale across your infrastructure.",
     stats: { value: "3+", label: "database engines" },
   },
   {
     number: "04",
     title: "Multi-Project Management",
-    description: "Manage multiple sites and projects from a single instance. Built-in access control with admin, editor, and viewer roles.",
+    description:
+      "Manage multiple sites and projects from a single instance. Built-in access control with admin, editor, and viewer roles.",
     stats: { value: "∞", label: "projects supported" },
   },
 ];
@@ -65,8 +70,8 @@ function ParticleVisualization() {
     const particles = Array.from({ length: COUNT }, (_, i) => {
       const seed = i * 1.618;
       return {
-        bx: ((seed * 127.1) % 1),
-        by: ((seed * 311.7) % 1),
+        bx: (seed * 127.1) % 1,
+        by: (seed * 311.7) % 1,
         phase: seed * Math.PI * 2,
         speed: 0.4 + (seed % 0.4),
         radius: 1.2 + (seed % 2.2),
@@ -130,7 +135,7 @@ function ParticleVisualization() {
 
 export function FeaturesSection() {
   const [isVisible, setIsVisible] = useState(false);
-  const [activeFeature, setActiveFeature] = useState(0);
+  const [_activeFeature, setActiveFeature] = useState(0);
   const sectionRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -138,7 +143,7 @@ export function FeaturesSection() {
       ([entry]) => {
         if (entry.isIntersecting) setIsVisible(true);
       },
-      { threshold: 0.1 }
+      { threshold: 0.1 },
     );
 
     if (sectionRef.current) observer.observe(sectionRef.current);
@@ -162,7 +167,9 @@ export function FeaturesSection() {
               </span>
               <h2
                 className={`text-6xl md:text-7xl lg:text-[128px] font-display tracking-tight leading-[0.9] transition-all duration-1000 ${
-                  isVisible ? "opacity-100 translate-y-0" : "opacity-0 translate-y-8"
+                  isVisible
+                    ? "opacity-100 translate-y-0"
+                    : "opacity-0 translate-y-8"
                 }`}
               >
                 Powerful
@@ -171,10 +178,16 @@ export function FeaturesSection() {
               </h2>
             </div>
             <div className="lg:col-span-5 lg:pb-4">
-              <p className={`text-xl text-muted-foreground leading-relaxed transition-all duration-1000 delay-200 ${
-                isVisible ? "opacity-100 translate-y-0" : "opacity-0 translate-y-4"
-              }`}>
-                Everything you need to manage content at scale. From single projects to enterprise deployments with multiple sites and teams.
+              <p
+                className={`text-xl text-muted-foreground leading-relaxed transition-all duration-1000 delay-200 ${
+                  isVisible
+                    ? "opacity-100 translate-y-0"
+                    : "opacity-0 translate-y-4"
+                }`}
+              >
+                Everything you need to manage content at scale. From single
+                projects to enterprise deployments with multiple sites and
+                teams.
               </p>
             </div>
           </div>
@@ -183,17 +196,22 @@ export function FeaturesSection() {
         {/* Bento Grid Layout */}
         <div className="grid lg:grid-cols-12 gap-4 lg:gap-6">
           {/* Large feature card */}
-          <div 
+          <div
             className={`lg:col-span-12 relative bg-black border border-foreground/10 min-h-125 overflow-hidden group transition-all duration-700 flex ${
-              isVisible ? "opacity-100 translate-y-0" : "opacity-0 translate-y-12"
+              isVisible
+                ? "opacity-100 translate-y-0"
+                : "opacity-0 translate-y-12"
             }`}
+            role="none"
             onMouseEnter={() => setActiveFeature(0)}
           >
             {/* Left: text content */}
             <div className="relative flex-1 p-8 lg:p-12 bg-black">
               <ParticleVisualization />
               <div className="relative z-10">
-                <span className="font-mono text-sm text-muted-foreground">{features[0].number}</span>
+                <span className="font-mono text-sm text-muted-foreground">
+                  {features[0].number}
+                </span>
                 <h3 className="text-3xl lg:text-4xl font-display mt-4 mb-6 group-hover:translate-x-2 transition-transform duration-500">
                   {features[0].title}
                 </h3>
@@ -201,19 +219,24 @@ export function FeaturesSection() {
                   {features[0].description}
                 </p>
                 <div>
-                  <span className="text-5xl lg:text-6xl font-display">{features[0].stats.value}</span>
-                  <span className="block text-sm text-muted-foreground font-mono mt-2">{features[0].stats.label}</span>
+                  <span className="text-5xl lg:text-6xl font-display">
+                    {features[0].stats.value}
+                  </span>
+                  <span className="block text-sm text-muted-foreground font-mono mt-2">
+                    {features[0].stats.label}
+                  </span>
                 </div>
               </div>
             </div>
 
             {/* Right: mirrored image, full height */}
             <div className="hidden lg:block relative w-[42%] shrink-0 overflow-hidden">
-              <img
+              <Image
+                fill
                 src="/assets/ridge.png"
                 alt=""
                 aria-hidden="true"
-                className="absolute inset-0 w-full h-full object-cover object-center"
+                className="object-cover object-center"
                 style={{ transform: "scaleX(-1)" }}
               />
               {/* Fade left edge into black */}

@@ -44,19 +44,23 @@ export function UserCombobox({
         render={
           <Button
             variant="outline"
-            // biome-ignore lint/a11y/useSemanticElements: combobox trigger pattern
             role="combobox"
             aria-expanded={open}
             className="w-full justify-between font-normal"
           >
-            <span className={cn("truncate", !selected && "text-muted-foreground")}>
+            <span
+              className={cn("truncate", !selected && "text-muted-foreground")}
+            >
               {selected ? selected.username : placeholder}
             </span>
             <ChevronsUpDown className="size-4 shrink-0 opacity-50" />
           </Button>
         }
       />
-      <PopoverContent align="start" className="w-[var(--anchor-width)] min-w-60 p-0">
+      <PopoverContent
+        align="start"
+        className="w-[var(--anchor-width)] min-w-60 p-0"
+      >
         <Command>
           <CommandInput placeholder="Search users…" />
           <CommandList>

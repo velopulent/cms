@@ -20,12 +20,14 @@ pub struct RevisionId {
     number: i64,
 }
 
+use crate::error::AppError;
 use crate::middleware::auth::{Actor, RequestContext, require_site_action};
 use crate::models::authorization::Action;
 use crate::models::entry::{CreateEntry, Entry, EntryRevisionResponse, RevisionsListResponse, UpdateEntry};
 use crate::repository::Repository;
 use crate::repository::traits::ListEntriesParams;
 use crate::services::Services;
+use crate::services::entry::UpdateEntryInput;
 use crate::storage::{StorageProvider, StorageRegistry};
 use crate::utils::diff::compute_diff_for_revision;
 
@@ -52,14 +54,10 @@ pub struct DiffQuery {
 fn get_storage_for_site(
     site_storage_provider: &str,
     registry: &StorageRegistry,
-) -> Result<Arc<dyn StorageProvider>, Response> {
-    registry.get(site_storage_provider).ok_or_else(|| {
-        (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(json!({"error": "Storage not configured"})),
-        )
-            .into_response()
-    })
+) -> Result<Arc<dyn StorageProvider>, AppError> {
+    registry
+        .get(site_storage_provider)
+        .ok_or(AppError::Internal("Storage provider not found".into()))
 }
 
 #[utoipa::path(
@@ -156,7 +154,7 @@ pub async fn get_entry(
                 .unwrap_or_else(|_| "filesystem".into());
             let storage = match get_storage_for_site(&storage_provider, &storage_registry) {
                 Ok(s) => s,
-                Err(resp) => return resp,
+                Err(e) => return e.into_response(),
             };
             let resolved = services
                 .entry
@@ -239,15 +237,15 @@ pub async fn update_entry(
     let created_by = ctx.auth.actor.user_id();
     match services
         .entry
-        .update_entry(
-            &id,
-            &ctx.site_id,
-            payload.data.as_ref(),
-            payload.slug.as_deref(),
-            payload.status.as_deref(),
+        .update_entry(UpdateEntryInput {
+            id: &id,
+            site_id: &ctx.site_id,
+            data: payload.data.as_ref(),
+            slug: payload.slug.as_deref(),
+            status: payload.status.as_deref(),
             created_by,
-            payload.change_summary.as_deref(),
-        )
+            change_summary: payload.change_summary.as_deref(),
+        })
         .await
     {
         Ok(item) => (StatusCode::OK, Json(item)).into_response(),

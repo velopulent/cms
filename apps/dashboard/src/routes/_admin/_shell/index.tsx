@@ -9,6 +9,7 @@ import { Cloud, Globe, HardDrive, Plus } from "lucide-react";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { z } from "zod";
+import { SiteAvatar } from "@/components/site-avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -45,10 +46,9 @@ import {
   createSite,
   getSites,
   isOperator,
-  siteRoleLabel,
   type SiteWithRole,
+  siteRoleLabel,
 } from "@/lib/api";
-import { SiteAvatar } from "@/components/site-avatar";
 
 export const Route = createFileRoute("/_admin/_shell/")({
   validateSearch: z.object({

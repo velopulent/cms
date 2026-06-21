@@ -3,6 +3,9 @@ name = "cms"
 version = "0.1.0"
 edition = "2024"
 build = "build.rs"
+# Application binary, never published to crates.io. Lets cargo-deny skip the
+# license check for our own crate (see `[licenses] private` in deny.toml).
+publish = false
 
 [features]
 default = ["embed-dashboard"]

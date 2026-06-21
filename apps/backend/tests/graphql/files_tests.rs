@@ -170,7 +170,7 @@ async fn test_delete_file_mutation() {
     let query = format!(r#"mutation {{ deleteFile(id: "{}") }}"#, file_id);
     let body = gql(&server, &token, &query).await;
     assert!(body["errors"].is_null());
-    assert_eq!(body["data"]["deleteFile"].as_bool().unwrap(), true);
+    assert!(body["data"]["deleteFile"].as_bool().unwrap());
 }
 
 #[tokio::test]
@@ -195,7 +195,7 @@ async fn test_restore_file_mutation() {
     let query = format!(r#"mutation {{ restoreFile(id: "{}") }}"#, file_id);
     let body = gql(&server, &token, &query).await;
     assert!(body["errors"].is_null());
-    assert_eq!(body["data"]["restoreFile"].as_bool().unwrap(), true);
+    assert!(body["data"]["restoreFile"].as_bool().unwrap());
 }
 
 #[tokio::test]

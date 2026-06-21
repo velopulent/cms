@@ -248,7 +248,12 @@ export function TiptapEditor({
           >
             <LinkIcon />
           </Button>
-          <Button variant="ghost" size="icon-sm" onClick={addImage} title="Image">
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            onClick={addImage}
+            title="Image"
+          >
             <ImageIcon />
           </Button>
 

@@ -119,7 +119,13 @@ async fn remove_member(
         .unwrap()
 }
 
-async fn create_collection(server: &TestServer, token: &str, csrf: &str, site_id: &str, slug: &str) -> reqwest::Response {
+async fn create_collection(
+    server: &TestServer,
+    token: &str,
+    csrf: &str,
+    site_id: &str,
+    slug: &str,
+) -> reqwest::Response {
     let client = reqwest::Client::builder().build().unwrap();
     client
         .post(format!(

@@ -26,10 +26,10 @@ pub const CMS_HOME_ENV: &str = "CMS_HOME";
 /// `$CMS_HOME` wins if set and non-empty. Otherwise `~/.cms`. As a last resort
 /// (no detectable home directory) falls back to `.cms` in the current dir.
 pub fn home() -> PathBuf {
-    if let Some(value) = std::env::var_os(CMS_HOME_ENV) {
-        if !value.is_empty() {
-            return PathBuf::from(value);
-        }
+    if let Some(value) = std::env::var_os(CMS_HOME_ENV)
+        && !value.is_empty()
+    {
+        return PathBuf::from(value);
     }
 
     directories::BaseDirs::new()

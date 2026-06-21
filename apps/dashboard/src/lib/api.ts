@@ -3,9 +3,13 @@ const AUTH_URL = "/api/auth";
 
 export class ApiError extends Error {
   status: number;
-  body?: any;
+  body?: Record<string, unknown>;
 
-  constructor(status: number, message?: string, body?: any) {
+  constructor(
+    status: number,
+    message?: string,
+    body?: Record<string, unknown>,
+  ) {
     super(message);
     this.status = status;
     this.body = body;
@@ -89,7 +93,9 @@ export function isOperator(role: InstanceRole | null | undefined): boolean {
 }
 
 /** Human label for an instance role, used in settings/user lists. */
-export function instanceRoleLabel(role: InstanceRole | null | undefined): string {
+export function instanceRoleLabel(
+  role: InstanceRole | null | undefined,
+): string {
   if (role === "instance_owner") return "Instance owner";
   if (role === "instance_admin") return "Instance admin";
   return "User";
@@ -597,7 +603,10 @@ export async function listBackups(scope: BackupScope) {
   return api<BackupInfo[]>(`${backupScopePrefix(scope)}/backups`);
 }
 
-export async function createBackup(scope: BackupScope, input: CreateBackupInput) {
+export async function createBackup(
+  scope: BackupScope,
+  input: CreateBackupInput,
+) {
   return api<BackupInfo>(`${backupScopePrefix(scope)}/backups`, {
     method: "POST",
     body: JSON.stringify(input),
@@ -611,7 +620,10 @@ export async function deleteBackup(scope: BackupScope, backupId: string) {
 }
 
 /** Same-origin URL for downloading a backup artifact (auth via cookie). */
-export function backupDownloadUrl(scope: BackupScope, backupId: string): string {
+export function backupDownloadUrl(
+  scope: BackupScope,
+  backupId: string,
+): string {
   return `${BASE_URL}${backupScopePrefix(scope)}/backups/${backupId}/download`;
 }
 
@@ -625,7 +637,12 @@ export async function restoreBackup(scope: BackupScope, input: RestoreInput) {
 export async function restoreBackupUpload(
   scope: BackupScope,
   file: File,
-  opts: { mode?: "instance" | "site"; site_id?: string; import_as_new?: boolean; confirm: string },
+  opts: {
+    mode?: "instance" | "site";
+    site_id?: string;
+    import_as_new?: boolean;
+    confirm: string;
+  },
 ) {
   const formData = new FormData();
   formData.append("file", file);
@@ -634,15 +651,22 @@ export async function restoreBackupUpload(
   formData.append("import_as_new", opts.import_as_new ? "true" : "false");
   formData.append("confirm", opts.confirm);
   const csrfToken = getCsrfToken();
-  const res = await fetch(`${BASE_URL}${backupScopePrefix(scope)}/restore/upload`, {
-    method: "POST",
-    credentials: "include",
-    body: formData,
-    headers: csrfToken ? { "X-CSRF-Token": csrfToken } : undefined,
-  });
+  const res = await fetch(
+    `${BASE_URL}${backupScopePrefix(scope)}/restore/upload`,
+    {
+      method: "POST",
+      credentials: "include",
+      body: formData,
+      headers: csrfToken ? { "X-CSRF-Token": csrfToken } : undefined,
+    },
+  );
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
-    throw new ApiError(res.status, body.message || body.error || "Restore failed", body);
+    throw new ApiError(
+      res.status,
+      body.message || body.error || "Restore failed",
+      body,
+    );
   }
 }
 
@@ -666,15 +690,22 @@ export async function inspectBackupUpload(scope: BackupScope, file: File) {
   const formData = new FormData();
   formData.append("file", file);
   const csrfToken = getCsrfToken();
-  const res = await fetch(`${BASE_URL}${backupScopePrefix(scope)}/restore/inspect/upload`, {
-    method: "POST",
-    credentials: "include",
-    body: formData,
-    headers: csrfToken ? { "X-CSRF-Token": csrfToken } : undefined,
-  });
+  const res = await fetch(
+    `${BASE_URL}${backupScopePrefix(scope)}/restore/inspect/upload`,
+    {
+      method: "POST",
+      credentials: "include",
+      body: formData,
+      headers: csrfToken ? { "X-CSRF-Token": csrfToken } : undefined,
+    },
+  );
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
-    throw new ApiError(res.status, body.message || body.error || "Could not read backup file", body);
+    throw new ApiError(
+      res.status,
+      body.message || body.error || "Could not read backup file",
+      body,
+    );
   }
   return (await res.json()) as InspectResult;
 }
@@ -683,14 +714,21 @@ export async function listBackupSchedules(scope: BackupScope) {
   return api<BackupSchedule[]>(`${backupScopePrefix(scope)}/backup-schedules`);
 }
 
-export async function createBackupSchedule(scope: BackupScope, input: ScheduleInput) {
+export async function createBackupSchedule(
+  scope: BackupScope,
+  input: ScheduleInput,
+) {
   return api<BackupSchedule>(`${backupScopePrefix(scope)}/backup-schedules`, {
     method: "POST",
     body: JSON.stringify(input),
   });
 }
 
-export async function updateBackupSchedule(scope: BackupScope, id: string, input: ScheduleInput) {
+export async function updateBackupSchedule(
+  scope: BackupScope,
+  id: string,
+  input: ScheduleInput,
+) {
   return api<void>(`${backupScopePrefix(scope)}/backup-schedules/${id}`, {
     method: "PUT",
     body: JSON.stringify(input),
@@ -704,9 +742,12 @@ export async function deleteBackupSchedule(scope: BackupScope, id: string) {
 }
 
 export async function runBackupSchedule(scope: BackupScope, id: string) {
-  return api<BackupInfo>(`${backupScopePrefix(scope)}/backup-schedules/${id}/run`, {
-    method: "POST",
-  });
+  return api<BackupInfo>(
+    `${backupScopePrefix(scope)}/backup-schedules/${id}/run`,
+    {
+      method: "POST",
+    },
+  );
 }
 
 // --- Sites API ---

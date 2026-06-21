@@ -11,6 +11,7 @@ use crate::models::entry::{Entry, EntryRevision};
 use crate::repository::error::RepositoryError;
 use crate::repository::traits::{
     CollectionRepository, EntriesListResult, EntryRepository, FileRepository, ListEntriesParams, RevisionsListResult,
+    UpdateEntryParams,
 };
 use crate::services::search::queue::{OP_DELETE, OP_INDEX, SearchQueue};
 use crate::services::search::{SearchError, SearchParams, SearchService};
@@ -25,6 +26,18 @@ pub struct EntryService {
     search: Option<Arc<SearchService>>,
     /// Write side: enqueue index updates for the server's indexer to apply.
     search_queue: Option<Arc<SearchQueue>>,
+}
+
+/// Fields for [`EntryService::update_entry`]. All but `id`/`site_id` are optional;
+/// `None` leaves the existing value unchanged.
+pub struct UpdateEntryInput<'a> {
+    pub id: &'a str,
+    pub site_id: &'a str,
+    pub data: Option<&'a Value>,
+    pub slug: Option<&'a str>,
+    pub status: Option<&'a str>,
+    pub created_by: Option<&'a str>,
+    pub change_summary: Option<&'a str>,
 }
 
 #[derive(Error, Debug)]
@@ -280,16 +293,16 @@ impl EntryService {
         }
     }
 
-    pub async fn update_entry(
-        &self,
-        id: &str,
-        site_id: &str,
-        data: Option<&Value>,
-        slug: Option<&str>,
-        status: Option<&str>,
-        created_by: Option<&str>,
-        change_summary: Option<&str>,
-    ) -> Result<Entry, EntryError> {
+    pub async fn update_entry(&self, input: UpdateEntryInput<'_>) -> Result<Entry, EntryError> {
+        let UpdateEntryInput {
+            id,
+            site_id,
+            data,
+            slug,
+            status,
+            created_by,
+            change_summary,
+        } = input;
         debug!("Updating entry: id={}, site_id={}", id, site_id);
 
         let existing = self
@@ -333,15 +346,15 @@ impl EntryService {
         );
 
         self.entry_repo
-            .update(
+            .update(UpdateEntryParams {
                 id,
                 site_id,
-                &data_str,
-                final_slug,
-                final_status,
+                data: &data_str,
+                slug: final_slug,
+                status: final_status,
                 created_by,
                 change_summary,
-            )
+            })
             .await
             .map_err(|e| {
                 error!(
@@ -661,15 +674,15 @@ mod tests {
 
         let new_data = json!({"title": "Updated Title"});
         let result = service
-            .update_entry(
-                "entry-123",
-                "site-123",
-                Some(&new_data),
-                Some("updated-slug"),
-                None,
-                None,
-                None,
-            )
+            .update_entry(UpdateEntryInput {
+                id: "entry-123",
+                site_id: "site-123",
+                data: Some(&new_data),
+                slug: Some("updated-slug"),
+                status: None,
+                created_by: None,
+                change_summary: None,
+            })
             .await;
         assert!(result.is_ok());
         let entry = result.unwrap();
@@ -683,7 +696,15 @@ mod tests {
         let service = EntryService::new(entry_repo, file_repo, test_collection_repo());
 
         let result = service
-            .update_entry("nonexistent", "site-123", Some(&json!({})), None, None, None, None)
+            .update_entry(UpdateEntryInput {
+                id: "nonexistent",
+                site_id: "site-123",
+                data: Some(&json!({})),
+                slug: None,
+                status: None,
+                created_by: None,
+                change_summary: None,
+            })
             .await;
         assert!(matches!(result, Err(EntryError::NotFound)));
     }
@@ -696,7 +717,15 @@ mod tests {
         let service = EntryService::new(entry_repo, file_repo, test_collection_repo());
 
         let result = service
-            .update_entry("entry-123", "site-123", None, None, Some("published"), None, None)
+            .update_entry(UpdateEntryInput {
+                id: "entry-123",
+                site_id: "site-123",
+                data: None,
+                slug: None,
+                status: Some("published"),
+                created_by: None,
+                change_summary: None,
+            })
             .await;
         assert!(result.is_ok());
         assert_eq!(result.unwrap().status, "published");
@@ -945,7 +974,15 @@ mod tests {
 
         let updated = json!({"title": "Updated"});
         service
-            .update_entry(&entry.id, "site-123", Some(&updated), None, None, None, None)
+            .update_entry(UpdateEntryInput {
+                id: &entry.id,
+                site_id: "site-123",
+                data: Some(&updated),
+                slug: None,
+                status: None,
+                created_by: None,
+                change_summary: None,
+            })
             .await
             .unwrap();
 
@@ -1026,7 +1063,15 @@ mod tests {
         let service = EntryService::new(entry_repo, file_repo, col_repo);
         let data = json!({"title": "not-a-number"});
         let result = service
-            .update_entry("entry-123", "site-123", Some(&data), None, None, None, None)
+            .update_entry(UpdateEntryInput {
+                id: "entry-123",
+                site_id: "site-123",
+                data: Some(&data),
+                slug: None,
+                status: None,
+                created_by: None,
+                change_summary: None,
+            })
             .await;
         assert!(matches!(result, Err(EntryError::ValidationFailed(_))));
     }

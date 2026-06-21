@@ -1,0 +1,59 @@
+# cargo-deny policy. Run: `cargo deny check` (from apps/backend, or with
+# `--manifest-path apps/backend/Cargo.toml`). Enforced in CI by the `security` job.
+
+[graph]
+# Check the dependency graph for all targets we actually ship on.
+all-features = false
+
+[advisories]
+# RustSec advisory DB: deny anything with a known vulnerability. Yanked crates
+# are denied by default. Add advisory IDs here only with a written justification.
+version = 2
+ignore = [
+  # `paste` is unmaintained but pulled in only transitively via the AVIF decode
+  # path (image -> ravif -> rav1e -> paste). It is a proc-macro with no known
+  # vulnerability and there is no safe upgrade available. Revisit when `image`
+  # drops the dependency.
+  "RUSTSEC-2024-0436",
+]
+
+[licenses]
+# Allowlist of SPDX licenses acceptable in the dependency tree. A new transitive
+# dep with a license not listed here fails CI on purpose — review then add it.
+version = 2
+confidence-threshold = 0.8
+# Skip the license check for our own unpublished crate(s) (publish = false).
+private = { ignore = true }
+allow = [
+  "MIT",
+  "Apache-2.0",
+  "Apache-2.0 WITH LLVM-exception",
+  "BSD-2-Clause",
+  "BSD-3-Clause",
+  "ISC",
+  "Zlib",
+  "MPL-2.0",
+  "Unicode-3.0",
+  "Unicode-DFS-2016",
+  "CC0-1.0",
+  "NCSA",
+  "CDLA-Permissive-2.0",
+  "OpenSSL",
+]
+# Per-crate license exceptions go here, e.g.
+# exceptions = [{ allow = ["..."], name = "some-crate" }]
+exceptions = []
+
+[bans]
+# Duplicate versions are noisy in a large tree — warn, don't fail.
+multiple-versions = "warn"
+wildcards = "deny"
+# Crates we never want pulled in (add as needed), e.g.
+# deny = [{ name = "openssl-sys" }]
+deny = []
+
+[sources]
+# Only allow crates from crates.io; reject unknown registries / git sources.
+unknown-registry = "deny"
+unknown-git = "deny"
+allow-registry = ["https://github.com/rust-lang/crates.io-index"]

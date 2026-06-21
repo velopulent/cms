@@ -34,7 +34,7 @@ async fn test_create_webhook() {
     assert_eq!(resp.label, "Test Webhook");
     assert_eq!(resp.url, "https://example.com/hook");
     assert_eq!(resp.site_id, site_id);
-    assert!(resp.headers.get("X-Custom").is_some());
+    assert!(resp.headers.contains_key("X-Custom"));
     assert!(!resp.id.is_empty());
 }
 
@@ -139,7 +139,7 @@ async fn test_update_webhook() {
 
     assert_eq!(updated.label, "New Hook");
     assert_eq!(updated.url, "https://example.com/new");
-    assert!(updated.headers.get("X-Updated").is_some());
+    assert!(updated.headers.contains_key("X-Updated"));
 }
 
 #[tokio::test]
@@ -262,6 +262,6 @@ async fn test_list_webhook_deliveries() {
         .unwrap()
         .into_inner();
 
-    assert!(resp.items.len() >= 1);
+    assert!(!resp.items.is_empty());
     assert!(resp.total >= 1);
 }

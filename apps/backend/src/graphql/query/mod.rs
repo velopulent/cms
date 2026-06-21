@@ -67,6 +67,10 @@ impl QueryRoot {
         Ok(super::types::collection::db_collection_to_gql(db_collection))
     }
 
+    // Each parameter is a GraphQL field argument exposed in the public schema and
+    // consumed positionally by the dashboard's queries; collapsing them into an
+    // input object would be a breaking schema change, so the arg count stands.
+    #[allow(clippy::too_many_arguments)]
     async fn entries(
         &self,
         ctx: &Context<'_>,

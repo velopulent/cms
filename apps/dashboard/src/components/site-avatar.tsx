@@ -1,7 +1,7 @@
 import { Hashvatar } from "hashvatar/react";
-import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
-import { cn } from "@/lib/utils";
 import { useState } from "react";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { cn } from "@/lib/utils";
 
 type SiteAvatarProps = {
   siteName: string;

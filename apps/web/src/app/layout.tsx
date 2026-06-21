@@ -1,5 +1,5 @@
 import "./global.css";
-import { Metadata } from "next";
+import type { Metadata } from "next";
 
 export const metadata: Metadata = {
   title: "Velopulent CMS",
@@ -10,9 +10,7 @@ export const metadata: Metadata = {
 export default function Layout({ children }: LayoutProps<"/">) {
   return (
     <html lang="en" suppressHydrationWarning>
-      <body>
-        {children}
-      </body>
+      <body>{children}</body>
     </html>
   );
 }

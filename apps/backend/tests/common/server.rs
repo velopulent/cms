@@ -49,41 +49,42 @@ impl TestServer {
         // `TEST_DATABASE` selects one. The handle drops the database on teardown.
         let (database_url, db_handle) = super::test_db::provision().await;
 
-        let mut config = Config::default();
-        config.database_url = database_url;
-        config.hmac_secret = "test-hmac-secret-integration".to_string();
-        config.storage_fs_path = Some(storage_path.clone());
-        config.cookie_secure = false;
-        // Real config defaults this to 24h; `Config::default()` leaves it 0, which
-        // mints already-expired sessions. SQLite hid that (it compares the datetime
-        // columns lexicographically, where the stored `…T…+00:00` sorts above
-        // `datetime('now')`); Postgres/MySQL do a real timestamp compare and reject.
-        config.session_lifetime_hours = 24;
-        config.mcp_enabled = true;
-        config.mcp_allowed_hosts = vec!["127.0.0.1".to_string()];
-        config.mcp_allowed_origins = vec![];
-        config.rate_limit_max_requests = 10000;
-        config.rate_limit_window_secs = 60;
-        // Tests spin up many servers in parallel against one shared Postgres/MySQL
-        // instance. Keep each pool tiny and release idle connections fast so the
-        // aggregate stays well under the server's connection ceiling (Postgres
-        // defaults to 100); otherwise high-core CI runners intermittently exhaust
-        // it. A single TestServer needs almost no internal concurrency.
-        config.db_max_connections = 2;
-        config.db_min_connections = 1;
-        config.db_acquire_timeout_secs = 30;
-        config.db_idle_timeout_secs = 5;
-        config.max_upload_size_bytes = 50 * 1024 * 1024;
-        config.public_registration_enabled = true;
-        config.bcrypt_cost = bcrypt::DEFAULT_COST;
-        config.webhook_allow_private_targets = true;
-        config.backup_local_path = Some(storage_dir.path().join("backups").to_string_lossy().into_owned());
-        // Deterministic 32-byte (hex) key so encrypted-backup tests can round-trip.
-        config.backup_encryption_key =
-            Some("00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff".to_string());
-        config.backup_enabled = false; // don't run the poller during tests
-        config.search_enabled = search_enabled;
-        config.search_index_path = Some(storage_dir.path().join("search").to_string_lossy().into_owned());
+        let config = Config {
+            database_url,
+            hmac_secret: "test-hmac-secret-integration".to_string(),
+            storage_fs_path: Some(storage_path.clone()),
+            cookie_secure: false,
+            // Real config defaults this to 24h; `Config::default()` leaves it 0, which
+            // mints already-expired sessions. SQLite hid that (it compares the datetime
+            // columns lexicographically, where the stored `…T…+00:00` sorts above
+            // `datetime('now')`); Postgres/MySQL do a real timestamp compare and reject.
+            session_lifetime_hours: 24,
+            mcp_enabled: true,
+            mcp_allowed_hosts: vec!["127.0.0.1".to_string()],
+            mcp_allowed_origins: vec![],
+            rate_limit_max_requests: 10000,
+            rate_limit_window_secs: 60,
+            // Tests spin up many servers in parallel against one shared Postgres/MySQL
+            // instance. Keep each pool tiny and release idle connections fast so the
+            // aggregate stays well under the server's connection ceiling (Postgres
+            // defaults to 100); otherwise high-core CI runners intermittently exhaust
+            // it. A single TestServer needs almost no internal concurrency.
+            db_max_connections: 2,
+            db_min_connections: 1,
+            db_acquire_timeout_secs: 30,
+            db_idle_timeout_secs: 5,
+            max_upload_size_bytes: 50 * 1024 * 1024,
+            public_registration_enabled: true,
+            bcrypt_cost: bcrypt::DEFAULT_COST,
+            webhook_allow_private_targets: true,
+            backup_local_path: Some(storage_dir.path().join("backups").to_string_lossy().into_owned()),
+            // Deterministic 32-byte (hex) key so encrypted-backup tests can round-trip.
+            backup_encryption_key: Some("00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff".to_string()),
+            backup_enabled: false, // don't run the poller during tests
+            search_enabled,
+            search_index_path: Some(storage_dir.path().join("search").to_string_lossy().into_owned()),
+            ..Default::default()
+        };
 
         let pool = init_db_with_config(&config)
             .await

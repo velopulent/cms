@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useState, useRef } from "react";
+import Image from "next/image";
+import { useEffect, useRef, useState } from "react";
 
 const dashboardCards = [
   {
@@ -22,66 +23,6 @@ const dashboardCards = [
       "Powerful rich text editing with markdown support and live preview.",
   },
 ];
-
-function AnimatedNumber({
-  end,
-  suffix = "",
-  prefix = "",
-}: {
-  end: number;
-  suffix?: string;
-  prefix?: string;
-}) {
-  const [count, setCount] = useState(0);
-  const [isScrambling, setIsScrambling] = useState(true);
-  const ref = useRef<HTMLDivElement>(null);
-  const [hasAnimated, setHasAnimated] = useState(false);
-
-  useEffect(() => {
-    const observer = new IntersectionObserver(
-      ([entry]) => {
-        if (entry.isIntersecting && !hasAnimated) {
-          setHasAnimated(true);
-          const duration = 2500;
-          const startTime = performance.now();
-          const animate = (currentTime: number) => {
-            const elapsed = currentTime - startTime;
-            const progress = Math.min(elapsed / duration, 1);
-            const eased = 1 - Math.pow(1 - progress, 4);
-            setCount(Math.floor(eased * end));
-            setIsScrambling(progress < 0.8);
-            if (progress < 1) requestAnimationFrame(animate);
-          };
-          requestAnimationFrame(animate);
-        }
-      },
-      { threshold: 0.5 },
-    );
-    if (ref.current) observer.observe(ref.current);
-    return () => observer.disconnect();
-  }, [end, hasAnimated]);
-
-  const displayValue = count.toLocaleString();
-
-  return (
-    <div ref={ref} className="inline-flex items-baseline">
-      <span className="text-muted-foreground mr-1">{prefix}</span>
-      <span className="tabular-nums">
-        {displayValue.split("").map((char, i) => (
-          <span
-            key={i}
-            className={`inline-block transition-all duration-150 ${
-              isScrambling && char !== "," ? "blur-[1px]" : ""
-            }`}
-          >
-            {char}
-          </span>
-        ))}
-      </span>
-      <span className="text-muted-foreground">{suffix}</span>
-    </div>
-  );
-}
 
 function GridBackground() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -283,15 +224,17 @@ export function DashboardSection() {
 
         {/* Organic graph image */}
         <div
-          className={`w-full mb-0 transition-all duration-1000 delay-200 ${
+          className={`w-full mb-0 relative transition-all duration-1000 delay-200 ${
             isVisible ? "opacity-100" : "opacity-0"
           }`}
+          style={{ aspectRatio: "2492 / 824" }}
         >
-          <img
+          <Image
+            fill
             src="/assets/real-time-graph.png"
             alt=""
             aria-hidden="true"
-            className="w-full h-auto object-cover"
+            className="object-cover"
           />
         </div>
 

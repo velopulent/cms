@@ -277,10 +277,10 @@ impl BackupService {
         }
 
         // Retention pruning for scheduled backups.
-        if let Some(sched_id) = &opts.schedule_id {
-            if let Ok(Some(sched)) = meta::get_schedule(&self.pool, sched_id).await {
-                let _ = self.prune_retention(sched_id, sched.retention_n).await;
-            }
+        if let Some(sched_id) = &opts.schedule_id
+            && let Ok(Some(sched)) = meta::get_schedule(&self.pool, sched_id).await
+        {
+            let _ = self.prune_retention(sched_id, sched.retention_n).await;
         }
 
         meta::get_backup(&self.pool, &id).await?.ok_or(BackupError::NotFound)
@@ -307,10 +307,10 @@ impl BackupService {
 
     /// Delete a backup artifact and its row.
     pub async fn delete_backup(&self, id: &str) -> Result<(), BackupError> {
-        if let Some(row) = meta::get_backup(&self.pool, id).await? {
-            if let Some(key) = &row.destination_key {
-                let _ = self.destination.delete(key).await;
-            }
+        if let Some(row) = meta::get_backup(&self.pool, id).await?
+            && let Some(key) = &row.destination_key
+        {
+            let _ = self.destination.delete(key).await;
         }
         meta::delete_backup_row(&self.pool, id).await
     }
@@ -350,10 +350,10 @@ impl BackupService {
             if let Some(Some(k)) = row.get(key_i) {
                 keys.push(k.clone());
             }
-            if let Some(ti) = thumb_i {
-                if let Some(Some(tk)) = row.get(ti) {
-                    keys.push(tk.clone());
-                }
+            if let Some(ti) = thumb_i
+                && let Some(Some(tk)) = row.get(ti)
+            {
+                keys.push(tk.clone());
             }
             for key in keys {
                 if !seen.insert(key.clone()) {
@@ -470,7 +470,7 @@ impl BackupService {
                 build_instance_plan(self.pool.backend(), &tables)
             }
             RestoreTarget::Site { site_id, import_as_new } => {
-                self.build_site_restore_plan(&manifest, &tables, &[site_id.clone()], *import_as_new, &req)
+                self.build_site_restore_plan(&manifest, &tables, std::slice::from_ref(site_id), *import_as_new, &req)
                     .await?
             }
             RestoreTarget::Sites {
@@ -606,10 +606,7 @@ impl BackupService {
     }
 
     /// Decrypt/decompress an artifact into (manifest, table NDJSON, file blobs).
-    fn open(
-        &self,
-        bytes: &[u8],
-    ) -> Result<(Manifest, HashMap<String, Vec<u8>>, HashMap<String, Vec<u8>>), BackupError> {
+    fn open(&self, bytes: &[u8]) -> Result<ArtifactBundle, BackupError> {
         if bytes.len() < MAGIC.len() + 1 || &bytes[..MAGIC.len()] != MAGIC {
             return Err(BackupError::Invalid("not a CMS backup artifact".into()));
         }
@@ -747,6 +744,10 @@ fn inserts_for(backend: crate::database::backend::DatabaseBackend, tables: &Tabl
 type Row = serde_json::Map<String, serde_json::Value>;
 type Tables = HashMap<String, Vec<Row>>;
 
+/// A decoded backup artifact: the manifest, the per-table NDJSON bytes (keyed by
+/// table name), and the uploaded file blobs (keyed by storage key).
+type ArtifactBundle = (Manifest, HashMap<String, Vec<u8>>, HashMap<String, Vec<u8>>);
+
 fn parse_all_tables(ndjson: &HashMap<String, Vec<u8>>) -> Result<Tables, BackupError> {
     let mut tables = Tables::new();
     for (name, bytes) in ndjson {
@@ -857,10 +858,10 @@ fn reconcile_user_refs(tables: &mut Tables, existing: &HashSet<String>, fallback
     for (table, col) in nullable {
         if let Some(rows) = tables.get_mut(table) {
             for m in rows.iter_mut() {
-                if let Some(u) = str_field(m, col) {
-                    if !existing.contains(u) {
-                        m.insert(col.to_string(), serde_json::Value::Null);
-                    }
+                if let Some(u) = str_field(m, col)
+                    && !existing.contains(u)
+                {
+                    m.insert(col.to_string(), serde_json::Value::Null);
                 }
             }
         }
@@ -871,10 +872,8 @@ fn reconcile_user_refs(tables: &mut Tables, existing: &HashSet<String>, fallback
             let missing = str_field(m, "created_by")
                 .map(|u| !existing.contains(u))
                 .unwrap_or(true);
-            if missing {
-                if let Some(fb) = fallback_user {
-                    m.insert("created_by".to_string(), serde_json::Value::String(fb.to_string()));
-                }
+            if missing && let Some(fb) = fallback_user {
+                m.insert("created_by".to_string(), serde_json::Value::String(fb.to_string()));
             }
         }
     }
@@ -911,10 +910,10 @@ fn remap_ids(tables: &mut Tables) {
     }
 
     let remap = |row: &mut Row, col: &str, map: &HashMap<String, String>| {
-        if let Some(old) = str_field(row, col).map(String::from) {
-            if let Some(new) = map.get(&old) {
-                row.insert(col.to_string(), serde_json::Value::String(new.clone()));
-            }
+        if let Some(old) = str_field(row, col).map(String::from)
+            && let Some(new) = map.get(&old)
+        {
+            row.insert(col.to_string(), serde_json::Value::String(new.clone()));
         }
     };
     let sites = maps["sites"].clone();
@@ -955,10 +954,10 @@ fn remap_ids(tables: &mut Tables) {
 }
 
 fn pick_fallback_user(actor: Option<&str>, existing: &HashSet<String>) -> Option<String> {
-    if let Some(a) = actor {
-        if existing.contains(a) {
-            return Some(a.to_string());
-        }
+    if let Some(a) = actor
+        && existing.contains(a)
+    {
+        return Some(a.to_string());
     }
     existing.iter().next().cloned()
 }
@@ -1012,7 +1011,7 @@ fn append_entry(builder: &mut tar::Builder<Vec<u8>>, path: &str, data: &[u8]) ->
         .map_err(|e| BackupError::Io(e.to_string()))
 }
 
-fn read_tar(tar_bytes: &[u8]) -> Result<(Manifest, HashMap<String, Vec<u8>>, HashMap<String, Vec<u8>>), BackupError> {
+fn read_tar(tar_bytes: &[u8]) -> Result<ArtifactBundle, BackupError> {
     let mut archive = tar::Archive::new(std::io::Cursor::new(tar_bytes));
     let mut manifest: Option<Manifest> = None;
     let mut tables = HashMap::new();

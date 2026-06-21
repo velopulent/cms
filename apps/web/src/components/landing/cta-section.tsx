@@ -1,8 +1,9 @@
 "use client";
 
+import { ArrowRight } from "lucide-react";
+import Image from "next/image";
 import { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
-import { ArrowRight } from "lucide-react";
 
 export function CtaSection() {
   const [isVisible, setIsVisible] = useState(false);
@@ -36,6 +37,7 @@ export function CtaSection() {
     >
       <div className="max-w-350 mx-auto px-6 lg:px-12">
         <div
+          role="none"
           className={`relative border border-foreground transition-all duration-1000 ${
             isVisible ? "opacity-100 translate-y-0" : "opacity-0 translate-y-8"
           }`}
@@ -81,7 +83,11 @@ export function CtaSection() {
                     className="h-14 px-8 text-base rounded-full border-foreground/20 hover:bg-foreground/5"
                     asChild
                   >
-                    <a target="_blank" href="https://github.com/velopulent/cms">
+                    <a
+                      target="_blank"
+                      href="https://github.com/velopulent/cms"
+                      rel="noopener"
+                    >
                       Github
                     </a>
                   </Button>
@@ -91,13 +97,13 @@ export function CtaSection() {
                   Open source, self-hosted
                 </p>
               </div>
-
               {/* Right image */}
-              <div className="hidden lg:flex items-end justify-center w-150 h-162.5 -mr-16">
-                <img
+              <div className="hidden lg:flex items-end justify-center w-150 h-162.5 -mr-16 relative">
+                <Image
+                  fill
                   src="/assets/bridge.png"
                   alt="Two trees connected by glowing arcs"
-                  className="w-full h-full object-contain object-bottom"
+                  className="object-contain object-bottom"
                 />
               </div>
             </div>

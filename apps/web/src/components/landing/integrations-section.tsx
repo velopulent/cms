@@ -1,8 +1,9 @@
 "use client";
 
-import { useEffect, useState, useRef } from "react";
 import { Icon } from "@iconify-icon/react";
 import { LucideArrowRight } from "lucide-react";
+import Image from "next/image";
+import { useEffect, useRef, useState } from "react";
 
 const frameworks = [
   { name: "Next.js", icon: "logos:nextjs-icon" },
@@ -82,12 +83,14 @@ export function IntegrationsSection() {
         className={`relative left-1/2 -translate-x-1/2 w-screen -mt-16 transition-all duration-1000 delay-200 ${
           isVisible ? "opacity-100" : "opacity-0"
         }`}
+        style={{ aspectRatio: "2494 / 1199" }}
       >
-        <img
+        <Image
+          fill
           src="/assets/connection.png"
           alt=""
           aria-hidden="true"
-          className="w-full h-auto object-cover"
+          className="object-cover"
         />
       </div>
 
@@ -97,6 +100,7 @@ export function IntegrationsSection() {
           {frameworks.map((framework, index) => (
             <div
               key={framework.name}
+              role="none"
               className={`group relative overflow-hidden p-6 lg:p-8 border transition-all duration-500 cursor-default ${
                 hoveredIndex === index
                   ? "border-foreground bg-foreground/4 scale-[1.02]"

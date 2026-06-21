@@ -1,10 +1,10 @@
 "use client";
 
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 
 const words = ["website", "blog", "app", "business", "portfolio", "platform"];
 
-function BlurWord({ word, trigger }: { word: string; trigger: number }) {
+function BlurWord({ word }: { word: string }) {
   const letters = word.split("");
   const STAGGER = 45; // ms between each letter
   const DURATION = 500; // blur+opacity fade duration per letter
@@ -33,7 +33,7 @@ function BlurWord({ word, trigger }: { word: string; trigger: number }) {
         const start = performance.now();
         const tick = (now: number) => {
           const progress = Math.min((now - start) / DURATION, 1);
-          const eased = 1 - Math.pow(1 - progress, 3);
+          const eased = 1 - (1 - progress) ** 3;
           setLetterStates((prev) => {
             const next = [...prev];
             next[i] = { opacity: eased, blur: 20 * (1 - eased) };
@@ -59,7 +59,11 @@ function BlurWord({ word, trigger }: { word: string; trigger: number }) {
       timersRef.current.forEach(clearTimeout);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [trigger]);
+  }, [
+    letters.map, // stagger each letter
+    letters.forEach,
+    GRADIENT_HOLD,
+  ]);
 
   // gradient colours cycling across letter positions
   const gradientColors = [
@@ -70,43 +74,43 @@ function BlurWord({ word, trigger }: { word: string; trigger: number }) {
     "#eca8d6",
   ];
 
+  const hex2rgb = (hex: string): [number, number, number] => {
+    const r = parseInt(hex.slice(1, 3), 16);
+    const g = parseInt(hex.slice(3, 5), 16);
+    const b = parseInt(hex.slice(5, 7), 16);
+    return [r, g, b];
+  };
+
+  const charColors = letters.map((char, i) => {
+    const colorIndex =
+      (i / Math.max(letters.length - 1, 1)) * (gradientColors.length - 1);
+    const lower = Math.floor(colorIndex);
+    const upper = Math.min(lower + 1, gradientColors.length - 1);
+    const t = colorIndex - lower;
+    const [r1, g1, b1] = hex2rgb(gradientColors[lower]);
+    const [r2, g2, b2] = hex2rgb(gradientColors[upper]);
+    return {
+      char,
+      color: `rgb(${Math.round(r1 + (r2 - r1) * t)},${Math.round(g1 + (g2 - g1) * t)},${Math.round(b1 + (b2 - b1) * t)}`,
+    };
+  });
+
   return (
     <>
-      {letters.map((char, i) => {
-        const colorIndex =
-          (i / Math.max(letters.length - 1, 1)) * (gradientColors.length - 1);
-        const lower = Math.floor(colorIndex);
-        const upper = Math.min(lower + 1, gradientColors.length - 1);
-        const t = colorIndex - lower;
-
-        // lerp hex colours
-        const hex2rgb = (hex: string) => {
-          const r = parseInt(hex.slice(1, 3), 16);
-          const g = parseInt(hex.slice(3, 5), 16);
-          const b = parseInt(hex.slice(5, 7), 16);
-          return [r, g, b];
-        };
-        const [r1, g1, b1] = hex2rgb(gradientColors[lower]);
-        const [r2, g2, b2] = hex2rgb(gradientColors[upper]);
-        const r = Math.round(r1 + (r2 - r1) * t);
-        const g = Math.round(g1 + (g2 - g1) * t);
-        const b = Math.round(b1 + (b2 - b1) * t);
-
-        return (
-          <span
-            key={i}
-            style={{
-              display: "inline-block",
-              opacity: letterStates[i]?.opacity ?? 0,
-              filter: `blur(${letterStates[i]?.blur ?? 20}px)`,
-              color: showGradient ? `rgb(${r},${g},${b})` : "white",
-              transition: "color 0.4s ease",
-            }}
-          >
-            {char}
-          </span>
-        );
-      })}
+      {charColors.map((data, idx) => (
+        <span
+          key={`${data.char}-${data.color}`}
+          style={{
+            display: "inline-block",
+            opacity: letterStates[idx]?.opacity ?? 0,
+            filter: `blur(${letterStates[idx]?.blur ?? 20}px)`,
+            color: showGradient ? data.color : "white",
+            transition: "color 0.4s ease",
+          }}
+        >
+          {data.char}
+        </span>
+      ))}
     </>
   );
 }
@@ -126,6 +130,11 @@ export function HeroSection() {
     return () => clearInterval(interval);
   }, []);
 
+  const hLines = Array.from({ length: 8 }, (_, i) => ({ top: 12.5 * (i + 1) }));
+  const vLines = Array.from({ length: 12 }, (_, i) => ({
+    left: 8.33 * (i + 1),
+  }));
+
   return (
     <section className="relative min-h-screen flex flex-col justify-center items-start overflow-hidden bg-black">
       {/* Background video */}
@@ -135,7 +144,6 @@ export function HeroSection() {
           muted
           loop
           playsInline
-          aria-hidden="true"
           className="w-full h-full object-cover object-center opacity-80"
         >
           <source src="/assets/bg-hero.mp4" type="video/mp4" />
@@ -147,23 +155,23 @@ export function HeroSection() {
 
       {/* Subtle grid lines */}
       <div className="absolute inset-0 z-2 overflow-hidden pointer-events-none opacity-20">
-        {[...Array(8)].map((_, i) => (
+        {hLines.map((line) => (
           <div
-            key={`h-${i}`}
+            key={`h-${line.top}`}
             className="absolute h-px bg-white/10"
             style={{
-              top: `${12.5 * (i + 1)}%`,
+              top: `${line.top}%`,
               left: 0,
               right: 0,
             }}
           />
         ))}
-        {[...Array(12)].map((_, i) => (
+        {vLines.map((line) => (
           <div
-            key={`v-${i}`}
+            key={`v-${line.left}`}
             className="absolute w-px bg-white/10"
             style={{
-              left: `${8.33 * (i + 1)}%`,
+              left: `${line.left}%`,
               top: 0,
               bottom: 0,
             }}
@@ -202,7 +210,7 @@ export function HeroSection() {
               <span className="block whitespace-nowrap">
                 Build your{" "}
                 <span className="relative inline-block">
-                  <BlurWord word={words[wordIndex]} trigger={wordIndex} />
+                  <BlurWord word={words[wordIndex]} />
                 </span>
               </span>
             </h1>

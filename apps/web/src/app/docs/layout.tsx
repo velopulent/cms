@@ -1,10 +1,10 @@
 import "./docs.css";
-import { source } from "@/lib/source";
 import { DocsLayout } from "fumadocs-ui/layouts/docs";
-import { baseOptions } from "@/lib/layout.shared";
-import { Provider as FumadocsProvider } from "@/components/provider";
 import { Geist, Inter } from "next/font/google";
+import { Provider as FumadocsProvider } from "@/components/provider";
 import { cn } from "@/lib/cn";
+import { baseOptions } from "@/lib/layout.shared";
+import { source } from "@/lib/source";
 
 const geist = Geist({ subsets: ["latin"], variable: "--font-sans" });
 

@@ -97,7 +97,9 @@ export function MembersSection({
   });
 
   const handleAdd = () => {
-    const user = candidates.find((candidate) => candidate.id === selectedUserId);
+    const user = candidates.find(
+      (candidate) => candidate.id === selectedUserId,
+    );
     if (user) inviteMutation.mutate(user.username);
   };
 

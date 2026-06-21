@@ -5,7 +5,6 @@ use axum::{
     response::{IntoResponse, Response},
 };
 use serde::Deserialize;
-use serde_json::json;
 use std::sync::Arc;
 use tracing::instrument;
 
@@ -14,6 +13,7 @@ pub struct SingletonSlug {
     slug: String,
 }
 
+use crate::error::AppError;
 use crate::middleware::auth::{RequestContext, require_site_action};
 use crate::models::authorization::Action;
 use crate::models::collection::{SingletonResponse, UpdateSingletonData};
@@ -24,14 +24,10 @@ use crate::storage::{StorageProvider, StorageRegistry};
 fn get_storage_for_site(
     site_storage_provider: &str,
     registry: &StorageRegistry,
-) -> Result<Arc<dyn StorageProvider>, Response> {
-    registry.get(site_storage_provider).ok_or_else(|| {
-        (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(json!({"error": "Storage not configured"})),
-        )
-            .into_response()
-    })
+) -> Result<Arc<dyn StorageProvider>, AppError> {
+    registry
+        .get(site_storage_provider)
+        .ok_or(AppError::Internal("Storage provider not found".into()))
 }
 
 #[utoipa::path(
@@ -91,7 +87,7 @@ pub async fn get_singleton(
         .unwrap_or_else(|_| "filesystem".into());
     let storage = match get_storage_for_site(&storage_provider, &storage_registry) {
         Ok(s) => s,
-        Err(resp) => return resp,
+        Err(e) => return e.into_response(),
     };
 
     match services.singleton.get_singleton(&ctx.site_id, &slug, storage).await {

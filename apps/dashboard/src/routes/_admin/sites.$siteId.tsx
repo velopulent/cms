@@ -1,13 +1,13 @@
 import { createFileRoute, Outlet } from "@tanstack/react-router";
-import { AppSidebar } from "@/components/sidebar/app-sidebar";
 import { AppBreadcrumb } from "@/components/app-breadcrumb";
+import { AppSidebar } from "@/components/sidebar/app-sidebar";
+import { ModeToggle } from "@/components/theme-toggle";
 import { Separator } from "@/components/ui/separator";
 import {
   SidebarInset,
   SidebarProvider,
   SidebarTrigger,
 } from "@/components/ui/sidebar";
-import { ModeToggle } from "@/components/theme-toggle";
 
 export const Route = createFileRoute("/_admin/sites/$siteId")({
   component: SiteLayout,

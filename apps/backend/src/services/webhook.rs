@@ -17,7 +17,7 @@ use uuid::Uuid;
 
 use crate::models::webhook::{SiteWebhook, WebhookDelivery};
 use crate::repository::error::RepositoryError;
-use crate::repository::traits::WebhookRepository;
+use crate::repository::traits::{NewWebhookDelivery, WebhookRepository};
 
 const WEBHOOK_TIMEOUT_SECS: u64 = 30;
 const MAX_RESPONSE_BODY_CHARS: usize = 1024;
@@ -326,15 +326,15 @@ impl WebhookService {
                 );
 
                 self.webhook_repo
-                    .create_delivery(
-                        &delivery_id,
-                        id,
+                    .create_delivery(NewWebhookDelivery {
+                        id: &delivery_id,
+                        webhook_id: id,
                         status,
-                        Some(status_code),
-                        Some(&truncated_body),
-                        Some(duration_ms),
+                        status_code: Some(status_code),
+                        response_body: Some(&truncated_body),
+                        duration_ms: Some(duration_ms),
                         triggered_by,
-                    )
+                    })
                     .await
                     .map_err(|e| {
                         error!(
@@ -353,15 +353,15 @@ impl WebhookService {
                 );
 
                 self.webhook_repo
-                    .create_delivery(
-                        &delivery_id,
-                        id,
-                        "failed",
-                        None,
-                        Some(&e.to_string()),
-                        Some(duration_ms),
+                    .create_delivery(NewWebhookDelivery {
+                        id: &delivery_id,
+                        webhook_id: id,
+                        status: "failed",
+                        status_code: None,
+                        response_body: Some(&e.to_string()),
+                        duration_ms: Some(duration_ms),
                         triggered_by,
-                    )
+                    })
                     .await
                     .map_err(|e| {
                         error!(

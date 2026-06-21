@@ -20,7 +20,7 @@ async fn seed_file(ctx: &GrpcTestContext, site_id: &str, name: &str) -> String {
 }
 
 async fn seed_file_with_mime(ctx: &GrpcTestContext, site_id: &str, name: &str, mime_type: &str) -> String {
-    let ext = mime_type.split('/').last().unwrap_or("bin");
+    let ext = mime_type.split('/').next_back().unwrap_or("bin");
     let body = ctx
         .upload_file(site_id, &format!("{}.{}", name, ext), b"test content", mime_type)
         .await;

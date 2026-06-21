@@ -286,7 +286,7 @@ async fn test_delete_entry_mutation() {
     let query = format!(r#"mutation {{ deleteEntry(id: "{}") }}"#, entry_id);
     let body = gql(&server, &token, &query).await;
     assert!(body["errors"].is_null());
-    assert_eq!(body["data"]["deleteEntry"].as_bool().unwrap(), true);
+    assert!(body["data"]["deleteEntry"].as_bool().unwrap());
 }
 
 #[tokio::test]

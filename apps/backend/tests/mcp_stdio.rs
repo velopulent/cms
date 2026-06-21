@@ -148,11 +148,8 @@ async fn setup_database(permission: AccessTokenPermission) -> (tempfile::TempDir
 /// HMAC secret. Mirrors what `cms serve` leaves behind on first run.
 async fn setup_home_instance(home: &std::path::Path) -> String {
     let hmac_secret = "home-instance-hmac-secret".to_string();
-    std::fs::write(
-        home.join("secrets.toml"),
-        format!("hmac_secret = \"{hmac_secret}\"\n"),
-    )
-    .expect("write secrets.toml");
+    std::fs::write(home.join("secrets.toml"), format!("hmac_secret = \"{hmac_secret}\"\n"))
+        .expect("write secrets.toml");
 
     let database_path = home.join("cms.db");
     let database_url = format!("sqlite://{}", database_path.to_string_lossy().replace('\\', "/"));
