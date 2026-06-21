@@ -21,6 +21,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Field, FieldLabel } from "@/components/ui/field";
 import {
   Dialog,
   DialogContent,
@@ -253,17 +254,18 @@ export function BackupsSection({ scope }: { scope: BackupScope }) {
         <CardContent className="flex flex-col gap-4">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div className="flex flex-wrap items-center gap-4">
-              <span className="flex items-center gap-2 text-sm">
+              <Field orientation="horizontal">
                 <Checkbox
+                  id="backup-include-files"
                   checked={includeFiles}
                   onCheckedChange={(v) => setIncludeFiles(Boolean(v))}
                 />
-                Include uploaded files
-              </span>
-              <span className="flex items-center gap-2 text-sm">
-                <Checkbox checked={encrypt} onCheckedChange={(v) => setEncrypt(Boolean(v))} />
-                Encrypt
-              </span>
+                <FieldLabel htmlFor="backup-include-files">Include uploaded files</FieldLabel>
+              </Field>
+              <Field orientation="horizontal">
+                <Checkbox id="backup-encrypt" checked={encrypt} onCheckedChange={(v) => setEncrypt(Boolean(v))} />
+                <FieldLabel htmlFor="backup-encrypt">Encrypt</FieldLabel>
+              </Field>
             </div>
             <div className="flex gap-2">
               <label>
@@ -446,10 +448,10 @@ export function BackupsSection({ scope }: { scope: BackupScope }) {
             )}
 
             {((isInstance && restoreMode === "site") || !isInstance) && (
-              <span className="flex items-center gap-2 text-sm">
-                <Checkbox checked={importAsNew} onCheckedChange={(v) => setImportAsNew(Boolean(v))} />
-                Import as a new site (keep the existing one)
-              </span>
+              <Field orientation="horizontal">
+                <Checkbox id="restore-import-as-new" checked={importAsNew} onCheckedChange={(v) => setImportAsNew(Boolean(v))} />
+                <FieldLabel htmlFor="restore-import-as-new">Import as a new site (keep the existing one)</FieldLabel>
+              </Field>
             )}
 
             <div className="flex flex-col gap-2">
@@ -501,23 +503,22 @@ function SitePicker({
   const allSelected = selected.length === sites.length;
   return (
     <div className="rounded-md border">
-      <span className="flex items-center gap-2 border-b px-3 py-2 text-sm font-medium">
-        <Checkbox checked={allSelected} onCheckedChange={(v) => onToggleAll(Boolean(v))} />
-        Select all ({selected.length}/{sites.length})
-      </span>
+      <Field orientation="horizontal" className="border-b px-3 py-2 text-sm font-medium">
+        <Checkbox id="site-picker-select-all" checked={allSelected} onCheckedChange={(v) => onToggleAll(Boolean(v))} />
+        <FieldLabel htmlFor="site-picker-select-all">Select all ({selected.length}/{sites.length})</FieldLabel>
+      </Field>
       <ScrollArea className="max-h-48">
         <div className="flex flex-col">
           {sites.map((s) => (
-            <div
-              key={s.id}
-              className="flex items-center gap-2 px-3 py-2 text-sm hover:bg-muted/50"
-            >
-              <Checkbox checked={selected.includes(s.id)} onCheckedChange={() => onToggle(s.id)} />
-              <span className="flex flex-col">
-                <span className="font-medium">{s.name ?? "(unnamed site)"}</span>
-                <span className="font-mono text-xs text-muted-foreground">{s.id}</span>
-              </span>
-            </div>
+            <Field key={s.id} orientation="horizontal" className="px-3 py-2 text-sm hover:bg-muted/50">
+              <Checkbox id={`site-picker-${s.id}`} checked={selected.includes(s.id)} onCheckedChange={() => onToggle(s.id)} />
+              <FieldLabel htmlFor={`site-picker-${s.id}`}>
+                <span className="flex flex-col">
+                  <span className="font-medium">{s.name ?? "(unnamed site)"}</span>
+                  <span className="font-mono text-xs text-muted-foreground">{s.id}</span>
+                </span>
+              </FieldLabel>
+            </Field>
           ))}
         </div>
       </ScrollArea>
@@ -606,14 +607,14 @@ function SchedulesCard({ schedules, loading, onCreate, onToggle, onRun, onDelete
             />
           </div>
           <div className="flex flex-col gap-2 sm:col-span-2 lg:col-span-1 lg:flex-row lg:items-center lg:gap-4 lg:pb-2">
-            <span className="flex items-center gap-2 text-sm">
-              <Checkbox checked={includeFiles} onCheckedChange={(v) => setIncludeFiles(Boolean(v))} />
-              Files
-            </span>
-            <span className="flex items-center gap-2 text-sm">
-              <Checkbox checked={encrypt} onCheckedChange={(v) => setEncrypt(Boolean(v))} />
-              Encrypt
-            </span>
+            <Field orientation="horizontal">
+              <Checkbox id="schedule-files" checked={includeFiles} onCheckedChange={(v) => setIncludeFiles(Boolean(v))} />
+              <FieldLabel htmlFor="schedule-files">Files</FieldLabel>
+            </Field>
+            <Field orientation="horizontal">
+              <Checkbox id="schedule-encrypt" checked={encrypt} onCheckedChange={(v) => setEncrypt(Boolean(v))} />
+              <FieldLabel htmlFor="schedule-encrypt">Encrypt</FieldLabel>
+            </Field>
           </div>
           <Button onClick={submit} disabled={submitting}>
             <Plus className="size-4" /> Add schedule
