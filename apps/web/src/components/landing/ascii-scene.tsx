@@ -52,7 +52,7 @@ export function AsciiScene() {
       p: number,
       q: number,
       segments: number,
-      tubeSegments: number
+      tubeSegments: number,
     ): Point3D[] => {
       const points: Point3D[] = [];
       for (let i = 0; i < segments; i++) {
@@ -87,7 +87,7 @@ export function AsciiScene() {
       point: Point3D,
       angleX: number,
       angleY: number,
-      angleZ: number
+      angleZ: number,
     ): Point3D => {
       let { x, y, z } = point;
 
@@ -117,7 +117,7 @@ export function AsciiScene() {
       point: Point3D,
       centerX: number,
       centerY: number,
-      scale: number
+      scale: number,
     ): { x: number; y: number; z: number } => {
       const perspective = 5;
       const factor = perspective / (perspective + point.z);
@@ -184,7 +184,7 @@ export function AsciiScene() {
         ctx.fillText(
           ASCII_CHARS[Math.floor(pz * (ASCII_CHARS.length - 1))],
           px,
-          py
+          py,
         );
       }
 

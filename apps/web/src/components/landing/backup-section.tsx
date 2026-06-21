@@ -107,7 +107,6 @@ export function BackupSection() {
                 downtime.
               </p>
             </div>
-            
           </div>
         </div>
 

@@ -19,7 +19,7 @@ export function DatabaseSection() {
       ([entry]) => {
         if (entry.isIntersecting) setIsVisible(true);
       },
-      { threshold: 0.1 }
+      { threshold: 0.1 },
     );
 
     if (sectionRef.current) observer.observe(sectionRef.current);
@@ -34,24 +34,34 @@ export function DatabaseSection() {
   }, []);
 
   return (
-    <section id="infra" ref={sectionRef} className="relative py-32 lg:py-40 overflow-hidden">
-        {/* Background accent — retiré, remplacé par l'image sphère */}
-      
+    <section
+      id="infra"
+      ref={sectionRef}
+      className="relative py-32 lg:py-40 overflow-hidden"
+    >
+      {/* Background accent — retiré, remplacé par l'image sphère */}
+
       <div className="max-w-350 mx-auto px-6 lg:px-12">
         {/* Header */}
         <div className="mb-20">
-          <span className={`inline-flex items-center gap-4 text-sm font-mono text-muted-foreground mb-8 transition-all duration-700 ${
-            isVisible ? "opacity-100" : "opacity-0"
-          }`}>
+          <span
+            className={`inline-flex items-center gap-4 text-sm font-mono text-muted-foreground mb-8 transition-all duration-700 ${
+              isVisible ? "opacity-100" : "opacity-0"
+            }`}
+          >
             <span className="w-12 h-px bg-foreground/20" />
             Database Support
           </span>
-          
+
           <div className="grid lg:grid-cols-[auto_1fr] gap-8 lg:gap-16 items-stretch">
             {/* Image globe — colonne gauche, pleine hauteur */}
-            <div className={`w-48 lg:w-72 xl:w-80 shrink-0 transition-all duration-1000 ${
-              isVisible ? "opacity-100 translate-y-0" : "opacity-0 translate-y-8"
-            }`}>
+            <div
+              className={`w-48 lg:w-72 xl:w-80 shrink-0 transition-all duration-1000 ${
+                isVisible
+                  ? "opacity-100 translate-y-0"
+                  : "opacity-0 translate-y-8"
+              }`}
+            >
               <img
                 src="/assets/database.png"
                 alt="Global network sphere"
@@ -61,18 +71,25 @@ export function DatabaseSection() {
 
             {/* Titre + description empilés */}
             <div className="flex flex-col justify-center">
-              <h2 className={`text-6xl md:text-7xl lg:text-[128px] font-display tracking-tight leading-[0.9] transition-all duration-1000 ${
-                isVisible ? "opacity-100 translate-y-0" : "opacity-0 translate-y-8"
-              }`}>
+              <h2
+                className={`text-6xl md:text-7xl lg:text-[128px] font-display tracking-tight leading-[0.9] transition-all duration-1000 ${
+                  isVisible
+                    ? "opacity-100 translate-y-0"
+                    : "opacity-0 translate-y-8"
+                }`}
+              >
                 Your choice
                 <br />
                 <span className="text-muted-foreground">of database.</span>
               </h2>
 
-              <p className={`mt-8 text-xl text-muted-foreground leading-relaxed max-w-lg transition-all duration-1000 delay-100 ${
-                isVisible ? "opacity-100" : "opacity-0"
-              }`}>
-                Embedded SQLite for lightweight workloads, MySQL for scalable deployments, PostgreSQL for complex, high-volume systems.
+              <p
+                className={`mt-8 text-xl text-muted-foreground leading-relaxed max-w-lg transition-all duration-1000 delay-100 ${
+                  isVisible ? "opacity-100" : "opacity-0"
+                }`}
+              >
+                Embedded SQLite for lightweight workloads, MySQL for scalable
+                deployments, PostgreSQL for complex, high-volume systems.
               </p>
             </div>
           </div>
@@ -81,9 +98,13 @@ export function DatabaseSection() {
         {/* Main content grid */}
         <div className="grid lg:grid-cols-3 gap-6">
           {/* Large stat card */}
-          <div className={`lg:col-span-2 relative p-8 lg:p-12 border border-foreground/10 bg-foreground/2 overflow-hidden transition-all duration-700 ${
-            isVisible ? "opacity-100 translate-y-0" : "opacity-0 translate-y-8"
-          }`}>
+          <div
+            className={`lg:col-span-2 relative p-8 lg:p-12 border border-foreground/10 bg-foreground/2 overflow-hidden transition-all duration-700 ${
+              isVisible
+                ? "opacity-100 translate-y-0"
+                : "opacity-0 translate-y-8"
+            }`}
+          >
             {/* Animated dots background with connecting lines */}
             <div className="absolute inset-0 opacity-70">
               {/* SVG for connecting lines */}
@@ -140,53 +161,76 @@ export function DatabaseSection() {
                 />
               ))}
             </div>
-            
+
             <div className="relative z-10">
               <div className="flex items-baseline gap-2 mb-4">
-                <span className="text-8xl lg:text-[10rem] font-display leading-none">3</span>
-                <span className="text-2xl text-muted-foreground">databases</span>
+                <span className="text-8xl lg:text-[10rem] font-display leading-none">
+                  3
+                </span>
+                <span className="text-2xl text-muted-foreground">
+                  databases
+                </span>
               </div>
               <p className="text-muted-foreground max-w-md">
-                Built-in support for the most popular databases. Configure once, scale anywhere.
+                Built-in support for the most popular databases. Configure once,
+                scale anywhere.
               </p>
             </div>
           </div>
 
           {/* Stacked stat cards */}
           <div className="flex flex-col gap-6">
-            <div className={`p-8 border border-foreground/10 bg-foreground/2 transition-all duration-700 delay-100 ${
-              isVisible ? "opacity-100 translate-y-0" : "opacity-0 translate-y-8"
-            }`}>
-              <span className="text-5xl lg:text-6xl font-display">&lt; 20MB</span>
-              <span className="block text-sm text-muted-foreground mt-2">Binary size</span>
+            <div
+              className={`p-8 border border-foreground/10 bg-foreground/2 transition-all duration-700 delay-100 ${
+                isVisible
+                  ? "opacity-100 translate-y-0"
+                  : "opacity-0 translate-y-8"
+              }`}
+            >
+              <span className="text-5xl lg:text-6xl font-display">
+                &lt; 20MB
+              </span>
+              <span className="block text-sm text-muted-foreground mt-2">
+                Binary size
+              </span>
             </div>
-            
-            <div className={`p-8 border border-foreground/10 bg-foreground/2 transition-all duration-700 delay-200 ${
-              isVisible ? "opacity-100 translate-y-0" : "opacity-0 translate-y-8"
-            }`}>
+
+            <div
+              className={`p-8 border border-foreground/10 bg-foreground/2 transition-all duration-700 delay-200 ${
+                isVisible
+                  ? "opacity-100 translate-y-0"
+                  : "opacity-0 translate-y-8"
+              }`}
+            >
               <span className="text-5xl lg:text-6xl font-display">∞</span>
-              <span className="block text-sm text-muted-foreground mt-2">Projects per instance</span>
+              <span className="block text-sm text-muted-foreground mt-2">
+                Projects per instance
+              </span>
             </div>
           </div>
         </div>
 
         {/* Region list */}
-        <div className={`mt-12 grid grid-cols-2 lg:grid-cols-4 gap-4 transition-all duration-1000 delay-300 ${
-          isVisible ? "opacity-100" : "opacity-0"
-        }`}>
+        <div
+          className={`mt-12 grid grid-cols-2 lg:grid-cols-4 gap-4 transition-all duration-1000 delay-300 ${
+            isVisible ? "opacity-100" : "opacity-0"
+          }`}
+        >
           {regions.map((region, index) => (
             <div
               key={region.name}
               className={`p-6 border transition-all duration-300 cursor-default ${
-                activeRegion === index 
-                  ? "border-foreground/30 bg-foreground/4" 
+                activeRegion === index
+                  ? "border-foreground/30 bg-foreground/4"
                   : "border-foreground/10"
               }`}
             >
               <div className="flex items-center gap-2 mb-3">
-                <span className={`w-2 h-2 rounded-full transition-colors ${
-                  activeRegion === index ? "bg-[#eca8d6]" : "bg-foreground/20"
-                }`} />
+                <span
+                  className={`w-2 h-2 rounded-full transition-colors ${
+                    activeRegion === index ? "bg-[#eca8d6]" : "bg-foreground/20"
+                  }`}
+                />
                 <span className="text-xs font-mono text-muted-foreground uppercase tracking-wider">
                   {region.status}
                 </span>

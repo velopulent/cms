@@ -266,8 +266,7 @@ export default function DownloadPage() {
                   <p className="text-muted-foreground">
                     {selectedOS === "linux" && "For Linux systems"}
                     {selectedOS === "macos" && "For macOS systems"}
-                    {selectedOS === "windows" &&
-                      "For Windows systems"} with{" "}
+                    {selectedOS === "windows" && "For Windows systems"} with{" "}
                     {selectedArch === "x86_64"
                       ? "Intel/AMD"
                       : selectedArch === "aarch64"
