@@ -23,6 +23,7 @@ const router = createRouter({
   basepath: "/dashboard",
   defaultPreload: "intent",
   scrollRestoration: true,
+  defaultViewTransition: true,
   defaultStructuralSharing: true,
   defaultPreloadStaleTime: 0,
 });
