@@ -158,9 +158,10 @@ export function SecuritySection() {
           {/* Feature cards stack */}
           <div className="lg:col-span-5 flex flex-col gap-4">
             {securityFeatures.map((feature, index) => (
-              <div
+              <button
+                type="button"
                 key={feature.title}
-                className={`p-6 border transition-all duration-500 cursor-default ${
+                className={`p-6 border transition-all duration-500 cursor-default text-left w-full ${
                   activeFeature === index
                     ? "border-foreground/30 bg-foreground/4"
                     : "border-foreground/10"
@@ -186,7 +187,7 @@ export function SecuritySection() {
                     </p>
                   </div>
                 </div>
-              </div>
+              </button>
             ))}
           </div>
         </div>

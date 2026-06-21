@@ -41,7 +41,7 @@ const testimonials = [
 export function TestimonialsSection() {
   const [activeIndex, setActiveIndex] = useState(0);
   const [isVisible, setIsVisible] = useState(false);
-  const [direction, setDirection] = useState<"left" | "right">("right");
+  const [_direction, setDirection] = useState<"left" | "right">("right");
   const sectionRef = useRef<HTMLElement>(null);
 
   const [pattern, setPattern] = useState("");
@@ -128,12 +128,14 @@ export function TestimonialsSection() {
           {/* Navigation arrows */}
           <div className="hidden lg:flex items-center gap-2">
             <button
+              type="button"
               onClick={goPrev}
               className="p-4 border border-background/20 hover:bg-background/10 transition-colors"
             >
               <ArrowLeft className="w-5 h-5" />
             </button>
             <button
+              type="button"
               onClick={goNext}
               className="p-4 border border-background/20 hover:bg-background/10 transition-colors"
             >
@@ -195,9 +197,10 @@ export function TestimonialsSection() {
 
             {/* Progress indicators */}
             <div className="flex gap-2">
-              {testimonials.map((_, idx) => (
+              {testimonials.map((t, idx) => (
                 <button
-                  key={idx}
+                  type="button"
+                  key={t.company}
                   onClick={() => goTo(idx)}
                   className="flex-1 h-1 bg-background/20 overflow-hidden"
                 >
@@ -227,6 +230,7 @@ export function TestimonialsSection() {
               <div className="flex flex-wrap gap-3">
                 {testimonials.map((t, idx) => (
                   <button
+                    type="button"
                     key={t.company}
                     onClick={() => goTo(idx)}
                     className={`px-4 py-2 text-sm border transition-all ${

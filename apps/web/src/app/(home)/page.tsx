@@ -7,9 +7,7 @@ import { FooterSection } from "@/components/landing/footer-section";
 import { HeroSection } from "@/components/landing/hero-section";
 import { HowItWorksSection } from "@/components/landing/how-it-works-section";
 import { IntegrationsSection } from "@/components/landing/integrations-section";
-import { Navigation } from "@/components/landing/navigation";
 import { SecuritySection } from "@/components/landing/security-section";
-import { TestimonialsSection } from "@/components/landing/testimonials-section";
 import { UseCasesSection } from "@/components/landing/use-cases";
 
 export default function Home() {

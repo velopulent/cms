@@ -117,6 +117,7 @@ export function BackupSection() {
             return (
               <div
                 key={feature.title}
+                role="none"
                 className={`group relative overflow-hidden p-6 lg:p-8 border transition-all duration-500 cursor-default ${
                   hoveredIndex === index
                     ? "border-foreground bg-foreground/4"

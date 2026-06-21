@@ -97,6 +97,7 @@ export function IntegrationsSection() {
           {frameworks.map((framework, index) => (
             <div
               key={framework.name}
+              role="none"
               className={`group relative overflow-hidden p-6 lg:p-8 border transition-all duration-500 cursor-default ${
                 hoveredIndex === index
                   ? "border-foreground bg-foreground/4 scale-[1.02]"

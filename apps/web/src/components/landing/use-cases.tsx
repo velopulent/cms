@@ -70,6 +70,7 @@ export function UseCasesSection() {
       >
         <img
           src="/assets/tree-house-2x.png"
+          alt=""
           aria-hidden="true"
           className={`
             w-full h-full object-cover

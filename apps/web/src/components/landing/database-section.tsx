@@ -33,6 +33,20 @@ export function DatabaseSection() {
     return () => clearInterval(interval);
   }, []);
 
+  const lineConfigs = Array.from({ length: 19 }, (_, i) => ({
+    x1: 10 + (i % 5) * 20,
+    y1: 10 + Math.floor(i / 5) * 25,
+    x2: 10 + ((i + 1) % 5) * 20,
+    y2: 10 + Math.floor((i + 1) / 5) * 25,
+    delay: i * 0.15,
+  }));
+
+  const dotConfigs = Array.from({ length: 20 }, (_, i) => ({
+    left: 10 + (i % 5) * 20,
+    top: 10 + Math.floor(i / 5) * 25,
+    delay: i * 0.1,
+  }));
+
   return (
     <section
       id="infra"
@@ -109,6 +123,7 @@ export function DatabaseSection() {
             <div className="absolute inset-0 opacity-70">
               {/* SVG for connecting lines */}
               <svg
+                aria-hidden="true"
                 className="absolute inset-0 w-full h-full"
                 style={{ pointerEvents: "none" }}
               >
@@ -129,34 +144,28 @@ export function DatabaseSection() {
                     }
                   `}</style>
                 </defs>
-                {[...Array(19)].map((_, i) => {
-                  const x1 = 10 + (i % 5) * 20;
-                  const y1 = 10 + Math.floor(i / 5) * 25;
-                  const x2 = 10 + ((i + 1) % 5) * 20;
-                  const y2 = 10 + Math.floor((i + 1) / 5) * 25;
-                  return (
-                    <line
-                      key={`line-${i}`}
-                      x1={`${x1}%`}
-                      y1={`${y1}%`}
-                      x2={`${x2}%`}
-                      y2={`${y2}%`}
-                      className="connecting-line"
-                      style={{ animationDelay: `${i * 0.15}s` }}
-                    />
-                  );
-                })}
+                {lineConfigs.map((cfg) => (
+                  <line
+                    key={`${cfg.x1}-${cfg.y1}`}
+                    x1={`${cfg.x1}%`}
+                    y1={`${cfg.y1}%`}
+                    x2={`${cfg.x2}%`}
+                    y2={`${cfg.y2}%`}
+                    className="connecting-line"
+                    style={{ animationDelay: `${cfg.delay}s` }}
+                  />
+                ))}
               </svg>
 
               {/* Dots */}
-              {[...Array(20)].map((_, i) => (
+              {dotConfigs.map((dot) => (
                 <div
-                  key={i}
+                  key={`${dot.left}-${dot.top}`}
                   className="absolute w-1.5 h-1.5 rounded-full bg-[#eca8d6]"
                   style={{
-                    left: `${10 + (i % 5) * 20}%`,
-                    top: `${10 + Math.floor(i / 5) * 25}%`,
-                    animation: `pulse 2s ease-in-out ${i * 0.1}s infinite`,
+                    left: `${dot.left}%`,
+                    top: `${dot.top}%`,
+                    animation: `pulse 2s ease-in-out ${dot.delay}s infinite`,
                   }}
                 />
               ))}

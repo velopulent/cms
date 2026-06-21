@@ -2,18 +2,10 @@
 
 import { Icon } from "@iconify-icon/react";
 import { Check, Code2, Download } from "lucide-react";
-import Image from "next/image";
 import { useState } from "react";
 import { FooterSection } from "@/components/landing/footer-section";
 import { Navigation } from "@/components/landing/navigation";
 import { Button } from "@/components/ui/button";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 
 type OS = "linux" | "macos" | "windows";
 type Architecture = "x86_64" | "aarch64" | "arm64";
@@ -195,12 +187,13 @@ export default function DownloadPage() {
             <div className="space-y-8 mb-12">
               {/* OS Selection */}
               <div>
-                <label className="block text-sm font-medium mb-4">
+                <span className="block text-sm font-medium mb-4">
                   Operating System
-                </label>
+                </span>
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                   {osOptions.map((option) => (
                     <button
+                      type="button"
                       key={option.value}
                       onClick={() => setSelectedOS(option.value)}
                       className={`relative p-4 rounded-lg border-2 transition-all duration-200 text-left ${
@@ -232,12 +225,13 @@ export default function DownloadPage() {
 
               {/* Architecture Selection */}
               <div>
-                <label className="block text-sm font-medium mb-4">
+                <span className="block text-sm font-medium mb-4">
                   Architecture
-                </label>
+                </span>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 max-w-lg">
                   {currentArchOptions.map((option) => (
                     <button
+                      type="button"
                       key={option.value}
                       onClick={() => setSelectedArch(option.value)}
                       className={`relative p-4 rounded-lg border-2 transition-all duration-200 text-left ${
@@ -319,14 +313,20 @@ export default function DownloadPage() {
                 <div className="bg-muted/30 rounded-lg p-4 border border-foreground/5">
                   <p className="text-xs text-muted-foreground leading-relaxed">
                     By downloading, you agree to the{" "}
-                    <a href="#" className="text-foreground hover:underline">
+                    <button
+                      type="button"
+                      className="text-foreground hover:underline inline"
+                    >
                       AGPL v3 License
-                    </a>
+                    </button>
                     . All downloads are verified with SHA256 checksums. Need
                     help? Check our{" "}
-                    <a href="#" className="text-foreground hover:underline">
+                    <button
+                      type="button"
+                      className="text-foreground hover:underline inline"
+                    >
                       installation guide
-                    </a>
+                    </button>
                     .
                   </p>
                 </div>

@@ -134,7 +134,7 @@ function ParticleVisualization() {
 
 export function FeaturesSection() {
   const [isVisible, setIsVisible] = useState(false);
-  const [activeFeature, setActiveFeature] = useState(0);
+  const [_activeFeature, setActiveFeature] = useState(0);
   const sectionRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -201,6 +201,7 @@ export function FeaturesSection() {
                 ? "opacity-100 translate-y-0"
                 : "opacity-0 translate-y-12"
             }`}
+            role="none"
             onMouseEnter={() => setActiveFeature(0)}
           >
             {/* Left: text content */}
