@@ -16,11 +16,11 @@
     "@orama/orama": "^3.1.18",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
-    "fumadocs-core": "16.9.3",
-    "fumadocs-mdx": "15.0.10",
-    "fumadocs-ui": "16.9.3",
+    "fumadocs-core": "16.10.5",
+    "fumadocs-mdx": "15.0.12",
+    "fumadocs-ui": "16.10.5",
     "lucide-react": "^1.17.0",
-    "next": "16.2.6",
+    "next": "16.2.9",
     "radix-ui": "^1.4.3",
     "react": "^19.2.5",
     "react-dom": "^19.2.5",
@@ -38,6 +38,6 @@
     "serve": "^14.2.6",
     "tailwindcss": "^4.2.4",
     "typescript": "^6.0.3",
-    "@biomejs/biome": "^2.4.16"
+    "@biomejs/biome": "^2.5.0"
   }
 }
