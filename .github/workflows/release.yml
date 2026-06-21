@@ -1,8 +1,12 @@
 name: Release
 
-# Tag-driven. Push a tag like `v1.2.3` to build per-OS binaries and attach them to
-# a GitHub Release. The release binary embeds apps/dashboard/dist via rust-embed,
+# Tag-driven. Push a tag like `v1.2.3` to build per-OS/arch binaries and attach them
+# to a GitHub Release. The release binary embeds apps/dashboard/dist via rust-embed,
 # so the dashboard MUST be built before `cargo build --release`.
+#
+# The dashboard dist is static (JS/HTML) and identical for every target, so it is
+# built ONCE here and shared to all build jobs as an artifact. The build matrix then
+# runs natively on each OS/arch (no cross-compilation) and compiles cargo directly.
 on:
   push:
     tags:
@@ -12,57 +16,100 @@ permissions:
   contents: write
 
 jobs:
-  build:
-    name: Build (${{ matrix.target }})
-    runs-on: ${{ matrix.os }}
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - os: ubuntu-latest
-            target: x86_64-unknown-linux-gnu
-            bin: cms
-            asset: cms-x86_64-linux
-          - os: windows-latest
-            target: x86_64-pc-windows-msvc
-            bin: cms.exe
-            asset: cms-x86_64-windows.exe
-          - os: macos-latest
-            target: aarch64-apple-darwin
-            bin: cms
-            asset: cms-aarch64-macos
+  # Build the static dashboard once. Every build job consumes this same dist.
+  dashboard:
+    name: Build dashboard
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
           persist-credentials: false
-      - uses: arduino/setup-protoc@c65c819552d16ad3c9b72d9dfd5ba5237b9c906b # v3
-        with:
-          repo-token: ${{ secrets.GITHUB_TOKEN }}
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
-      - uses: dtolnay/rust-toolchain@3c5f7ea28cd621ae0bf5283f0e981fb97b8a7af9 # master
-        with:
-          toolchain: "1.94"
-      - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2
-        with:
-          workspaces: apps/backend
-          key: release-${{ matrix.target }}
       # Persist the Nx local cache across runs. Ephemeral runners wipe .nx/cache, so
       # without this Nx caching is a no-op. This lets dashboard:build (8-10s) replay
-      # from cache instead of rebuilding; the Rust compile stays on rust-cache above.
+      # from cache instead of rebuilding.
       - uses: actions/cache@5a3ec84eff668545956fd18022155c47e93e2684 # v4.2.3
         with:
           path: .nx/cache
           key: nx-${{ runner.os }}-${{ hashFiles('apps/dashboard/**', 'bun.lock', 'package.json', 'nx.json') }}
           restore-keys: |
             nx-${{ runner.os }}-
-
-      # Single Nx command owns the dashboard -> backend ordering: backend:build
-      # dependsOn dashboard:build (rust-embed bakes apps/dashboard/dist into the
-      # binary) and sets SKIP_DASHBOARD_BUILD=1 so cargo consumes the built dist.
-      - name: Build release binary (dashboard + backend via Nx)
+      - name: Build dashboard
         run: |
           bun install --frozen-lockfile
-          bunx nx run backend:build
+          bunx nx run dashboard:build
+      - uses: actions/upload-artifact@65c4c4a1ddee5b72f698fdd19549f0f0fb45cf08 # v4.6.0
+        with:
+          name: dashboard-dist
+          path: apps/dashboard/dist
+          if-no-files-found: error
+
+  build:
+    name: Build (${{ matrix.os }}-${{ matrix.arch }})
+    needs: dashboard
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: linux
+            arch: amd64
+            runner: ubuntu-latest
+            bin: cms
+            asset: cms-${{ github.ref_name }}-linux-amd64
+          - os: linux
+            arch: arm64
+            runner: ubuntu-24.04-arm
+            bin: cms
+            asset: cms-${{ github.ref_name }}-linux-arm64
+          - os: macos
+            arch: amd64
+            runner: macos-13
+            bin: cms
+            asset: cms-${{ github.ref_name }}-macos-amd64
+          - os: macos
+            arch: arm64
+            runner: macos-14
+            bin: cms
+            asset: cms-${{ github.ref_name }}-macos-arm64
+          - os: windows
+            arch: amd64
+            runner: windows-latest
+            bin: cms.exe
+            asset: cms-${{ github.ref_name }}-windows-amd64.exe
+          - os: windows
+            arch: arm64
+            runner: windows-11-arm
+            bin: cms.exe
+            asset: cms-${{ github.ref_name }}-windows-arm64.exe
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          persist-credentials: false
+      # rust-embed (#[folder = "../dashboard/dist"]) needs the built dashboard present
+      # at compile time. Pull the shared artifact into apps/dashboard/dist.
+      - uses: actions/download-artifact@fa0a91b85d4f404e444e00e005971372dc801d16 # v4.1.8
+        with:
+          name: dashboard-dist
+          path: apps/dashboard/dist
+      - uses: arduino/setup-protoc@c65c819552d16ad3c9b72d9dfd5ba5237b9c906b # v3
+        with:
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+      # Installs the host toolchain, which on each runner is already the target arch
+      # (native build, no --target needed).
+      - uses: dtolnay/rust-toolchain@3c5f7ea28cd621ae0bf5283f0e981fb97b8a7af9 # master
+        with:
+          toolchain: "1.94"
+      - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2
+        with:
+          workspaces: apps/backend
+          key: release-${{ matrix.os }}-${{ matrix.arch }}
+
+      # Build cargo directly (dist is already present from the artifact); keep the
+      # default `embed-dashboard` feature so rust-embed bakes in apps/dashboard/dist.
+      - name: Build release binary
+        working-directory: apps/backend
+        run: cargo build --release --locked
 
       - name: Stage artifact
         shell: bash
