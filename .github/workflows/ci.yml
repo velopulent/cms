@@ -239,8 +239,9 @@ jobs:
           key: nx-${{ runner.os }}-${{ hashFiles('apps/dashboard/**', 'bun.lock', 'package.json', 'nx.json') }}
           restore-keys: |
             nx-${{ runner.os }}-
-      - name: Biome lint
-        run: bunx nx run dashboard:lint
+      - name: Biome CI
+        run: bunx biome ci
+        working-directory: apps/dashboard
       - name: Typecheck
         run: bunx nx run dashboard:typecheck
       - name: Build
@@ -263,8 +264,9 @@ jobs:
           key: nx-${{ runner.os }}-${{ hashFiles('apps/web/**', 'bun.lock', 'package.json', 'nx.json') }}
           restore-keys: |
             nx-${{ runner.os }}-
-      - name: Biome lint
-        run: bunx nx run web:lint
+      - name: Biome CI
+        run: bunx biome ci
+        working-directory: apps/web
       - name: Typecheck
         run: bunx nx run web:typecheck
       - name: Build
