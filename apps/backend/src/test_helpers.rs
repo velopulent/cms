@@ -664,7 +664,7 @@ impl EntryRepository for InMemoryEntryRepository {
     async fn update(&self, params: UpdateEntryParams<'_>) -> Result<Entry, RepositoryError> {
         let UpdateEntryParams {
             id,
-            site_id: _,
+            site_id,
             data,
             slug,
             status,
@@ -672,7 +672,7 @@ impl EntryRepository for InMemoryEntryRepository {
             change_summary,
         } = params;
         let mut entries = self.entries.lock().unwrap();
-        if let Some(entry) = entries.iter_mut().find(|e| e.id == id) {
+        if let Some(entry) = entries.iter_mut().find(|e| e.id == id && e.site_id == site_id) {
             entry.data = data.to_string();
             entry.slug = slug.to_string();
             entry.status = status.to_string();
