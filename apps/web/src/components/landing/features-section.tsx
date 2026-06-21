@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import { useEffect, useRef, useState } from "react";
 
 const features = [
@@ -230,11 +231,12 @@ export function FeaturesSection() {
 
             {/* Right: mirrored image, full height */}
             <div className="hidden lg:block relative w-[42%] shrink-0 overflow-hidden">
-              <img
+              <Image
+                fill
                 src="/assets/ridge.png"
                 alt=""
                 aria-hidden="true"
-                className="absolute inset-0 w-full h-full object-cover object-center"
+                className="object-cover object-center"
                 style={{ transform: "scaleX(-1)" }}
               />
               {/* Fade left edge into black */}

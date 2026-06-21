@@ -3,6 +3,7 @@
 import { ArrowRight } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
+import Image from "next/image";
 
 export function CtaSection() {
   const [isVisible, setIsVisible] = useState(false);
@@ -96,13 +97,13 @@ export function CtaSection() {
                   Open source, self-hosted
                 </p>
               </div>
-
               {/* Right image */}
-              <div className="hidden lg:flex items-end justify-center w-150 h-162.5 -mr-16">
-                <img
+              <div className="hidden lg:flex items-end justify-center w-150 h-162.5 -mr-16 relative">
+                <Image
+                  fill
                   src="/assets/bridge.png"
                   alt="Two trees connected by glowing arcs"
-                  className="w-full h-full object-contain object-bottom"
+                  className="object-contain object-bottom"
                 />
               </div>
             </div>

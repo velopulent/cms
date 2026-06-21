@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import { useEffect, useRef, useState } from "react";
 
 const useCases = [
@@ -68,19 +69,12 @@ export function UseCasesSection() {
           lg:w-[55%] lg:h-[85%]
         `}
       >
-        <img
+        <Image
+          fill
           src="/assets/tree-house-2x.png"
           alt=""
           aria-hidden="true"
-          className={`
-            w-full h-full object-cover
-            
-            /* MOBILE: centered bg */
-            object-center
-            
-            /* DESKTOP: original alignment */
-            lg:object-top-left
-          `}
+          className="object-cover object-center lg:object-top-left"
         />
 
         {/* MOBILE overlay (strong for readability) */}

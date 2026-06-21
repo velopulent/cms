@@ -1,6 +1,7 @@
 "use client";
 
 import { ArrowUpRight } from "lucide-react";
+import Image from "next/image";
 import Link from "next/link";
 
 const footerLinks = {
@@ -46,10 +47,11 @@ export function FooterSection() {
     <footer className="relative bg-black">
       {/* Panoramic banner image */}
       <div className="relative w-full h-85 md:h-105 overflow-hidden">
-        <img
+        <Image
+          fill
           src="/assets/footer.png"
           alt="Bioluminescent landscape"
-          className="w-full h-full object-cover object-center"
+          className="object-cover object-center"
         />
         {/* Gradient fade to black at bottom */}
         <div className="absolute inset-0 bg-linear-to-b from-transparent via-transparent to-black" />

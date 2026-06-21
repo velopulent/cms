@@ -2,6 +2,7 @@
 
 import { Icon } from "@iconify-icon/react";
 import { Check, Code2, Download } from "lucide-react";
+import Image from "next/image";
 import { useState } from "react";
 import { FooterSection } from "@/components/landing/footer-section";
 import { Navigation } from "@/components/landing/navigation";
@@ -159,12 +160,12 @@ export default function DownloadPage() {
                 </div>
               </div>
 
-              <img
-                src={"/assets/logo.webp"}
+              <Image
+                src="/assets/logo.webp"
                 alt="Velopulent CMS Logo"
-                width={620}
-                height={420}
-                className="relative"
+                width={1024}
+                height={701}
+                priority
               />
             </div>
           </div>

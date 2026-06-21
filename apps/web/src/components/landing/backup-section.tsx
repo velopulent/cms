@@ -1,6 +1,7 @@
 "use client";
 
 import { Cloud, HardDrive, RotateCcw, Shield } from "lucide-react";
+import Image from "next/image";
 import { useEffect, useRef, useState } from "react";
 
 const backupFeatures = [
@@ -70,16 +71,17 @@ export function BackupSection() {
           <div className="grid lg:grid-cols-[auto_1fr] gap-8 lg:gap-16 items-stretch">
             {/* Image — left column */}
             <div
-              className={`w-48 lg:w-72 xl:w-80 shrink-0 transition-all duration-1000 ${
+              className={`w-48 lg:w-72 xl:w-80 shrink-0 relative transition-all duration-1000 ${
                 isVisible
                   ? "opacity-100 translate-y-0"
                   : "opacity-0 translate-y-8"
               }`}
             >
-              <img
+              <Image
+                fill
                 src="/assets/backup.png"
                 alt="Backup and restore"
-                className="w-full h-full object-contain"
+                className="object-contain"
               />
             </div>
 

@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import { useEffect, useRef, useState } from "react";
 
 const steps = [
@@ -91,11 +92,12 @@ export function HowItWorksSection() {
               isVisible ? "opacity-100" : "opacity-0"
             }`}
           >
-            <img
+            <Image
+              fill
               src="/assets/tree.png"
               alt=""
               aria-hidden="true"
-              className="absolute bottom-0 left-0 w-full h-full object-contain object-bottom"
+              className="object-contain object-bottom"
             />
             {/* Fade sur le bord gauche */}
             <div className="absolute inset-0 bg-linear-to-r from-[oklch(0.09_0.01_260)] via-transparent to-transparent pointer-events-none" />

@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import { useEffect, useRef, useState } from "react";
 
 const dashboardCards = [
@@ -223,15 +224,17 @@ export function DashboardSection() {
 
         {/* Organic graph image */}
         <div
-          className={`w-full mb-0 transition-all duration-1000 delay-200 ${
+          className={`w-full mb-0 relative transition-all duration-1000 delay-200 ${
             isVisible ? "opacity-100" : "opacity-0"
           }`}
+          style={{ aspectRatio: "2492 / 824" }}
         >
-          <img
+          <Image
+            fill
             src="/assets/real-time-graph.png"
             alt=""
             aria-hidden="true"
-            className="w-full h-auto object-cover"
+            className="object-cover"
           />
         </div>
 

@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import { useEffect, useRef, useState } from "react";
 
 const regions = [
@@ -70,16 +71,17 @@ export function DatabaseSection() {
           <div className="grid lg:grid-cols-[auto_1fr] gap-8 lg:gap-16 items-stretch">
             {/* Image globe — colonne gauche, pleine hauteur */}
             <div
-              className={`w-48 lg:w-72 xl:w-80 shrink-0 transition-all duration-1000 ${
+              className={`w-48 lg:w-72 xl:w-80 shrink-0 relative transition-all duration-1000 ${
                 isVisible
                   ? "opacity-100 translate-y-0"
                   : "opacity-0 translate-y-8"
               }`}
             >
-              <img
+              <Image
+                fill
                 src="/assets/database.png"
                 alt="Global network sphere"
-                className="w-full h-full object-contain object-center"
+                className="object-contain object-center"
               />
             </div>
 
