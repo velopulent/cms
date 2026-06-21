@@ -1,9 +1,9 @@
 "use client";
 
 import { ArrowRight } from "lucide-react";
+import Image from "next/image";
 import { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
-import Image from "next/image";
 
 export function CtaSection() {
   const [isVisible, setIsVisible] = useState(false);
