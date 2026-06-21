@@ -188,7 +188,7 @@ export function AppBreadcrumb() {
     return (
       <Breadcrumb>
         <BreadcrumbList>
-          {config.crumbs.map((def, i) => (
+            {config.crumbs.map((def, i) => (
             <Fragment key={`crumb-${"label" in def ? def.label : def.labelFrom}`}>
               {i > 0 && <BreadcrumbSeparator />}
               <BreadcrumbItem>
@@ -204,12 +204,13 @@ export function AppBreadcrumb() {
   return (
     <Breadcrumb>
       <BreadcrumbList>
-        {labels.map((label, i) => {
-          const isLast = i === labels.length - 1;
+        {config.crumbs.map((def, i) => {
+          const label = labels[i];
+          const isLast = i === config.crumbs.length - 1;
           const href = buildHref(routeId, params, i);
 
           return (
-            <Fragment key={label}>
+            <Fragment key={`crumb-${"label" in def ? def.label : def.labelFrom}`}>
               {i > 0 && <BreadcrumbSeparator />}
               <BreadcrumbItem>
                 {isLast ? (
