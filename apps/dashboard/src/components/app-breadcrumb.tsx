@@ -1,6 +1,6 @@
-import { Fragment } from "react";
-import { useMatches, useParams, Link } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
+import { Link, useMatches, useParams } from "@tanstack/react-router";
+import { Fragment } from "react";
 import {
   Breadcrumb,
   BreadcrumbItem,
@@ -27,11 +27,19 @@ interface BreadcrumbConfig {
 const breadcrumbConfigs: BreadcrumbConfig[] = [
   {
     routeId: "/_admin/sites/$siteId/entries/$collectionSlug/$id/edit",
-    crumbs: [{ labelFrom: "site" }, { labelFrom: "collection" }, { labelFrom: "entrySlug" }],
+    crumbs: [
+      { labelFrom: "site" },
+      { labelFrom: "collection" },
+      { labelFrom: "entrySlug" },
+    ],
   },
   {
     routeId: "/_admin/sites/$siteId/entries/$collectionSlug/new",
-    crumbs: [{ labelFrom: "site" }, { labelFrom: "collection" }, { label: "New" }],
+    crumbs: [
+      { labelFrom: "site" },
+      { labelFrom: "collection" },
+      { label: "New" },
+    ],
   },
   {
     routeId: "/_admin/sites/$siteId/entries/$collectionSlug/",
@@ -77,27 +85,40 @@ function useSiteName(siteId: string | undefined) {
   return siteFromList?.name ?? site?.name;
 }
 
-function useCollectionName(siteId: string | undefined, collectionSlug: string | undefined) {
+function useCollectionName(
+  siteId: string | undefined,
+  collectionSlug: string | undefined,
+) {
   const { data: collections } = useQuery({
     queryKey: ["collections", siteId],
     queryFn: () => getCollections(siteId as string),
     enabled: !!siteId && !!collectionSlug,
   });
 
-  return collections?.find((c) => c.slug === collectionSlug)?.name ?? collectionSlug;
+  return (
+    collections?.find((c) => c.slug === collectionSlug)?.name ?? collectionSlug
+  );
 }
 
-function useSingletonName(siteId: string | undefined, slug: string | undefined) {
+function useSingletonName(
+  siteId: string | undefined,
+  slug: string | undefined,
+) {
   const { data: collections } = useQuery({
     queryKey: ["collections", siteId],
     queryFn: () => getCollections(siteId as string),
     enabled: !!siteId && !!slug,
   });
 
-  return collections?.find((c) => c.is_singleton && c.slug === slug)?.name ?? slug;
+  return (
+    collections?.find((c) => c.is_singleton && c.slug === slug)?.name ?? slug
+  );
 }
 
-function useEntrySlugLabel(siteId: string | undefined, entryId: string | undefined) {
+function useEntrySlugLabel(
+  siteId: string | undefined,
+  entryId: string | undefined,
+) {
   const { data: entry } = useQuery({
     queryKey: ["entry", siteId, entryId],
     queryFn: () => getEntryById(siteId as string, entryId as string),
@@ -107,7 +128,10 @@ function useEntrySlugLabel(siteId: string | undefined, entryId: string | undefin
   return entry?.slug ?? entryId?.slice(0, 8);
 }
 
-function useBreadcrumbLabels(defs: BreadcrumbDef[], params: Record<string, string>) {
+function useBreadcrumbLabels(
+  defs: BreadcrumbDef[],
+  params: Record<string, string>,
+) {
   const siteId = params.siteId;
   const siteName = useSiteName(siteId);
   const collectionName = useCollectionName(siteId, params.collectionSlug);
@@ -131,7 +155,11 @@ function useBreadcrumbLabels(defs: BreadcrumbDef[], params: Record<string, strin
   });
 }
 
-function buildHref(routeId: string, params: Record<string, string>, crumbIndex: number): string | undefined {
+function buildHref(
+  routeId: string,
+  params: Record<string, string>,
+  crumbIndex: number,
+): string | undefined {
   const siteId = params.siteId;
   if (!siteId) return undefined;
 
@@ -157,7 +185,9 @@ export function AppBreadcrumb() {
   let config: BreadcrumbConfig | undefined;
   let routeId: string | undefined;
   for (let i = matches.length - 1; i >= 0; i--) {
-    const found = breadcrumbConfigs.find((c) => c.routeId === matches[i].routeId);
+    const found = breadcrumbConfigs.find(
+      (c) => c.routeId === matches[i].routeId,
+    );
     if (found) {
       config = found;
       routeId = matches[i].routeId;
@@ -188,8 +218,10 @@ export function AppBreadcrumb() {
     return (
       <Breadcrumb>
         <BreadcrumbList>
-            {config.crumbs.map((def, i) => (
-            <Fragment key={`crumb-${"label" in def ? def.label : def.labelFrom}`}>
+          {config.crumbs.map((def, i) => (
+            <Fragment
+              key={`crumb-${"label" in def ? def.label : def.labelFrom}`}
+            >
               {i > 0 && <BreadcrumbSeparator />}
               <BreadcrumbItem>
                 <Skeleton className="h-4 w-20" />
@@ -210,13 +242,17 @@ export function AppBreadcrumb() {
           const href = buildHref(routeId, params, i);
 
           return (
-            <Fragment key={`crumb-${"label" in def ? def.label : def.labelFrom}`}>
+            <Fragment
+              key={`crumb-${"label" in def ? def.label : def.labelFrom}`}
+            >
               {i > 0 && <BreadcrumbSeparator />}
               <BreadcrumbItem>
                 {isLast ? (
                   <BreadcrumbPage>{label}</BreadcrumbPage>
                 ) : href ? (
-                  <BreadcrumbLink render={<Link to={href} />}>{label}</BreadcrumbLink>
+                  <BreadcrumbLink render={<Link to={href} />}>
+                    {label}
+                  </BreadcrumbLink>
                 ) : (
                   <BreadcrumbPage>{label}</BreadcrumbPage>
                 )}

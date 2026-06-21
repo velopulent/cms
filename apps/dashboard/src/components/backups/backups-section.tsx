@@ -21,7 +21,6 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Field, FieldLabel } from "@/components/ui/field";
 import {
   Dialog,
   DialogContent,
@@ -30,6 +29,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { Field, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -91,13 +91,17 @@ function formatBytes(bytes: number): string {
   return `${value.toFixed(1)} ${units[i]}`;
 }
 
-function statusVariant(status: string): "default" | "secondary" | "destructive" {
+function statusVariant(
+  status: string,
+): "default" | "secondary" | "destructive" {
   if (status === "success") return "default";
   if (status === "failed") return "destructive";
   return "secondary";
 }
 
-type RestoreSource = { type: "backup"; backup: BackupInfo } | { type: "upload"; file: File };
+type RestoreSource =
+  | { type: "backup"; backup: BackupInfo }
+  | { type: "upload"; file: File };
 
 export function BackupsSection({ scope }: { scope: BackupScope }) {
   const queryClient = useQueryClient();
@@ -107,8 +111,12 @@ export function BackupsSection({ scope }: { scope: BackupScope }) {
   const [includeFiles, setIncludeFiles] = useState(true);
   const [encrypt, setEncrypt] = useState(false);
 
-  const [restoreSource, setRestoreSource] = useState<RestoreSource | null>(null);
-  const [restoreMode, setRestoreMode] = useState<"instance" | "site">(isInstance ? "instance" : "site");
+  const [restoreSource, setRestoreSource] = useState<RestoreSource | null>(
+    null,
+  );
+  const [restoreMode, setRestoreMode] = useState<"instance" | "site">(
+    isInstance ? "instance" : "site",
+  );
   const [selectedSiteIds, setSelectedSiteIds] = useState<string[]>([]);
   const [importAsNew, setImportAsNew] = useState(false);
   const [confirmText, setConfirmText] = useState("");
@@ -132,7 +140,8 @@ export function BackupsSection({ scope }: { scope: BackupScope }) {
     queryClient.invalidateQueries({ queryKey: ["backup-schedules", scopeKey] });
 
   const createMutation = useMutation({
-    mutationFn: () => createBackup(scope, { include_files: includeFiles, encrypt }),
+    mutationFn: () =>
+      createBackup(scope, { include_files: includeFiles, encrypt }),
     onSuccess: () => {
       invalidateBackups();
       toast.success("Backup created");
@@ -154,11 +163,18 @@ export function BackupsSection({ scope }: { scope: BackupScope }) {
       if (!restoreSource) return;
       // Site-settings scope: always restores into the current site (id from URL).
       if (!isInstance) {
-        const opts = { mode: "site" as const, import_as_new: importAsNew, confirm: RESTORE_WORD };
+        const opts = {
+          mode: "site" as const,
+          import_as_new: importAsNew,
+          confirm: RESTORE_WORD,
+        };
         if (restoreSource.type === "upload") {
           await restoreBackupUpload(scope, restoreSource.file, opts);
         } else {
-          await restoreBackup(scope, { backup_id: restoreSource.backup.id, ...opts });
+          await restoreBackup(scope, {
+            backup_id: restoreSource.backup.id,
+            ...opts,
+          });
         }
         return;
       }
@@ -223,13 +239,16 @@ export function BackupsSection({ scope }: { scope: BackupScope }) {
   }
 
   function toggleSite(id: string) {
-    setSelectedSiteIds((prev) => (prev.includes(id) ? prev.filter((s) => s !== id) : [...prev, id]));
+    setSelectedSiteIds((prev) =>
+      prev.includes(id) ? prev.filter((s) => s !== id) : [...prev, id],
+    );
   }
 
   const backups = backupsQuery.data ?? [];
   const schedules = schedulesQuery.data ?? [];
   // For an instance backup picking sites, at least one site must be selected.
-  const needsSitePick = isInstance && inspect?.scope === "instance" && restoreMode === "site";
+  const needsSitePick =
+    isInstance && inspect?.scope === "instance" && restoreMode === "site";
   const confirmReady =
     confirmText === RESTORE_WORD &&
     !inspecting &&
@@ -260,10 +279,16 @@ export function BackupsSection({ scope }: { scope: BackupScope }) {
                   checked={includeFiles}
                   onCheckedChange={(v) => setIncludeFiles(Boolean(v))}
                 />
-                <FieldLabel htmlFor="backup-include-files">Include uploaded files</FieldLabel>
+                <FieldLabel htmlFor="backup-include-files">
+                  Include uploaded files
+                </FieldLabel>
               </Field>
               <Field orientation="horizontal">
-                <Checkbox id="backup-encrypt" checked={encrypt} onCheckedChange={(v) => setEncrypt(Boolean(v))} />
+                <Checkbox
+                  id="backup-encrypt"
+                  checked={encrypt}
+                  onCheckedChange={(v) => setEncrypt(Boolean(v))}
+                />
                 <FieldLabel htmlFor="backup-encrypt">Encrypt</FieldLabel>
               </Field>
             </div>
@@ -283,7 +308,10 @@ export function BackupsSection({ scope }: { scope: BackupScope }) {
                   <RotateCcw className="size-4" /> Restore from file
                 </Button>
               </label>
-              <Button onClick={() => createMutation.mutate()} disabled={createMutation.isPending}>
+              <Button
+                onClick={() => createMutation.mutate()}
+                disabled={createMutation.isPending}
+              >
                 <Plus className="size-4" />
                 {createMutation.isPending ? "Backing up…" : "Back up now"}
               </Button>
@@ -302,7 +330,9 @@ export function BackupsSection({ scope }: { scope: BackupScope }) {
                     <TableHead>Created</TableHead>
                     <TableHead>Status</TableHead>
                     <TableHead>Size</TableHead>
-                    <TableHead className="hidden sm:table-cell">Files</TableHead>
+                    <TableHead className="hidden sm:table-cell">
+                      Files
+                    </TableHead>
                     <TableHead className="text-right">Actions</TableHead>
                   </TableRow>
                 </TableHeader>
@@ -314,11 +344,17 @@ export function BackupsSection({ scope }: { scope: BackupScope }) {
                       </TableCell>
                       <TableCell>
                         <div className="flex items-center gap-1.5">
-                          <Badge variant={statusVariant(b.status)}>{b.status}</Badge>
-                          {b.encrypted && <Lock className="size-3.5 text-muted-foreground" />}
+                          <Badge variant={statusVariant(b.status)}>
+                            {b.status}
+                          </Badge>
+                          {b.encrypted && (
+                            <Lock className="size-3.5 text-muted-foreground" />
+                          )}
                         </div>
                       </TableCell>
-                      <TableCell className="whitespace-nowrap">{formatBytes(b.size_bytes)}</TableCell>
+                      <TableCell className="whitespace-nowrap">
+                        {formatBytes(b.size_bytes)}
+                      </TableCell>
                       <TableCell className="hidden sm:table-cell">
                         {b.includes_files ? b.file_count : "—"}
                       </TableCell>
@@ -330,13 +366,19 @@ export function BackupsSection({ scope }: { scope: BackupScope }) {
                                 variant="ghost"
                                 size="icon"
                                 title="Download"
-                                render={<a href={backupDownloadUrl(scope, b.id)}><Download className="size-4" /></a>}
+                                render={
+                                  <a href={backupDownloadUrl(scope, b.id)}>
+                                    <Download className="size-4" />
+                                  </a>
+                                }
                               />
                               <Button
                                 variant="ghost"
                                 size="icon"
                                 title="Restore"
-                                onClick={() => openRestore({ type: "backup", backup: b })}
+                                onClick={() =>
+                                  openRestore({ type: "backup", backup: b })
+                                }
                               >
                                 <RotateCcw className="size-4" />
                               </Button>
@@ -391,14 +433,18 @@ export function BackupsSection({ scope }: { scope: BackupScope }) {
       />
 
       {/* Restore confirmation */}
-      <Dialog open={!!restoreSource} onOpenChange={(open) => !open && closeRestore()}>
+      <Dialog
+        open={!!restoreSource}
+        onOpenChange={(open) => !open && closeRestore()}
+      >
         <DialogContent className="sm:max-w-lg">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2 text-destructive">
               <AlertTriangle className="size-5" /> Confirm restore
             </DialogTitle>
             <DialogDescription>
-              Restoring replaces all data within the chosen scope. This cannot be undone.
+              Restoring replaces all data within the chosen scope. This cannot
+              be undone.
             </DialogDescription>
           </DialogHeader>
 
@@ -409,7 +455,9 @@ export function BackupsSection({ scope }: { scope: BackupScope }) {
               </div>
             )}
             {isInstance && inspectError && (
-              <p className="text-sm text-destructive">Could not read this backup: {inspectError}</p>
+              <p className="text-sm text-destructive">
+                Could not read this backup: {inspectError}
+              </p>
             )}
 
             {/* A single-site backup: no picker, just name the site being restored. */}
@@ -417,7 +465,9 @@ export function BackupsSection({ scope }: { scope: BackupScope }) {
               <p className="text-sm text-muted-foreground">
                 Restores the site{" "}
                 <span className="font-medium text-foreground">
-                  {inspect.sites[0]?.name ?? inspect.sites[0]?.id ?? "in this backup"}
+                  {inspect.sites[0]?.name ??
+                    inspect.sites[0]?.id ??
+                    "in this backup"}
                 </span>
                 .
               </p>
@@ -427,7 +477,12 @@ export function BackupsSection({ scope }: { scope: BackupScope }) {
             {isInstance && inspect?.scope === "instance" && (
               <div className="flex flex-col gap-2">
                 <Label>What to restore</Label>
-                <Select value={restoreMode} onValueChange={(v) => setRestoreMode(v as "instance" | "site")}>
+                <Select
+                  value={restoreMode}
+                  onValueChange={(v) =>
+                    setRestoreMode(v as "instance" | "site")
+                  }
+                >
                   <SelectTrigger>
                     <SelectValue />
                   </SelectTrigger>
@@ -441,7 +496,11 @@ export function BackupsSection({ scope }: { scope: BackupScope }) {
                     sites={inspect.sites}
                     selected={selectedSiteIds}
                     onToggle={toggleSite}
-                    onToggleAll={(all) => setSelectedSiteIds(all ? inspect.sites.map((s) => s.id) : [])}
+                    onToggleAll={(all) =>
+                      setSelectedSiteIds(
+                        all ? inspect.sites.map((s) => s.id) : [],
+                      )
+                    }
                   />
                 )}
               </div>
@@ -449,14 +508,22 @@ export function BackupsSection({ scope }: { scope: BackupScope }) {
 
             {((isInstance && restoreMode === "site") || !isInstance) && (
               <Field orientation="horizontal">
-                <Checkbox id="restore-import-as-new" checked={importAsNew} onCheckedChange={(v) => setImportAsNew(Boolean(v))} />
-                <FieldLabel htmlFor="restore-import-as-new">Import as a new site (keep the existing one)</FieldLabel>
+                <Checkbox
+                  id="restore-import-as-new"
+                  checked={importAsNew}
+                  onCheckedChange={(v) => setImportAsNew(Boolean(v))}
+                />
+                <FieldLabel htmlFor="restore-import-as-new">
+                  Import as a new site (keep the existing one)
+                </FieldLabel>
               </Field>
             )}
 
             <div className="flex flex-col gap-2">
               <Label htmlFor="restore-confirm">
-                Type <span className="font-mono font-semibold">{RESTORE_WORD}</span> to confirm
+                Type{" "}
+                <span className="font-mono font-semibold">{RESTORE_WORD}</span>{" "}
+                to confirm
               </Label>
               <Input
                 id="restore-confirm"
@@ -498,24 +565,49 @@ function SitePicker({
   onToggleAll: (all: boolean) => void;
 }) {
   if (sites.length === 0) {
-    return <p className="text-sm text-muted-foreground">This backup contains no sites.</p>;
+    return (
+      <p className="text-sm text-muted-foreground">
+        This backup contains no sites.
+      </p>
+    );
   }
   const allSelected = selected.length === sites.length;
   return (
     <div className="rounded-md border">
-      <Field orientation="horizontal" className="border-b px-3 py-2 text-sm font-medium">
-        <Checkbox id="site-picker-select-all" checked={allSelected} onCheckedChange={(v) => onToggleAll(Boolean(v))} />
-        <FieldLabel htmlFor="site-picker-select-all">Select all ({selected.length}/{sites.length})</FieldLabel>
+      <Field
+        orientation="horizontal"
+        className="border-b px-3 py-2 text-sm font-medium"
+      >
+        <Checkbox
+          id="site-picker-select-all"
+          checked={allSelected}
+          onCheckedChange={(v) => onToggleAll(Boolean(v))}
+        />
+        <FieldLabel htmlFor="site-picker-select-all">
+          Select all ({selected.length}/{sites.length})
+        </FieldLabel>
       </Field>
       <ScrollArea className="max-h-48">
         <div className="flex flex-col">
           {sites.map((s) => (
-            <Field key={s.id} orientation="horizontal" className="px-3 py-2 text-sm hover:bg-muted/50">
-              <Checkbox id={`site-picker-${s.id}`} checked={selected.includes(s.id)} onCheckedChange={() => onToggle(s.id)} />
+            <Field
+              key={s.id}
+              orientation="horizontal"
+              className="px-3 py-2 text-sm hover:bg-muted/50"
+            >
+              <Checkbox
+                id={`site-picker-${s.id}`}
+                checked={selected.includes(s.id)}
+                onCheckedChange={() => onToggle(s.id)}
+              />
               <FieldLabel htmlFor={`site-picker-${s.id}`}>
                 <span className="flex flex-col">
-                  <span className="font-medium">{s.name ?? "(unnamed site)"}</span>
-                  <span className="font-mono text-xs text-muted-foreground">{s.id}</span>
+                  <span className="font-medium">
+                    {s.name ?? "(unnamed site)"}
+                  </span>
+                  <span className="font-mono text-xs text-muted-foreground">
+                    {s.id}
+                  </span>
                 </span>
               </FieldLabel>
             </Field>
@@ -535,7 +627,14 @@ interface SchedulesCardProps {
   onDelete: (id: string) => Promise<void>;
 }
 
-function SchedulesCard({ schedules, loading, onCreate, onToggle, onRun, onDelete }: SchedulesCardProps) {
+function SchedulesCard({
+  schedules,
+  loading,
+  onCreate,
+  onToggle,
+  onRun,
+  onDelete,
+}: SchedulesCardProps) {
   const [preset, setPreset] = useState(CRON_PRESETS[0].value);
   const [customCron, setCustomCron] = useState("0 2 * * *");
   const [retention, setRetention] = useState(7);
@@ -608,11 +707,19 @@ function SchedulesCard({ schedules, loading, onCreate, onToggle, onRun, onDelete
           </div>
           <div className="flex flex-col gap-2 sm:col-span-2 lg:col-span-1 lg:flex-row lg:items-center lg:gap-4 lg:pb-2">
             <Field orientation="horizontal">
-              <Checkbox id="schedule-files" checked={includeFiles} onCheckedChange={(v) => setIncludeFiles(Boolean(v))} />
+              <Checkbox
+                id="schedule-files"
+                checked={includeFiles}
+                onCheckedChange={(v) => setIncludeFiles(Boolean(v))}
+              />
               <FieldLabel htmlFor="schedule-files">Files</FieldLabel>
             </Field>
             <Field orientation="horizontal">
-              <Checkbox id="schedule-encrypt" checked={encrypt} onCheckedChange={(v) => setEncrypt(Boolean(v))} />
+              <Checkbox
+                id="schedule-encrypt"
+                checked={encrypt}
+                onCheckedChange={(v) => setEncrypt(Boolean(v))}
+              />
               <FieldLabel htmlFor="schedule-encrypt">Encrypt</FieldLabel>
             </Field>
           </div>
@@ -624,7 +731,9 @@ function SchedulesCard({ schedules, loading, onCreate, onToggle, onRun, onDelete
         {loading ? (
           <Skeleton className="h-16 w-full" />
         ) : schedules.length === 0 ? (
-          <p className="text-sm text-muted-foreground">No schedules configured.</p>
+          <p className="text-sm text-muted-foreground">
+            No schedules configured.
+          </p>
         ) : (
           <div className="flex flex-col gap-2">
             {schedules.map((s) => (
@@ -640,19 +749,31 @@ function SchedulesCard({ schedules, loading, onCreate, onToggle, onRun, onDelete
                     </Badge>
                   </div>
                   <p className="text-xs text-muted-foreground">
-                    Keep {s.retention_n} · {s.include_files ? "with files" : "no files"} ·{" "}
+                    Keep {s.retention_n} ·{" "}
+                    {s.include_files ? "with files" : "no files"} ·{" "}
                     {s.encrypt ? "encrypted" : "plaintext"}
-                    {s.next_run_at && ` · next ${new Date(s.next_run_at).toLocaleString()}`}
+                    {s.next_run_at &&
+                      ` · next ${new Date(s.next_run_at).toLocaleString()}`}
                   </p>
                 </div>
                 <div className="flex items-center gap-1">
-                  <Button variant="ghost" size="icon" title="Run now" onClick={() => onRun(s.id)}>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    title="Run now"
+                    onClick={() => onRun(s.id)}
+                  >
                     <Play className="size-4" />
                   </Button>
                   <Button variant="ghost" size="sm" onClick={() => onToggle(s)}>
                     {s.enabled ? "Pause" : "Resume"}
                   </Button>
-                  <Button variant="ghost" size="icon" title="Delete" onClick={() => onDelete(s.id)}>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    title="Delete"
+                    onClick={() => onDelete(s.id)}
+                  >
                     <Trash2 className="size-4" />
                   </Button>
                 </div>

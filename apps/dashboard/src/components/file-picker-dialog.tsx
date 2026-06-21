@@ -25,11 +25,7 @@ import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import {
-  type FileItem,
-  getFiles,
-  uploadFile,
-} from "@/lib/api";
+import { type FileItem, getFiles, uploadFile } from "@/lib/api";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -133,7 +129,10 @@ export function FilePickerDialog({
 
   // Derived values – memoised so they don't recalculate on every render.
   const fileType = useMemo(() => deriveFileType(accept), [accept]);
-  const skeletonKeys = useMemo(() => Array.from({ length: 8 }, (_, i) => i), []);
+  const skeletonKeys = useMemo(
+    () => Array.from({ length: 8 }, (_, i) => i),
+    [],
+  );
 
   const { data, isLoading, isError } = useQuery({
     queryKey: ["files", siteId, page, search, fileType],
@@ -243,167 +242,164 @@ export function FilePickerDialog({
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
-        <DialogContent className="flex h-[80vh] flex-col overflow-hidden sm:max-w-3xl">
-          <DialogHeader>
-            <DialogTitle>File Library</DialogTitle>
-            <DialogDescription>
-              Select an existing file or upload a new one.
-            </DialogDescription>
-          </DialogHeader>
+      <DialogContent className="flex h-[80vh] flex-col overflow-hidden sm:max-w-3xl">
+        <DialogHeader>
+          <DialogTitle>File Library</DialogTitle>
+          <DialogDescription>
+            Select an existing file or upload a new one.
+          </DialogDescription>
+        </DialogHeader>
 
-          <Tabs
-            value={tab}
-            onValueChange={setTab}
-            className="flex min-h-0 flex-1 flex-col overflow-hidden"
-          >
-            <TabsList>
-              <TabsTrigger value="library">Library</TabsTrigger>
-              <TabsTrigger value="upload">Upload</TabsTrigger>
-            </TabsList>
+        <Tabs
+          value={tab}
+          onValueChange={setTab}
+          className="flex min-h-0 flex-1 flex-col overflow-hidden"
+        >
+          <TabsList>
+            <TabsTrigger value="library">Library</TabsTrigger>
+            <TabsTrigger value="upload">Upload</TabsTrigger>
+          </TabsList>
 
-            {/* ----------------------------------------------------------------
+          {/* ----------------------------------------------------------------
                 Library tab
             ---------------------------------------------------------------- */}
-            <TabsContent
-              value="library"
-              className="flex min-h-0 flex-1 flex-col gap-3 overflow-hidden"
-            >
-              <div className="relative">
-                <Search className="absolute left-2.5 top-2.5 size-4 text-muted-foreground" />
-                <Input
-                  placeholder="Search files…"
-                  value={search}
-                  onChange={handleSearchChange}
-                  className="pl-8"
-                />
-              </div>
+          <TabsContent
+            value="library"
+            className="flex min-h-0 flex-1 flex-col gap-3 overflow-hidden"
+          >
+            <div className="relative">
+              <Search className="absolute left-2.5 top-2.5 size-4 text-muted-foreground" />
+              <Input
+                placeholder="Search files…"
+                value={search}
+                onChange={handleSearchChange}
+                className="pl-8"
+              />
+            </div>
 
-              {isLoading ? (
-                <div className="grid grid-cols-3 gap-3 sm:grid-cols-4">
-                  {skeletonKeys.map((k) => (
-                    <Skeleton key={k} className="aspect-square rounded-lg" />
+            {isLoading ? (
+              <div className="grid grid-cols-3 gap-3 sm:grid-cols-4">
+                {skeletonKeys.map((k) => (
+                  <Skeleton key={k} className="aspect-square rounded-lg" />
+                ))}
+              </div>
+            ) : isError ? (
+              <div className="flex flex-1 items-center justify-center text-destructive text-sm">
+                Failed to load files. Please try again.
+              </div>
+            ) : filteredItems.length === 0 ? (
+              <div className="flex flex-1 items-center justify-center text-muted-foreground text-sm">
+                No files found.
+              </div>
+            ) : (
+              <ScrollArea className="min-h-0 flex-1">
+                <div className="grid grid-cols-3 gap-3 pr-3 sm:grid-cols-4">
+                  {filteredItems.map((file) => (
+                    <FileGridItem
+                      key={file.id}
+                      file={file}
+                      onSelect={() => {
+                        onSelect(file);
+                        handleOpenChange(false);
+                      }}
+                    />
                   ))}
                 </div>
-              ) : isError ? (
-                <div className="flex flex-1 items-center justify-center text-destructive text-sm">
-                  Failed to load files. Please try again.
-                </div>
-              ) : filteredItems.length === 0 ? (
-                <div className="flex flex-1 items-center justify-center text-muted-foreground text-sm">
-                  No files found.
-                </div>
-              ) : (
-                <ScrollArea className="min-h-0 flex-1">
-                  <div className="grid grid-cols-3 gap-3 pr-3 sm:grid-cols-4">
-                    {filteredItems.map((file) => (
-                      <FileGridItem
-                        key={file.id}
-                        file={file}
-                        onSelect={() => {
-                          onSelect(file);
-                          handleOpenChange(false);
-                        }}
-                      />
-                    ))}
-                  </div>
-                </ScrollArea>
-              )}
+              </ScrollArea>
+            )}
 
-              {data && data.total > data.per_page && (
-                <div className="flex items-center justify-between text-sm text-muted-foreground">
-                  <span>
-                    {filteredItems.length} of {data.total} files
-                  </span>
-                  <div className="flex gap-2">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      disabled={page <= 1}
-                      onClick={() => setPage((p) => p - 1)}
-                    >
-                      Previous
-                    </Button>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      disabled={isLastPage}
-                      onClick={() => setPage((p) => p + 1)}
-                    >
-                      Next
-                    </Button>
-                  </div>
+            {data && data.total > data.per_page && (
+              <div className="flex items-center justify-between text-sm text-muted-foreground">
+                <span>
+                  {filteredItems.length} of {data.total} files
+                </span>
+                <div className="flex gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled={page <= 1}
+                    onClick={() => setPage((p) => p - 1)}
+                  >
+                    Previous
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled={isLastPage}
+                    onClick={() => setPage((p) => p + 1)}
+                  >
+                    Next
+                  </Button>
                 </div>
-              )}
-            </TabsContent>
+              </div>
+            )}
+          </TabsContent>
 
-            {/* ----------------------------------------------------------------
+          {/* ----------------------------------------------------------------
                 Upload tab — using a <label> as the drop zone so the hidden
                 <input> receives clicks without needing an imperative ref call,
                 and biome's a11y/noStaticElementInteractions lint is satisfied.
             ---------------------------------------------------------------- */}
-            <TabsContent
-              value="upload"
-              className="flex min-h-0 flex-1 flex-col"
+          <TabsContent value="upload" className="flex min-h-0 flex-1 flex-col">
+            <label
+              htmlFor="file-picker-input"
+              className={[
+                "flex flex-1 flex-col items-center justify-center gap-4 rounded-lg border-2 border-dashed p-12 transition-colors cursor-pointer",
+                dragOver
+                  ? "border-primary bg-primary/5"
+                  : "border-muted-foreground/25 hover:border-muted-foreground/50",
+              ].join(" ")}
+              onDragOver={(e) => {
+                e.preventDefault();
+                setDragOver(true);
+              }}
+              onDragLeave={() => setDragOver(false)}
+              onDrop={handleDrop}
             >
-              <label
-                htmlFor="file-picker-input"
-                className={[
-                  "flex flex-1 flex-col items-center justify-center gap-4 rounded-lg border-2 border-dashed p-12 transition-colors cursor-pointer",
-                  dragOver
-                    ? "border-primary bg-primary/5"
-                    : "border-muted-foreground/25 hover:border-muted-foreground/50",
-                ].join(" ")}
-                onDragOver={(e) => {
+              <Upload className="size-10 text-muted-foreground" />
+              <div className="text-center">
+                <p className="font-medium">
+                  Drag and drop a file here, or click to browse
+                </p>
+                <p className="text-sm text-muted-foreground">
+                  {accept ?? "Images, videos, PDFs, and more"}
+                </p>
+              </div>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={(e) => {
                   e.preventDefault();
-                  setDragOver(true);
+                  e.stopPropagation();
+                  fileInputRef.current?.click();
                 }}
-                onDragLeave={() => setDragOver(false)}
-                onDrop={handleDrop}
+                disabled={uploadMutation.isPending}
               >
-                <Upload className="size-10 text-muted-foreground" />
-                <div className="text-center">
-                  <p className="font-medium">
-                    Drag and drop a file here, or click to browse
-                  </p>
-                  <p className="text-sm text-muted-foreground">
-                    {accept ?? "Images, videos, PDFs, and more"}
-                  </p>
-                </div>
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={(e) => {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    fileInputRef.current?.click();
-                  }}
-                  disabled={uploadMutation.isPending}
-                >
-                  {uploadIcon}
-                  {uploadMutation.isPending ? "Uploading…" : "Choose File"}
-                </Button>
-                <input
-                  id="file-picker-input"
-                  ref={fileInputRef}
-                  type="file"
-                  className="sr-only"
-                  accept={accept}
-                  onChange={(e) => handleFileSelect(e.target.files)}
-                  // Reset value so the same file can be re-uploaded if needed.
-                  onClick={(e) => {
-                    (e.target as HTMLInputElement).value = "";
-                  }}
-                />
-              </label>
-            </TabsContent>
-          </Tabs>
+                {uploadIcon}
+                {uploadMutation.isPending ? "Uploading…" : "Choose File"}
+              </Button>
+              <input
+                id="file-picker-input"
+                ref={fileInputRef}
+                type="file"
+                className="sr-only"
+                accept={accept}
+                onChange={(e) => handleFileSelect(e.target.files)}
+                // Reset value so the same file can be re-uploaded if needed.
+                onClick={(e) => {
+                  (e.target as HTMLInputElement).value = "";
+                }}
+              />
+            </label>
+          </TabsContent>
+        </Tabs>
 
-          <DialogFooter>
-            <Button variant="outline" onClick={() => handleOpenChange(false)}>
-              Cancel
-            </Button>
-          </DialogFooter>
-        </DialogContent>
+        <DialogFooter>
+          <Button variant="outline" onClick={() => handleOpenChange(false)}>
+            Cancel
+          </Button>
+        </DialogFooter>
+      </DialogContent>
     </Dialog>
   );
 }

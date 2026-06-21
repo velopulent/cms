@@ -1,5 +1,6 @@
-import { useCallback, useMemo, useState } from "react";
+import { useForm } from "@tanstack/react-form";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { formatDistanceToNow } from "date-fns";
 import {
   AlertTriangle,
   ChevronDown,
@@ -10,11 +11,10 @@ import {
   RotateCcw,
   User,
 } from "lucide-react";
-import { formatDistanceToNow } from "date-fns";
+import { useCallback, useMemo, useState } from "react";
 import { toast } from "sonner";
-import { useForm } from "@tanstack/react-form";
 import { z } from "zod";
-
+import { DynamicForm } from "@/components/dynamic-form";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -36,10 +36,8 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { cn } from "@/lib/utils";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
-import { Skeleton } from "@/components/ui/skeleton";
 import {
   Sheet,
   SheetContent,
@@ -47,20 +45,21 @@ import {
   SheetHeader,
   SheetTitle,
 } from "@/components/ui/sheet";
+import { Skeleton } from "@/components/ui/skeleton";
 import {
   Tooltip,
   TooltipContent,
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import { DynamicForm } from "@/components/dynamic-form";
 import {
-  getEntryRevisions,
-  restoreEntryRevision,
   type Entry,
   type EntryRevision,
+  getEntryRevisions,
+  restoreEntryRevision,
   type SchemaDefinition,
 } from "@/lib/api";
+import { cn } from "@/lib/utils";
 
 // ---------------------------------------------------------------------------
 // Constants

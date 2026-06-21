@@ -4,8 +4,8 @@ import {
   Outlet,
   useRouterState,
 } from "@tanstack/react-router";
-import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useSiteRole } from "@/components/site-settings/use-site-role";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 export const Route = createFileRoute("/_admin/sites/$siteId/settings")({
   component: SettingsLayout,
@@ -31,69 +31,66 @@ function SettingsLayout() {
       </div>
 
       <Tabs value={active}>
-          <TabsList>
+        <TabsList>
+          <TabsTrigger
+            value="general"
+            nativeButton={false}
+            render={<Link to="/sites/$siteId/settings" params={{ siteId }} />}
+          >
+            General
+          </TabsTrigger>
+          <TabsTrigger
+            value="members"
+            nativeButton={false}
+            render={
+              <Link to="/sites/$siteId/settings/members" params={{ siteId }} />
+            }
+          >
+            Members
+          </TabsTrigger>
+          {canManage && (
             <TabsTrigger
-              value="general"
-              nativeButton={false}
-              render={<Link to="/sites/$siteId/settings" params={{ siteId }} />}
-            >
-              General
-            </TabsTrigger>
-            <TabsTrigger
-              value="members"
+              value="api-keys"
               nativeButton={false}
               render={
                 <Link
-                  to="/sites/$siteId/settings/members"
+                  to="/sites/$siteId/settings/api-keys"
                   params={{ siteId }}
                 />
               }
             >
-              Members
+              API Keys
             </TabsTrigger>
-            {canManage && (
-              <TabsTrigger
-                value="api-keys"
-                nativeButton={false}
-                render={
-                  <Link
-                    to="/sites/$siteId/settings/api-keys"
-                    params={{ siteId }}
-                  />
-                }
-              >
-                API Keys
-              </TabsTrigger>
-            )}
-            {canManage && (
-              <TabsTrigger
-                value="webhooks"
-                nativeButton={false}
-                render={
-                  <Link
-                    to="/sites/$siteId/settings/webhooks"
-                    params={{ siteId }}
-                  />
-                }
-              >
-                Webhooks
-              </TabsTrigger>
-            )}
-            {canManage && (
-              <TabsTrigger
-                value="backups"
-                nativeButton={false}
-                render={
-                  <Link
-                    to="/sites/$siteId/settings/backups"
-                    params={{ siteId }}
-                  />
-                }
-              >
-                Backups
-              </TabsTrigger>
-            )}
-          </TabsList>
+          )}
+          {canManage && (
+            <TabsTrigger
+              value="webhooks"
+              nativeButton={false}
+              render={
+                <Link
+                  to="/sites/$siteId/settings/webhooks"
+                  params={{ siteId }}
+                />
+              }
+            >
+              Webhooks
+            </TabsTrigger>
+          )}
+          {canManage && (
+            <TabsTrigger
+              value="backups"
+              nativeButton={false}
+              render={
+                <Link
+                  to="/sites/$siteId/settings/backups"
+                  params={{ siteId }}
+                />
+              }
+            >
+              Backups
+            </TabsTrigger>
+          )}
+        </TabsList>
       </Tabs>
 
       <Outlet />

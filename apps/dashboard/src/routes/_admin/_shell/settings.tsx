@@ -42,31 +42,31 @@ function InstanceSettingsLayout() {
       </div>
 
       <Tabs value={active}>
-          <TabsList>
+        <TabsList>
+          <TabsTrigger
+            value="general"
+            nativeButton={false}
+            render={<Link to="/settings" />}
+          >
+            General
+          </TabsTrigger>
+          <TabsTrigger
+            value="users"
+            nativeButton={false}
+            render={<Link to="/settings/users" />}
+          >
+            Users
+          </TabsTrigger>
+          {isOwner && (
             <TabsTrigger
-              value="general"
+              value="backups"
               nativeButton={false}
-              render={<Link to="/settings" />}
+              render={<Link to="/settings/backups" />}
             >
-              General
+              Backups
             </TabsTrigger>
-            <TabsTrigger
-              value="users"
-              nativeButton={false}
-              render={<Link to="/settings/users" />}
-            >
-              Users
-            </TabsTrigger>
-            {isOwner && (
-              <TabsTrigger
-                value="backups"
-                nativeButton={false}
-                render={<Link to="/settings/backups" />}
-              >
-                Backups
-              </TabsTrigger>
-            )}
-          </TabsList>
+          )}
+        </TabsList>
       </Tabs>
 
       <Outlet />

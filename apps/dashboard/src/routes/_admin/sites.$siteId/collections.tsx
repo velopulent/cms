@@ -491,10 +491,7 @@ function SortableFieldItem({
                       const newOpts = (field.options ?? []).filter(
                         (_, i) => i !== optIdx,
                       );
-                      form.setFieldValue(
-                        `fields[${index}].options`,
-                        newOpts,
-                      );
+                      form.setFieldValue(`fields[${index}].options`, newOpts);
                     }}
                   >
                     ×

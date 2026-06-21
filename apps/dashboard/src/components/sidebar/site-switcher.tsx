@@ -120,7 +120,11 @@ export function SiteSwitcher({
                   className="gap-3 px-3 py-2.5"
                 >
                   <div className="flex size-6 items-center justify-center rounded-md border">
-                    <SiteAvatar siteName={team.name} className="size-4" animate={hoveredSiteId === team.id} />
+                    <SiteAvatar
+                      siteName={team.name}
+                      className="size-4"
+                      animate={hoveredSiteId === team.id}
+                    />
                   </div>
                   {team.name}
                 </DropdownMenuItem>

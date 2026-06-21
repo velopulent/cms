@@ -1,5 +1,5 @@
-import { Archive, FileText, Music } from "lucide-react";
 import type { AnyFieldApi } from "@tanstack/react-form";
+import { Archive, FileText, Music } from "lucide-react";
 import type React from "react";
 import {
   Component,
@@ -257,10 +257,7 @@ const DynamicField = memo(function DynamicField({
             <FieldLabel htmlFor={fieldName}>
               {label}
               {field.required && (
-                <span
-                  className="ml-1 text-destructive"
-                  aria-hidden="true"
-                >
+                <span className="ml-1 text-destructive" aria-hidden="true">
                   *
                 </span>
               )}
@@ -277,10 +274,7 @@ const DynamicField = memo(function DynamicField({
               readOnly={readOnly}
             />
             {isInvalid && (
-              <FieldError
-                id={errorId}
-                errors={f.state.meta.errors}
-              />
+              <FieldError id={errorId} errors={f.state.meta.errors} />
             )}
           </Field>
         );
@@ -414,11 +408,7 @@ const FieldInput = memo(function FieldInput({
 
     case "select":
       return (
-        <Select
-          value={strValue}
-          onValueChange={onChange}
-          disabled={readOnly}
-        >
+        <Select value={strValue} onValueChange={onChange} disabled={readOnly}>
           <SelectTrigger
             id={fieldName}
             aria-invalid={isInvalid || undefined}
@@ -494,7 +484,9 @@ const FieldInput = memo(function FieldInput({
 // Stable input-event extractors (avoid inline arrow fns in render)
 // ---------------------------------------------------------------------------
 
-function extractString(e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) {
+function extractString(
+  e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>,
+) {
   return e.target.value;
 }
 
@@ -553,8 +545,7 @@ const FileField = memo(function FileField({
 
   const filterAccept = useMemo(
     () =>
-      accept?.join(", ") ??
-      (category ? CATEGORY_ACCEPT[category] : undefined),
+      accept?.join(", ") ?? (category ? CATEGORY_ACCEPT[category] : undefined),
     [accept, category],
   );
 
@@ -638,8 +629,7 @@ const FilePreview = memo(function FilePreview({
   const mime = fileInfo?.mime_type ?? "";
   const isVideo = mime.startsWith("video/");
   const isAudio = mime.startsWith("audio/");
-  const isImage =
-    mime.startsWith("image/") || (!fileInfo && isExternalUrl);
+  const isImage = mime.startsWith("image/") || (!fileInfo && isExternalUrl);
   const isDocument =
     mime.startsWith("application/pdf") ||
     mime.startsWith("application/msword") ||
@@ -647,7 +637,7 @@ const FilePreview = memo(function FilePreview({
     mime.startsWith("text/");
 
   const thumbnailSrc = isVideo
-    ? fileInfo?.thumbnail_url ?? null
+    ? (fileInfo?.thumbnail_url ?? null)
     : fileId && isImage
       ? `/api/files/${fileId}/thumbnail`
       : isExternalUrl && isImage
@@ -670,11 +660,17 @@ const FilePreview = memo(function FilePreview({
             }}
           />
         ) : isAudio ? (
-          <FileTypeIcon icon={<Music className="size-6 text-muted-foreground" />} />
+          <FileTypeIcon
+            icon={<Music className="size-6 text-muted-foreground" />}
+          />
         ) : isDocument ? (
-          <FileTypeIcon icon={<FileText className="size-6 text-muted-foreground" />} />
+          <FileTypeIcon
+            icon={<FileText className="size-6 text-muted-foreground" />}
+          />
         ) : (
-          <FileTypeIcon icon={<Archive className="size-6 text-muted-foreground" />} />
+          <FileTypeIcon
+            icon={<Archive className="size-6 text-muted-foreground" />}
+          />
         )}
 
         {/* File metadata */}
