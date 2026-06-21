@@ -20,6 +20,7 @@ pub struct RevisionId {
     number: i64,
 }
 
+use crate::error::AppError;
 use crate::middleware::auth::{Actor, RequestContext, require_site_action};
 use crate::models::authorization::Action;
 use crate::models::entry::{CreateEntry, Entry, EntryRevisionResponse, RevisionsListResponse, UpdateEntry};
@@ -53,10 +54,10 @@ pub struct DiffQuery {
 fn get_storage_for_site(
     site_storage_provider: &str,
     registry: &StorageRegistry,
-) -> Result<Arc<dyn StorageProvider>, StatusCode> {
+) -> Result<Arc<dyn StorageProvider>, AppError> {
     registry
         .get(site_storage_provider)
-        .ok_or(StatusCode::INTERNAL_SERVER_ERROR)
+        .ok_or(AppError::Internal("Storage provider not found".into()))
 }
 
 #[utoipa::path(
@@ -153,7 +154,7 @@ pub async fn get_entry(
                 .unwrap_or_else(|_| "filesystem".into());
             let storage = match get_storage_for_site(&storage_provider, &storage_registry) {
                 Ok(s) => s,
-                Err(status) => return (status, Json(json!({"error": "Storage not configured"}))).into_response(),
+                Err(e) => return e.into_response(),
             };
             let resolved = services
                 .entry
