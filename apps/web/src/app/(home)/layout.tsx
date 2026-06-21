@@ -1,10 +1,10 @@
-import React from "react";
 import type { Metadata } from "next";
 import {
   Instrument_Sans,
   Instrument_Serif,
   JetBrains_Mono,
 } from "next/font/google";
+import type React from "react";
 import "./home.css";
 import { Navigation } from "@/components/landing/navigation";
 

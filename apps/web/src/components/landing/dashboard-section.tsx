@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 
 const dashboardCards = [
   {
@@ -47,7 +47,7 @@ function AnimatedNumber({
           const animate = (currentTime: number) => {
             const elapsed = currentTime - startTime;
             const progress = Math.min(elapsed / duration, 1);
-            const eased = 1 - Math.pow(1 - progress, 4);
+            const eased = 1 - (1 - progress) ** 4;
             setCount(Math.floor(eased * end));
             setIsScrambling(progress < 0.8);
             if (progress < 1) requestAnimationFrame(animate);

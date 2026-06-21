@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useState, useRef } from "react";
-import { HardDrive, Cloud, Shield, RotateCcw } from "lucide-react";
+import { Cloud, HardDrive, RotateCcw, Shield } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
 
 const backupFeatures = [
   {

@@ -1,8 +1,8 @@
 "use client";
 
+import { ArrowRight } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
-import { ArrowRight } from "lucide-react";
 
 export function CtaSection() {
   const [isVisible, setIsVisible] = useState(false);
@@ -81,7 +81,11 @@ export function CtaSection() {
                     className="h-14 px-8 text-base rounded-full border-foreground/20 hover:bg-foreground/5"
                     asChild
                   >
-                    <a target="_blank" href="https://github.com/velopulent/cms">
+                    <a
+                      target="_blank"
+                      href="https://github.com/velopulent/cms"
+                      rel="noopener"
+                    >
                       Github
                     </a>
                   </Button>

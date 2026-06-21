@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 
 const words = ["website", "blog", "app", "business", "portfolio", "platform"];
 
@@ -33,7 +33,7 @@ function BlurWord({ word, trigger }: { word: string; trigger: number }) {
         const start = performance.now();
         const tick = (now: number) => {
           const progress = Math.min((now - start) / DURATION, 1);
-          const eased = 1 - Math.pow(1 - progress, 3);
+          const eased = 1 - (1 - progress) ** 3;
           setLetterStates((prev) => {
             const next = [...prev];
             next[i] = { opacity: eased, blur: 20 * (1 - eased) };

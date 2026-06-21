@@ -1,8 +1,11 @@
 "use client";
 
+import { Icon } from "@iconify-icon/react";
+import { Check, Code2, Download } from "lucide-react";
+import Image from "next/image";
 import { useState } from "react";
-import { Navigation } from "@/components/landing/navigation";
 import { FooterSection } from "@/components/landing/footer-section";
+import { Navigation } from "@/components/landing/navigation";
 import { Button } from "@/components/ui/button";
 import {
   Select,
@@ -11,9 +14,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Check, Download, Code2 } from "lucide-react";
-import { Icon } from "@iconify-icon/react";
-import Image from "next/image";
 
 type OS = "linux" | "macos" | "windows";
 type Architecture = "x86_64" | "aarch64" | "arm64";

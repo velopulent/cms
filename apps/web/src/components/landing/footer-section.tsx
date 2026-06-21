@@ -141,6 +141,7 @@ export function FooterSection() {
                     href={link.href}
                     target="_blank"
                     className="text-sm text-white/40 hover:text-white transition-colors flex items-center gap-1 group"
+                    rel="noopener"
                   >
                     {link.name}
                     <ArrowUpRight className="w-3 h-3 opacity-0 -translate-x-1 group-hover:opacity-100 group-hover:translate-x-0 transition-all" />

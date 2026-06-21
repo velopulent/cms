@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useState, useRef } from "react";
-import { Shield, Lock, Eye, FileCheck } from "lucide-react";
+import { Eye, FileCheck, Lock, Shield } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
 
 const securityFeatures = [
   {

@@ -1,8 +1,8 @@
 "use client";
 
-import { useEffect, useState, useRef } from "react";
 import { Icon } from "@iconify-icon/react";
 import { LucideArrowRight } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
 
 const frameworks = [
   { name: "Next.js", icon: "logos:nextjs-icon" },
