@@ -7,6 +7,12 @@ build = "build.rs"
 # license check for our own crate (see `[licenses] private` in deny.toml).
 publish = false
 
+# The crate stays `cms` (keeps the `cms=…` log target and proto package), but the
+# shipped binary is `vcms`.
+[[bin]]
+name = "vcms"
+path = "src/main.rs"
+
 [features]
 default = ["embed-dashboard"]
 embed-dashboard = ["dep:rust-embed"]
