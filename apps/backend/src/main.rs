@@ -443,6 +443,14 @@ async fn run_restore(
         })
         .await?;
     println!("Restore complete.");
+    let reindex_path = match (scope, site) {
+        ("site", Some(sid)) => format!("/api/dashboard/sites/{sid}/search/reindex"),
+        _ => "/api/dashboard/instance/search/reindex".to_string(),
+    };
+    println!(
+        "Note: the full-text search index may now be stale. Rebuild it from the dashboard \
+         (Settings → Backups → Rebuild search index) or POST {reindex_path} once the server is running."
+    );
     Ok(())
 }
 
