@@ -750,6 +750,14 @@ export async function runBackupSchedule(scope: BackupScope, id: string) {
   );
 }
 
+/** Rebuild the full-text search index for the given scope (owner/operator). */
+export async function reindexSearch(scope: BackupScope) {
+  return api<{ reindexed: number }>(
+    `${backupScopePrefix(scope)}/search/reindex`,
+    { method: "POST" },
+  );
+}
+
 // --- Sites API ---
 
 export async function getSites() {
