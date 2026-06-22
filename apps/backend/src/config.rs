@@ -90,8 +90,9 @@ pub struct Config {
     pub log_dir: String,
 }
 
-static DEFAULT_HMAC_SECRET: &str = "cms-hmac-secret-change-in-production";
-static DEFAULT_LOG_LEVEL: &str = "cms=debug,tower_http=debug,axum=debug";
+// `cms` is the library crate (handlers/services/etc.); `vcms` is the binary crate
+// (main.rs lifecycle/startup logs). Both must be enabled to see all of our logs.
+static DEFAULT_LOG_LEVEL: &str = "cms=debug,vcms=debug,tower_http=debug,axum=debug";
 
 /// Intermediate, fully-optional config deserialized from the merged figment
 /// layers (defaults < TOML file < env vars < CLI flags). Converted into the
@@ -228,7 +229,7 @@ impl Config {
             figment = figment.merge(Serialized::default("log.level", v));
         }
 
-        Ok(figment.extract::<RawConfig>().map_err(Box::new)?.into_config())
+        figment.extract::<RawConfig>().map_err(Box::new)?.into_config()
     }
 
     /// Convenience for callers that only want env + defaults (no CLI flags).
@@ -249,33 +250,16 @@ impl Config {
     }
 
     pub fn validate_security(&self) -> Result<(), String> {
-        let hmac_default = self.hmac_secret == DEFAULT_HMAC_SECRET;
-
+        // The secret is always real here: config load hard-errors when no
+        // secret is resolved, so there is no built-in placeholder to guard
+        // against. We only enforce strength/cookie policy in production.
         if self.production {
-            if hmac_default {
-                return Err("HMAC_SECRET must be changed in production".into());
-            }
             if self.hmac_secret.len() < 32 {
                 return Err("HMAC_SECRET must be at least 32 bytes long".into());
             }
             if !self.cookie_secure {
                 return Err("COOKIE_SECURE must be enabled in production".into());
             }
-        } else if hmac_default && binds_publicly(&self.bind_address) {
-            // Not production, but exposing a public listener with the built-in default
-            // secret lets anyone reachable forge sessions/tokens. Warn loudly
-            // rather than hard-fail so local default startup keeps working.
-            eprintln!(
-                "\n\
-                 ============================ SECURITY WARNING ============================\n\
-                 Binding to public address {} while using the built-in default\n\
-                 HMAC_SECRET. Anyone who can reach this port can forge\n\
-                 sessions and access tokens.\n\
-                 Set HMAC_SECRET (>=32 random bytes) before exposing this\n\
-                 server, or bind to 127.0.0.1 for local development.\n\
-                 =========================================================================\n",
-                self.bind_address
-            );
         }
 
         Ok(())
@@ -367,15 +351,22 @@ impl Config {
 }
 
 impl RawConfig {
-    fn into_config(self) -> Config {
-        let hmac_secret = self.hmac_secret.unwrap_or_else(|| {
-            eprintln!("WARNING: Using default HMAC secret. Set HMAC_SECRET environment variable in production!");
-            DEFAULT_HMAC_SECRET.to_string()
-        });
+    fn into_config(self) -> Result<Config, Box<figment::Error>> {
+        // No silent placeholder: a secret must come from secrets.toml, config, or
+        // the HMAC_SECRET env var. `serve`/`admin` generate one via
+        // `secrets::ensure()` and `mcp stdio` guards on its presence, so this only
+        // fires on a genuinely uninitialized instance.
+        let hmac_secret = self.hmac_secret.ok_or_else(|| {
+            Box::new(figment::Error::from(
+                "No HMAC secret resolved; run `vcms serve` once to generate ~/.vcms/secrets.toml, \
+                 or set HMAC_SECRET"
+                    .to_string(),
+            ))
+        })?;
 
         let log = self.log.unwrap_or_default();
 
-        Config {
+        Ok(Config {
             database_url: self.database_url.unwrap_or_else(paths::default_database_url),
             hmac_secret,
             bind_address: self.bind_address.unwrap_or_else(|| "0.0.0.0:3000".into()),
@@ -427,7 +418,7 @@ impl RawConfig {
             log_dir: log
                 .dir
                 .unwrap_or_else(|| paths::logs_dir().to_string_lossy().into_owned()),
-        }
+        })
     }
 }
 
@@ -537,20 +528,6 @@ pub fn default_config_toml() -> String {
          annotations = false  # include file + line numbers\n\
          dir = \"logs\"        # used when output = \"file\"\n",
     )
-}
-
-/// Whether a listen address is reachable beyond loopback. `0.0.0.0` /
-/// `[::]` (unspecified) and any routable IP count as public; only `127.0.0.0/8`
-/// and `::1` are treated as loopback-only. Unparseable addresses are treated as
-/// public unless they obviously reference localhost.
-fn binds_publicly(bind_address: &str) -> bool {
-    match bind_address.parse::<std::net::SocketAddr>() {
-        Ok(addr) => !addr.ip().is_loopback(),
-        Err(_) => {
-            let lower = bind_address.to_ascii_lowercase();
-            !(lower.contains("127.0.0.1") || lower.contains("::1") || lower.contains("localhost"))
-        }
-    }
 }
 
 fn default_mcp_allowed_hosts() -> Vec<String> {
@@ -699,7 +676,12 @@ mod tests {
 
     #[test]
     fn test_raw_config_into_config_applies_defaults() {
-        let config = RawConfig::default().into_config();
+        let config = RawConfig {
+            hmac_secret: Some("test-secret".to_string()),
+            ..RawConfig::default()
+        }
+        .into_config()
+        .expect("a supplied secret should produce a config");
         assert!(config.database_url.starts_with("sqlite://"));
         assert!(config.database_url.ends_with("vcms.db"));
         assert_eq!(config.bind_address, "0.0.0.0:3000");
@@ -711,12 +693,20 @@ mod tests {
     }
 
     #[test]
+    fn test_into_config_requires_hmac_secret() {
+        // No secret from any layer => hard error, never a silent placeholder.
+        assert!(RawConfig::default().into_config().is_err());
+    }
+
+    #[test]
     fn test_env_maps_to_production() {
         let config = RawConfig {
+            hmac_secret: Some("test-secret".to_string()),
             env: Some("production".to_string()),
             ..RawConfig::default()
         }
-        .into_config();
+        .into_config()
+        .expect("a supplied secret should produce a config");
         assert!(config.production);
     }
 }
