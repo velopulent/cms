@@ -84,6 +84,14 @@ async fn run_serve(cli: &Cli) -> Result<(), Box<dyn Error>> {
         backup_service.clone(),
     );
 
+    // Reconcile backups/restore jobs left mid-flight by a previous process: any
+    // running/pending row at startup is orphaned (backups only run in-process).
+    match cms::services::backup::meta::fail_orphaned(&pool, &cms::services::backup::now_iso()).await {
+        Ok(n) if n > 0 => info!("Reconciled {n} interrupted backup/restore job(s) to failed"),
+        Ok(_) => {}
+        Err(e) => tracing::error!("Failed to reconcile interrupted backups: {e}"),
+    }
+
     if config.backup_enabled {
         let scheduler_service = backup_service.clone();
         tokio::spawn(async move {
