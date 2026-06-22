@@ -33,6 +33,11 @@ import {
   updateMemberRole,
 } from "@/lib/api";
 
+const ROLE_ITEMS = [
+  { value: "editor", label: siteRoleLabel("editor") },
+  { value: "viewer", label: siteRoleLabel("viewer") },
+];
+
 export function MembersSection({
   siteId,
   canManage,
@@ -145,6 +150,7 @@ export function MembersSection({
             <Field className="sm:w-40">
               <FieldLabel htmlFor="member-role">Role</FieldLabel>
               <Select
+                items={ROLE_ITEMS}
                 value={role}
                 onValueChange={(value) => setRole(value as "editor" | "viewer")}
               >
@@ -205,6 +211,7 @@ export function MembersSection({
                     <td className="p-3">
                       {canManage ? (
                         <Select
+                          items={ROLE_ITEMS}
                           value={member.role}
                           onValueChange={(nextRole) => {
                             if (nextRole) {

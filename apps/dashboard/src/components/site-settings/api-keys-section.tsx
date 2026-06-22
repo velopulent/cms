@@ -221,6 +221,10 @@ export function ApiKeysSection({ siteId }: { siteId: string }) {
                 <Field className="sm:w-40">
                   <FieldLabel htmlFor="permissions">Permissions</FieldLabel>
                   <Select
+                    items={[
+                      { value: "read", label: "Read Only" },
+                      { value: "write", label: "Read & Write" },
+                    ]}
                     value={field.state.value}
                     onValueChange={(v) =>
                       field.handleChange(v as "read" | "write")
