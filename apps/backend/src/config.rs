@@ -136,7 +136,7 @@ struct RawConfig {
     public_registration_enabled: Option<bool>,
     #[serde(default, deserialize_with = "de_opt_str_list")]
     allowed_origins: Option<Vec<String>>,
-    /// Maps the `CMS_ENV` env var / `env` TOML key; "production" => production.
+    /// Maps the `VCMS_ENV` env var / `env` TOML key; "production" => production.
     env: Option<String>,
 
     db_max_connections: Option<u32>,
@@ -185,7 +185,7 @@ impl Config {
         let mut figment = Figment::new();
 
         // Lowest-precedence secret layer: persisted HMAC secret from
-        // `~/.cms/secrets.toml`. Read-only here (generation happens in
+        // `~/.vcms/secrets.toml`. Read-only here (generation happens in
         // `secrets::ensure()` during serve/admin). Best-effort: a missing or
         // unreadable file just leaves the built-in defaults in play. Env vars
         // and CLI flags still override these.
@@ -198,7 +198,7 @@ impl Config {
         }
 
         // Environment layer: keep the existing unprefixed names. Remap the few
-        // that don't match a field 1:1 (legacy log vars, CMS_ENV) and project
+        // that don't match a field 1:1 (legacy log vars, VCMS_ENV) and project
         // log keys into the nested `log` table via the "." separator.
         figment = figment.merge(
             Env::raw()
@@ -210,7 +210,7 @@ impl Config {
                         "log_format" => "log.format".into(),
                         "log_annotations" => "log.annotations".into(),
                         "log_dir" => "log.dir".into(),
-                        "cms_env" => "env".into(),
+                        "vcms_env" => "env".into(),
                         _ => k.into(),
                     }
                 })
@@ -282,7 +282,7 @@ impl Config {
     }
 
     /// Render the effective configuration as TOML with secrets redacted.
-    /// Used by `cms config show`.
+    /// Used by `vcms config show`.
     pub fn redacted_toml(&self) -> String {
         format!(
             "# Effective configuration (secrets redacted)\n\
@@ -432,7 +432,7 @@ impl RawConfig {
 }
 
 /// Resolve the config file path. First match wins; a missing file is fine.
-/// Order: `--config` / `CMS_CONFIG` > `./cms.toml` > user config dir > `/etc/cms`.
+/// Order: `--config` / `VCMS_CONFIG` > `./vcms.toml` > user config dir > `/etc/vcms`.
 pub fn resolve_config_path(cli: &Cli) -> Option<PathBuf> {
     if let Some(path) = &cli.config {
         return Some(path.clone());
@@ -442,21 +442,21 @@ pub fn resolve_config_path(cli: &Cli) -> Option<PathBuf> {
 
 /// The ordered list of locations searched when no `--config` is given.
 pub fn config_search_paths() -> Vec<PathBuf> {
-    let mut paths = vec![PathBuf::from("cms.toml")];
+    let mut paths = vec![PathBuf::from("vcms.toml")];
     if let Some(path) = user_config_path() {
         paths.push(path);
     }
-    paths.push(PathBuf::from("/etc/cms/config.toml"));
+    paths.push(PathBuf::from("/etc/vcms/config.toml"));
     paths
 }
 
-/// The user-config location for the config file: `~/.cms/config.toml`
-/// (or `$CMS_HOME/config.toml`).
+/// The user-config location for the config file: `~/.vcms/config.toml`
+/// (or `$VCMS_HOME/config.toml`).
 pub fn user_config_path() -> Option<PathBuf> {
     Some(paths::config_file())
 }
 
-/// The scaffold written by `cms config init` — non-secret keys only, with
+/// The scaffold written by `vcms config init` — non-secret keys only, with
 /// secrets shown as commented env-var hints.
 pub fn default_config_toml() -> String {
     let hosts = default_mcp_allowed_hosts()
@@ -507,7 +507,7 @@ pub fn default_config_toml() -> String {
          # --- Backups ---\n\
          # Run the scheduled-backup poller and allow on-demand backups.\n\
          backup_enabled = true\n\
-         # Destination for backup artifacts: \"filesystem\" (default, under ~/.cms/backups)\n\
+         # Destination for backup artifacts: \"filesystem\" (default, under ~/.vcms/backups)\n\
          # or \"s3\". S3 credentials are secrets — set them via env (see below).\n\
          backup_destination = \"filesystem\"\n\
          # backup_local_path = \"./backups\"\n\
@@ -524,7 +524,7 @@ pub fn default_config_toml() -> String {
          # Build a local inverted index so entry search is ranked + tokenized.\n\
          # When false, search falls back to a basic SQL LIKE match.\n\
          search_enabled = true\n\
-         # search_index_path = \"./search\"   # defaults to ~/.cms/search\n\n\
+         # search_index_path = \"./search\"   # defaults to ~/.vcms/search\n\n\
          # --- MCP ---\n\
          mcp_enabled = true\n\
          mcp_allowed_hosts = [{hosts}]\n\
@@ -701,7 +701,7 @@ mod tests {
     fn test_raw_config_into_config_applies_defaults() {
         let config = RawConfig::default().into_config();
         assert!(config.database_url.starts_with("sqlite://"));
-        assert!(config.database_url.ends_with("cms.db"));
+        assert!(config.database_url.ends_with("vcms.db"));
         assert_eq!(config.bind_address, "0.0.0.0:3000");
         assert_eq!(config.max_upload_size_bytes, 50 * 1024 * 1024);
         assert_eq!(config.log_level, DEFAULT_LOG_LEVEL);
