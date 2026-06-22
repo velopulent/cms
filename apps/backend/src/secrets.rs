@@ -1,14 +1,14 @@
-//! Persisted instance secrets (`~/.cms/secrets.toml`).
+//! Persisted instance secrets (`~/.vcms/secrets.toml`).
 //!
 //! On first `serve`/`admin`, a random `HMAC_SECRET` value is
 //! generated and written to `secrets.toml` (perms `0600` on unix). Every later
-//! process — including a `cms mcp stdio` child launched from an unknown working
+//! process — including a `vcms mcp stdio` child launched from an unknown working
 //! directory — reads the *same* values, so site-token verification matches the
 //! server that signed the token. Environment variables still override the file.
 //!
 //! These secrets intentionally live in a dedicated, restricted file rather than
 //! `config.toml`: the TOML config is for non-secret settings, while this file is
-//! machine-managed and never scaffolded by `cms config init`.
+//! machine-managed and never scaffolded by `vcms config init`.
 
 use rand::Rng;
 use serde::{Deserialize, Serialize};

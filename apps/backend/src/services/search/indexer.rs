@@ -4,7 +4,7 @@
 //! [`SearchQueue`] — populated by content writes from *any* process — and applies
 //! the changes to the index. It wakes immediately on a local enqueue (via the
 //! queue's `Notify`) and also polls on an interval to pick up enqueues from other
-//! processes (e.g. `cms mcp stdio`).
+//! processes (e.g. `vcms mcp stdio`).
 
 use std::collections::HashSet;
 use std::sync::Arc;

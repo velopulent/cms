@@ -4,7 +4,7 @@
 //! Producers (any process that writes entry content) call [`SearchQueue::enqueue`]
 //! after a write. The single writer-owning server drains the queue via the
 //! [`indexer`](super::indexer). Because the queue lives in the database it works
-//! across processes (e.g. a separate `cms mcp stdio`) and survives restarts.
+//! across processes (e.g. a separate `vcms mcp stdio`) and survives restarts.
 
 use std::sync::Arc;
 

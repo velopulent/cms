@@ -21,7 +21,7 @@ pub fn now_timestamp() -> String {
     chrono::Utc::now().format("%Y-%m-%d %H:%M:%S").to_string()
 }
 
-/// Synchronize tests that mutate `CMS_HOME` (process-global env var).
+/// Synchronize tests that mutate `VCMS_HOME` (process-global env var).
 /// The single static `Mutex` here is shared by all callers across modules,
 /// preventing races between `paths::tests` and `secrets::tests` etc.
 pub fn with_home<T>(value: &Path, f: impl FnOnce() -> T) -> T {
