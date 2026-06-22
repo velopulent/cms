@@ -200,7 +200,7 @@ async fn test_auth_wrong_token_type_returns_401() {
 async fn test_auth_invalid_token_returns_401() {
     let server = start_mcp_server().await;
 
-    let resp = mcp_request(&server.base_url, "cms_site_invalid_token_abc123", "tools/list", None).await;
+    let resp = mcp_request(&server.base_url, "vcms_site_invalid_token_abc123", "tools/list", None).await;
 
     let error = resp.get("error");
     assert!(error.is_some(), "Expected error for invalid token, got: {}", resp);
