@@ -162,11 +162,11 @@ async fn run_serve(cli: &Cli) -> Result<(), Box<dyn Error>> {
 
 async fn run_mcp_stdio(cli: &Cli) -> Result<(), Box<dyn Error>> {
     // Read-only: never create the home dir, database, or secrets file here. The
-    // persisted secrets written by `cms serve` are what make this process verify
+    // persisted secrets written by `vcms serve` are what make this process verify
     // the site token with the same HMAC secret the server signed it with.
     if cms::secrets::load()?.is_none() && std::env::var("HMAC_SECRET").is_err() {
-        return Err("No instance secrets found. Run `cms serve` once to initialize \
-                    ~/.cms (or set HMAC_SECRET) before `cms mcp stdio`."
+        return Err("No instance secrets found. Run `vcms serve` once to initialize \
+                    ~/.vcms (or set HMAC_SECRET) before `vcms mcp stdio`."
             .into());
     }
 
@@ -183,9 +183,10 @@ async fn run_mcp_stdio(cli: &Cli) -> Result<(), Box<dyn Error>> {
         return Err(format!("Invalid production security configuration: {error}").into());
     }
 
-    let token = std::env::var("CMS_MCP_TOKEN").map_err(|_| "CMS_MCP_TOKEN is required for `cms mcp stdio`")?;
+    let token =
+        std::env::var("VCMS_MCP_TOKEN").map_err(|_| "VCMS_MCP_TOKEN is required for `vcms mcp stdio`")?;
     if token.trim().is_empty() {
-        return Err("CMS_MCP_TOKEN must not be empty".into());
+        return Err("VCMS_MCP_TOKEN must not be empty".into());
     }
 
     let pool = connect_db_without_migrations(&config).await?;
@@ -223,7 +224,7 @@ async fn run_mcp_stdio(cli: &Cli) -> Result<(), Box<dyn Error>> {
 fn initialize_storage(config: &Config) -> Arc<StorageRegistry> {
     let mut storage_registry = StorageRegistry::new();
 
-    // Use an explicit filesystem path if set; otherwise default to ~/.cms/storage
+    // Use an explicit filesystem path if set; otherwise default to ~/.vcms/storage
     // so uploads work out of the box — unless S3 is configured and takes over.
     let fs_path = match (&config.storage_fs_path, config.has_s3()) {
         (Some(path), _) => Some(path.clone()),
@@ -292,8 +293,8 @@ fn run_config(action: &ConfigAction, cli: &Cli) -> Result<(), Box<dyn Error>> {
             }
             println!("\nSearch order (first existing wins):");
             match &cli.config {
-                Some(explicit) => println!("  1. --config / CMS_CONFIG: {}", explicit.display()),
-                None => println!("  1. --config / CMS_CONFIG: <not set>"),
+                Some(explicit) => println!("  1. --config / VCMS_CONFIG: {}", explicit.display()),
+                None => println!("  1. --config / VCMS_CONFIG: <not set>"),
             }
             for (i, p) in config::config_search_paths().iter().enumerate() {
                 let marker = if p.exists() { " (exists)" } else { "" };
@@ -493,7 +494,7 @@ async fn seed_admin(repository: &Repository) {
              ============================ SECURITY WARNING ============================\n\
              A default admin account was created:  username 'admin'  password 'admin'\n\
              Anyone who can reach this server can log in until you change it. Run:\n\
-             \n    cms admin reset-password --username admin --password <new-strong-password>\n\n\
+             \n    vcms admin reset-password --username admin --password <new-strong-password>\n\n\
              or change it from the dashboard now. Do NOT expose this server until done.\n\
              =========================================================================\n"
         );
