@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { Plus, Search } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { createColumns } from "@/components/entries/columns";
 import { buttonVariants } from "@/components/ui/button";
@@ -15,6 +15,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { useDebouncedValue } from "@/hooks/use-debounced-value";
 import {
   deleteEntry,
   getCollection,
@@ -33,9 +34,17 @@ function EntriesListPage() {
   const { siteId, collectionSlug } = Route.useParams();
   const queryClient = useQueryClient();
   const [search, setSearch] = useState("");
+  const debouncedSearch = useDebouncedValue(search, 300);
   const [statusFilter, setStatusFilter] = useState<string>("");
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(20);
+
+  // Reset to the first page when the debounced search term actually changes,
+  // so paging tracks the fetched results rather than each keystroke.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: reset only on term change
+  useEffect(() => {
+    setPage(1);
+  }, [debouncedSearch]);
 
   const { data: collection, isLoading: collectionLoading } = useQuery({
     queryKey: ["collection", siteId, collectionSlug],
@@ -48,7 +57,7 @@ function EntriesListPage() {
       siteId,
       collectionSlug,
       statusFilter,
-      search,
+      debouncedSearch,
       page,
       pageSize,
     ],
@@ -56,7 +65,7 @@ function EntriesListPage() {
       getEntries(siteId, {
         type: collectionSlug,
         status: statusFilter || undefined,
-        search: search || undefined,
+        search: debouncedSearch || undefined,
         page,
         pageSize,
       }),
@@ -67,7 +76,6 @@ function EntriesListPage() {
 
   const handleSearchChange = (value: string | null) => {
     setSearch(value || "");
-    setPage(1);
   };
 
   const handleStatusChange = (value: string | null) => {
@@ -79,7 +87,7 @@ function EntriesListPage() {
     mutationFn: (id: string) => deleteEntry(siteId, id),
     onSuccess: () => {
       queryClient.invalidateQueries({
-        queryKey: ["entries", siteId, collectionSlug],
+        queryKey: ["entries", siteId],
       });
       toast.success("Entry deleted");
     },
@@ -90,7 +98,7 @@ function EntriesListPage() {
     mutationFn: (id: string) => publishEntry(siteId, id),
     onSuccess: () => {
       queryClient.invalidateQueries({
-        queryKey: ["entries", siteId, collectionSlug],
+        queryKey: ["entries", siteId],
       });
       toast.success("Published");
     },
@@ -101,7 +109,7 @@ function EntriesListPage() {
     mutationFn: (id: string) => unpublishEntry(siteId, id),
     onSuccess: () => {
       queryClient.invalidateQueries({
-        queryKey: ["entries", siteId, collectionSlug],
+        queryKey: ["entries", siteId],
       });
       toast.success("Unpublished");
     },
@@ -166,7 +174,7 @@ function EntriesListPage() {
         </div>
         <Select
           items={[
-            { label: "All statuses", value: null },
+            { label: "All statuses", value: "" },
             { label: "Draft", value: "draft" },
             { label: "Published", value: "published" },
           ]}
