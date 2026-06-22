@@ -183,8 +183,7 @@ async fn run_mcp_stdio(cli: &Cli) -> Result<(), Box<dyn Error>> {
         return Err(format!("Invalid production security configuration: {error}").into());
     }
 
-    let token =
-        std::env::var("VCMS_MCP_TOKEN").map_err(|_| "VCMS_MCP_TOKEN is required for `vcms mcp stdio`")?;
+    let token = std::env::var("VCMS_MCP_TOKEN").map_err(|_| "VCMS_MCP_TOKEN is required for `vcms mcp stdio`")?;
     if token.trim().is_empty() {
         return Err("VCMS_MCP_TOKEN must not be empty".into());
     }
