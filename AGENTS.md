@@ -63,18 +63,18 @@ bun run format               # Format all projects
 
 ## CLI
 
-The backend binary (`cms`) is a clap CLI. With no subcommand it runs the server (back-compat with `cargo run`).
+The backend binary (`vcms`) is a clap CLI. With no subcommand it runs the server (back-compat with `cargo run`).
 
 ```bash
-cms                                   # run the server (alias for `cms serve`)
-cms serve                             # run the server
-cms config init [--force] [--path P]  # write a default config.toml (non-secrets only)
-cms config show                       # print effective merged config (secrets redacted)
-cms config path                       # print resolved config file + search order
-cms admin reset-password --username U --password P
-cms backup create [--scope instance|site] [--site ID] [--out FILE] [--no-files] [--encrypt]
-cms backup list                       # list recorded backups
-cms restore --file PATH [--scope instance|site] [--site ID] [--import-as-new] --yes
+vcms                                   # run the server (alias for `vcms serve`)
+vcms serve                             # run the server
+vcms config init [--force] [--path P]  # write a default config.toml (non-secrets only)
+vcms config show                       # print effective merged config (secrets redacted)
+vcms config path                       # print resolved config file + search order
+vcms admin reset-password --username U --password P
+vcms backup create [--scope instance|site] [--site ID] [--out FILE] [--no-files] [--encrypt]
+vcms backup list                       # list recorded backups
+vcms restore --file PATH [--scope instance|site] [--site ID] [--import-as-new] --yes
 ```
 
 `backup`/`restore` run offline (no HTTP server) against the configured database —
@@ -91,29 +91,29 @@ Non-secret settings live in a TOML config file; secrets stay in the environment 
 Layers merge with precedence: **CLI flag > env var > config file > built-in default**.
 
 Config file search order (first existing wins; missing is fine):
-1. `--config` flag / `CMS_CONFIG` env
+1. `--config` flag / `VCMS_CONFIG` env
 2. `./cms.toml` (current dir)
-3. `~/.cms/config.toml` (CMS home; `$CMS_HOME/config.toml` if set) — where `cms config init` writes
-4. `/etc/cms/config.toml`
+3. `~/.vcms/config.toml` (CMS home; `$VCMS_HOME/config.toml` if set) — where `vcms config init` writes
+4. `/etc/vcms/config.toml`
 
 ## Data directory (CMS home)
 
-All runtime files live under one home directory: `$CMS_HOME` if set, else `~/.cms`
-(same layout on Windows, macOS, Linux via the `directories` crate). `cms serve`
+All runtime files live under one home directory: `$VCMS_HOME` if set, else `~/.vcms`
+(same layout on Windows, macOS, Linux via the `directories` crate). `vcms serve`
 creates it on first run. Resolution lives in `apps/backend/src/paths.rs`.
 
 ```text
-~/.cms/
-  config.toml     # non-secret config (cms config init target)
+~/.vcms/
+  config.toml     # non-secret config (vcms config init target)
   secrets.toml    # auto-generated HMAC_SECRET + backup key (0600 on unix)
-  cms.db          # default SQLite database (+ -wal / -shm)
+  vcms.db          # default SQLite database (+ -wal / -shm)
   logs/           # rolling logs when [log] output = "file"
   storage/        # default filesystem storage for uploads
 ```
 
 Secrets: on first `serve`/`admin`, a random `HMAC_SECRET` is generated
 and persisted to `secrets.toml` (`apps/backend/src/secrets.rs`), then loaded by
-every process — including `cms mcp stdio`, which is launched from an arbitrary cwd
+every process — including `vcms mcp stdio`, which is launched from an arbitrary cwd
 and so cannot rely on a cwd `.env`. Env vars still override the file. `mcp stdio`
 is read-only: it never creates the home dir, database, or secrets file.
 
@@ -123,7 +123,7 @@ Env-only secrets (never read from `config.toml` by convention, omitted from
 `BACKUP_ENCRYPTION_KEY`. (`HMAC_SECRET` and a random backup encryption
 key are auto-persisted to `secrets.toml`; the others remain env-only.)
 
-Sample `config.toml` (generate with `cms config init`):
+Sample `config.toml` (generate with `vcms config init`):
 
 ```toml
 bind_address = "0.0.0.0:3000"
@@ -137,7 +137,7 @@ mcp_enabled = true
 mcp_allowed_hosts = ["localhost", "127.0.0.1"]
 
 [log]
-level = "cms=debug,tower_http=debug,axum=debug"
+level = "cms=debug,vcms=debug,tower_http=debug,axum=debug"
 output = "stdout"   # stdout | file
 format = "pretty"   # pretty | json
 annotations = false
@@ -152,10 +152,10 @@ Logging keys map to the `[log]` table: `RUST_LOG`→`log.level`, `LOG_OUTPUT`→
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `CMS_CONFIG` | - | Explicit config file path (same as `--config`) |
-| `CMS_HOME` | `~/.cms` | CMS home directory (db, config, secrets, logs, storage) |
-| `DATABASE_URL` | `sqlite://~/.cms/cms.db` | Database URL: `sqlite:path`, `postgres://...`, `mysql://...` |
-| `HMAC_SECRET` | `cms-hmac-secret-change-in-production` | HMAC key for token lookup |
+| `VCMS_CONFIG` | - | Explicit config file path (same as `--config`) |
+| `VCMS_HOME` | `~/.vcms` | CMS home directory (db, config, secrets, logs, storage) |
+| `DATABASE_URL` | `sqlite://~/.vcms/vcms.db` | Database URL: `sqlite:path`, `postgres://...`, `mysql://...` |
+| `HMAC_SECRET` | auto | HMAC key for token lookup (required; auto-generated to `secrets.toml`, env overrides) |
 | `BIND_ADDRESS` | `0.0.0.0:3000` | REST API listen address |
 | `GRPC_BIND_ADDRESS` | `0.0.0.0:50051` | gRPC server listen address |
 | `STORAGE_FS_PATH` | - | Filesystem storage path |
@@ -167,7 +167,7 @@ Logging keys map to the `[log]` table: `RUST_LOG`→`log.level`, `LOG_OUTPUT`→
 | `S3_PUBLIC_URL` | - | Public URL for S3 assets |
 | `BACKUP_ENABLED` | `true` | Run the scheduled-backup poller / allow backups |
 | `BACKUP_DESTINATION` | `filesystem` | Backup destination: `filesystem` or `s3` |
-| `BACKUP_LOCAL_PATH` | `~/.cms/backups` | Local backup dir (when destination is filesystem) |
+| `BACKUP_LOCAL_PATH` | `~/.vcms/backups` | Local backup dir (when destination is filesystem) |
 | `BACKUP_ZSTD_LEVEL` | `12` | zstd compression level for backups |
 | `BACKUP_DEFAULT_RETENTION` | `7` | Default "keep last N" for new schedules |
 | `BACKUP_S3_BUCKET` / `_REGION` / `_ENDPOINT` / `_PUBLIC_URL` | - | S3 backup destination (non-secret parts) |
@@ -180,15 +180,15 @@ Logging keys map to the `[log]` table: `RUST_LOG`→`log.level`, `LOG_OUTPUT`→
 | `DB_MIN_CONNECTIONS` | `2` | Min DB connections |
 | `RATE_LIMIT_MAX_REQUESTS` | `100` | Rate limit per window |
 | `RATE_LIMIT_WINDOW_SECS` | `60` | Rate limit window |
-| `CMS_ENV` | - | `production` enables production security checks |
-| `RUST_LOG` | `cms=debug,tower_http=debug,axum=debug` | Log filter (`[log] level`) |
+| `VCMS_ENV` | - | `production` enables production security checks |
+| `RUST_LOG` | `cms=debug,vcms=debug,tower_http=debug,axum=debug` | Log filter (`[log] level`) |
 | `LOG_OUTPUT` | `stdout` | `stdout` or `file` (`[log] output`) |
 | `LOG_FORMAT` | `pretty` | `pretty` or `json` (`[log] format`) |
 | `LOG_ANNOTATIONS` | `false` | Include file + line numbers (`[log] annotations`) |
-| `LOG_DIR` | `~/.cms/logs` | Log directory when `output = file` (`[log] dir`) |
+| `LOG_DIR` | `~/.vcms/logs` | Log directory when `output = file` (`[log] dir`) |
 
 **Note**: `HMAC_SECRET` is auto-generated and persisted to
-`~/.cms/secrets.toml` on first run. Set it explicitly via env to override.
+`~/.vcms/secrets.toml` on first run. Set it explicitly via env to override.
 
 ## Proto Compilation
 
