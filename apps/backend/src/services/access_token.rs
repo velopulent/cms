@@ -11,7 +11,7 @@ use crate::middleware::auth::compute_key_hmac;
 use crate::models::access_token::{AccessToken, AccessTokenPermission, AccessTokenResponse};
 use crate::repository::traits::{AccessTokenRepository, NewAccessToken};
 
-const SITE_TOKEN_PREFIX: &str = "cms_site_";
+const SITE_TOKEN_PREFIX: &str = "vcms_site_";
 
 #[derive(Clone)]
 pub struct AccessTokenService {

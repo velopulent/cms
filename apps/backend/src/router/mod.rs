@@ -52,7 +52,7 @@ fn public_api_v1_routes(max_upload_bytes: usize) -> Router {
         .layer(from_fn(authz_middleware))
         // Middle — runs second (after api_auth sets Actor)
         .layer(from_fn(api_site_resolver))
-        // Outer — runs first (validates Bearer cms_site_* token)
+        // Outer — runs first (validates Bearer vcms_site_* token)
         .layer(from_fn(api_auth_middleware))
 }
 

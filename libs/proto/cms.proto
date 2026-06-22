@@ -2,7 +2,7 @@ syntax = "proto3";
 
 package cms.v1;
 
-// Collection Service - Site-scoped operations (requires cms_site_* token)
+// Collection Service - Site-scoped operations (requires vcms_site_* token)
 service CollectionService {
   rpc ListCollections(ListCollectionsRequest) returns (ListCollectionsResponse);
   rpc GetCollection(GetCollectionRequest) returns (Collection);
@@ -11,7 +11,7 @@ service CollectionService {
   rpc DeleteCollection(DeleteCollectionRequest) returns (DeleteResponse);
 }
 
-// Entry Service - Site-scoped operations (requires cms_site_* token)
+// Entry Service - Site-scoped operations (requires vcms_site_* token)
 service EntryService {
   rpc ListEntries(ListEntriesRequest) returns (ListEntriesResponse);
   rpc GetEntry(GetEntryRequest) returns (Entry);
@@ -25,13 +25,13 @@ service EntryService {
   rpc RestoreEntryRevision(RestoreEntryRevisionRequest) returns (Entry);
 }
 
-// Singleton Service - Site-scoped operations (requires cms_site_* token)
+// Singleton Service - Site-scoped operations (requires vcms_site_* token)
 service SingletonService {
   rpc GetSingleton(GetSingletonRequest) returns (Singleton);
   rpc UpdateSingleton(UpdateSingletonRequest) returns (Singleton);
 }
 
-// File Service - Site-scoped operations (requires cms_site_* token)
+// File Service - Site-scoped operations (requires vcms_site_* token)
 service FileService {
   rpc ListFiles(ListFilesRequest) returns (ListFilesResponse);
   rpc GetFile(GetFileRequest) returns (File);
@@ -41,7 +41,7 @@ service FileService {
   rpc BatchRestoreFiles(BatchRestoreFilesRequest) returns (BatchOperationResponse);
 }
 
-// Site Service - Site-scoped operations (requires cms_site_* token)
+// Site Service - Site-scoped operations (requires vcms_site_* token)
 service SiteService {
   rpc GetSite(GetSiteRequest) returns (Site);
   rpc UpdateSite(UpdateSiteRequest) returns (Site);
@@ -300,7 +300,7 @@ message UpdateSiteRequest {
   optional string name = 2;
 }
 
-// Webhook Service - Site-scoped operations (requires cms_site_* token)
+// Webhook Service - Site-scoped operations (requires vcms_site_* token)
 service WebhookService {
   rpc ListWebhooks(ListWebhooksRequest) returns (ListWebhooksResponse);
   rpc GetWebhook(GetWebhookRequest) returns (SiteWebhook);

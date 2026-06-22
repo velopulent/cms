@@ -81,7 +81,7 @@ pub async fn authenticate_mcp_request(mut request: Request<Body>, next: Next) ->
     };
 
     let token = match bearer_token(&request) {
-        Some(token) if token.starts_with("cms_site_") => token,
+        Some(token) if token.starts_with("vcms_site_") => token,
         Some(_) => return auth_response(StatusCode::UNAUTHORIZED, "MCP requires a CMS access token"),
         None => return auth_response(StatusCode::UNAUTHORIZED, "Missing Authorization bearer token"),
     };

@@ -18,7 +18,7 @@ pub struct InvalidToken;
 ///
 /// Returns an `AuthContext` on success, or `InvalidToken` on any validation failure.
 pub fn parse_token(token: &str, config: &Config) -> Result<AuthContext, InvalidToken> {
-    if !token.starts_with("cms_site_") {
+    if !token.starts_with("vcms_site_") {
         return Err(InvalidToken);
     }
 
@@ -42,7 +42,7 @@ mod tests {
             hmac_secret: "secret".to_string(),
             ..Default::default()
         };
-        let token = "cms_site_abc1234567890123456";
+        let token = "vcms_site_abc1234567890123456";
         let ctx = parse_token(token, &config).unwrap();
         assert_eq!(ctx.token, token);
         assert_eq!(ctx.prefix, token.chars().take(24).collect::<String>());
