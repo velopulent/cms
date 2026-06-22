@@ -11,7 +11,7 @@ import {
   Upload,
   X,
 } from "lucide-react";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import {
   AlertDialog,
@@ -37,6 +37,7 @@ import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { VideoPlayer } from "@/components/video-player";
+import { useDebouncedValue } from "@/hooks/use-debounced-value";
 import {
   batchDeleteFiles,
   batchPermanentDeleteFiles,
@@ -84,6 +85,7 @@ function FilesPage() {
   const { siteId } = Route.useParams();
   const queryClient = useQueryClient();
   const [search, setSearch] = useState("");
+  const debouncedSearch = useDebouncedValue(search, 300);
   const [typeFilter, setTypeFilter] = useState<string>("all");
   const [page, setPage] = useState(1);
   const [view, setView] = useState<"all" | "trash">("all");
@@ -103,15 +105,21 @@ function FilesPage() {
   const isTrash = view === "trash";
 
   const { data, isLoading } = useQuery({
-    queryKey: ["files", siteId, page, search, typeFilter, view],
+    queryKey: ["files", siteId, page, debouncedSearch, typeFilter, view],
     queryFn: () =>
       getFiles(siteId, {
         page,
-        search: search || undefined,
+        search: debouncedSearch || undefined,
         type: typeFilter === "all" ? undefined : typeFilter,
         trashed: isTrash,
       }),
   });
+
+  // Reset to the first page when the debounced search term changes.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: reset only on term change
+  useEffect(() => {
+    setPage(1);
+  }, [debouncedSearch]);
 
   const uploadMutation = useMutation({
     mutationFn: (file: File) => uploadFile(siteId, file, "filesystem"),
@@ -293,10 +301,7 @@ function FilesPage() {
           <Input
             placeholder="Search files..."
             value={search}
-            onChange={(e) => {
-              setSearch(e.target.value);
-              setPage(1);
-            }}
+            onChange={(e) => setSearch(e.target.value)}
             className="pl-8"
           />
         </div>
