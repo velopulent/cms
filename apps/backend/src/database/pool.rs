@@ -57,6 +57,7 @@ impl DbPool {
                 let options = sqlx::sqlite::SqliteConnectOptions::from_str(&config.database_url)
                     .map_err(|e| Error::Configuration(e.to_string().into()))?
                     .create_if_missing(create_sqlite_if_missing)
+                    .foreign_keys(true)
                     .journal_mode(sqlx::sqlite::SqliteJournalMode::Wal)
                     .busy_timeout(Duration::from_secs(30));
                 let pool = SqlitePoolOptions::new()
