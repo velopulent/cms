@@ -5,7 +5,7 @@ use utoipa::ToSchema;
 #[derive(Serialize, FromRow, ToSchema, Clone)]
 pub struct User {
     pub id: String,
-    pub username: String,
+    pub name: String,
     pub email: String,
     #[serde(skip_serializing)]
     pub password_hash: String,
@@ -17,14 +17,15 @@ pub struct User {
 
 #[derive(Deserialize, ToSchema)]
 pub struct CreateUser {
-    pub username: String,
+    pub name: String,
     pub email: String,
     pub password: String,
 }
 
 #[derive(Deserialize, ToSchema)]
 pub struct LoginRequest {
-    pub username: String,
+    /// Login identity is the user's email address.
+    pub email: String,
     pub password: String,
 }
 
@@ -36,7 +37,7 @@ pub struct ChangePasswordRequest {
 
 #[derive(Deserialize, ToSchema)]
 pub struct CreateManagedUser {
-    pub username: String,
+    pub name: String,
     pub email: String,
     pub temporary_password: String,
     /// `"instance_owner"`, `"instance_admin"`, or `null` for a non-operator user.
@@ -49,6 +50,25 @@ pub struct UpdateInstanceRole {
     /// `"instance_owner"`, `"instance_admin"`, or `null` to clear the operator role.
     #[serde(default)]
     pub instance_role: Option<String>,
+}
+
+/// Operator-driven update of another user's display name and email.
+#[derive(Deserialize, ToSchema)]
+pub struct UpdateUserProfile {
+    pub name: String,
+    pub email: String,
+}
+
+/// Operator-driven password reset for another user.
+#[derive(Deserialize, ToSchema)]
+pub struct AdminSetPassword {
+    pub new_password: String,
+}
+
+/// Self-service update of the signed-in user's own display name.
+#[derive(Deserialize, ToSchema)]
+pub struct UpdateSelfProfile {
+    pub name: String,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -65,7 +85,7 @@ pub struct AuthResponse {
 #[derive(Serialize, ToSchema)]
 pub struct UserPublic {
     pub id: String,
-    pub username: String,
+    pub name: String,
     pub email: String,
     pub instance_role: Option<String>,
     pub must_change_password: bool,

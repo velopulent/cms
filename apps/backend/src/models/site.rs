@@ -39,7 +39,7 @@ pub struct SiteMember {
     pub id: String,
     pub site_id: String,
     pub user_id: String,
-    pub username: String,
+    pub name: String,
     pub email: String,
     pub role: String,
     pub created_at: String,
@@ -47,7 +47,8 @@ pub struct SiteMember {
 
 #[derive(Deserialize, ToSchema)]
 pub struct InviteMember {
-    pub username: String,
+    /// Email of the existing user to add (email is the login identity).
+    pub email: String,
     pub role: String,
 }
 
