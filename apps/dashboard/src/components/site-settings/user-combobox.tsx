@@ -51,7 +51,7 @@ export function UserCombobox({
             <span
               className={cn("truncate", !selected && "text-muted-foreground")}
             >
-              {selected ? selected.username : placeholder}
+              {selected ? selected.name : placeholder}
             </span>
             <ChevronsUpDown className="size-4 shrink-0 opacity-50" />
           </Button>
@@ -70,7 +70,7 @@ export function UserCombobox({
                 {users.map((user) => (
                   <CommandItem
                     key={user.id}
-                    value={`${user.username} ${user.email}`}
+                    value={`${user.name} ${user.email}`}
                     onSelect={() => {
                       onChange(user.id);
                       setOpen(false);
@@ -84,7 +84,7 @@ export function UserCombobox({
                     />
                     <div className="flex min-w-0 flex-col">
                       <span className="truncate font-medium">
-                        {user.username}
+                        {user.name}
                       </span>
                       <span className="truncate text-xs text-muted-foreground">
                         {user.email}

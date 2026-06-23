@@ -75,7 +75,7 @@ export function MembersSection({
     queryClient.invalidateQueries({ queryKey: ["site-members", siteId] });
 
   const inviteMutation = useMutation({
-    mutationFn: (username: string) => inviteMember(siteId, { username, role }),
+    mutationFn: (email: string) => inviteMember(siteId, { email, role }),
     onSuccess: () => {
       invalidate();
       setSelectedUserId(null);
@@ -105,7 +105,7 @@ export function MembersSection({
     const user = candidates.find(
       (candidate) => candidate.id === selectedUserId,
     );
-    if (user) inviteMutation.mutate(user.username);
+    if (user) inviteMutation.mutate(user.email);
   };
 
   return (
@@ -189,7 +189,7 @@ export function MembersSection({
                 {operators.map((user) => (
                   <tr className="border-b last:border-0" key={user.id}>
                     <td className="p-3">
-                      <div className="font-medium">{user.username}</div>
+                      <div className="font-medium">{user.name}</div>
                       <div className="text-muted-foreground">{user.email}</div>
                     </td>
                     <td className="p-3">
@@ -203,7 +203,7 @@ export function MembersSection({
                 {members?.map((member) => (
                   <tr className="border-b last:border-0" key={member.id}>
                     <td className="p-3">
-                      <div className="font-medium">{member.username}</div>
+                      <div className="font-medium">{member.name}</div>
                       <div className="text-muted-foreground">
                         {member.email}
                       </div>
