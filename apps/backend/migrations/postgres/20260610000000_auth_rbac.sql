@@ -35,7 +35,7 @@ CREATE INDEX idx_security_audit_created ON security_audit_events(created_at);
 UPDATE users
 SET instance_role = 'instance_owner'
 WHERE id = COALESCE(
-    (SELECT id FROM users WHERE username = 'admin' ORDER BY created_at LIMIT 1),
+    (SELECT id FROM users WHERE name = 'admin' ORDER BY created_at LIMIT 1),
     (SELECT id FROM users ORDER BY created_at, id LIMIT 1)
 )
 AND NOT EXISTS (SELECT 1 FROM users WHERE instance_role = 'instance_owner');

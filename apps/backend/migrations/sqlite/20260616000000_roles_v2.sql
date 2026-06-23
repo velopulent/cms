@@ -8,7 +8,7 @@ PRAGMA foreign_keys=OFF;
 -- Widen users.instance_role to allow instance_admin.
 CREATE TABLE users_new (
     id TEXT PRIMARY KEY NOT NULL,
-    username TEXT UNIQUE NOT NULL,
+    name TEXT NOT NULL,
     email TEXT UNIQUE NOT NULL,
     password_hash TEXT NOT NULL,
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
@@ -16,8 +16,8 @@ CREATE TABLE users_new (
     instance_role TEXT CHECK(instance_role IS NULL OR instance_role IN ('instance_owner', 'instance_admin')),
     must_change_password INTEGER NOT NULL DEFAULT 0
 );
-INSERT INTO users_new (id, username, email, password_hash, created_at, updated_at, instance_role, must_change_password)
-    SELECT id, username, email, password_hash, created_at, updated_at, instance_role, must_change_password FROM users;
+INSERT INTO users_new (id, name, email, password_hash, created_at, updated_at, instance_role, must_change_password)
+    SELECT id, name, email, password_hash, created_at, updated_at, instance_role, must_change_password FROM users;
 DROP TABLE users;
 ALTER TABLE users_new RENAME TO users;
 
