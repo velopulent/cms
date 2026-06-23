@@ -7,21 +7,21 @@ use axum::{
 use serde_json::json;
 use tracing::instrument;
 
-use crate::models::user::{ChangePasswordRequest, CreateUser, LoginRequest};
+use crate::models::user::{ChangePasswordRequest, CreateUser, LoginRequest, UpdateSelfProfile};
 use crate::services::Services;
 
 #[instrument(skip(services, payload))]
 pub async fn register(Extension(services): Extension<Services>, Json(payload): Json<CreateUser>) -> Response {
     let user = match services
         .auth
-        .register(&payload.username, &payload.email, &payload.password)
+        .register(&payload.name, &payload.email, &payload.password)
         .await
     {
         Ok(u) => u,
         Err(e) => return e.into_response(),
     };
 
-    let (token, csrf_token) = match services.auth.login(&payload.username, &payload.password).await {
+    let (token, csrf_token) = match services.auth.login(&payload.email, &payload.password).await {
         Ok((_, token, csrf)) => (token, csrf),
         Err(e) => return e.into_response(),
     };
@@ -31,7 +31,7 @@ pub async fn register(Extension(services): Extension<Services>, Json(payload): J
 
 #[instrument(skip(services, payload))]
 pub async fn login(Extension(services): Extension<Services>, Json(payload): Json<LoginRequest>) -> Response {
-    let (user, token, csrf_token) = match services.auth.login(&payload.username, &payload.password).await {
+    let (user, token, csrf_token) = match services.auth.login(&payload.email, &payload.password).await {
         Ok(result) => result,
         Err(e) => return e.into_response(),
     };
@@ -126,6 +126,24 @@ pub async fn change_password(
         .await
     {
         Ok(()) => services.auth.build_logout_response(),
+        Err(error) => error.into_response(),
+    }
+}
+
+pub async fn update_me(
+    Extension(services): Extension<Services>,
+    auth: crate::middleware::auth::AuthContext,
+    Json(payload): Json<UpdateSelfProfile>,
+) -> Response {
+    let crate::middleware::auth::Actor::User(user) = &auth.actor else {
+        return (
+            StatusCode::UNAUTHORIZED,
+            Json(json!({"error": "Session authentication required"})),
+        )
+            .into_response();
+    };
+    match services.auth.update_self_name(&user.user_id, &payload.name).await {
+        Ok(user) => (StatusCode::OK, Json(user)).into_response(),
         Err(error) => error.into_response(),
     }
 }
