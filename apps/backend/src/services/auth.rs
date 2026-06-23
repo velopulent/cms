@@ -72,13 +72,10 @@ impl AuthError {
     pub fn into_response(self) -> Response {
         let (status, body) = match self {
             AuthError::ValidationError(msg) => (StatusCode::BAD_REQUEST, Json(json!({"error": msg}))),
-            AuthError::UserExists => (
-                StatusCode::CONFLICT,
-                Json(json!({"error": "Username or email already exists"})),
-            ),
+            AuthError::UserExists => (StatusCode::CONFLICT, Json(json!({"error": "Email already exists"}))),
             AuthError::InvalidCredentials => (
                 StatusCode::UNAUTHORIZED,
-                Json(json!({"error": "Invalid name or password"})),
+                Json(json!({"error": "Invalid email or password"})),
             ),
             AuthError::RegistrationDisabled => (
                 StatusCode::FORBIDDEN,
@@ -190,6 +187,7 @@ impl AuthService {
 
     pub async fn login(&self, email: &str, password: &str) -> Result<(UserPublic, String, String), AuthError> {
         let email = email.trim();
+        let password = password.trim();
         debug!("Attempting login for email={}", email);
 
         let user = self
