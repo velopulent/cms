@@ -284,6 +284,7 @@ impl AuthService {
         temporary_password: &str,
         instance_role: Option<&str>,
     ) -> Result<UserPublic, AuthError> {
+        let temporary_password = temporary_password.trim();
         if temporary_password.len() < 8 {
             return Err(AuthError::ValidationError(
                 "Temporary password must be at least 8 characters".into(),
@@ -296,6 +297,8 @@ impl AuthService {
         if name.is_empty() || !EMAIL_RE.is_match(email) {
             return Err(AuthError::ValidationError("Invalid name or email".into()));
         }
+        // Validate the role before any DB write so a bad role never leaves an orphan user.
+        let instance_role = normalize_instance_role(instance_role)?;
         let id = Uuid::now_v7().to_string();
         let password_hash =
             hash(temporary_password, self.bcrypt_cost).map_err(|e| AuthError::HashError(e.to_string()))?;
@@ -306,7 +309,6 @@ impl AuthService {
                 RepositoryError::UniqueViolation(_) => AuthError::UserExists,
                 other => AuthError::DatabaseError(other.to_string()),
             })?;
-        let instance_role = normalize_instance_role(instance_role)?;
         self.user_repo
             .set_instance_role(&id, instance_role)
             .await
@@ -402,6 +404,7 @@ impl AuthService {
 
     /// Operator-driven password reset; forces a change on the user's next login.
     pub async fn admin_set_password(&self, user_id: &str, new_password: &str) -> Result<(), AuthError> {
+        let new_password = new_password.trim();
         if new_password.len() < 8 {
             return Err(AuthError::ValidationError(
                 "Password must be at least 8 characters".into(),
@@ -554,6 +557,8 @@ impl AuthService {
         current_password: &str,
         new_password: &str,
     ) -> Result<(), AuthError> {
+        let current_password = current_password.trim();
+        let new_password = new_password.trim();
         if new_password.len() < 8 {
             return Err(AuthError::ValidationError(
                 "Password must be at least 8 characters".into(),
