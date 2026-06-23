@@ -22,7 +22,7 @@ import { useAuth } from "@/contexts/auth-context";
 import { login as apiLogin } from "@/lib/api";
 
 const loginSchema = z.object({
-  username: z.string().min(1, "Username is required"),
+  email: z.string().email("Enter a valid email address"),
   password: z.string().min(1, "Password is required"),
 });
 
@@ -35,15 +35,10 @@ function LoginPage() {
   const auth = useAuth();
 
   const loginMutation = useMutation({
-    mutationFn: ({
-      username,
-      password,
-    }: {
-      username: string;
-      password: string;
-    }) => apiLogin(username, password),
-    onSuccess: () => {
-      auth.login();
+    mutationFn: ({ email, password }: { email: string; password: string }) =>
+      apiLogin(email, password),
+    onSuccess: async () => {
+      await auth.login();
       toast.success("Logged in!");
       navigate({ to: "/" });
     },
@@ -54,7 +49,7 @@ function LoginPage() {
 
   const form = useForm({
     defaultValues: {
-      username: "",
+      email: "",
       password: "",
     },
     validators: {
@@ -82,22 +77,23 @@ function LoginPage() {
           >
             <FieldGroup>
               <form.Field
-                name="username"
+                name="email"
                 children={(field) => {
                   const isInvalid =
                     field.state.meta.isTouched && !field.state.meta.isValid;
                   return (
                     <Field data-invalid={isInvalid}>
-                      <FieldLabel htmlFor={field.name}>Username</FieldLabel>
+                      <FieldLabel htmlFor={field.name}>Email</FieldLabel>
                       <Input
                         id={field.name}
                         name={field.name}
+                        type="email"
                         value={field.state.value}
                         onBlur={field.handleBlur}
                         onChange={(e) => field.handleChange(e.target.value)}
                         disabled={loginMutation.isPending}
                         aria-invalid={isInvalid}
-                        autoComplete="username"
+                        autoComplete="email"
                       />
                       {isInvalid && (
                         <FieldError errors={field.state.meta.errors} />

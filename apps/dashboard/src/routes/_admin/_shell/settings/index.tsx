@@ -35,7 +35,7 @@ function GeneralInstanceSettings() {
         </CardDescription>
       </CardHeader>
       <CardContent className="divide-y">
-        <Row label="Signed in as" value={me?.username ?? "—"} />
+        <Row label="Signed in as" value={me?.name ?? "—"} />
         <Row label="Email" value={me?.email ?? "—"} />
         <Row label="Access" value={instanceRoleLabel(me?.instance_role)} />
       </CardContent>

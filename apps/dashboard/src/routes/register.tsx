@@ -22,10 +22,10 @@ import { useAuth } from "@/contexts/auth-context";
 import { register as apiRegister } from "@/lib/api";
 
 const registerSchema = z.object({
-  username: z
+  name: z
     .string()
-    .min(3, "Username must be at least 3 characters")
-    .max(32, "Username must be at most 32 characters"),
+    .min(1, "Name is required")
+    .max(64, "Name must be at most 64 characters"),
   email: z.string().email("Enter a valid email address"),
   password: z.string().min(8, "Password must be at least 8 characters"),
 });
@@ -40,16 +40,16 @@ function RegisterPage() {
 
   const registerMutation = useMutation({
     mutationFn: ({
-      username,
+      name,
       email,
       password,
     }: {
-      username: string;
+      name: string;
       email: string;
       password: string;
-    }) => apiRegister(username, email, password),
-    onSuccess: () => {
-      auth.login();
+    }) => apiRegister(name, email, password),
+    onSuccess: async () => {
+      await auth.login();
       toast.success("Account created!");
       navigate({ to: "/" });
     },
@@ -60,7 +60,7 @@ function RegisterPage() {
 
   const form = useForm({
     defaultValues: {
-      username: "",
+      name: "",
       email: "",
       password: "",
     },
@@ -89,22 +89,23 @@ function RegisterPage() {
           >
             <FieldGroup>
               <form.Field
-                name="username"
+                name="name"
                 children={(field) => {
                   const isInvalid =
                     field.state.meta.isTouched && !field.state.meta.isValid;
                   return (
                     <Field data-invalid={isInvalid}>
-                      <FieldLabel htmlFor={field.name}>Username</FieldLabel>
+                      <FieldLabel htmlFor={field.name}>Name</FieldLabel>
                       <Input
                         id={field.name}
                         name={field.name}
+                        placeholder="John Doe"
                         value={field.state.value}
                         onBlur={field.handleBlur}
                         onChange={(e) => field.handleChange(e.target.value)}
                         disabled={registerMutation.isPending}
                         aria-invalid={isInvalid}
-                        autoComplete="username"
+                        autoComplete="name"
                       />
                       {isInvalid && (
                         <FieldError errors={field.state.meta.errors} />
