@@ -98,7 +98,7 @@ impl SiteRepository for MysqlSiteRepository {
              FROM site_members sm
              JOIN users u ON sm.user_id = u.id
              WHERE sm.site_id = ?
-             ORDER BY sm.role DESC, u.name",
+             ORDER BY sm.role DESC, u.name, u.id",
         )
         .bind(site_id)
         .fetch_all(&self.pool)
