@@ -15,12 +15,12 @@ use crate::repository::error::RepositoryError;
 
 #[async_trait]
 pub trait UserRepository: Send + Sync {
-    async fn find_by_username(&self, username: &str) -> Result<Option<User>, RepositoryError>;
+    async fn find_by_email(&self, email: &str) -> Result<Option<User>, RepositoryError>;
     async fn find_by_id(&self, id: &str) -> Result<Option<User>, RepositoryError>;
     async fn list(&self) -> Result<Vec<User>, RepositoryError>;
-    async fn find_id_by_username(&self, username: &str) -> Result<Option<String>, RepositoryError>;
-    async fn create(&self, id: &str, username: &str, email: &str, password_hash: &str) -> Result<(), RepositoryError>;
-    async fn exists(&self, username: &str) -> Result<bool, RepositoryError>;
+    async fn find_id_by_name(&self, name: &str) -> Result<Option<String>, RepositoryError>;
+    async fn create(&self, id: &str, name: &str, email: &str, password_hash: &str) -> Result<(), RepositoryError>;
+    async fn exists(&self, name: &str) -> Result<bool, RepositoryError>;
     async fn get_role(&self, user_id: &str, site_id: &str) -> Result<Option<String>, RepositoryError>;
     async fn count(&self) -> Result<i64, RepositoryError>;
     async fn count_instance_owners(&self) -> Result<i64, RepositoryError>;
@@ -31,6 +31,8 @@ pub trait UserRepository: Send + Sync {
         password_hash: &str,
         must_change: bool,
     ) -> Result<u64, RepositoryError>;
+    async fn update_profile(&self, user_id: &str, name: &str, email: &str) -> Result<u64, RepositoryError>;
+    async fn delete(&self, user_id: &str) -> Result<u64, RepositoryError>;
 }
 
 #[async_trait]
