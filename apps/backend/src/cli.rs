@@ -139,10 +139,10 @@ pub enum ConfigAction {
 
 #[derive(Subcommand, Debug)]
 pub enum AdminAction {
-    /// Reset a user's password.
+    /// Reset a user's password. The user is identified by their unique login email.
     ResetPassword {
-        #[arg(long, value_name = "NAME")]
-        name: String,
+        #[arg(long, value_name = "EMAIL")]
+        email: String,
         #[arg(long, value_name = "PASSWORD")]
         password: String,
     },

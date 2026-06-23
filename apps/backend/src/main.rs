@@ -312,14 +312,14 @@ async fn run_admin(action: &AdminAction, cli: &Cli) -> Result<(), Box<dyn Error>
     let repository = Repository::new(&pool);
 
     match action {
-        AdminAction::ResetPassword { name, password } => {
-            let id = match repository.user.find_id_by_name(name).await? {
-                Some(id) => id,
-                None => return Err(format!("User '{name}' not found").into()),
+        AdminAction::ResetPassword { email, password } => {
+            let id = match repository.user.find_by_email(email).await? {
+                Some(user) => user.id,
+                None => return Err(format!("User with email '{email}' not found").into()),
             };
             let password_hash = bcrypt::hash(password, bcrypt::DEFAULT_COST)?;
             repository.user.update_password(&id, &password_hash, false).await?;
-            println!("Password updated for user '{name}'.");
+            println!("Password updated for user with email '{email}'.");
         }
     }
     Ok(())
