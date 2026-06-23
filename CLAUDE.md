@@ -72,7 +72,7 @@ vcms serve                             # run the server
 vcms config init [--force] [--path P]  # write a default config.toml (non-secrets only)
 vcms config show                       # print effective merged config (secrets redacted)
 vcms config path                       # print resolved config file + search order
-vcms admin reset-password --name U --password P
+vcms admin reset-password --email U --password P
 vcms backup create [--scope instance|site] [--site ID] [--out FILE] [--no-files] [--encrypt]
 vcms backup list                       # list recorded backups
 vcms restore --file PATH [--scope instance|site] [--site ID] [--import-as-new] --yes

@@ -69,7 +69,7 @@ bun run build
 ./target/release/vcms
 ```
 
-Visit `http://localhost:3000` and log in with:
+Visit `http://localhost:3000/dashboard` and log in with:
 - **Email:** `admin@cms.local`
 - **Password:** `admin`
 
@@ -168,6 +168,7 @@ git clone https://github.com/velopulent/cms
 ```bash
 # Run development server
 cd cms
+bun install
 bun run dev
 ```
 
