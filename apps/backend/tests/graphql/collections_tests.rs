@@ -5,7 +5,7 @@ use crate::common::TestServer;
 async fn setup(server: &TestServer) -> (String, String) {
     let client = reqwest::Client::builder().build().unwrap();
 
-    let resp = server.login_user(&client, "admin", "admin").await;
+    let resp = server.login_user(&client, "admin@cms.local", "admin").await;
     let headers = resp.headers();
     let mut token = String::new();
     let mut csrf = String::new();

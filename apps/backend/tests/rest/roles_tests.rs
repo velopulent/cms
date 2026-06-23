@@ -4,10 +4,17 @@ use crate::common::{TestServer, auth::auth_header};
 
 // ── helpers ──
 
-async fn login(server: &TestServer, username: &str, password: &str) -> (String, String) {
+async fn login(server: &TestServer, name: &str, password: &str) -> (String, String) {
     let client = reqwest::Client::builder().build().unwrap();
-    let resp = server.login_user(&client, username, password).await;
-    assert_eq!(resp.status(), 200, "login failed for {username}");
+    // Login is by email; map the logical name to the email these helpers assign
+    // (the seeded admin is admin@cms.local; managed users are {name}@example.com).
+    let email = if name == "admin" {
+        "admin@cms.local".to_string()
+    } else {
+        format!("{name}@example.com")
+    };
+    let resp = server.login_user(&client, &email, password).await;
+    assert_eq!(resp.status(), 200, "login failed for {name}");
     let mut token = String::new();
     let mut csrf = String::new();
     for cookie in resp.headers().get_all("set-cookie").iter() {
@@ -43,7 +50,7 @@ async fn create_user(
     server: &TestServer,
     token: &str,
     csrf: &str,
-    username: &str,
+    name: &str,
     instance_role: Option<&str>,
 ) -> reqwest::Response {
     let client = reqwest::Client::builder().build().unwrap();
@@ -51,8 +58,8 @@ async fn create_user(
         .post(format!("{}/api/dashboard/instance/users", server.base_url))
         .headers(auth_header(token, csrf))
         .json(&json!({
-            "username": username,
-            "email": format!("{username}@example.com"),
+            "name": name,
+            "email": format!("{name}@example.com"),
             "temporary_password": "password123",
             "instance_role": instance_role,
         }))
@@ -66,14 +73,20 @@ async fn invite_member(
     token: &str,
     csrf: &str,
     site_id: &str,
-    username: &str,
+    name: &str,
     role: &str,
 ) -> reqwest::Response {
     let client = reqwest::Client::builder().build().unwrap();
+    // Members are invited by email; map the logical name to its assigned email.
+    let email = if name == "admin" {
+        "admin@cms.local".to_string()
+    } else {
+        format!("{name}@example.com")
+    };
     client
         .post(format!("{}/api/dashboard/sites/{}/members", server.base_url, site_id))
         .headers(auth_header(token, csrf))
-        .json(&json!({"username": username, "role": role}))
+        .json(&json!({"email": email, "role": role}))
         .send()
         .await
         .unwrap()
@@ -421,4 +434,121 @@ async fn editor_cannot_delete_site() {
         .await
         .unwrap();
     assert_eq!(resp.status(), 403);
+}
+
+// ── instance user management (update / reset password / delete) ──
+
+async fn user_id_from(resp: reqwest::Response) -> String {
+    let body: Value = resp.json().await.unwrap();
+    body["id"].as_str().unwrap().to_string()
+}
+
+#[tokio::test]
+async fn operator_updates_user_profile() {
+    let server = TestServer::start().await;
+    let (token, csrf) = login(&server, "admin", "admin").await;
+    let id = user_id_from(create_user(&server, &token, &csrf, "member", None).await).await;
+
+    let client = reqwest::Client::builder().build().unwrap();
+    let resp = client
+        .put(format!("{}/api/dashboard/instance/users/{}", server.base_url, id))
+        .headers(auth_header(&token, &csrf))
+        .json(&json!({"name": "Renamed Member", "email": "renamed@example.com"}))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), 204);
+
+    // The user can now log in with the new email.
+    let login = server.login_user(&client, "renamed@example.com", "password123").await;
+    assert_eq!(login.status(), 200);
+}
+
+#[tokio::test]
+async fn operator_resets_user_password() {
+    let server = TestServer::start().await;
+    let (token, csrf) = login(&server, "admin", "admin").await;
+    let id = user_id_from(create_user(&server, &token, &csrf, "member", None).await).await;
+
+    let client = reqwest::Client::builder().build().unwrap();
+    let resp = client
+        .post(format!(
+            "{}/api/dashboard/instance/users/{}/password",
+            server.base_url, id
+        ))
+        .headers(auth_header(&token, &csrf))
+        .json(&json!({"new_password": "brandnewpass"}))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), 204);
+
+    let login = server.login_user(&client, "member@example.com", "brandnewpass").await;
+    assert_eq!(login.status(), 200);
+}
+
+#[tokio::test]
+async fn operator_deletes_user() {
+    let server = TestServer::start().await;
+    let (token, csrf) = login(&server, "admin", "admin").await;
+    let id = user_id_from(create_user(&server, &token, &csrf, "member", None).await).await;
+
+    let client = reqwest::Client::builder().build().unwrap();
+    let resp = client
+        .delete(format!("{}/api/dashboard/instance/users/{}", server.base_url, id))
+        .headers(auth_header(&token, &csrf))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), 204);
+
+    // The deleted user can no longer authenticate.
+    let login = server.login_user(&client, "member@example.com", "password123").await;
+    assert_eq!(login.status(), 401);
+}
+
+#[tokio::test]
+async fn cannot_delete_own_account() {
+    let server = TestServer::start().await;
+    let (token, csrf) = login(&server, "admin", "admin").await;
+
+    let client = reqwest::Client::builder().build().unwrap();
+    let me: Value = client
+        .get(format!("{}/api/auth/me", server.base_url))
+        .headers(auth_header(&token, &csrf))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    let my_id = me["id"].as_str().unwrap();
+
+    let resp = client
+        .delete(format!("{}/api/dashboard/instance/users/{}", server.base_url, my_id))
+        .headers(auth_header(&token, &csrf))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), 400);
+}
+
+#[tokio::test]
+async fn user_updates_own_display_name() {
+    let server = TestServer::start().await;
+    let (token, csrf) = login(&server, "admin", "admin").await;
+    create_user(&server, &token, &csrf, "member", None).await;
+
+    let (m_token, m_csrf) = login(&server, "member", "password123").await;
+    let client = reqwest::Client::builder().build().unwrap();
+    let resp = client
+        .put(format!("{}/api/auth/me", server.base_url))
+        .headers(auth_header(&m_token, &m_csrf))
+        .json(&json!({"name": "Jane Doe"}))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), 200);
+    let body: Value = resp.json().await.unwrap();
+    assert_eq!(body["name"], "Jane Doe");
 }
