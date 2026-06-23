@@ -141,8 +141,8 @@ pub enum ConfigAction {
 pub enum AdminAction {
     /// Reset a user's password.
     ResetPassword {
-        #[arg(long, value_name = "USERNAME")]
-        username: String,
+        #[arg(long, value_name = "NAME")]
+        name: String,
         #[arg(long, value_name = "PASSWORD")]
         password: String,
     },

@@ -312,14 +312,14 @@ async fn run_admin(action: &AdminAction, cli: &Cli) -> Result<(), Box<dyn Error>
     let repository = Repository::new(&pool);
 
     match action {
-        AdminAction::ResetPassword { username, password } => {
-            let id = match repository.user.find_id_by_username(username).await? {
+        AdminAction::ResetPassword { name, password } => {
+            let id = match repository.user.find_id_by_name(name).await? {
                 Some(id) => id,
-                None => return Err(format!("User '{username}' not found").into()),
+                None => return Err(format!("User '{name}' not found").into()),
             };
             let password_hash = bcrypt::hash(password, bcrypt::DEFAULT_COST)?;
             repository.user.update_password(&id, &password_hash, false).await?;
-            println!("Password updated for user '{username}'.");
+            println!("Password updated for user '{name}'.");
         }
     }
     Ok(())
@@ -487,13 +487,14 @@ async fn seed_admin(repository: &Repository) {
             .await
             .expect("Failed to require password change");
 
-        warn!("Seeded default admin user (admin/admin) — CHANGE THE PASSWORD IMMEDIATELY!");
+        warn!("Seeded default admin user (admin@cms.local / admin) — CHANGE THE PASSWORD IMMEDIATELY!");
         eprintln!(
             "\n\
              ============================ SECURITY WARNING ============================\n\
-             A default admin account was created:  username 'admin'  password 'admin'\n\
-             Anyone who can reach this server can log in until you change it. Run:\n\
-             \n    vcms admin reset-password --username admin --password <new-strong-password>\n\n\
+             A default admin account was created:  email 'admin@cms.local'  password 'admin'\n\
+             Sign in with the email and password. Anyone who can reach this server can log\n\
+             in until you change it. Run:\n\
+             \n    vcms admin reset-password --name admin --password <new-strong-password>\n\n\
              or change it from the dashboard now. Do NOT expose this server until done.\n\
              =========================================================================\n"
         );
