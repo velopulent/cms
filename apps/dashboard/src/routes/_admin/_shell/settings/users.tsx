@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
 import { MoreHorizontal, UserPlus } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { CreateUserDialog } from "@/components/instance/create-user-dialog";
 import { Badge } from "@/components/ui/badge";
@@ -302,8 +302,17 @@ function EditUserDialog({
   onOpenChange: (open: boolean) => void;
   onSaved: () => void;
 }) {
-  const [name, setUsername] = useState("");
+  const [name, setName] = useState("");
   const [email, setEmail] = useState("");
+
+  // The dialog is controlled via `open={!!user}`, so Radix's onOpenChange does not
+  // fire when the parent selects a user. Prefill from the user prop instead.
+  useEffect(() => {
+    if (user) {
+      setName(user.name);
+      setEmail(user.email);
+    }
+  }, [user]);
 
   const mutation = useMutation({
     mutationFn: () => {
@@ -319,16 +328,7 @@ function EditUserDialog({
   });
 
   return (
-    <Dialog
-      open={!!user}
-      onOpenChange={(open) => {
-        if (open && user) {
-          setUsername(user.name);
-          setEmail(user.email);
-        }
-        onOpenChange(open);
-      }}
-    >
+    <Dialog open={!!user} onOpenChange={onOpenChange}>
       <DialogContent>
         <DialogHeader>
           <DialogTitle>Edit user</DialogTitle>
@@ -351,7 +351,7 @@ function EditUserDialog({
                 required
                 minLength={1}
                 value={name}
-                onChange={(event) => setUsername(event.target.value)}
+                onChange={(event) => setName(event.target.value)}
               />
             </Field>
             <Field>
