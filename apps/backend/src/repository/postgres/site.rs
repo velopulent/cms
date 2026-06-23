@@ -94,11 +94,11 @@ impl SiteRepository for PostgresSiteRepository {
 
     async fn list_members(&self, site_id: &str) -> Result<Vec<SiteMember>, RepositoryError> {
         let result = sqlx::query_as::<_, SiteMember>(
-            "SELECT sm.id, sm.site_id, sm.user_id, u.username, u.email, sm.role, sm.created_at::text as created_at
+            "SELECT sm.id, sm.site_id, sm.user_id, u.name, u.email, sm.role, sm.created_at::text as created_at
              FROM site_members sm
              JOIN users u ON sm.user_id = u.id
              WHERE sm.site_id = $1
-             ORDER BY sm.role DESC, u.username",
+             ORDER BY sm.role DESC, u.name",
         )
         .bind(site_id)
         .fetch_all(&self.pool)
@@ -123,7 +123,7 @@ impl SiteRepository for PostgresSiteRepository {
             .await?;
 
         let result = sqlx::query_as::<_, SiteMember>(
-            "SELECT sm.id, sm.site_id, sm.user_id, u.username, u.email, sm.role, sm.created_at::text as created_at
+            "SELECT sm.id, sm.site_id, sm.user_id, u.name, u.email, sm.role, sm.created_at::text as created_at
              FROM site_members sm JOIN users u ON sm.user_id = u.id WHERE sm.id = $1",
         )
         .bind(id)
@@ -151,7 +151,7 @@ impl SiteRepository for PostgresSiteRepository {
         }
 
         let member = sqlx::query_as::<_, SiteMember>(
-            "SELECT sm.id, sm.site_id, sm.user_id, u.username, u.email, sm.role, sm.created_at::text as created_at
+            "SELECT sm.id, sm.site_id, sm.user_id, u.name, u.email, sm.role, sm.created_at::text as created_at
              FROM site_members sm JOIN users u ON sm.user_id = u.id
              WHERE sm.site_id = $1 AND sm.user_id = $2",
         )
