@@ -151,11 +151,9 @@ async fn test_register_duplicate_email() {
 
     let status = resp.status();
     let body: serde_json::Value = resp.json().await.unwrap_or_default();
-    assert!(
-        status == 409 || status == 400,
-        "Expected 409 or 400 for duplicate email, got {}: {:?}",
-        status,
-        body
+    assert_eq!(
+        status, 409,
+        "Expected 409 Conflict for duplicate email, got {status}: {body:?}"
     );
 }
 
