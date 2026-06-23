@@ -494,7 +494,7 @@ async fn seed_admin(repository: &Repository) {
              A default admin account was created:  email 'admin@cms.local'  password 'admin'\n\
              Sign in with the email and password. Anyone who can reach this server can log\n\
              in until you change it. Run:\n\
-             \n    vcms admin reset-password --name admin --password <new-strong-password>\n\n\
+             \n    vcms admin reset-password --email admin@cms.local --password <new-strong-password>\n\n\
              or change it from the dashboard now. Do NOT expose this server until done.\n\
              =========================================================================\n"
         );
