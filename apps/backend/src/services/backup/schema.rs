@@ -61,7 +61,7 @@ pub static TABLES: &[TableSpec] = &[
         site_where: SiteWhere::InstanceOnly,
         columns: &[
             col("id", Text),
-            col("username", Text),
+            col("name", Text),
             col("email", Text),
             col("password_hash", Text),
             col("instance_role", Text),
