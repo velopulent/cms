@@ -71,7 +71,7 @@ vcms serve                             # run the server
 vcms config init [--force] [--path P]  # write a default config.toml (non-secrets only)
 vcms config show                       # print effective merged config (secrets redacted)
 vcms config path                       # print resolved config file + search order
-vcms admin reset-password --username U --password P
+vcms admin reset-password --name U --password P
 vcms backup create [--scope instance|site] [--site ID] [--out FILE] [--no-files] [--encrypt]
 vcms backup list                       # list recorded backups
 vcms restore --file PATH [--scope instance|site] [--site ID] [--import-as-new] --yes
@@ -92,7 +92,7 @@ Layers merge with precedence: **CLI flag > env var > config file > built-in defa
 
 Config file search order (first existing wins; missing is fine):
 1. `--config` flag / `VCMS_CONFIG` env
-2. `./cms.toml` (current dir)
+2. `./vcms.toml` (current dir)
 3. `~/.vcms/config.toml` (CMS home; `$VCMS_HOME/config.toml` if set) — where `vcms config init` writes
 4. `/etc/vcms/config.toml`
 
@@ -199,9 +199,11 @@ Logging keys map to the `[log]` table: `RUST_LOG`→`log.level`, `LOG_OUTPUT`→
 ## First-Run Behavior
 
 On initial startup, the server seeds a default admin user (the first user created
-is automatically granted the `instance_owner` role):
-- Username: `admin`
+is automatically granted the `instance_owner` role). **Login is by email**; the
+`name` field is a display name (non-unique, e.g. "John Doe"):
+- Email: `admin@cms.local`
 - Password: `admin`
+- Display name: `admin`
 **Change this password immediately in production.**
 
 ## Authorization (RBAC)

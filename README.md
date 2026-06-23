@@ -70,10 +70,11 @@ bun run build
 ```
 
 Visit `http://localhost:3000` and log in with:
-- **Username:** `admin`
+- **Email:** `admin@cms.local`
 - **Password:** `admin`
 
-*Change the default password after your first login.*
+*Login is by email; the name field is just a display name. Change the default
+password after your first login.*
 
 ### Access Your Content
 
