@@ -3,9 +3,6 @@ import { useNavigate, useParams } from "@tanstack/react-router";
 import { ChevronsUpDown, LayoutDashboard, Plus } from "lucide-react";
 import type * as React from "react";
 import { useState } from "react";
-
-import { getMe, isOperator } from "@/lib/api";
-
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -22,6 +19,7 @@ import {
   useSidebar,
 } from "@/components/ui/sidebar";
 import { Skeleton } from "@/components/ui/skeleton";
+import { getMe, isOperator } from "@/lib/api";
 import { SiteAvatar } from "../site-avatar";
 
 interface Site {

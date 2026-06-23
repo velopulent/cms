@@ -51,9 +51,9 @@ import {
   isOperator,
   ROLE_USER,
   type RoleValue,
+  type UserPublic,
   updateInstanceRole,
   updateUser,
-  type UserPublic,
 } from "@/lib/api";
 
 export const Route = createFileRoute("/_admin/_shell/settings/users")({

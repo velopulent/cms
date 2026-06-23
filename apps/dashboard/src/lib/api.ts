@@ -461,11 +461,7 @@ export async function login(email: string, password: string) {
   });
 }
 
-export async function register(
-  name: string,
-  email: string,
-  password: string,
-) {
+export async function register(name: string, email: string, password: string) {
   return authApi<AuthResponse>("/register", {
     method: "POST",
     body: JSON.stringify({ name, email, password }),
