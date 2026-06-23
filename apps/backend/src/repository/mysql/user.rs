@@ -48,15 +48,6 @@ impl UserRepository for MysqlUserRepository {
         ).fetch_all(&self.pool).await?)
     }
 
-    async fn find_id_by_name(&self, name: &str) -> Result<Option<String>, RepositoryError> {
-        let result: Option<(String,)> = sqlx::query_as("SELECT id FROM users WHERE name = ?")
-            .bind(name)
-            .fetch_optional(&self.pool)
-            .await?;
-
-        Ok(result.map(|(id,)| id))
-    }
-
     async fn create(&self, id: &str, name: &str, email: &str, password_hash: &str) -> Result<(), RepositoryError> {
         sqlx::query("INSERT INTO users (id, name, email, password_hash) VALUES (?, ?, ?, ?)")
             .bind(id)

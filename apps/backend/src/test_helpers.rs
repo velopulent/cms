@@ -92,11 +92,6 @@ impl UserRepository for InMemoryUserRepository {
         Ok(self.users.lock().unwrap().clone())
     }
 
-    async fn find_id_by_name(&self, name: &str) -> Result<Option<String>, RepositoryError> {
-        let users = self.users.lock().unwrap();
-        Ok(users.iter().find(|u| u.name == name).map(|u| u.id.clone()))
-    }
-
     async fn create(&self, id: &str, name: &str, email: &str, password_hash: &str) -> Result<(), RepositoryError> {
         let mut users = self.users.lock().unwrap();
         let mut by_name = self.by_name.lock().unwrap();
