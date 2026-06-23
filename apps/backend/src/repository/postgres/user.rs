@@ -62,9 +62,9 @@ impl UserRepository for PostgresUserRepository {
         Ok(())
     }
 
-    async fn exists(&self, name: &str) -> Result<bool, RepositoryError> {
-        let result: Option<(String,)> = sqlx::query_as("SELECT id FROM users WHERE name = $1")
-            .bind(name)
+    async fn exists(&self, email: &str) -> Result<bool, RepositoryError> {
+        let result: Option<(String,)> = sqlx::query_as("SELECT id FROM users WHERE email = $1")
+            .bind(email)
             .fetch_optional(&self.pool)
             .await?;
 

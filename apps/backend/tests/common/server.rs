@@ -170,7 +170,7 @@ impl TestServer {
 }
 
 pub(crate) async fn seed_admin(repository: &Repository) {
-    if !repository.user.exists("admin").await.unwrap_or(false) {
+    if !repository.user.exists("admin@cms.local").await.unwrap_or(false) {
         let id = uuid::Uuid::now_v7().to_string();
         let password_hash = bcrypt::hash("admin", bcrypt::DEFAULT_COST).expect("Failed to hash password");
         repository

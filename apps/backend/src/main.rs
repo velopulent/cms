@@ -465,15 +465,19 @@ fn parse_scope(scope: &str, site: Option<&str>) -> Result<cms::services::backup:
     }
 }
 
+/// Email identity of the default admin account. Login is by email, so the seed
+/// gate keys on this (non-unique display name "admin" would be the wrong column).
+const ADMIN_EMAIL: &str = "admin@cms.local";
+
 async fn seed_admin(repository: &Repository) {
     debug!("Checking if admin user needs to be seeded");
-    if !repository.user.exists("admin").await.unwrap_or(false) {
+    if !repository.user.exists(ADMIN_EMAIL).await.unwrap_or(false) {
         info!("Seeding default admin user");
         let id = uuid::Uuid::now_v7().to_string();
         let password_hash = bcrypt::hash("admin", bcrypt::DEFAULT_COST).expect("Failed to hash password");
         repository
             .user
-            .create(&id, "admin", "admin@cms.local", &password_hash)
+            .create(&id, "admin", ADMIN_EMAIL, &password_hash)
             .await
             .expect("Failed to seed admin user");
         repository

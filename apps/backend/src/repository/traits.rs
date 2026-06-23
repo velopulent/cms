@@ -19,7 +19,7 @@ pub trait UserRepository: Send + Sync {
     async fn find_by_id(&self, id: &str) -> Result<Option<User>, RepositoryError>;
     async fn list(&self) -> Result<Vec<User>, RepositoryError>;
     async fn create(&self, id: &str, name: &str, email: &str, password_hash: &str) -> Result<(), RepositoryError>;
-    async fn exists(&self, name: &str) -> Result<bool, RepositoryError>;
+    async fn exists(&self, email: &str) -> Result<bool, RepositoryError>;
     async fn get_role(&self, user_id: &str, site_id: &str) -> Result<Option<String>, RepositoryError>;
     async fn count(&self) -> Result<i64, RepositoryError>;
     async fn count_instance_owners(&self) -> Result<i64, RepositoryError>;

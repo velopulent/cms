@@ -60,9 +60,9 @@ impl UserRepository for MysqlUserRepository {
         Ok(())
     }
 
-    async fn exists(&self, name: &str) -> Result<bool, RepositoryError> {
-        let result: Option<(String,)> = sqlx::query_as("SELECT id FROM users WHERE name = ?")
-            .bind(name)
+    async fn exists(&self, email: &str) -> Result<bool, RepositoryError> {
+        let result: Option<(String,)> = sqlx::query_as("SELECT id FROM users WHERE email = ?")
+            .bind(email)
             .fetch_optional(&self.pool)
             .await?;
 

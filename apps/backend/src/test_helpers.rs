@@ -118,9 +118,9 @@ impl UserRepository for InMemoryUserRepository {
         Ok(())
     }
 
-    async fn exists(&self, name: &str) -> Result<bool, RepositoryError> {
+    async fn exists(&self, email: &str) -> Result<bool, RepositoryError> {
         let users = self.users.lock().unwrap();
-        Ok(users.iter().any(|u| u.name == name))
+        Ok(users.iter().any(|u| u.email == email))
     }
 
     async fn get_role(&self, _user_id: &str, _site_id: &str) -> Result<Option<String>, RepositoryError> {
