@@ -156,11 +156,11 @@ impl TestServer {
         }
     }
 
-    pub async fn login_user(&self, client: &reqwest::Client, username: &str, password: &str) -> reqwest::Response {
+    pub async fn login_user(&self, client: &reqwest::Client, email: &str, password: &str) -> reqwest::Response {
         client
             .post(format!("{}/api/auth/login", self.base_url))
             .json(&serde_json::json!({
-                "username": username,
+                "email": email,
                 "password": password,
             }))
             .send()
