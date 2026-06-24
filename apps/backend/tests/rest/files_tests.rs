@@ -233,6 +233,79 @@ async fn test_batch_delete_files() {
     assert_eq!(body["deleted"], 3);
 }
 
+/// Regression: a file larger than the global 10MB body limit but within the
+/// configured upload cap (50MB in tests) must upload successfully. Before the
+/// fix, the global `RequestBodyLimitLayer(10MB)` capped every route regardless
+/// of the per-route override, so this returned 413 / aborted the connection.
+#[tokio::test]
+async fn test_upload_file_above_global_body_limit() {
+    let server = TestServer::start().await;
+    let (token, csrf, site_id) = setup(&server).await;
+    let api_key = get_api_key(&server, &token, &csrf, &site_id).await;
+    let client = reqwest::Client::builder().build().unwrap();
+
+    // 12MB > the 10MB global limit, < the 50MB configured upload cap.
+    let file_content = vec![b'a'; 12 * 1024 * 1024];
+    let part = reqwest::multipart::Part::bytes(file_content)
+        .file_name("big.txt")
+        .mime_str("text/plain")
+        .unwrap();
+    let form = reqwest::multipart::Form::new().part("file", part);
+
+    let resp = client
+        .post(format!("{}/files", server.base_url))
+        .headers(api_key_header(&api_key))
+        .multipart(form)
+        .send()
+        .await
+        .unwrap();
+
+    assert_eq!(
+        resp.status(),
+        201,
+        "12MB upload should succeed under the 50MB cap: {}",
+        resp.text().await.unwrap_or_default()
+    );
+}
+
+/// A file larger than the configured upload cap is rejected. The body-limit
+/// layer may reset the connection before the response is read (the documented
+/// tradeoff), so a transport error is an acceptable rejection too — what must
+/// never happen is a successful (2xx) upload.
+#[tokio::test]
+async fn test_upload_file_exceeds_max_size() {
+    let server = TestServer::start().await;
+    let (token, csrf, site_id) = setup(&server).await;
+    let api_key = get_api_key(&server, &token, &csrf, &site_id).await;
+    let client = reqwest::Client::builder().build().unwrap();
+
+    // 52MB > the 50MB configured upload cap.
+    let file_content = vec![b'a'; 52 * 1024 * 1024];
+    let part = reqwest::multipart::Part::bytes(file_content)
+        .file_name("toobig.txt")
+        .mime_str("text/plain")
+        .unwrap();
+    let form = reqwest::multipart::Form::new().part("file", part);
+
+    let result = client
+        .post(format!("{}/files", server.base_url))
+        .headers(api_key_header(&api_key))
+        .multipart(form)
+        .send()
+        .await;
+
+    match result {
+        Ok(resp) => assert_eq!(
+            resp.status(),
+            413,
+            "over-cap upload should be rejected with 413: {}",
+            resp.text().await.unwrap_or_default()
+        ),
+        // Connection reset by the body-limit layer before the response was read.
+        Err(_) => {}
+    }
+}
+
 #[tokio::test]
 async fn test_upload_file_invalid_mime_type() {
     let server = TestServer::start().await;
