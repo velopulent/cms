@@ -214,6 +214,36 @@ export interface ContentField {
   required?: boolean;
   options?: string[];
   accept?: string[];
+  // --- Per-field config (PocketBase-style). All optional & backward-compatible. ---
+  /** Help text shown under the input in the entry editor. */
+  help?: string;
+  /** Used as the display label when this collection is the target of a relation. */
+  presentable?: boolean;
+  /** Stored only; no behavior yet (omit from API responses — future). */
+  hidden?: boolean;
+  /** Text/textarea: min/max character length. */
+  min_length?: number;
+  max_length?: number;
+  /** Text: validation regex the value must match. */
+  pattern?: string;
+  /** rich_text/json: max payload size in bytes. */
+  max_size?: number;
+  /** rich_text: stored only (strip URL domains). */
+  strip_urls_domain?: boolean;
+  /** Number: inclusive bounds. */
+  min?: number;
+  max?: number;
+  /** select/file/relation: hold an array of values. */
+  multiple?: boolean;
+  /** select/file/relation: bounds on number of selected values. */
+  min_select?: number;
+  max_select?: number;
+  /** File: thumbnail size hints (stored only) + protected flag (stored only). */
+  thumb_sizes?: string[];
+  protected?: boolean;
+  /** Relation: target collection slug + cascade delete behavior. */
+  target_collection?: string;
+  cascade_delete?: boolean;
 }
 
 export interface Entry {
