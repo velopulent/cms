@@ -511,8 +511,16 @@ mod tests {
     fn validate_text_min_max_length() {
         let fields = json!([{"name": "t", "type": "text", "min_length": 3, "max_length": 5}]);
         let f = fields.as_array().unwrap();
-        assert!(validate_entry_data(&json!({"t": "ab"}), f).unwrap().contains("at least 3"));
-        assert!(validate_entry_data(&json!({"t": "abcdef"}), f).unwrap().contains("at most 5"));
+        assert!(
+            validate_entry_data(&json!({"t": "ab"}), f)
+                .unwrap()
+                .contains("at least 3")
+        );
+        assert!(
+            validate_entry_data(&json!({"t": "abcdef"}), f)
+                .unwrap()
+                .contains("at most 5")
+        );
         assert!(validate_entry_data(&json!({"t": "abcd"}), f).is_none());
     }
 
@@ -520,7 +528,11 @@ mod tests {
     fn validate_text_pattern() {
         let fields = json!([{"name": "code", "type": "text", "pattern": "^[a-z0-9]+$"}]);
         let f = fields.as_array().unwrap();
-        assert!(validate_entry_data(&json!({"code": "ABC"}), f).unwrap().contains("pattern"));
+        assert!(
+            validate_entry_data(&json!({"code": "ABC"}), f)
+                .unwrap()
+                .contains("pattern")
+        );
         assert!(validate_entry_data(&json!({"code": "abc123"}), f).is_none());
     }
 
@@ -528,7 +540,11 @@ mod tests {
     fn validate_email_format() {
         let fields = json!([{"name": "e", "type": "email"}]);
         let f = fields.as_array().unwrap();
-        assert!(validate_entry_data(&json!({"e": "nope"}), f).unwrap().contains("valid email"));
+        assert!(
+            validate_entry_data(&json!({"e": "nope"}), f)
+                .unwrap()
+                .contains("valid email")
+        );
         assert!(validate_entry_data(&json!({"e": "a@b.com"}), f).is_none());
     }
 
@@ -536,7 +552,11 @@ mod tests {
     fn validate_url_format() {
         let fields = json!([{"name": "u", "type": "url"}]);
         let f = fields.as_array().unwrap();
-        assert!(validate_entry_data(&json!({"u": "not a url"}), f).unwrap().contains("valid URL"));
+        assert!(
+            validate_entry_data(&json!({"u": "not a url"}), f)
+                .unwrap()
+                .contains("valid URL")
+        );
         assert!(validate_entry_data(&json!({"u": "https://example.com"}), f).is_none());
     }
 
@@ -544,7 +564,11 @@ mod tests {
     fn validate_json_max_size() {
         let fields = json!([{"name": "j", "type": "json", "max_size": 5}]);
         let f = fields.as_array().unwrap();
-        assert!(validate_entry_data(&json!({"j": {"a": "bbbbbb"}}), f).unwrap().contains("max size"));
+        assert!(
+            validate_entry_data(&json!({"j": {"a": "bbbbbb"}}), f)
+                .unwrap()
+                .contains("max size")
+        );
         assert!(validate_entry_data(&json!({"j": 1}), f).is_none());
     }
 
@@ -564,8 +588,16 @@ mod tests {
              "options": ["a", "b", "c"]}
         ]);
         let f = fields.as_array().unwrap();
-        assert!(validate_entry_data(&json!({"tags": ["a", "z"]}), f).unwrap().contains("allowed options"));
-        assert!(validate_entry_data(&json!({"tags": ["a", "b", "c"]}), f).unwrap().contains("at most 2"));
+        assert!(
+            validate_entry_data(&json!({"tags": ["a", "z"]}), f)
+                .unwrap()
+                .contains("allowed options")
+        );
+        assert!(
+            validate_entry_data(&json!({"tags": ["a", "b", "c"]}), f)
+                .unwrap()
+                .contains("at most 2")
+        );
         assert!(validate_entry_data(&json!({"tags": ["a", "b"]}), f).is_none());
     }
 
@@ -573,6 +605,10 @@ mod tests {
     fn validate_required_empty_array() {
         let fields = json!([{"name": "imgs", "type": "image", "multiple": true, "required": true}]);
         let f = fields.as_array().unwrap();
-        assert!(validate_entry_data(&json!({"imgs": []}), f).unwrap().contains("cannot be empty"));
+        assert!(
+            validate_entry_data(&json!({"imgs": []}), f)
+                .unwrap()
+                .contains("cannot be empty")
+        );
     }
 }

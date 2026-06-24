@@ -242,7 +242,10 @@ impl EntryService {
                     _ => false,
                 });
                 if references {
-                    info!("cascade delete: removing entry {} referencing deleted {}", e.id, deleted_id);
+                    info!(
+                        "cascade delete: removing entry {} referencing deleted {}",
+                        e.id, deleted_id
+                    );
                     let _ = Box::pin(self.delete_entry(&e.id, site_id)).await;
                 }
             }

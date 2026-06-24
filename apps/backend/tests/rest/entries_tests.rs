@@ -731,7 +731,10 @@ async fn create_collection_with_def(
 ) -> String {
     let client = reqwest::Client::builder().build().unwrap();
     let resp = client
-        .post(format!("{}/api/dashboard/sites/{}/collections", server.base_url, site_id))
+        .post(format!(
+            "{}/api/dashboard/sites/{}/collections",
+            server.base_url, site_id
+        ))
         .headers(auth_header(token, csrf))
         .json(&json!({"name": name, "slug": slug, "definition": definition}))
         .send()
@@ -853,7 +856,16 @@ async fn test_relation_existence_validation() {
         json!({"fields": [{"name": "name", "type": "text"}]}),
     )
     .await;
-    let author = create_entry(&server, &token, &csrf, &site_id, &authors_id, "jane", json!({"name": "Jane"})).await;
+    let author = create_entry(
+        &server,
+        &token,
+        &csrf,
+        &site_id,
+        &authors_id,
+        "jane",
+        json!({"name": "Jane"}),
+    )
+    .await;
     let author_id = author["id"].as_str().unwrap();
 
     let posts_id = create_collection_with_def(
