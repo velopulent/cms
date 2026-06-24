@@ -104,7 +104,7 @@ export function AppSidebar({ ...props }: ComponentProps<typeof Sidebar>) {
   const settingsUrl = `/sites/${siteId}/settings`;
 
   const navUser = {
-    name: auth.user?.username ?? "User",
+    name: auth.user?.name ?? "User",
     email: auth.user?.email ?? "",
     avatar: "",
   };

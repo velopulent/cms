@@ -84,6 +84,14 @@ async fn run_serve(cli: &Cli) -> Result<(), Box<dyn Error>> {
         backup_service.clone(),
     );
 
+    // Reconcile backups/restore jobs left mid-flight by a previous process: any
+    // running/pending row at startup is orphaned (backups only run in-process).
+    match cms::services::backup::meta::fail_orphaned(&pool, &cms::services::backup::now_iso()).await {
+        Ok(n) if n > 0 => info!("Reconciled {n} interrupted backup job(s) to failed"),
+        Ok(_) => {}
+        Err(e) => tracing::error!("Failed to reconcile interrupted backups: {e}"),
+    }
+
     if config.backup_enabled {
         let scheduler_service = backup_service.clone();
         tokio::spawn(async move {
@@ -154,11 +162,11 @@ async fn run_serve(cli: &Cli) -> Result<(), Box<dyn Error>> {
 
 async fn run_mcp_stdio(cli: &Cli) -> Result<(), Box<dyn Error>> {
     // Read-only: never create the home dir, database, or secrets file here. The
-    // persisted secrets written by `cms serve` are what make this process verify
+    // persisted secrets written by `vcms serve` are what make this process verify
     // the site token with the same HMAC secret the server signed it with.
     if cms::secrets::load()?.is_none() && std::env::var("HMAC_SECRET").is_err() {
-        return Err("No instance secrets found. Run `cms serve` once to initialize \
-                    ~/.cms (or set HMAC_SECRET) before `cms mcp stdio`."
+        return Err("No instance secrets found. Run `vcms serve` once to initialize \
+                    ~/.vcms (or set HMAC_SECRET) before `vcms mcp stdio`."
             .into());
     }
 
@@ -175,9 +183,9 @@ async fn run_mcp_stdio(cli: &Cli) -> Result<(), Box<dyn Error>> {
         return Err(format!("Invalid production security configuration: {error}").into());
     }
 
-    let token = std::env::var("CMS_MCP_TOKEN").map_err(|_| "CMS_MCP_TOKEN is required for `cms mcp stdio`")?;
+    let token = std::env::var("VCMS_MCP_TOKEN").map_err(|_| "VCMS_MCP_TOKEN is required for `vcms mcp stdio`")?;
     if token.trim().is_empty() {
-        return Err("CMS_MCP_TOKEN must not be empty".into());
+        return Err("VCMS_MCP_TOKEN must not be empty".into());
     }
 
     let pool = connect_db_without_migrations(&config).await?;
@@ -215,7 +223,7 @@ async fn run_mcp_stdio(cli: &Cli) -> Result<(), Box<dyn Error>> {
 fn initialize_storage(config: &Config) -> Arc<StorageRegistry> {
     let mut storage_registry = StorageRegistry::new();
 
-    // Use an explicit filesystem path if set; otherwise default to ~/.cms/storage
+    // Use an explicit filesystem path if set; otherwise default to ~/.vcms/storage
     // so uploads work out of the box — unless S3 is configured and takes over.
     let fs_path = match (&config.storage_fs_path, config.has_s3()) {
         (Some(path), _) => Some(path.clone()),
@@ -284,8 +292,8 @@ fn run_config(action: &ConfigAction, cli: &Cli) -> Result<(), Box<dyn Error>> {
             }
             println!("\nSearch order (first existing wins):");
             match &cli.config {
-                Some(explicit) => println!("  1. --config / CMS_CONFIG: {}", explicit.display()),
-                None => println!("  1. --config / CMS_CONFIG: <not set>"),
+                Some(explicit) => println!("  1. --config / VCMS_CONFIG: {}", explicit.display()),
+                None => println!("  1. --config / VCMS_CONFIG: <not set>"),
             }
             for (i, p) in config::config_search_paths().iter().enumerate() {
                 let marker = if p.exists() { " (exists)" } else { "" };
@@ -304,14 +312,14 @@ async fn run_admin(action: &AdminAction, cli: &Cli) -> Result<(), Box<dyn Error>
     let repository = Repository::new(&pool);
 
     match action {
-        AdminAction::ResetPassword { username, password } => {
-            let id = match repository.user.find_id_by_username(username).await? {
-                Some(id) => id,
-                None => return Err(format!("User '{username}' not found").into()),
+        AdminAction::ResetPassword { email, password } => {
+            let id = match repository.user.find_by_email(email).await? {
+                Some(user) => user.id,
+                None => return Err(format!("User with email '{email}' not found").into()),
             };
             let password_hash = bcrypt::hash(password, bcrypt::DEFAULT_COST)?;
             repository.user.update_password(&id, &password_hash, false).await?;
-            println!("Password updated for user '{username}'.");
+            println!("Password updated for user with email '{email}'.");
         }
     }
     Ok(())
@@ -435,6 +443,14 @@ async fn run_restore(
         })
         .await?;
     println!("Restore complete.");
+    let reindex_path = match (scope, site) {
+        ("site", Some(sid)) => format!("/api/dashboard/sites/{sid}/search/reindex"),
+        _ => "/api/dashboard/instance/search/reindex".to_string(),
+    };
+    println!(
+        "Note: the full-text search index may now be stale. Rebuild it from the dashboard \
+         (Settings → Backups → Rebuild search index) or POST {reindex_path} once the server is running."
+    );
     Ok(())
 }
 
@@ -449,15 +465,19 @@ fn parse_scope(scope: &str, site: Option<&str>) -> Result<cms::services::backup:
     }
 }
 
+/// Email identity of the default admin account. Login is by email, so the seed
+/// gate keys on this (non-unique display name "admin" would be the wrong column).
+const ADMIN_EMAIL: &str = "admin@cms.local";
+
 async fn seed_admin(repository: &Repository) {
     debug!("Checking if admin user needs to be seeded");
-    if !repository.user.exists("admin").await.unwrap_or(false) {
+    if !repository.user.exists(ADMIN_EMAIL).await.unwrap_or(false) {
         info!("Seeding default admin user");
         let id = uuid::Uuid::now_v7().to_string();
         let password_hash = bcrypt::hash("admin", bcrypt::DEFAULT_COST).expect("Failed to hash password");
         repository
             .user
-            .create(&id, "admin", "admin@cms.local", &password_hash)
+            .create(&id, "admin", ADMIN_EMAIL, &password_hash)
             .await
             .expect("Failed to seed admin user");
         repository
@@ -471,13 +491,14 @@ async fn seed_admin(repository: &Repository) {
             .await
             .expect("Failed to require password change");
 
-        warn!("Seeded default admin user (admin/admin) — CHANGE THE PASSWORD IMMEDIATELY!");
+        warn!("Seeded default admin user (admin@cms.local / admin) — CHANGE THE PASSWORD IMMEDIATELY!");
         eprintln!(
             "\n\
              ============================ SECURITY WARNING ============================\n\
-             A default admin account was created:  username 'admin'  password 'admin'\n\
-             Anyone who can reach this server can log in until you change it. Run:\n\
-             \n    cms admin reset-password --username admin --password <new-strong-password>\n\n\
+             A default admin account was created:  email 'admin@cms.local'  password 'admin'\n\
+             Sign in with the email and password. Anyone who can reach this server can log\n\
+             in until you change it. Run:\n\
+             \n    vcms admin reset-password --email admin@cms.local --password <new-strong-password>\n\n\
              or change it from the dashboard now. Do NOT expose this server until done.\n\
              =========================================================================\n"
         );

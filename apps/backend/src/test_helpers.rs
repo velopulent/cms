@@ -21,7 +21,7 @@ pub fn now_timestamp() -> String {
     chrono::Utc::now().format("%Y-%m-%d %H:%M:%S").to_string()
 }
 
-/// Synchronize tests that mutate `CMS_HOME` (process-global env var).
+/// Synchronize tests that mutate `VCMS_HOME` (process-global env var).
 /// The single static `Mutex` here is shared by all callers across modules,
 /// preventing races between `paths::tests` and `secrets::tests` etc.
 pub fn with_home<T>(value: &Path, f: impl FnOnce() -> T) -> T {
@@ -41,7 +41,7 @@ pub fn with_home<T>(value: &Path, f: impl FnOnce() -> T) -> T {
 #[derive(Clone)]
 pub struct InMemoryUserRepository {
     users: Arc<Mutex<Vec<User>>>,
-    by_username: Arc<Mutex<std::collections::HashMap<String, String>>>,
+    by_name: Arc<Mutex<std::collections::HashMap<String, String>>>,
     by_id: Arc<Mutex<std::collections::HashMap<String, String>>>,
 }
 
@@ -49,17 +49,17 @@ impl InMemoryUserRepository {
     pub fn new() -> Self {
         Self {
             users: Arc::new(Mutex::new(Vec::new())),
-            by_username: Arc::new(Mutex::new(std::collections::HashMap::new())),
+            by_name: Arc::new(Mutex::new(std::collections::HashMap::new())),
             by_id: Arc::new(Mutex::new(std::collections::HashMap::new())),
         }
     }
 
     pub fn add_user(&self, user: User) {
         let mut users = self.users.lock().unwrap();
-        let mut by_username = self.by_username.lock().unwrap();
+        let mut by_name = self.by_name.lock().unwrap();
         let mut by_id = self.by_id.lock().unwrap();
 
-        by_username.insert(user.username.clone(), user.id.clone());
+        by_name.insert(user.name.clone(), user.id.clone());
         by_id.insert(user.id.clone(), user.id.clone());
         users.push(user);
     }
@@ -78,9 +78,9 @@ impl Default for InMemoryUserRepository {
 
 #[async_trait]
 impl UserRepository for InMemoryUserRepository {
-    async fn find_by_username(&self, username: &str) -> Result<Option<User>, RepositoryError> {
+    async fn find_by_email(&self, email: &str) -> Result<Option<User>, RepositoryError> {
         let users = self.users.lock().unwrap();
-        Ok(users.iter().find(|u| u.username == username).cloned())
+        Ok(users.iter().find(|u| u.email == email).cloned())
     }
 
     async fn find_by_id(&self, id: &str) -> Result<Option<User>, RepositoryError> {
@@ -92,23 +92,18 @@ impl UserRepository for InMemoryUserRepository {
         Ok(self.users.lock().unwrap().clone())
     }
 
-    async fn find_id_by_username(&self, username: &str) -> Result<Option<String>, RepositoryError> {
-        let users = self.users.lock().unwrap();
-        Ok(users.iter().find(|u| u.username == username).map(|u| u.id.clone()))
-    }
-
-    async fn create(&self, id: &str, username: &str, email: &str, password_hash: &str) -> Result<(), RepositoryError> {
+    async fn create(&self, id: &str, name: &str, email: &str, password_hash: &str) -> Result<(), RepositoryError> {
         let mut users = self.users.lock().unwrap();
-        let mut by_username = self.by_username.lock().unwrap();
+        let mut by_name = self.by_name.lock().unwrap();
         let mut by_id = self.by_id.lock().unwrap();
 
-        if users.iter().any(|u| u.username == username) {
-            return Err(RepositoryError::UniqueViolation("username".into()));
+        if users.iter().any(|u| u.email == email) {
+            return Err(RepositoryError::UniqueViolation("email".into()));
         }
 
         let user = User {
             id: id.to_string(),
-            username: username.to_string(),
+            name: name.to_string(),
             email: email.to_string(),
             password_hash: password_hash.to_string(),
             instance_role: None,
@@ -117,15 +112,15 @@ impl UserRepository for InMemoryUserRepository {
             updated_at: now_timestamp(),
         };
 
-        by_username.insert(username.to_string(), id.to_string());
+        by_name.insert(name.to_string(), id.to_string());
         by_id.insert(id.to_string(), id.to_string());
         users.push(user);
         Ok(())
     }
 
-    async fn exists(&self, username: &str) -> Result<bool, RepositoryError> {
+    async fn exists(&self, email: &str) -> Result<bool, RepositoryError> {
         let users = self.users.lock().unwrap();
-        Ok(users.iter().any(|u| u.username == username))
+        Ok(users.iter().any(|u| u.email == email))
     }
 
     async fn get_role(&self, _user_id: &str, _site_id: &str) -> Result<Option<String>, RepositoryError> {
@@ -168,6 +163,26 @@ impl UserRepository for InMemoryUserRepository {
             return Ok(1);
         }
         Ok(0)
+    }
+
+    async fn update_profile(&self, user_id: &str, name: &str, email: &str) -> Result<u64, RepositoryError> {
+        let mut users = self.users.lock().unwrap();
+        if users.iter().any(|u| u.email == email && u.id != user_id) {
+            return Err(RepositoryError::UniqueViolation("email".into()));
+        }
+        if let Some(user) = users.iter_mut().find(|user| user.id == user_id) {
+            user.name = name.to_string();
+            user.email = email.to_string();
+            return Ok(1);
+        }
+        Ok(0)
+    }
+
+    async fn delete(&self, user_id: &str) -> Result<u64, RepositoryError> {
+        let mut users = self.users.lock().unwrap();
+        let before = users.len();
+        users.retain(|user| user.id != user_id);
+        Ok((before - users.len()) as u64)
     }
 }
 
@@ -378,7 +393,7 @@ impl SiteRepository for InMemorySiteRepository {
             id: id.to_string(),
             site_id: site_id.to_string(),
             user_id: user_id.to_string(),
-            username: format!("user_{}", user_id),
+            name: format!("user_{}", user_id),
             email: format!("{}@example.com", user_id),
             role: role.to_string(),
             created_at: now_timestamp(),

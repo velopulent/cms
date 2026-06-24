@@ -19,7 +19,7 @@ export function DashboardHeader() {
   const auth = useAuth();
   const navigate = useNavigate();
   const showInstanceSettings = isOperator(auth.user?.instance_role);
-  const name = auth.user?.username ?? "User";
+  const name = auth.user?.name ?? "User";
   const email = auth.user?.email ?? "";
 
   const handleLogout = async () => {
@@ -61,13 +61,13 @@ export function DashboardHeader() {
               />
             }
           >
-            <UserAvatar username={name} />
+            <UserAvatar name={name} />
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" className="min-w-56 rounded-lg">
             <DropdownMenuGroup>
               <DropdownMenuLabel className="p-0 font-normal">
                 <div className="flex items-center gap-2 px-1 py-1.5 text-left text-sm">
-                  <UserAvatar username={name} />
+                  <UserAvatar name={name} />
                   <div className="grid flex-1 leading-tight">
                     <span className="truncate font-medium">{name}</span>
                     <span className="truncate text-xs text-muted-foreground">

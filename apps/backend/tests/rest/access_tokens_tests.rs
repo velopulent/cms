@@ -20,7 +20,7 @@ async fn test_create_token() {
     let body: Value = resp.json().await.unwrap();
     assert_eq!(body["name"], "Test Token");
     assert_eq!(body["permission"], "read");
-    assert!(body["token"].as_str().unwrap().starts_with("cms_site_"));
+    assert!(body["token"].as_str().unwrap().starts_with("vcms_site_"));
 }
 
 #[tokio::test]

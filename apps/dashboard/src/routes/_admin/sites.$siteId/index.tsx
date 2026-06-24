@@ -56,10 +56,17 @@ function DashboardPage() {
   const singletons = collectionsArray.filter((c) => c.is_singleton);
 
   const allEntriesArray = entriesResponse?.items ?? [];
-  const publishedCount = allEntriesArray.filter(
+  // Singletons have no publish lifecycle — their backing entry just carries the
+  // default "draft" status — so exclude them from content stats and the
+  // recently-updated list.
+  const singletonIds = new Set(singletons.map((c) => c.id));
+  const contentEntries = allEntriesArray.filter(
+    (e: Entry) => !singletonIds.has(e.collection_id),
+  );
+  const publishedCount = contentEntries.filter(
     (e: Entry) => e.status === "published",
   ).length;
-  const draftCount = allEntriesArray.filter(
+  const draftCount = contentEntries.filter(
     (e: Entry) => e.status === "draft",
   ).length;
 
@@ -189,11 +196,11 @@ function DashboardPage() {
       )}
 
       {/* Recently updated */}
-      {allEntriesArray.length > 0 && (
+      {contentEntries.length > 0 && (
         <section className="flex flex-col gap-4">
           <h2 className="text-lg font-semibold">Recently updated</h2>
           <div className="flex flex-col gap-2">
-            {allEntriesArray.slice(0, 5).map((item: Entry) => {
+            {contentEntries.slice(0, 5).map((item: Entry) => {
               const collectionName = collectionsArray.find(
                 (c: Collection) => c.id === item.collection_id,
               )?.name;

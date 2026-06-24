@@ -190,7 +190,7 @@ async fn test_auth_wrong_token_type_returns_401() {
     );
     let msg = error["message"].as_str().unwrap();
     assert!(
-        msg.contains("MCP requires a CMS access token"),
+        msg.contains("MCP requires a vcms_site_* access token"),
         "Expected auth error message, got: {}",
         msg
     );
@@ -200,7 +200,7 @@ async fn test_auth_wrong_token_type_returns_401() {
 async fn test_auth_invalid_token_returns_401() {
     let server = start_mcp_server().await;
 
-    let resp = mcp_request(&server.base_url, "cms_site_invalid_token_abc123", "tools/list", None).await;
+    let resp = mcp_request(&server.base_url, "vcms_site_invalid_token_abc123", "tools/list", None).await;
 
     let error = resp.get("error");
     assert!(error.is_some(), "Expected error for invalid token, got: {}", resp);
@@ -228,7 +228,7 @@ async fn test_auth_instance_token_rejected() {
     assert!(error.is_some(), "Instance token should be rejected, got: {}", resp);
     let msg = error.unwrap()["message"].as_str().unwrap();
     assert!(
-        msg.contains("MCP requires a CMS access token"),
+        msg.contains("MCP requires a vcms_site_* access token"),
         "Expected MCP token error, got: {}",
         msg
     );

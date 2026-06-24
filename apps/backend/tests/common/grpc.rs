@@ -198,7 +198,7 @@ impl GrpcTestContext {
         let resp = client
             .post(format!("{}/api/auth/login", self.rest_base_url))
             .json(&serde_json::json!({
-                "username": "admin",
+                "email": "admin@cms.local",
                 "password": "admin",
             }))
             .send()
@@ -246,7 +246,7 @@ impl GrpcTestContext {
         let resp = client
             .post(format!("{}/api/auth/login", self.rest_base_url))
             .json(&serde_json::json!({
-                "username": "admin",
+                "email": "admin@cms.local",
                 "password": "admin",
             }))
             .send()

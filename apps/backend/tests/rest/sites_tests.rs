@@ -5,10 +5,16 @@ use crate::common::{TestServer, auth::auth_header};
 async fn login_and_get_cookies(
     server: &TestServer,
     client: &reqwest::Client,
-    username: &str,
+    name: &str,
     password: &str,
 ) -> (String, String) {
-    let resp = server.login_user(client, username, password).await;
+    // Login is by email; the seeded admin is admin@cms.local.
+    let email = if name == "admin" {
+        "admin@cms.local".to_string()
+    } else {
+        format!("{name}@example.com")
+    };
+    let resp = server.login_user(client, &email, password).await;
     assert_eq!(
         resp.status(),
         200,

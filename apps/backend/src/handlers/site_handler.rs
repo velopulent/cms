@@ -160,7 +160,7 @@ pub async fn invite_member(
 
     match services
         .site
-        .invite_member(&site_id, &payload.username, &payload.role, &actor_id)
+        .invite_member(&site_id, &payload.email, &payload.role, &actor_id)
         .await
     {
         Ok(member) => (StatusCode::CREATED, Json(member)).into_response(),

@@ -11,7 +11,7 @@
         "command": "cargo build --release --locked",
         "env": { "SKIP_DASHBOARD_BUILD": "1" }
       },
-      "outputs": ["{workspaceRoot}/target/release/cms"],
+      "outputs": ["{workspaceRoot}/target/release/vcms"],
       "cache": false
     },
     "build-dev": {
@@ -21,7 +21,7 @@
         "command": "cargo build --locked",
         "env": { "SKIP_DASHBOARD_BUILD": "1" }
       },
-      "outputs": ["{workspaceRoot}/target/debug/cms"],
+      "outputs": ["{workspaceRoot}/target/debug/vcms"],
       "cache": false
     },
     "run": {

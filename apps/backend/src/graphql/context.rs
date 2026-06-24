@@ -24,7 +24,7 @@ impl GqlContext {
 
         if let Some(header) = auth_header
             && let Some(token) = header.strip_prefix("Bearer ")
-            && token.starts_with("cms_site_")
+            && token.starts_with("vcms_site_")
             && let Ok(auth_actor) = verify_access_token(token, &repository, hmac_secret).await
         {
             if let Actor::ApiKey(k) = &auth_actor {

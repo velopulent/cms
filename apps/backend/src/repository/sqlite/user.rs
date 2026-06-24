@@ -18,12 +18,12 @@ impl SqliteUserRepository {
 
 #[async_trait]
 impl UserRepository for SqliteUserRepository {
-    async fn find_by_username(&self, username: &str) -> Result<Option<User>, RepositoryError> {
-        debug!("Finding user by username");
+    async fn find_by_email(&self, email: &str) -> Result<Option<User>, RepositoryError> {
+        debug!("Finding user by email");
         let result = sqlx::query_as::<_, User>(
-            "SELECT id, username, email, password_hash, instance_role, must_change_password, created_at, updated_at FROM users WHERE username = ?",
+            "SELECT id, name, email, password_hash, instance_role, must_change_password, created_at, updated_at FROM users WHERE email = ?",
         )
-        .bind(username)
+        .bind(email)
         .fetch_optional(&self.pool)
         .await?;
 
@@ -34,7 +34,7 @@ impl UserRepository for SqliteUserRepository {
     async fn find_by_id(&self, id: &str) -> Result<Option<User>, RepositoryError> {
         debug!("Finding user by id");
         let result = sqlx::query_as::<_, User>(
-            "SELECT id, username, email, password_hash, instance_role, must_change_password, created_at, updated_at FROM users WHERE id = ?",
+            "SELECT id, name, email, password_hash, instance_role, must_change_password, created_at, updated_at FROM users WHERE id = ?",
         )
         .bind(id)
         .fetch_optional(&self.pool)
@@ -46,25 +46,16 @@ impl UserRepository for SqliteUserRepository {
 
     async fn list(&self) -> Result<Vec<User>, RepositoryError> {
         Ok(sqlx::query_as::<_, User>(
-            "SELECT id, username, email, password_hash, instance_role, must_change_password, created_at, updated_at FROM users ORDER BY created_at, username"
+            "SELECT id, name, email, password_hash, instance_role, must_change_password, created_at, updated_at FROM users ORDER BY created_at, name"
         ).fetch_all(&self.pool).await?)
     }
 
-    async fn find_id_by_username(&self, username: &str) -> Result<Option<String>, RepositoryError> {
-        let result: Option<(String,)> = sqlx::query_as("SELECT id FROM users WHERE username = ?")
-            .bind(username)
-            .fetch_optional(&self.pool)
-            .await?;
-
-        Ok(result.map(|(id,)| id))
-    }
-
-    async fn create(&self, id: &str, username: &str, email: &str, password_hash: &str) -> Result<(), RepositoryError> {
+    async fn create(&self, id: &str, name: &str, email: &str, password_hash: &str) -> Result<(), RepositoryError> {
         debug!("Creating user");
 
-        match sqlx::query("INSERT INTO users (id, username, email, password_hash) VALUES (?, ?, ?, ?)")
+        match sqlx::query("INSERT INTO users (id, name, email, password_hash) VALUES (?, ?, ?, ?)")
             .bind(id)
-            .bind(username)
+            .bind(name)
             .bind(email)
             .bind(password_hash)
             .execute(&self.pool)
@@ -81,9 +72,9 @@ impl UserRepository for SqliteUserRepository {
         }
     }
 
-    async fn exists(&self, username: &str) -> Result<bool, RepositoryError> {
-        let result: Option<(String,)> = sqlx::query_as("SELECT id FROM users WHERE username = ?")
-            .bind(username)
+    async fn exists(&self, email: &str) -> Result<bool, RepositoryError> {
+        let result: Option<(String,)> = sqlx::query_as("SELECT id FROM users WHERE email = ?")
+            .bind(email)
             .fetch_optional(&self.pool)
             .await?;
 
@@ -139,5 +130,25 @@ impl UserRepository for SqliteUserRepository {
         .execute(&self.pool)
         .await?
         .rows_affected())
+    }
+
+    async fn update_profile(&self, user_id: &str, name: &str, email: &str) -> Result<u64, RepositoryError> {
+        Ok(
+            sqlx::query("UPDATE users SET name = ?, email = ?, updated_at = datetime('now') WHERE id = ?")
+                .bind(name)
+                .bind(email)
+                .bind(user_id)
+                .execute(&self.pool)
+                .await?
+                .rows_affected(),
+        )
+    }
+
+    async fn delete(&self, user_id: &str) -> Result<u64, RepositoryError> {
+        Ok(sqlx::query("DELETE FROM users WHERE id = ?")
+            .bind(user_id)
+            .execute(&self.pool)
+            .await?
+            .rows_affected())
     }
 }

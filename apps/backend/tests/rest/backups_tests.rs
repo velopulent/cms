@@ -4,9 +4,15 @@ use crate::common::{TestServer, auth::auth_header};
 
 // ── helpers ──
 
-async fn login(server: &TestServer, username: &str, password: &str) -> (String, String) {
+async fn login(server: &TestServer, name: &str, password: &str) -> (String, String) {
     let client = reqwest::Client::builder().build().unwrap();
-    let resp = server.login_user(&client, username, password).await;
+    // Login is by email; map the logical name to the email these helpers assign.
+    let email = if name == "admin" {
+        "admin@cms.local".to_string()
+    } else {
+        format!("{name}@example.com")
+    };
+    let resp = server.login_user(&client, &email, password).await;
     let mut token = String::new();
     let mut csrf = String::new();
     for cookie in resp.headers().get_all("set-cookie").iter() {
@@ -213,29 +219,31 @@ async fn encrypted_backup_round_trips() {
     assert_eq!(get_entry_status(&server, &token, &csrf, &site_id, &entry_id).await, 200);
 }
 
-async fn create_user(server: &TestServer, token: &str, csrf: &str, username: &str, instance_role: Option<&str>) {
+async fn create_user(server: &TestServer, token: &str, csrf: &str, name: &str, instance_role: Option<&str>) {
     let client = reqwest::Client::new();
     let resp = client
         .post(format!("{}/api/dashboard/instance/users", server.base_url))
         .headers(auth_header(token, csrf))
         .json(&json!({
-            "username": username,
-            "email": format!("{username}@example.com"),
+            "name": name,
+            "email": format!("{name}@example.com"),
             "temporary_password": "password123",
             "instance_role": instance_role,
         }))
         .send()
         .await
         .unwrap();
-    assert!(resp.status().is_success(), "create user {username}: {}", resp.status());
+    assert!(resp.status().is_success(), "create user {name}: {}", resp.status());
 }
 
-async fn invite_member(server: &TestServer, token: &str, csrf: &str, site_id: &str, username: &str, role: &str) {
+async fn invite_member(server: &TestServer, token: &str, csrf: &str, site_id: &str, name: &str, role: &str) {
     let client = reqwest::Client::new();
+    // Members are invited by email; map the logical name to its assigned email.
+    let email = format!("{name}@example.com");
     let resp = client
         .post(format!("{}/api/dashboard/sites/{}/members", server.base_url, site_id))
         .headers(auth_header(token, csrf))
-        .json(&json!({"username": username, "role": role}))
+        .json(&json!({"email": email, "role": role}))
         .send()
         .await
         .unwrap();

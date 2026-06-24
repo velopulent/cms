@@ -13,7 +13,7 @@
 //!
 //! - **Reading** needs no lock. Any process opens the index [read-only]
 //!   ([`SearchService::open_read_only`]) and gets full ranked search — including a
-//!   separate `cms mcp stdio` process running alongside the server.
+//!   separate `vcms mcp stdio` process running alongside the server.
 //! - **Writing** goes through a durable database queue ([`queue`]) instead of the
 //!   index directly. Any process enqueues on a content change; the one running
 //!   server owns the writer ([`SearchService::open`]) and is the sole consumer
@@ -84,7 +84,7 @@ pub struct SearchHits {
 /// Embedded full-text search engine for entries.
 ///
 /// Read-write when opened with [`open`](Self::open) (the running server), read-only
-/// when opened with [`open_read_only`](Self::open_read_only) (e.g. `cms mcp stdio`).
+/// when opened with [`open_read_only`](Self::open_read_only) (e.g. `vcms mcp stdio`).
 /// Read-only instances can [`search_entries`](Self::search_entries) but return
 /// [`SearchError::ReadOnly`] from any write/commit/rebuild call.
 pub struct SearchService {

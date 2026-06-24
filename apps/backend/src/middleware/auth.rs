@@ -207,7 +207,7 @@ pub(crate) async fn verify_access_token(
     repository: &Repository,
     hmac_secret: &str,
 ) -> Result<Actor, (StatusCode, Json<AuthError>)> {
-    if !token.starts_with("cms_site_") {
+    if !token.starts_with("vcms_site_") {
         return Err(AuthError::unauthorized("Invalid access token"));
     }
 
@@ -421,7 +421,7 @@ mod tests {
 
     #[test]
     fn test_compute_key_hmac_deterministic() {
-        let key = "cms_site_abcdefgh_1234567890123456789012";
+        let key = "vcms_site_abcdefgh_1234567890123456789012";
         let secret = "test-hmac-secret";
         let h1 = compute_key_hmac(key, secret);
         let h2 = compute_key_hmac(key, secret);

@@ -23,8 +23,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   });
 
   const handleLogin = async () => {
-    // After successful login API call elsewhere
-    await queryClient.invalidateQueries({ queryKey: ["me"] });
+    // A previous user's data may still be cached. Drop every query EXCEPT
+    // ["me"]: that query is watched by this provider's always-mounted observer,
+    // and removing it (clear/removeQueries) orphans the observer — it never
+    // refetches, so the UI keeps showing the previous user until a hard reload.
+    // Instead refetch ["me"] in place so the provider re-renders with the
+    // freshly signed-in user.
+    queryClient.removeQueries({ predicate: (q) => q.queryKey[0] !== "me" });
+    await queryClient.refetchQueries({ queryKey: ["me"] });
   };
 
   const handleLogout = async () => {
@@ -34,7 +40,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       // ignore errors (expired session etc.)
     }
 
-    queryClient.removeQueries({ queryKey: ["me"] });
+    // Same reasoning as handleLogin: purge all other user-scoped queries
+    // (sites/sessions/collections/files…) but keep + refetch ["me"] so the
+    // observer stays attached. The refetch hits the now-invalid session →
+    // 401 → user becomes null.
+    queryClient.removeQueries({ predicate: (q) => q.queryKey[0] !== "me" });
+    await queryClient.refetchQueries({ queryKey: ["me"] });
   };
 
   return (

@@ -34,7 +34,7 @@ pub struct Services {
     /// Full-text search engine used for **reads** (ranked queries). `None` when
     /// search is disabled or the index couldn't be opened — callers then fall back
     /// to the SQL `LIKE` path. Read-write in the server process, read-only in
-    /// `cms mcp stdio`.
+    /// `vcms mcp stdio`.
     pub search: Option<Arc<SearchService>>,
     /// Durable queue used for **writes**: content changes enqueue here and the
     /// server's indexer applies them. Present whenever search is enabled, even in
@@ -50,7 +50,7 @@ impl Services {
         Self::assemble(repository, pool, config, search)
     }
 
-    /// Build services for an auxiliary process (e.g. `cms mcp stdio`): opens the
+    /// Build services for an auxiliary process (e.g. `vcms mcp stdio`): opens the
     /// index **read-only** so it can search without contending for the writer lock.
     /// Its writes still enqueue for the server to index.
     pub fn new_read_only(repository: Arc<Repository>, pool: &DbPool, config: &Config) -> Self {

@@ -22,15 +22,14 @@ import {
 } from "@/components/ui/select";
 import {
   createManagedUser,
-  type InstanceRole,
+  INSTANCE_ROLE_ITEMS,
+  ROLE_USER,
+  type RoleValue,
   type UserPublic,
 } from "@/lib/api";
 
-const ROLE_USER = "user";
-type RoleValue = InstanceRole | typeof ROLE_USER;
-
 const EMPTY = {
-  username: "",
+  name: "",
   email: "",
   temporary_password: "",
   role: ROLE_USER as RoleValue,
@@ -56,7 +55,7 @@ export function CreateUserDialog({
   const createMutation = useMutation({
     mutationFn: () =>
       createManagedUser({
-        username: form.username,
+        name: form.name,
         email: form.email,
         temporary_password: form.temporary_password,
         instance_role: form.role === ROLE_USER ? null : form.role,
@@ -90,16 +89,17 @@ export function CreateUserDialog({
         >
           <FieldGroup>
             <Field>
-              <FieldLabel htmlFor="managed-username">Username</FieldLabel>
+              <FieldLabel htmlFor="managed-name">Name</FieldLabel>
               <Input
-                id="managed-username"
+                id="managed-name"
                 required
-                minLength={3}
-                value={form.username}
+                minLength={1}
+                placeholder="John Doe"
+                value={form.name}
                 onChange={(event) =>
                   setForm((current) => ({
                     ...current,
-                    username: event.target.value,
+                    name: event.target.value,
                   }))
                 }
               />
@@ -140,6 +140,7 @@ export function CreateUserDialog({
             <Field>
               <FieldLabel htmlFor="managed-access">Access</FieldLabel>
               <Select
+                items={INSTANCE_ROLE_ITEMS}
                 value={form.role}
                 onValueChange={(value) =>
                   setForm((current) => ({

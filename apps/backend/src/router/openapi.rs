@@ -8,11 +8,11 @@ use crate::models::site::Site;
 #[derive(OpenApi)]
 #[openapi(
     info(
-        title = "CMS API",
-        version = "1.0.0",
-        description = "Headless CMS unified API. Consumer access uses site-bound cms_site_* tokens with read or write permission. Dashboard access uses revocable opaque sessions.",
-        contact(name = "CMS", url = "https://cms.velopulent.com"),
-        license(name = "MIT")
+        title = "Velopulent CMS REST API",
+        version = "0.1.0",
+        description = "Headless CMS unified API. Consumer access uses site-bound vcms_site_* tokens with read or write permission. Dashboard access uses revocable opaque sessions.",
+        contact(name = "Velopulent CMS", url = "https://cms.velopulent.com"),
+        license(name = "AGPL-3.0", url = "https://github.com/velopulent/cms/blob/main/LICENSE"),
     ),
     paths(
         // Public API: Site info
@@ -94,7 +94,7 @@ impl utoipa::Modify for SecurityAddon {
             utoipa::openapi::security::SecurityScheme::Http(
                 utoipa::openapi::security::HttpBuilder::new()
                     .scheme(utoipa::openapi::security::HttpAuthScheme::Bearer)
-                    .bearer_format("Access Token (cms_site_...)")
+                    .bearer_format("Access Token (vcms_site_...)")
                     .build(),
             ),
         );

@@ -17,14 +17,14 @@ struct StdioClient {
 
 impl StdioClient {
     async fn start(database_url: &str, hmac_secret: &str, token: &str) -> Self {
-        let mut child = Command::new(env!("CARGO_BIN_EXE_cms"))
+        let mut child = Command::new(env!("CARGO_BIN_EXE_vcms"))
             .args(["mcp", "stdio"])
             .env("DATABASE_URL", database_url)
             .env("HMAC_SECRET", hmac_secret)
-            .env("CMS_MCP_TOKEN", token)
+            .env("VCMS_MCP_TOKEN", token)
             .env("DB_MIN_CONNECTIONS", "1")
             .env("DB_MAX_CONNECTIONS", "2")
-            .env("RUST_LOG", "cms=debug")
+            .env("RUST_LOG", "cms=debug,vcms=debug")
             .env("LOG_FORMAT", "pretty")
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
@@ -39,19 +39,19 @@ impl StdioClient {
     }
 
     /// Start the stdio process the way a real MCP client does: it knows only
-    /// `CMS_HOME` and `CMS_MCP_TOKEN`. No `DATABASE_URL` / `HMAC_SECRET` in the
+    /// `VCMS_HOME` and `VCMS_MCP_TOKEN`. No `DATABASE_URL` / `HMAC_SECRET` in the
     /// environment, and a working directory with no `.env` — so both the database
-    /// path and the HMAC secret must be resolved from `~/.cms`.
+    /// path and the HMAC secret must be resolved from `~/.vcms`.
     async fn start_from_home(home: &std::path::Path, token: &str) -> Self {
-        let mut child = Command::new(env!("CARGO_BIN_EXE_cms"))
+        let mut child = Command::new(env!("CARGO_BIN_EXE_vcms"))
             .args(["mcp", "stdio"])
             .env_remove("DATABASE_URL")
             .env_remove("HMAC_SECRET")
-            .env("CMS_HOME", home)
-            .env("CMS_MCP_TOKEN", token)
+            .env("VCMS_HOME", home)
+            .env("VCMS_MCP_TOKEN", token)
             .env("DB_MIN_CONNECTIONS", "1")
             .env("DB_MAX_CONNECTIONS", "2")
-            .env("RUST_LOG", "cms=debug")
+            .env("RUST_LOG", "cms=debug,vcms=debug")
             .env("LOG_FORMAT", "pretty")
             .current_dir(home)
             .stdin(Stdio::piped())
@@ -107,7 +107,7 @@ impl StdioClient {
 
 async fn setup_database(permission: AccessTokenPermission) -> (tempfile::TempDir, Config, String, String) {
     let directory = tempfile::tempdir().expect("temp directory");
-    let database_path = directory.path().join("cms.db");
+    let database_path = directory.path().join("vcms.db");
     let database_url = format!("sqlite://{}", database_path.to_string_lossy().replace('\\', "/"));
     let hmac_secret = "stdio-test-hmac-secret".to_string();
     let config = Config {
@@ -143,15 +143,15 @@ async fn setup_database(permission: AccessTokenPermission) -> (tempfile::TempDir
     (directory, config, token.id, token.token)
 }
 
-/// Provision a `~/.cms`-style home: a `secrets.toml` and a database at the
-/// default location (`<home>/cms.db`), with a site token signed by the persisted
-/// HMAC secret. Mirrors what `cms serve` leaves behind on first run.
+/// Provision a `~/.vcms`-style home: a `secrets.toml` and a database at the
+/// default location (`<home>/vcms.db`), with a site token signed by the persisted
+/// HMAC secret. Mirrors what `vcms serve` leaves behind on first run.
 async fn setup_home_instance(home: &std::path::Path) -> String {
     let hmac_secret = "home-instance-hmac-secret".to_string();
     std::fs::write(home.join("secrets.toml"), format!("hmac_secret = \"{hmac_secret}\"\n"))
         .expect("write secrets.toml");
 
-    let database_path = home.join("cms.db");
+    let database_path = home.join("vcms.db");
     let database_url = format!("sqlite://{}", database_path.to_string_lossy().replace('\\', "/"));
     let config = Config {
         database_url,
@@ -192,8 +192,8 @@ async fn setup_home_instance(home: &std::path::Path) -> String {
 }
 
 /// Proves the MCP-stdio fix: a cwd-less client process authenticates and serves
-/// using only `CMS_HOME` + `CMS_MCP_TOKEN`, with the database path and HMAC
-/// secret resolved from `~/.cms` rather than a cwd `.env`.
+/// using only `VCMS_HOME` + `VCMS_MCP_TOKEN`, with the database path and HMAC
+/// secret resolved from `~/.vcms` rather than a cwd `.env`.
 #[tokio::test]
 async fn stdio_resolves_database_and_secret_from_cms_home() {
     let home = tempfile::tempdir().expect("temp home");
@@ -205,7 +205,7 @@ async fn stdio_resolves_database_and_secret_from_cms_home() {
     let site = client
         .request(2, "tools/call", Some(json!({"name": "get_site", "arguments": {}})))
         .await;
-    assert_eq!(site["result"]["isError"], false, "stdio must authenticate from ~/.cms");
+    assert_eq!(site["result"]["isError"], false, "stdio must authenticate from ~/.vcms");
 
     let (status, logs) = client.close().await;
     assert!(status.success(), "stdio process should exit cleanly; logs:\n{logs}");

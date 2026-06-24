@@ -255,13 +255,13 @@ impl SiteService {
     pub async fn invite_member(
         &self,
         site_id: &str,
-        username: &str,
+        email: &str,
         role: &str,
         _actor_user_id: &str,
     ) -> Result<SiteMember, SiteError> {
         debug!(
-            "Inviting member to site: site_id={}, username={}, role={}",
-            site_id, username, role
+            "Inviting member to site: site_id={}, email={}, role={}",
+            site_id, email, role
         );
 
         if !VALID_ROLES.contains(&role) {
@@ -269,13 +269,13 @@ impl SiteService {
             return Err(SiteError::InvalidRole("Invalid role. Must be editor or viewer".into()));
         }
 
-        debug!("Looking up user by username: {}", username);
+        debug!("Looking up user by email: {}", email);
         let user = self
             .user_repo
-            .find_by_username(username)
+            .find_by_email(email)
             .await
             .map_err(|e| {
-                error!("Failed to look up user by username={}: error={}", username, e);
+                error!("Failed to look up user by email={}: error={}", email, e);
                 SiteError::DatabaseError(e.to_string())
             })?
             .ok_or(SiteError::UserNotFound)?;
@@ -283,10 +283,7 @@ impl SiteService {
         // Instance operators (owner/admin) already have full access to every site;
         // they must not be added as editors/viewers.
         if user.instance_role.is_some() {
-            warn!(
-                "Invite member rejected: user is an instance operator, username={}",
-                username
-            );
+            warn!("Invite member rejected: user is an instance operator, email={}", email);
             return Err(SiteError::CannotInviteOperator);
         }
 
@@ -625,7 +622,7 @@ mod tests {
         let service = SiteService::new(site_repo, user_repo);
 
         let result = service
-            .invite_member("site-123", "username", "invalid_role", "user-123")
+            .invite_member("site-123", "name", "invalid_role", "user-123")
             .await;
         assert!(matches!(result, Err(SiteError::InvalidRole(msg)) if msg.contains("editor or viewer")));
     }
@@ -649,7 +646,7 @@ mod tests {
 
         user_repo.add_user(crate::models::user::User {
             id: "user-456".to_string(),
-            username: "newuser".to_string(),
+            name: "newuser".to_string(),
             email: "new@example.com".to_string(),
             password_hash: "hash".to_string(),
             instance_role: None,
@@ -660,7 +657,9 @@ mod tests {
 
         let service = SiteService::new(site_repo, user_repo.clone());
 
-        let result = service.invite_member("site-123", "newuser", "editor", "user-123").await;
+        let result = service
+            .invite_member("site-123", "new@example.com", "editor", "user-123")
+            .await;
         assert!(result.is_ok());
         let member = result.unwrap();
         assert_eq!(member.role, "editor");
@@ -674,7 +673,7 @@ mod tests {
         for role in ["editor", "viewer"] {
             user_repo.add_user(crate::models::user::User {
                 id: format!("user-{}", role),
-                username: format!("user_{}", role),
+                name: format!("user_{}", role),
                 email: format!("{}@example.com", role),
                 password_hash: "hash".to_string(),
                 instance_role: None,
@@ -688,7 +687,7 @@ mod tests {
 
         for role in ["editor", "viewer"] {
             let result = service
-                .invite_member("site-123", &format!("user_{}", role), role, "user-123")
+                .invite_member("site-123", &format!("{}@example.com", role), role, "user-123")
                 .await;
             assert!(result.is_ok(), "Failed for role: {}", role);
         }

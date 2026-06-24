@@ -6,6 +6,7 @@ import {
   Lock,
   Play,
   Plus,
+  RefreshCw,
   RotateCcw,
   Trash2,
 } from "lucide-react";
@@ -64,6 +65,7 @@ import {
   inspectBackupUpload,
   listBackupSchedules,
   listBackups,
+  reindexSearch,
   restoreBackup,
   restoreBackupUpload,
   runBackupSchedule,
@@ -128,6 +130,15 @@ export function BackupsSection({ scope }: { scope: BackupScope }) {
   const backupsQuery = useQuery({
     queryKey: ["backups", scopeKey],
     queryFn: () => listBackups(scope),
+    // Poll while a backup is in flight so the list (incl. scheduled backups the UI
+    // never hears about) and status transitions appear without a manual refresh.
+    refetchInterval: (query) =>
+      query.state.data?.some(
+        (b) => b.status === "running" || b.status === "pending",
+      )
+        ? 2500
+        : false,
+    refetchOnWindowFocus: true,
   });
   const schedulesQuery = useQuery({
     queryKey: ["backup-schedules", scopeKey],
@@ -154,6 +165,14 @@ export function BackupsSection({ scope }: { scope: BackupScope }) {
     onSuccess: () => {
       invalidateBackups();
       toast.success("Backup deleted");
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  const reindexMutation = useMutation({
+    mutationFn: () => reindexSearch(scope),
+    onSuccess: (res) => {
+      toast.success(`Search index rebuilt — ${res.reindexed} entries`);
     },
     onError: (e: Error) => toast.error(e.message),
   });
@@ -432,6 +451,28 @@ export function BackupsSection({ scope }: { scope: BackupScope }) {
         }}
       />
 
+      {/* Search index */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Search index</CardTitle>
+          <CardDescription>
+            The full-text search index is derived from your content and rebuilt
+            automatically. Rebuild it manually after a CLI restore, or if search
+            results look stale.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <Button
+            variant="outline"
+            onClick={() => reindexMutation.mutate()}
+            disabled={reindexMutation.isPending}
+          >
+            <RefreshCw className="size-4" />
+            {reindexMutation.isPending ? "Rebuilding…" : "Rebuild search index"}
+          </Button>
+        </CardContent>
+      </Card>
+
       {/* Restore confirmation */}
       <Dialog
         open={!!restoreSource}
@@ -674,8 +715,15 @@ function SchedulesCard({
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4 lg:items-end">
           <div className="flex flex-col gap-1.5">
             <Label>Frequency</Label>
-            <Select value={preset} onValueChange={(v) => setPreset(v ?? "")}>
-              <SelectTrigger>
+            <Select
+              items={CRON_PRESETS.map((p) => ({
+                value: p.value,
+                label: p.label,
+              }))}
+              value={preset}
+              onValueChange={(v) => setPreset(v ?? "")}
+            >
+              <SelectTrigger className="w-full">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>

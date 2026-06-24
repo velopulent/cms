@@ -17,7 +17,7 @@ impl AuthError {
             StatusCode::UNAUTHORIZED,
             Json(Self {
                 error: "site_token_required".into(),
-                message: "This endpoint requires a cms_site_* token.".into(),
+                message: "This endpoint requires a vcms_site_* token.".into(),
             }),
         )
     }

@@ -44,7 +44,10 @@ pub fn mcp_router(
 
     Router::new()
         .nest_service("/mcp", mcp_service)
-        .layer(middleware::from_fn(crate::mcp::auth::authenticate_mcp_request))
+        // `route_layer` (not `layer`) so MCP auth wraps only the matched `/mcp` routes
+        // and never the router's fallback — otherwise, once merged into the main router,
+        // this fallback would authenticate every unmatched path (e.g. `/dashboard/`).
+        .route_layer(middleware::from_fn(crate::mcp::auth::authenticate_mcp_request))
         .layer(Extension(repository.clone()))
         .layer(Extension(config.clone()))
 }

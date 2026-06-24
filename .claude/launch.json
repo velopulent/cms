@@ -2,6 +2,13 @@
   "version": "0.0.1",
   "configurations": [
     {
+      "name": "backend",
+      "runtimeExecutable": "cargo",
+      "runtimeArgs": ["run", "--locked", "--no-default-features"],
+      "cwd": "apps/backend",
+      "port": 3000
+    },
+    {
       "name": "dashboard",
       "runtimeExecutable": "bun",
       "runtimeArgs": ["run", "dev:dashboard"],

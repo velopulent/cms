@@ -18,7 +18,7 @@ async fn gql(server: &TestServer, token: Option<&str>, query: &str) -> reqwest::
 async fn setup_site_token(server: &TestServer) -> (reqwest::Client, String) {
     let client = reqwest::Client::builder().build().unwrap();
 
-    let resp = server.login_user(&client, "admin", "admin").await;
+    let resp = server.login_user(&client, "admin@cms.local", "admin").await;
     let headers = resp.headers();
     let mut token = String::new();
     let mut csrf = String::new();
@@ -71,7 +71,7 @@ async fn setup_site_token(server: &TestServer) -> (reqwest::Client, String) {
 async fn setup_read_token(server: &TestServer) -> String {
     let client = reqwest::Client::builder().build().unwrap();
 
-    let resp = server.login_user(&client, "admin", "admin").await;
+    let resp = server.login_user(&client, "admin@cms.local", "admin").await;
     let headers = resp.headers();
     let mut token = String::new();
     let mut csrf = String::new();
@@ -159,7 +159,7 @@ async fn test_wrong_site_token() {
     let server = TestServer::start().await;
     let client = reqwest::Client::builder().build().unwrap();
 
-    let resp = server.login_user(&client, "admin", "admin").await;
+    let resp = server.login_user(&client, "admin@cms.local", "admin").await;
     let headers = resp.headers();
     let mut token = String::new();
     let mut csrf = String::new();

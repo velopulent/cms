@@ -2,9 +2,9 @@
 /target
 
 # Database
-cms.db
-cms.db-shm
-cms.db-wal
+vcms.db
+vcms.db-shm
+vcms.db-wal
 
 # Env
 !.env.example

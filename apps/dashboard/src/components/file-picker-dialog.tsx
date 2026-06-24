@@ -8,7 +8,7 @@ import {
   Upload,
   Video,
 } from "lucide-react";
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 
 import { Badge } from "@/components/ui/badge";
@@ -25,6 +25,7 @@ import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { useDebouncedValue } from "@/hooks/use-debounced-value";
 import { type FileItem, getFiles, uploadFile } from "@/lib/api";
 
 // ---------------------------------------------------------------------------
@@ -120,6 +121,7 @@ export function FilePickerDialog({
   uploadProvider = "filesystem",
 }: FilePickerDialogProps) {
   const [search, setSearch] = useState("");
+  const debouncedSearch = useDebouncedValue(search, 300);
   const [page, setPage] = useState(1);
   const [tab, setTab] = useState("library");
   const [dragOver, setDragOver] = useState(false);
@@ -135,15 +137,21 @@ export function FilePickerDialog({
   );
 
   const { data, isLoading, isError } = useQuery({
-    queryKey: ["files", siteId, page, search, fileType],
+    queryKey: ["files", siteId, page, debouncedSearch, fileType],
     queryFn: () =>
       getFiles(siteId, {
         page,
-        search: search || undefined,
+        search: debouncedSearch || undefined,
         type: fileType,
       }),
     enabled: open,
   });
+
+  // Reset to the first page when the debounced search term changes.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: reset only on term change
+  useEffect(() => {
+    setPage(1);
+  }, [debouncedSearch]);
 
   // Client-side filtering on top of the server-side type filter, to handle
   // cases where the accept prop contains multiple specific MIME types.
@@ -203,7 +211,6 @@ export function FilePickerDialog({
   const handleSearchChange = useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) => {
       setSearch(e.target.value);
-      setPage(1);
     },
     [],
   );

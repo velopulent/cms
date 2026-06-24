@@ -55,33 +55,33 @@ jobs:
           - os: linux
             arch: amd64
             runner: ubuntu-latest
-            bin: cms
-            asset: cms-${{ github.ref_name }}-linux-amd64
+            bin: vcms
+            asset: vcms-${{ github.ref_name }}-linux-amd64
           - os: linux
             arch: arm64
             runner: ubuntu-24.04-arm
-            bin: cms
-            asset: cms-${{ github.ref_name }}-linux-arm64
+            bin: vcms
+            asset: vcms-${{ github.ref_name }}-linux-arm64
           - os: macos
             arch: amd64
             runner: macos-26-intel
-            bin: cms
-            asset: cms-${{ github.ref_name }}-macos-amd64
+            bin: vcms
+            asset: vcms-${{ github.ref_name }}-macos-amd64
           - os: macos
             arch: arm64
             runner: macos-26
-            bin: cms
-            asset: cms-${{ github.ref_name }}-macos-arm64
+            bin: vcms
+            asset: vcms-${{ github.ref_name }}-macos-arm64
           - os: windows
             arch: amd64
             runner: windows-latest
-            bin: cms.exe
-            asset: cms-${{ github.ref_name }}-windows-amd64.exe
+            bin: vcms.exe
+            asset: vcms-${{ github.ref_name }}-windows-amd64.exe
           - os: windows
             arch: arm64
             runner: windows-11-arm
-            bin: cms.exe
-            asset: cms-${{ github.ref_name }}-windows-arm64.exe
+            bin: vcms.exe
+            asset: vcms-${{ github.ref_name }}-windows-arm64.exe
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:

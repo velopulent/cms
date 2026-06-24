@@ -206,6 +206,46 @@ pub async fn mark_failed(pool: &DbPool, id: &str, error: &str, now: &str) -> Res
     Ok(())
 }
 
+/// Fail backups/restore jobs left mid-flight by a previous process. Any
+/// `running`/`pending` row at startup is orphaned, since backups only ever run
+/// in-process. Returns the number of backup rows reconciled (for logging).
+pub async fn fail_orphaned(pool: &DbPool, now: &str) -> Result<u64, BackupError> {
+    let backups_sql = q(
+        pool.backend(),
+        "UPDATE backups SET status = 'failed', error = 'interrupted: server stopped during backup', \
+         completed_at = ? WHERE status IN ('running', 'pending')",
+    );
+    let reconciled = match pool {
+        DbPool::Sqlite(p) => sqlx::query(sqlx::AssertSqlSafe(backups_sql.as_str()))
+            .bind(now.to_string())
+            .execute(p)
+            .await
+            .map_err(dberr)?
+            .rows_affected(),
+        DbPool::Postgres(p) => sqlx::query(sqlx::AssertSqlSafe(backups_sql.as_str()))
+            .bind(now.to_string())
+            .execute(p)
+            .await
+            .map_err(dberr)?
+            .rows_affected(),
+        DbPool::MySql(p) => sqlx::query(sqlx::AssertSqlSafe(backups_sql.as_str()))
+            .bind(now.to_string())
+            .execute(p)
+            .await
+            .map_err(dberr)?
+            .rows_affected(),
+    };
+
+    exec!(
+        pool,
+        "UPDATE restore_jobs SET status = 'failed', error = 'interrupted: server stopped during restore', \
+         completed_at = ? WHERE status IN ('running', 'pending')",
+        now.to_string(),
+    );
+
+    Ok(reconciled)
+}
+
 pub async fn get_backup(pool: &DbPool, id: &str) -> Result<Option<BackupRow>, BackupError> {
     let sql = format!("SELECT {BACKUP_COLS} FROM backups WHERE id = ?");
     Ok(fetch_opt_as!(pool, BackupRow, &sql, id.to_string()))

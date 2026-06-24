@@ -94,11 +94,11 @@ impl SiteRepository for MysqlSiteRepository {
 
     async fn list_members(&self, site_id: &str) -> Result<Vec<SiteMember>, RepositoryError> {
         let result = sqlx::query_as::<_, SiteMember>(
-            "SELECT sm.id, sm.site_id, sm.user_id, u.username, u.email, sm.role, CAST(sm.created_at AS CHAR) AS created_at
+            "SELECT sm.id, sm.site_id, sm.user_id, u.name, u.email, sm.role, CAST(sm.created_at AS CHAR) AS created_at
              FROM site_members sm
              JOIN users u ON sm.user_id = u.id
              WHERE sm.site_id = ?
-             ORDER BY sm.role DESC, u.username",
+             ORDER BY sm.role DESC, u.name, u.id",
         )
         .bind(site_id)
         .fetch_all(&self.pool)
@@ -123,7 +123,7 @@ impl SiteRepository for MysqlSiteRepository {
             .await?;
 
         let result = sqlx::query_as::<_, SiteMember>(
-            "SELECT sm.id, sm.site_id, sm.user_id, u.username, u.email, sm.role, CAST(sm.created_at AS CHAR) AS created_at
+            "SELECT sm.id, sm.site_id, sm.user_id, u.name, u.email, sm.role, CAST(sm.created_at AS CHAR) AS created_at
              FROM site_members sm JOIN users u ON sm.user_id = u.id WHERE sm.id = ?",
         )
         .bind(id)
@@ -151,7 +151,7 @@ impl SiteRepository for MysqlSiteRepository {
         }
 
         let member = sqlx::query_as::<_, SiteMember>(
-            "SELECT sm.id, sm.site_id, sm.user_id, u.username, u.email, sm.role, CAST(sm.created_at AS CHAR) AS created_at
+            "SELECT sm.id, sm.site_id, sm.user_id, u.name, u.email, sm.role, CAST(sm.created_at AS CHAR) AS created_at
              FROM site_members sm JOIN users u ON sm.user_id = u.id
              WHERE sm.site_id = ? AND sm.user_id = ?",
         )

@@ -10,7 +10,7 @@ use super::server::TestServer;
 /// Returns `(token, csrf, site_id)` — the common starting point for dashboard tests.
 pub async fn setup(server: &TestServer) -> (String, String, String) {
     let client = http_client();
-    let resp = server.login_user(&client, "admin", "admin").await;
+    let resp = server.login_user(&client, "admin@cms.local", "admin").await;
     let (token, csrf) = extract_cookies(&resp);
 
     let resp = client
@@ -30,7 +30,7 @@ pub async fn setup(server: &TestServer) -> (String, String, String) {
 /// `permission` (`"read"` or `"write"`). Returns `(site_id, token)`.
 pub async fn create_site_and_token(server: &TestServer, permission: &str) -> (String, String) {
     let client = http_client();
-    let resp = server.login_user(&client, "admin", "admin").await;
+    let resp = server.login_user(&client, "admin@cms.local", "admin").await;
     let (token, csrf) = extract_cookies(&resp);
 
     let resp = client

@@ -19,7 +19,7 @@ pub async fn api_auth_middleware(mut request: Request, next: Next) -> Response {
         .map(|v| v.trim().to_string());
 
     let token = match auth_header {
-        Some(t) if t.starts_with("cms_site_") => t,
+        Some(t) if t.starts_with("vcms_site_") => t,
         _ => {
             return (
                 StatusCode::UNAUTHORIZED,

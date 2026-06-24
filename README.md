@@ -48,7 +48,7 @@ Upload, organize, and serve images and files with automatic thumbnail generation
 
 ### 💾 Backups & Disaster Recovery
 
-Create on-demand or scheduled backups of a single site or the whole instance. Backups are compressed, optionally encrypted (AES-256-GCM), and stored on local disk or a separate S3 bucket — keep the last N automatically. Restore in place or import a site as a copy, from the dashboard or offline with `cms restore` when the server won't even boot. Backups are a portable logical dump, so you can move data between SQLite, PostgreSQL, and MySQL.
+Create on-demand or scheduled backups of a single site or the whole instance. Backups are compressed, optionally encrypted (AES-256-GCM), and stored on local disk or a separate S3 bucket — keep the last N automatically. Restore in place or import a site as a copy, from the dashboard or offline with `vcms restore` when the server won't even boot. Backups are a portable logical dump, so you can move data between SQLite, PostgreSQL, and MySQL.
 
 ### 🔐 Secure & Scalable
 
@@ -66,14 +66,15 @@ A clean, fast interface for content editors and administrators. Rich text editin
 
 ```bash
 bun run build
-./target/release/cms
+./target/release/vcms
 ```
 
-Visit `http://localhost:3000` and log in with:
-- **Username:** `admin`
+Visit `http://localhost:3000/dashboard` and log in with:
+- **Email:** `admin@cms.local`
 - **Password:** `admin`
 
-*Change the default password after your first login.*
+*Login is by email; the name field is just a display name. Change the default
+password after your first login.*
 
 ### Access Your Content
 
@@ -91,46 +92,46 @@ Visit `http://localhost:3000` and log in with:
 Run a standalone MCP process for clients that launch local stdio servers:
 
 ```bash
-CMS_MCP_TOKEN=cms_site_... cms mcp stdio
+VCMS_MCP_TOKEN=vcms_site_... vcms mcp stdio
 ```
 
 The command connects to an existing CMS database and never starts HTTP/gRPC
 listeners, seeds users, creates a SQLite database, or runs migrations. Run
-`cms serve` first when the database schema needs initialization or migration.
+`vcms serve` first when the database schema needs initialization or migration.
 MCP protocol messages use stdout; structured process logs use stderr.
 
 Because the process is launched by the MCP client from an arbitrary working
 directory, it does **not** rely on a `.env` in the current directory. The
 database path and the `HMAC_SECRET` it needs to verify the token are
-read from the CMS home directory (`~/.cms`, see [Data directory](#data-directory))
-that `cms serve` initialized. The client only needs to supply `CMS_MCP_TOKEN`
-(and `CMS_HOME` if you moved the home directory):
+read from the CMS home directory (`~/.vcms`, see [Data directory](#data-directory))
+that `vcms serve` initialized. The client only needs to supply `VCMS_MCP_TOKEN`
+(and `VCMS_HOME` if you moved the home directory):
 
 ```jsonc
 // Example MCP client config
 {
-  "command": "cms",
+  "command": "vcms",
   "args": ["mcp", "stdio"],
-  "env": { "CMS_MCP_TOKEN": "cms_site_..." }
+  "env": { "VCMS_MCP_TOKEN": "vcms_site_..." }
 }
 ```
 
 ### Data directory
 
 All runtime files live under a single home directory so a fresh install works
-from any working directory. The location is `$CMS_HOME` when set, otherwise
-`~/.cms` (resolved cross-platform — same layout on Windows, macOS, and Linux):
+from any working directory. The location is `$VCMS_HOME` when set, otherwise
+`~/.vcms` (resolved cross-platform — same layout on Windows, macOS, and Linux):
 
 ```text
-~/.cms/
-  config.toml     # non-secret configuration (cms config init writes here)
+~/.vcms/
+  config.toml     # non-secret configuration (vcms config init writes here)
   secrets.toml    # auto-generated HMAC_SECRET + backup key (0600 on unix)
-  cms.db          # default SQLite database (+ -wal / -shm)
+  vcms.db          # default SQLite database (+ -wal / -shm)
   logs/           # rolling logs when [log] output = "file"
   storage/        # default filesystem storage for uploads
 ```
 
-`cms serve` creates this directory on first run and generates `secrets.toml` if
+`vcms serve` creates this directory on first run and generates `secrets.toml` if
 absent. Environment variables (`DATABASE_URL`, `HMAC_SECRET`,
 `STORAGE_FS_PATH`, S3 settings, …) still override these defaults.
 
@@ -167,6 +168,7 @@ git clone https://github.com/velopulent/cms
 ```bash
 # Run development server
 cd cms
+bun install
 bun run dev
 ```
 

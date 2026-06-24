@@ -1,8 +1,8 @@
+import { useQuery } from "@tanstack/react-query";
 import { useNavigate, useParams } from "@tanstack/react-router";
 import { ChevronsUpDown, LayoutDashboard, Plus } from "lucide-react";
 import type * as React from "react";
 import { useState } from "react";
-
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -19,6 +19,7 @@ import {
   useSidebar,
 } from "@/components/ui/sidebar";
 import { Skeleton } from "@/components/ui/skeleton";
+import { getMe, isOperator } from "@/lib/api";
 import { SiteAvatar } from "../site-avatar";
 
 interface Site {
@@ -37,6 +38,8 @@ export function SiteSwitcher({
 }) {
   const { isMobile } = useSidebar();
   const navigate = useNavigate();
+  const { data: me } = useQuery({ queryKey: ["me"], queryFn: getMe });
+  const canCreateSite = isOperator(me?.instance_role);
   const { siteId } = useParams({ from: "/_admin/sites/$siteId" });
   const [sidebarHovered, setSidebarHovered] = useState(false);
   const [hoveredSiteId, setHoveredSiteId] = useState<string | null>(null);
@@ -130,20 +133,26 @@ export function SiteSwitcher({
                 </DropdownMenuItem>
               ))}
             </DropdownMenuGroup>
-            <DropdownMenuSeparator />
-            <DropdownMenuGroup>
-              <DropdownMenuItem
-                className="gap-2 p-2"
-                onClick={() => navigate({ to: "/", search: { create: true } })}
-              >
-                <div className="flex size-6 items-center justify-center rounded-md border bg-transparent">
-                  <Plus className="size-4" />
-                </div>
-                <div className="font-medium text-muted-foreground">
-                  Add site
-                </div>
-              </DropdownMenuItem>
-            </DropdownMenuGroup>
+            {canCreateSite && (
+              <>
+                <DropdownMenuSeparator />
+                <DropdownMenuGroup>
+                  <DropdownMenuItem
+                    className="gap-2 p-2"
+                    onClick={() =>
+                      navigate({ to: "/", search: { create: true } })
+                    }
+                  >
+                    <div className="flex size-6 items-center justify-center rounded-md border bg-transparent">
+                      <Plus className="size-4" />
+                    </div>
+                    <div className="font-medium text-muted-foreground">
+                      Add site
+                    </div>
+                  </DropdownMenuItem>
+                </DropdownMenuGroup>
+              </>
+            )}
           </DropdownMenuContent>
         </DropdownMenu>
       </SidebarMenuItem>

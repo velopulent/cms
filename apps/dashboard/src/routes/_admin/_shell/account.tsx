@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { KeyRound, LogOut } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -16,7 +16,12 @@ import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useAuth } from "@/contexts/auth-context";
-import { changePassword, getSessions, revokeAllSessions } from "@/lib/api";
+import {
+  changePassword,
+  getSessions,
+  revokeAllSessions,
+  updateMyProfile,
+} from "@/lib/api";
 
 export const Route = createFileRoute("/_admin/_shell/account")({
   component: AccountPage,
@@ -28,16 +33,35 @@ function AccountPage() {
   const queryClient = useQueryClient();
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
+  const [displayName, setDisplayName] = useState(auth.user?.name ?? "");
   const { data: sessions, isLoading } = useQuery({
     queryKey: ["sessions"],
     queryFn: getSessions,
+  });
+
+  // Sync the field once the signed-in user loads (auth.user may be null on first render).
+  const loadedName = auth.user?.name;
+  useEffect(() => {
+    if (loadedName) setDisplayName(loadedName);
+  }, [loadedName]);
+
+  const profileMutation = useMutation({
+    mutationFn: () => updateMyProfile({ name: displayName }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["me"] });
+      toast.success("Profile updated");
+    },
+    onError: (error: Error) => toast.error(error.message),
   });
 
   const passwordMutation = useMutation({
     mutationFn: () => changePassword(currentPassword, newPassword),
     onSuccess: async () => {
       toast.success("Password changed. Sign in again.");
-      queryClient.clear();
+      // Keep the ["me"] query alive (clearing it orphans AuthProvider's
+      // observer); refetch it instead → 401 → signed-out state.
+      queryClient.removeQueries({ predicate: (q) => q.queryKey[0] !== "me" });
+      await queryClient.refetchQueries({ queryKey: ["me"] });
       navigate({ to: "/login" });
     },
     onError: (error: Error) => toast.error(error.message),
@@ -45,9 +69,12 @@ function AccountPage() {
 
   const revokeMutation = useMutation({
     mutationFn: revokeAllSessions,
-    onSuccess: () => {
+    onSuccess: async () => {
       toast.success("All sessions revoked");
-      queryClient.clear();
+      // Keep the ["me"] query alive (clearing it orphans AuthProvider's
+      // observer); refetch it instead → 401 → signed-out state.
+      queryClient.removeQueries({ predicate: (q) => q.queryKey[0] !== "me" });
+      await queryClient.refetchQueries({ queryKey: ["me"] });
       navigate({ to: "/login" });
     },
     onError: (error: Error) => toast.error(error.message),
@@ -77,6 +104,54 @@ function AccountPage() {
           </CardContent>
         </Card>
       ) : null}
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Profile</CardTitle>
+          <CardDescription>
+            Your display name is shown across the dashboard. You sign in with
+            your email.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <form
+            className="space-y-5"
+            onSubmit={(event) => {
+              event.preventDefault();
+              profileMutation.mutate();
+            }}
+          >
+            <FieldGroup>
+              <Field>
+                <FieldLabel htmlFor="display-name">Name</FieldLabel>
+                <Input
+                  id="display-name"
+                  value={displayName}
+                  onChange={(event) => setDisplayName(event.target.value)}
+                  placeholder="John Doe"
+                  required
+                />
+              </Field>
+              {auth.user?.email ? (
+                <Field>
+                  <FieldLabel htmlFor="account-email">Email</FieldLabel>
+                  <Input id="account-email" value={auth.user.email} disabled />
+                </Field>
+              ) : null}
+            </FieldGroup>
+            <Button
+              type="submit"
+              disabled={
+                profileMutation.isPending ||
+                displayName.trim().length === 0 ||
+                displayName === auth.user?.name
+              }
+            >
+              {profileMutation.isPending ? "Saving..." : "Save profile"}
+            </Button>
+          </form>
+        </CardContent>
+      </Card>
 
       <Card>
         <CardHeader>

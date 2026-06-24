@@ -81,11 +81,25 @@ export type InstanceRole = "instance_owner" | "instance_admin";
 
 export interface UserPublic {
   id: string;
-  username: string;
+  name: string;
   email: string;
   instance_role: InstanceRole | null;
   must_change_password: boolean;
 }
+
+/** The non-operator role, modelled on the frontend as the string "user". */
+export const ROLE_USER = "user";
+export type RoleValue = InstanceRole | typeof ROLE_USER;
+
+/**
+ * value→label items for an instance-role `<Select>`. base-ui's `<SelectValue />`
+ * renders the trigger label from this map, so the dropdowns must pass it.
+ */
+export const INSTANCE_ROLE_ITEMS: { value: RoleValue; label: string }[] = [
+  { value: ROLE_USER, label: "User" },
+  { value: "instance_admin", label: "Instance admin" },
+  { value: "instance_owner", label: "Instance owner" },
+];
 
 /** True for instance operators (owner or admin) who manage the whole installation. */
 export function isOperator(role: InstanceRole | null | undefined): boolean {
@@ -142,7 +156,7 @@ export interface SiteMember {
   id: string;
   site_id: string;
   user_id: string;
-  username: string;
+  name: string;
   email: string;
   role: "editor" | "viewer";
   created_at: string;
@@ -440,21 +454,17 @@ export async function getWebhookDeliveries(
 
 // --- Auth API ---
 
-export async function login(username: string, password: string) {
+export async function login(email: string, password: string) {
   return authApi<AuthResponse>("/login", {
     method: "POST",
-    body: JSON.stringify({ username, password }),
+    body: JSON.stringify({ email, password }),
   });
 }
 
-export async function register(
-  username: string,
-  email: string,
-  password: string,
-) {
+export async function register(name: string, email: string, password: string) {
   return authApi<AuthResponse>("/register", {
     method: "POST",
-    body: JSON.stringify({ username, email, password }),
+    body: JSON.stringify({ name, email, password }),
   });
 }
 
@@ -492,7 +502,7 @@ export async function getInstanceUsers() {
 }
 
 export async function createManagedUser(data: {
-  username: string;
+  name: string;
   email: string;
   temporary_password: string;
   instance_role: InstanceRole | null;
@@ -510,6 +520,37 @@ export async function updateInstanceRole(
   return api<void>(`/instance/users/${userId}/role`, {
     method: "PUT",
     body: JSON.stringify({ instance_role: instanceRole }),
+  });
+}
+
+export async function updateUser(
+  userId: string,
+  data: { name: string; email: string },
+) {
+  return api<void>(`/instance/users/${userId}`, {
+    method: "PUT",
+    body: JSON.stringify(data),
+  });
+}
+
+export async function deleteUser(userId: string) {
+  return api<void>(`/instance/users/${userId}`, { method: "DELETE" });
+}
+
+export async function adminSetUserPassword(
+  userId: string,
+  newPassword: string,
+) {
+  return api<void>(`/instance/users/${userId}/password`, {
+    method: "POST",
+    body: JSON.stringify({ new_password: newPassword }),
+  });
+}
+
+export async function updateMyProfile(data: { name: string }) {
+  return authApi<UserPublic>("/me", {
+    method: "PUT",
+    body: JSON.stringify(data),
   });
 }
 
@@ -750,6 +791,14 @@ export async function runBackupSchedule(scope: BackupScope, id: string) {
   );
 }
 
+/** Rebuild the full-text search index for the given scope (owner/operator). */
+export async function reindexSearch(scope: BackupScope) {
+  return api<{ reindexed: number }>(
+    `${backupScopePrefix(scope)}/search/reindex`,
+    { method: "POST" },
+  );
+}
+
 // --- Sites API ---
 
 export async function getSites() {
@@ -787,7 +836,7 @@ export async function getSiteMembers(id: string) {
 
 export async function inviteMember(
   siteId: string,
-  data: { username: string; role: string },
+  data: { email: string; role: string },
 ) {
   return api<SiteMember>(`/sites/${siteId}/members`, {
     method: "POST",

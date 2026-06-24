@@ -156,11 +156,11 @@ impl TestServer {
         }
     }
 
-    pub async fn login_user(&self, client: &reqwest::Client, username: &str, password: &str) -> reqwest::Response {
+    pub async fn login_user(&self, client: &reqwest::Client, email: &str, password: &str) -> reqwest::Response {
         client
             .post(format!("{}/api/auth/login", self.base_url))
             .json(&serde_json::json!({
-                "username": username,
+                "email": email,
                 "password": password,
             }))
             .send()
@@ -170,7 +170,7 @@ impl TestServer {
 }
 
 pub(crate) async fn seed_admin(repository: &Repository) {
-    if !repository.user.exists("admin").await.unwrap_or(false) {
+    if !repository.user.exists("admin@cms.local").await.unwrap_or(false) {
         let id = uuid::Uuid::now_v7().to_string();
         let password_hash = bcrypt::hash("admin", bcrypt::DEFAULT_COST).expect("Failed to hash password");
         repository

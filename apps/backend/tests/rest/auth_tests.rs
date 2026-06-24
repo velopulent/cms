@@ -3,14 +3,14 @@ use crate::common::TestServer;
 async fn register_user(
     server: &TestServer,
     client: &reqwest::Client,
-    username: &str,
+    name: &str,
     email: &str,
     password: &str,
 ) -> reqwest::Response {
     let resp = client
         .post(format!("{}/api/auth/register", server.base_url))
         .json(&serde_json::json!({
-            "username": username,
+            "name": name,
             "email": email,
             "password": password,
         }))
@@ -31,14 +31,14 @@ async fn register_user(
 async fn register_user_expect_error(
     server: &TestServer,
     client: &reqwest::Client,
-    username: &str,
+    name: &str,
     email: &str,
     password: &str,
 ) -> reqwest::Response {
     client
         .post(format!("{}/api/auth/register", server.base_url))
         .json(&serde_json::json!({
-            "username": username,
+            "name": name,
             "email": email,
             "password": password,
         }))
@@ -91,13 +91,13 @@ async fn test_register_success() {
     let resp = register_user(&server, &client, "newuser", "new@example.com", "password123").await;
 
     let body: serde_json::Value = resp.json().await.unwrap();
-    assert_eq!(body["user"]["username"], "newuser");
+    assert_eq!(body["user"]["name"], "newuser");
     assert_eq!(body["user"]["email"], "new@example.com");
     assert!(body["user"]["id"].is_string());
 }
 
 #[tokio::test]
-async fn test_register_validation_empty_username() {
+async fn test_register_validation_empty_name() {
     let server = TestServer::start().await;
     let client = reqwest::Client::builder().build().unwrap();
 
@@ -107,13 +107,15 @@ async fn test_register_validation_empty_username() {
 }
 
 #[tokio::test]
-async fn test_register_validation_short_username() {
+async fn test_register_short_display_name_allowed() {
+    // `name` is now a display name (non-unique, no length floor beyond non-empty),
+    // so a short name like "ab" is accepted.
     let server = TestServer::start().await;
     let client = reqwest::Client::builder().build().unwrap();
 
-    let resp = register_user_expect_error(&server, &client, "ab", "test@example.com", "password123").await;
+    let resp = register_user(&server, &client, "ab", "test@example.com", "password123").await;
 
-    assert_eq!(resp.status(), 400);
+    assert!(resp.status().is_success());
 }
 
 #[tokio::test]
@@ -137,21 +139,21 @@ async fn test_register_validation_invalid_email() {
 }
 
 #[tokio::test]
-async fn test_register_duplicate_username() {
+async fn test_register_duplicate_email() {
+    // Email is the unique login identity; a second registration with the same email
+    // (even under a different display name) is rejected.
     let server = TestServer::start().await;
     let client = reqwest::Client::builder().build().unwrap();
 
-    register_user(&server, &client, "testuser", "test@example.com", "password123").await;
+    register_user(&server, &client, "First User", "dupe@example.com", "password123").await;
 
-    let resp = register_user_expect_error(&server, &client, "testuser", "other@example.com", "password123").await;
+    let resp = register_user_expect_error(&server, &client, "Second User", "dupe@example.com", "password123").await;
 
     let status = resp.status();
     let body: serde_json::Value = resp.json().await.unwrap_or_default();
-    assert!(
-        status == 409 || status == 400,
-        "Expected 409 or 400 for duplicate username, got {}: {:?}",
-        status,
-        body
+    assert_eq!(
+        status, 409,
+        "Expected 409 Conflict for duplicate email, got {status}: {body:?}"
     );
 }
 
@@ -162,7 +164,7 @@ async fn test_login_success() {
 
     register_user(&server, &client, "testuser", "test@example.com", "password123").await;
 
-    let resp = server.login_user(&client, "testuser", "password123").await;
+    let resp = server.login_user(&client, "test@example.com", "password123").await;
     assert_eq!(resp.status(), 200);
 }
 
@@ -173,7 +175,7 @@ async fn test_login_wrong_password() {
 
     register_user(&server, &client, "testuser", "test@example.com", "password123").await;
 
-    let resp = server.login_user(&client, "testuser", "wrongpassword").await;
+    let resp = server.login_user(&client, "test@example.com", "wrongpassword").await;
     assert_eq!(resp.status(), 401);
 }
 
@@ -193,7 +195,7 @@ async fn test_me_authenticated() {
 
     register_user(&server, &client, "testuser", "test@example.com", "password123").await;
 
-    let resp = server.login_user(&client, "testuser", "password123").await;
+    let resp = server.login_user(&client, "test@example.com", "password123").await;
     assert_eq!(resp.status(), 200);
 
     let token = extract_token_from_cookies(&resp).expect("No token cookie");
@@ -209,7 +211,53 @@ async fn test_me_authenticated() {
 
     assert_eq!(me_resp.status(), 200);
     let body: serde_json::Value = me_resp.json().await.unwrap();
-    assert_eq!(body["username"], "testuser");
+    assert_eq!(body["name"], "testuser");
+}
+
+// ── routing: the MCP auth layer must not leak onto the global fallback (issue 1) ──
+
+#[tokio::test]
+async fn test_dashboard_trailing_slash_does_not_hit_mcp_auth() {
+    let server = TestServer::start().await;
+    let client = reqwest::Client::builder().build().unwrap();
+
+    // `/dashboard/` must route to the SPA handler, never the MCP auth fallback.
+    let resp = client
+        .get(format!("{}/dashboard/", server.base_url))
+        .send()
+        .await
+        .unwrap();
+    assert_ne!(resp.status(), 401, "/dashboard/ must not require MCP auth");
+    let body = resp.text().await.unwrap_or_default();
+    assert!(
+        !body.contains("Missing Authorization bearer token"),
+        "/dashboard/ returned the MCP auth error: {body}"
+    );
+}
+
+#[tokio::test]
+async fn test_unknown_path_returns_404_not_mcp_auth() {
+    let server = TestServer::start().await;
+    let client = reqwest::Client::builder().build().unwrap();
+
+    let resp = client
+        .get(format!("{}/this-route-does-not-exist", server.base_url))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), 404, "unknown paths should 404, not hit MCP auth");
+    let body = resp.text().await.unwrap_or_default();
+    assert!(!body.contains("Missing Authorization bearer token"));
+}
+
+#[tokio::test]
+async fn test_mcp_still_requires_bearer_token() {
+    let server = TestServer::start().await;
+    let client = reqwest::Client::builder().build().unwrap();
+
+    // The /mcp endpoint must remain protected by the MCP auth layer.
+    let resp = client.get(format!("{}/mcp", server.base_url)).send().await.unwrap();
+    assert_eq!(resp.status(), 401);
 }
 
 #[tokio::test]
@@ -228,7 +276,7 @@ async fn test_logout() {
 
     register_user(&server, &client, "testuser", "test@example.com", "password123").await;
 
-    let resp = server.login_user(&client, "testuser", "password123").await;
+    let resp = server.login_user(&client, "test@example.com", "password123").await;
     assert_eq!(resp.status(), 200);
 
     let token = extract_token_from_cookies(&resp).expect("No token cookie");

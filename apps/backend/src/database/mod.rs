@@ -52,14 +52,14 @@ pub async fn connect_db_without_migrations(
     let pool = DbPool::from_existing_with_config(config).await.map_err(|error| {
         format!(
             "Unable to connect to the existing CMS database without creating or migrating it: {error}. \
-             Run `cms serve` once to initialize and migrate the database."
+             Run `vcms serve` once to initialize and migrate the database."
         )
     })?;
 
     pool.validate_migrations().await.map_err(|error| {
         format!(
             "CMS database schema is missing, outdated, or incompatible: {error}. \
-             Run `cms serve` once to apply migrations."
+             Run `vcms serve` once to apply migrations."
         )
     })?;
 

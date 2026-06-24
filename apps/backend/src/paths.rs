@@ -4,27 +4,27 @@
 //! install "just works" regardless of the current working directory:
 //!
 //! ```text
-//! ~/.cms/
+//! ~/.vcms/
 //!   config.toml     # non-secret configuration
 //!   secrets.toml    # auto-generated HMAC + backup encryption secrets (0600)
-//!   cms.db          # default SQLite database (+ -wal / -shm)
+//!   vcms.db         # default SQLite database (+ -wal / -shm)
 //!   logs/           # rolling logs when log output = "file"
 //!   storage/        # default filesystem storage for uploads
 //! ```
 //!
-//! The root is `$CMS_HOME` when set, otherwise `~/.cms` resolved cross-platform
+//! The root is `$VCMS_HOME` when set, otherwise `~/.vcms` resolved cross-platform
 //! via the `directories` crate. This mirrors the convention used by tools like
 //! `CARGO_HOME` / `PGDATA`: one predictable, overridable home.
 
 use std::path::PathBuf;
 
 /// Environment variable that overrides the home directory location.
-pub const CMS_HOME_ENV: &str = "CMS_HOME";
+pub const CMS_HOME_ENV: &str = "VCMS_HOME";
 
 /// The CMS home directory root.
 ///
-/// `$CMS_HOME` wins if set and non-empty. Otherwise `~/.cms`. As a last resort
-/// (no detectable home directory) falls back to `.cms` in the current dir.
+/// `$VCMS_HOME` wins if set and non-empty. Otherwise `~/.vcms`. As a last resort
+/// (no detectable home directory) falls back to `.vcms` in the current dir.
 pub fn home() -> PathBuf {
     if let Some(value) = std::env::var_os(CMS_HOME_ENV)
         && !value.is_empty()
@@ -33,46 +33,46 @@ pub fn home() -> PathBuf {
     }
 
     directories::BaseDirs::new()
-        .map(|dirs| dirs.home_dir().join(".cms"))
-        .unwrap_or_else(|| PathBuf::from(".cms"))
+        .map(|dirs| dirs.home_dir().join(".vcms"))
+        .unwrap_or_else(|| PathBuf::from(".vcms"))
 }
 
-/// `~/.cms/config.toml` — the user-level config file.
+/// `~/.vcms/config.toml` — the user-level config file.
 pub fn config_file() -> PathBuf {
     home().join("config.toml")
 }
 
-/// `~/.cms/secrets.toml` — auto-generated secrets file.
+/// `~/.vcms/secrets.toml` — auto-generated secrets file.
 pub fn secrets_file() -> PathBuf {
     home().join("secrets.toml")
 }
 
-/// `~/.cms/cms.db` — the default SQLite database file.
+/// `~/.vcms/vcms.db` — the default SQLite database file.
 pub fn default_db_path() -> PathBuf {
-    home().join("cms.db")
+    home().join("vcms.db")
 }
 
-/// `~/.cms/logs` — directory for rolling log files.
+/// `~/.vcms/logs` — directory for rolling log files.
 pub fn logs_dir() -> PathBuf {
     home().join("logs")
 }
 
-/// `~/.cms/storage` — default filesystem storage directory for uploads.
+/// `~/.vcms/storage` — default filesystem storage directory for uploads.
 pub fn storage_dir() -> PathBuf {
     home().join("storage")
 }
 
-/// `~/.cms/backups` — default local destination for backup artifacts.
+/// `~/.vcms/backups` — default local destination for backup artifacts.
 pub fn backups_dir() -> PathBuf {
     home().join("backups")
 }
 
-/// `~/.cms/search` — default location for the Tantivy full-text search index.
+/// `~/.vcms/search` — default location for the Tantivy full-text search index.
 pub fn search_dir() -> PathBuf {
     home().join("search")
 }
 
-/// Build the default `DATABASE_URL` (`sqlite://<home>/cms.db`).
+/// Build the default `DATABASE_URL` (`sqlite://<home>/vcms.db`).
 ///
 /// SQLite URLs use forward slashes, so backslashes are normalized for Windows.
 pub fn default_database_url() -> String {
@@ -103,7 +103,7 @@ mod tests {
             assert_eq!(home(), dir.path());
             assert_eq!(config_file(), dir.path().join("config.toml"));
             assert_eq!(secrets_file(), dir.path().join("secrets.toml"));
-            assert_eq!(default_db_path(), dir.path().join("cms.db"));
+            assert_eq!(default_db_path(), dir.path().join("vcms.db"));
             assert_eq!(logs_dir(), dir.path().join("logs"));
             assert_eq!(storage_dir(), dir.path().join("storage"));
         });
