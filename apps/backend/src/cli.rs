@@ -69,6 +69,11 @@ pub enum Command {
         #[command(subcommand)]
         action: BackupAction,
     },
+    /// Manage the OS background service (systemd / launchd / Windows SCM).
+    Service {
+        #[command(subcommand)]
+        action: ServiceAction,
+    },
     /// Restore a backup artifact (runs offline; destructive — replaces data in scope).
     Restore {
         /// Path to the backup artifact (`.cmsbak`).
@@ -112,6 +117,37 @@ pub enum BackupAction {
     },
     /// List recorded backups.
     List,
+}
+
+#[derive(Subcommand, Debug)]
+pub enum ServiceAction {
+    /// Install the service, enable it at boot, and start it now (requires root/admin).
+    ///
+    /// The service runs `vcms serve` as the chosen OS account; runtime files live
+    /// under that account's `$VCMS_HOME` (default `~/.vcms`).
+    Install {
+        /// OS account the service runs as.
+        ///
+        /// Defaults to the real invoking user (`$SUDO_USER` when run via sudo). The
+        /// service never runs as root. Ignored on Windows (runs as LocalSystem).
+        #[arg(long, value_name = "NAME")]
+        user: Option<String>,
+    },
+    /// Stop, disable, and remove the service (requires root/admin).
+    Uninstall,
+    /// Show whether the service is installed, enabled at boot, and running.
+    Status,
+    /// Start the installed service.
+    Start,
+    /// Stop the running service.
+    Stop,
+    /// Internal entry point invoked by the Windows Service Control Manager.
+    ///
+    /// Not for direct use — the SCM launches this to host the server inside a
+    /// Windows service. Hidden from `--help`.
+    #[cfg(windows)]
+    #[command(hide = true)]
+    Run,
 }
 
 #[derive(Subcommand, Debug)]
@@ -162,5 +198,49 @@ mod tests {
                 transport: McpTransport::Stdio
             })
         ));
+    }
+
+    #[test]
+    fn parses_service_install_with_user() {
+        use super::ServiceAction;
+        let cli =
+            Cli::try_parse_from(["vcms", "service", "install", "--user", "deploy"]).expect("command should parse");
+        match cli.command {
+            Some(Command::Service {
+                action: ServiceAction::Install { user },
+            }) => assert_eq!(user.as_deref(), Some("deploy")),
+            other => panic!("unexpected command: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parses_service_lifecycle_subcommands() {
+        use super::ServiceAction;
+        for (args, ok) in [
+            (
+                ["service", "status"],
+                matches!(parse_action(&["service", "status"]), ServiceAction::Status),
+            ),
+            (
+                ["service", "start"],
+                matches!(parse_action(&["service", "start"]), ServiceAction::Start),
+            ),
+            (
+                ["service", "stop"],
+                matches!(parse_action(&["service", "stop"]), ServiceAction::Stop),
+            ),
+        ] {
+            assert!(ok, "{args:?} did not parse to the expected ServiceAction");
+        }
+    }
+
+    #[cfg(test)]
+    fn parse_action(args: &[&str]) -> super::ServiceAction {
+        let mut full = vec!["vcms"];
+        full.extend_from_slice(args);
+        match Cli::try_parse_from(full).expect("parse").command {
+            Some(Command::Service { action }) => action,
+            other => panic!("unexpected: {other:?}"),
+        }
     }
 }
