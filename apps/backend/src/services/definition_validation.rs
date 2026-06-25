@@ -697,10 +697,7 @@ mod tests {
         ]);
         let f = fields.as_array().unwrap();
         // All allowed → ok.
-        assert!(
-            validate_entry_data(&json!({"u": ["https://example.com/a", "https://x.example.com/b"]}), f)
-                .is_none()
-        );
+        assert!(validate_entry_data(&json!({"u": ["https://example.com/a", "https://x.example.com/b"]}), f).is_none());
         // One disallowed element fails the whole field.
         assert!(
             validate_entry_data(&json!({"u": ["https://example.com/a", "https://other.com/b"]}), f)
