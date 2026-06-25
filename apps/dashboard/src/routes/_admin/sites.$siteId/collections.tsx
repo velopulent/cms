@@ -831,9 +831,17 @@ function NumberConfig({
         type="number"
         placeholder={placeholder}
         value={value ?? ""}
-        onChange={(e) =>
-          onChange(e.target.value === "" ? undefined : Number(e.target.value))
-        }
+        onChange={(e) => {
+          const raw = e.target.value;
+          if (raw === "") {
+            onChange(undefined);
+            return;
+          }
+          // Only commit finite numbers; a transient invalid entry (NaN) would
+          // otherwise serialize to null and silently drop the constraint.
+          const n = Number(raw);
+          onChange(Number.isFinite(n) ? n : undefined);
+        }}
         className="h-8 border-0 bg-transparent px-0 shadow-none focus-visible:ring-0"
       />
     </ConfigBox>
@@ -971,6 +979,35 @@ function TypeConfig({ field, set, siteId }: FieldConfigProps) {
   }
 }
 
+/**
+ * Min/max selection bounds, shown for any multi-value field (`select`,
+ * `relation`, `file`). The backend validator enforces `min_select`/`max_select`
+ * for all of them, so the editor exposes the same controls everywhere.
+ */
+function SelectionBoundsConfig({
+  field,
+  set,
+}: {
+  field: ContentFieldWithId;
+  set: (key: keyof ContentField, value: unknown) => void;
+}) {
+  if (!field.multiple) return null;
+  return (
+    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+      <NumberConfig
+        label="Min select"
+        value={field.min_select}
+        onChange={(v) => set("min_select", v)}
+      />
+      <NumberConfig
+        label="Max select"
+        value={field.max_select}
+        onChange={(v) => set("max_select", v)}
+      />
+    </div>
+  );
+}
+
 function SelectOptionsConfig({
   field,
   set,
@@ -979,45 +1016,48 @@ function SelectOptionsConfig({
   set: (key: keyof ContentField, value: unknown) => void;
 }) {
   return (
-    <ConfigBox label="Options">
-      <div className="flex flex-wrap gap-1">
-        {(field.options ?? []).map((opt, optIdx) => (
-          <span
-            key={opt}
-            className="inline-flex items-center gap-1 rounded-md border border-border bg-background px-2 py-0.5 text-xs"
-          >
-            {opt}
-            <button
-              type="button"
-              className="ml-0.5 text-muted-foreground hover:text-foreground"
-              onClick={() =>
-                set(
-                  "options",
-                  (field.options ?? []).filter((_, i) => i !== optIdx),
-                )
-              }
+    <div className="flex flex-col gap-3">
+      <ConfigBox label="Options">
+        <div className="flex flex-wrap gap-1">
+          {(field.options ?? []).map((opt, optIdx) => (
+            <span
+              key={opt}
+              className="inline-flex items-center gap-1 rounded-md border border-border bg-background px-2 py-0.5 text-xs"
             >
-              ×
-            </button>
-          </span>
-        ))}
-      </div>
-      <Input
-        placeholder="Add option and press Enter"
-        className="mt-1 h-8 text-xs"
-        onKeyDown={(e) => {
-          if (e.key === "Enter") {
-            e.preventDefault();
-            const input = e.target as HTMLInputElement;
-            const val = input.value.trim();
-            if (val) {
-              set("options", [...(field.options ?? []), val]);
-              input.value = "";
+              {opt}
+              <button
+                type="button"
+                className="ml-0.5 text-muted-foreground hover:text-foreground"
+                onClick={() =>
+                  set(
+                    "options",
+                    (field.options ?? []).filter((_, i) => i !== optIdx),
+                  )
+                }
+              >
+                ×
+              </button>
+            </span>
+          ))}
+        </div>
+        <Input
+          placeholder="Add option and press Enter"
+          className="mt-1 h-8 text-xs"
+          onKeyDown={(e) => {
+            if (e.key === "Enter") {
+              e.preventDefault();
+              const input = e.target as HTMLInputElement;
+              const val = input.value.trim();
+              if (val) {
+                set("options", [...(field.options ?? []), val]);
+                input.value = "";
+              }
             }
-          }
-        }}
-      />
-    </ConfigBox>
+          }}
+        />
+      </ConfigBox>
+      <SelectionBoundsConfig field={field} set={set} />
+    </div>
   );
 }
 
@@ -1149,6 +1189,7 @@ function FileConfig({
         value={field.max_size}
         onChange={(v) => set("max_size", v)}
       />
+      <SelectionBoundsConfig field={field} set={set} />
       <FlagCheckbox
         id={`protected-${field._id}`}
         label="Protected"
@@ -1198,20 +1239,7 @@ function RelationConfig({
           </SelectContent>
         </Select>
       </ConfigBox>
-      {field.multiple && (
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-          <NumberConfig
-            label="Min select"
-            value={field.min_select}
-            onChange={(v) => set("min_select", v)}
-          />
-          <NumberConfig
-            label="Max select"
-            value={field.max_select}
-            onChange={(v) => set("max_select", v)}
-          />
-        </div>
-      )}
+      <SelectionBoundsConfig field={field} set={set} />
       <FlagCheckbox
         id={`cascade-${field._id}`}
         label="Cascade delete"
