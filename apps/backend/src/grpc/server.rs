@@ -4,7 +4,6 @@ use std::pin::Pin;
 use std::sync::Arc;
 
 use tonic::transport::Server;
-use tracing::info;
 
 use crate::config::Config;
 use crate::grpc::interceptor::AuthInterceptor;
@@ -81,8 +80,6 @@ pub async fn start_grpc_server(
     health_reporter
         .set_serving::<crate::grpc::cms::v1::webhook_service_server::WebhookServiceServer<WebhookServiceImpl>>()
         .await;
-
-    info!("gRPC server listening on {}", grpc_addr);
 
     Server::builder()
         .add_service(reflection_service)

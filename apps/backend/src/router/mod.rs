@@ -22,7 +22,6 @@ use axum::{Extension, Router, middleware::from_fn, routing::get};
 use tokio_util::sync::CancellationToken;
 use tower_http::cors::{AllowOrigin, CorsLayer};
 use tower_http::trace::TraceLayer;
-use tracing::info;
 
 use crate::config::Config;
 use crate::handlers::site_handler::get_current_site;
@@ -181,7 +180,6 @@ pub fn create_router(
             mcp_ct,
         );
         router = router.merge(mcp_router);
-        info!("MCP HTTP endpoint enabled at /mcp");
     } else {
         drop(repository);
     }
