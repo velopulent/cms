@@ -12,19 +12,14 @@ pub const VALID_FIELD_TYPES: &[&str] = &[
     "url",
     "json",
     "relation",
-    "image_url",
-    "image",
-    "video",
-    "audio",
-    "document",
-    "archive",
+    "file",
 ];
 
 /// Field types whose value is a reference to another collection's entries.
 pub const RELATION_FIELD_TYPE: &str = "relation";
 
 /// Field types that store a file URL (or array of URLs when `multiple`).
-pub const FILE_FIELD_TYPES: &[&str] = &["image", "video", "audio", "document", "archive"];
+pub const FILE_FIELD_TYPES: &[&str] = &["file"];
 
 pub fn normalize_definition(value: &Value) -> Result<Value, String> {
     let fields = match value.get("fields") {
@@ -399,7 +394,7 @@ mod tests {
     fn normalize_definition_converts_accept_string_to_array() {
         let input = json!({
             "fields": [
-                {"name": "cover", "type": "image", "accept": "image/jpeg"}
+                {"name": "cover", "type": "file", "accept": "image/jpeg"}
             ]
         });
         let result = normalize_definition(&input).unwrap();
@@ -412,7 +407,7 @@ mod tests {
     fn normalize_definition_keeps_accept_array() {
         let input = json!({
             "fields": [
-                {"name": "cover", "type": "image", "accept": ["image/jpeg", "image/png"]}
+                {"name": "cover", "type": "file", "accept": ["image/jpeg", "image/png"]}
             ]
         });
         let result = normalize_definition(&input).unwrap();
@@ -493,10 +488,64 @@ mod tests {
 
     #[test]
     fn normalize_definition_accepts_new_types() {
-        for t in ["email", "url", "json"] {
+        for t in ["email", "url", "json", "file"] {
             let input = json!({"fields": [{"name": "f", "type": t}]});
             assert!(normalize_definition(&input).is_ok(), "type {t} should be valid");
         }
+    }
+
+    #[test]
+    fn normalize_definition_rejects_legacy_file_types() {
+        // These per-category types collapsed into the single `file` type; the
+        // backend must now reject them so a stale client can't recreate them.
+        for t in ["image_url", "image", "video", "audio", "document", "archive"] {
+            let input = json!({"fields": [{"name": "f", "type": t}]});
+            assert!(
+                normalize_definition(&input).is_err(),
+                "legacy type {t} should be rejected"
+            );
+        }
+    }
+
+    #[test]
+    fn normalize_definition_file_keeps_accept_and_multiple() {
+        let input = json!({
+            "fields": [
+                {"name": "asset", "type": "file", "accept": "image/png", "multiple": true}
+            ]
+        });
+        let result = normalize_definition(&input).unwrap();
+        let field = &result["fields"][0];
+        // `accept` is normalized to an array; `multiple` is preserved.
+        assert_eq!(field["accept"], json!(["image/png"]));
+        assert_eq!(field["multiple"], json!(true));
+    }
+
+    #[test]
+    fn validate_entry_data_checks_file_value() {
+        let fields = json!([{"name": "asset", "type": "file"}]);
+        let f = fields.as_array().unwrap();
+        // Uploaded-file URLs and external http(s) URLs are accepted.
+        assert!(validate_entry_data(&json!({"asset": "/api/files/abc/x.png"}), f).is_none());
+        assert!(validate_entry_data(&json!({"asset": "https://cdn.example/x.png"}), f).is_none());
+        // Arbitrary strings are not valid file references.
+        let err = validate_entry_data(&json!({"asset": "not-a-url"}), f);
+        assert!(err.unwrap().contains("must be a valid file URL"));
+    }
+
+    #[test]
+    fn validate_entry_data_checks_multiple_file_values() {
+        let fields = json!([{"name": "gallery", "type": "file", "multiple": true}]);
+        let f = fields.as_array().unwrap();
+        let data = json!({"gallery": ["/api/files/a/1.png", "/api/files/b/2.png"]});
+        assert!(validate_entry_data(&data, f).is_none());
+        // One bad element in the array fails the whole field.
+        let bad = json!({"gallery": ["/api/files/a/1.png", "nope"]});
+        assert!(
+            validate_entry_data(&bad, f)
+                .unwrap()
+                .contains("must be a valid file URL")
+        );
     }
 
     #[test]
@@ -603,7 +652,7 @@ mod tests {
 
     #[test]
     fn validate_required_empty_array() {
-        let fields = json!([{"name": "imgs", "type": "image", "multiple": true, "required": true}]);
+        let fields = json!([{"name": "imgs", "type": "file", "multiple": true, "required": true}]);
         let f = fields.as_array().unwrap();
         assert!(
             validate_entry_data(&json!({"imgs": []}), f)
