@@ -857,6 +857,9 @@ const JsonField = memo(function JsonField({
         onChange(parsed);
       } catch (err) {
         setParseError(err instanceof Error ? err.message : "Invalid JSON");
+        // Clear the committed value so invalid JSON can't be submitted while the
+        // textarea still shows the unparseable text.
+        onChange(undefined);
       }
     },
     [onChange],
@@ -1149,7 +1152,9 @@ const RelationField = memo(function RelationField({
         onChange([...selectedIds, id]);
       }
     } else {
-      onChange(selectedIds.includes(id) ? "" : id);
+      // Emit null (not "") when clearing the current selection — the backend
+      // relation validator rejects an empty string as a bogus entry id.
+      onChange(selectedIds.includes(id) ? null : id);
       setOpen(false);
     }
   };
