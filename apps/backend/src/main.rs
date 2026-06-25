@@ -117,7 +117,12 @@ async fn run_serve(cli: &Cli) -> Result<(), Box<dyn Error>> {
     }
 
     let addr: SocketAddr = config.bind_address.parse().expect("Invalid BIND_ADDRESS");
-    info!("REST API server running on {}", addr);
+    info!("Dashboard UI available at http://{}/dashboard", addr);
+    info!("REST API server running on http://{}", addr);
+    info!("GraphQL endpoint at http://{}/api/graphql", addr);
+    if config.mcp_enabled {
+        info!("MCP HTTP endpoint at http://{}/mcp", addr);
+    }
 
     let grpc_addr: SocketAddr = config.grpc_bind_address.parse().expect("Invalid GRPC_BIND_ADDRESS");
     info!("gRPC server running on {}", grpc_addr);

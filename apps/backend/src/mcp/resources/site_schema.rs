@@ -175,12 +175,11 @@ async fn read_schema_resource(
             {"type": "boolean", "label": "Boolean"},
             {"type": "date", "label": "Date"},
             {"type": "select", "label": "Select", "properties": ["options"]},
-            {"type": "image_url", "label": "Image URL"},
-            {"type": "image", "label": "Image", "category": "image", "properties": ["accept"]},
-            {"type": "video", "label": "Video", "category": "video", "properties": ["accept"]},
-            {"type": "audio", "label": "Audio", "category": "audio", "properties": ["accept"]},
-            {"type": "document", "label": "Document", "category": "document", "properties": ["accept"]},
-            {"type": "archive", "label": "Archive", "category": "archive", "properties": ["accept"]}
+            {"type": "email", "label": "Email"},
+            {"type": "url", "label": "URL", "properties": ["except_domains", "only_domains"]},
+            {"type": "json", "label": "JSON", "properties": ["max_size"]},
+            {"type": "relation", "label": "Relation", "properties": ["target_collection", "multiple", "min_select", "max_select"]},
+            {"type": "file", "label": "File", "properties": ["accept", "max_size", "multiple"]}
         ],
         "content_types": {
             "categories": ["image", "video", "audio", "document", "archive"],

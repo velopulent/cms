@@ -76,6 +76,71 @@ impl SingletonService {
         self
     }
 
+    /// Validate `relation` fields: every referenced id must exist as an entry in
+    /// the relation's target collection (resolved by slug within the same site).
+    async fn validate_relations(&self, site_id: &str, fields: &[Value], data: &Value) -> Result<(), SingletonError> {
+        let obj = match data.as_object() {
+            Some(o) => o,
+            None => return Ok(()),
+        };
+
+        for field_def in fields {
+            if field_def.get("type").and_then(|t| t.as_str()) != Some("relation") {
+                continue;
+            }
+            let name = field_def.get("name").and_then(|n| n.as_str()).unwrap_or("");
+            let target_slug = match field_def.get("target_collection").and_then(|t| t.as_str()) {
+                Some(s) if !s.is_empty() => s,
+                _ => continue,
+            };
+            let value = match obj.get(name) {
+                Some(v) if !v.is_null() => v,
+                _ => continue,
+            };
+
+            let target = self
+                .collection_repo
+                .get_by_slug(site_id, target_slug)
+                .await
+                .map_err(|e| SingletonError::DatabaseError(e.to_string()))?
+                .ok_or_else(|| {
+                    SingletonError::ValidationFailed(format!(
+                        "Relation field '{}' targets unknown collection '{}'",
+                        name, target_slug
+                    ))
+                })?;
+
+            let ids: Vec<&str> = match value {
+                Value::String(s) => vec![s.as_str()],
+                Value::Array(arr) => arr.iter().filter_map(|v| v.as_str()).collect(),
+                _ => {
+                    return Err(SingletonError::ValidationFailed(format!(
+                        "Relation field '{}' must be an entry id or array of ids",
+                        name
+                    )));
+                }
+            };
+
+            for id in ids {
+                let exists = self
+                    .entry_repo
+                    .get_by_id(id, site_id, false)
+                    .await
+                    .map_err(|e| SingletonError::DatabaseError(e.to_string()))?
+                    .map(|e| e.collection_id == target.id)
+                    .unwrap_or(false);
+                if !exists {
+                    return Err(SingletonError::ValidationFailed(format!(
+                        "Relation field '{}' references non-existent entry '{}' in '{}'",
+                        name, id, target_slug
+                    )));
+                }
+            }
+        }
+
+        Ok(())
+    }
+
     fn build_response(c: &Collection, entry: Option<&crate::models::entry::Entry>) -> SingletonResponse {
         let definition: Value = serde_json::from_str(&c.definition).unwrap_or(json!({"fields": []}));
         let data = entry.and_then(|e| serde_json::from_str(&e.data).ok());
@@ -197,9 +262,11 @@ impl SingletonService {
 
         if let Ok(definition) = serde_json::from_str::<Value>(&collection.definition)
             && let Some(fields) = definition.get("fields").and_then(|f| f.as_array())
-            && let Some(err) = super::definition_validation::validate_entry_data(data, fields)
         {
-            return Err(SingletonError::ValidationFailed(err));
+            if let Some(err) = super::definition_validation::validate_entry_data(data, fields) {
+                return Err(SingletonError::ValidationFailed(err));
+            }
+            self.validate_relations(site_id, fields, data).await?;
         }
 
         let data_str = data.to_string();

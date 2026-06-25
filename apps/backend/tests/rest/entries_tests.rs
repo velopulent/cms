@@ -716,3 +716,192 @@ async fn test_restore_revision() {
 
     assert_eq!(resp.status(), 200);
 }
+
+// --- New field types & per-field validation (PocketBase parity) ---
+
+/// Create a collection with a custom definition and return its id.
+async fn create_collection_with_def(
+    server: &TestServer,
+    token: &str,
+    csrf: &str,
+    site_id: &str,
+    name: &str,
+    slug: &str,
+    definition: Value,
+) -> String {
+    let client = reqwest::Client::builder().build().unwrap();
+    let resp = client
+        .post(format!(
+            "{}/api/dashboard/sites/{}/collections",
+            server.base_url, site_id
+        ))
+        .headers(auth_header(token, csrf))
+        .json(&json!({"name": name, "slug": slug, "definition": definition}))
+        .send()
+        .await
+        .unwrap();
+    assert!(
+        resp.status().is_success(),
+        "Create collection failed: {} {}",
+        resp.status(),
+        resp.text().await.unwrap_or_default()
+    );
+    let col: Value = resp.json().await.unwrap();
+    col["id"].as_str().unwrap().to_string()
+}
+
+/// Raw entry create returning the HTTP response (for asserting failures).
+async fn post_entry(
+    server: &TestServer,
+    token: &str,
+    csrf: &str,
+    site_id: &str,
+    collection_id: &str,
+    slug: &str,
+    data: Value,
+) -> reqwest::Response {
+    let client = reqwest::Client::builder().build().unwrap();
+    client
+        .post(format!("{}/api/dashboard/sites/{}/entries", server.base_url, site_id))
+        .headers(auth_header(token, csrf))
+        .json(&json!({"collection_id": collection_id, "slug": slug, "data": data}))
+        .send()
+        .await
+        .unwrap()
+}
+
+#[tokio::test]
+async fn test_create_collection_accepts_new_field_types() {
+    let server = TestServer::start().await;
+    let (token, csrf, site_id) = setup(&server).await;
+
+    // A target for the relation field must exist first.
+    create_collection_with_def(
+        &server,
+        &token,
+        &csrf,
+        &site_id,
+        "Authors",
+        "authors",
+        json!({"fields": [{"name": "name", "type": "text", "presentable": true}]}),
+    )
+    .await;
+
+    create_collection_with_def(
+        &server,
+        &token,
+        &csrf,
+        &site_id,
+        "Posts",
+        "posts",
+        json!({"fields": [
+            {"name": "contact", "type": "email"},
+            {"name": "homepage", "type": "url"},
+            {"name": "meta", "type": "json", "max_size": 1000},
+            {"name": "author", "type": "relation", "target_collection": "authors"}
+        ]}),
+    )
+    .await;
+}
+
+#[tokio::test]
+async fn test_entry_email_and_length_validation() {
+    let server = TestServer::start().await;
+    let (token, csrf, site_id) = setup(&server).await;
+    let col_id = create_collection_with_def(
+        &server,
+        &token,
+        &csrf,
+        &site_id,
+        "Contacts",
+        "contacts",
+        json!({"fields": [
+            {"name": "email", "type": "email"},
+            {"name": "code", "type": "text", "min_length": 3}
+        ]}),
+    )
+    .await;
+
+    let bad = post_entry(&server, &token, &csrf, &site_id, &col_id, "a", json!({"email": "nope"})).await;
+    assert_eq!(bad.status(), 400, "invalid email should be rejected");
+
+    let short = post_entry(&server, &token, &csrf, &site_id, &col_id, "b", json!({"code": "ab"})).await;
+    assert_eq!(short.status(), 400, "too-short text should be rejected");
+
+    let ok = post_entry(
+        &server,
+        &token,
+        &csrf,
+        &site_id,
+        &col_id,
+        "c",
+        json!({"email": "a@b.com", "code": "abcd"}),
+    )
+    .await;
+    assert!(ok.status().is_success(), "valid data should pass: {}", ok.status());
+}
+
+#[tokio::test]
+async fn test_relation_existence_validation() {
+    let server = TestServer::start().await;
+    let (token, csrf, site_id) = setup(&server).await;
+
+    let authors_id = create_collection_with_def(
+        &server,
+        &token,
+        &csrf,
+        &site_id,
+        "Authors",
+        "authors",
+        json!({"fields": [{"name": "name", "type": "text"}]}),
+    )
+    .await;
+    let author = create_entry(
+        &server,
+        &token,
+        &csrf,
+        &site_id,
+        &authors_id,
+        "jane",
+        json!({"name": "Jane"}),
+    )
+    .await;
+    let author_id = author["id"].as_str().unwrap();
+
+    let posts_id = create_collection_with_def(
+        &server,
+        &token,
+        &csrf,
+        &site_id,
+        "Posts",
+        "posts",
+        json!({"fields": [
+            {"name": "author", "type": "relation", "target_collection": "authors"}
+        ]}),
+    )
+    .await;
+
+    let ok = post_entry(
+        &server,
+        &token,
+        &csrf,
+        &site_id,
+        &posts_id,
+        "p1",
+        json!({"author": author_id}),
+    )
+    .await;
+    assert!(ok.status().is_success(), "valid relation should pass: {}", ok.status());
+
+    let bad = post_entry(
+        &server,
+        &token,
+        &csrf,
+        &site_id,
+        &posts_id,
+        "p2",
+        json!({"author": "00000000-0000-0000-0000-000000000000"}),
+    )
+    .await;
+    assert_eq!(bad.status(), 400, "non-existent relation id should be rejected");
+}

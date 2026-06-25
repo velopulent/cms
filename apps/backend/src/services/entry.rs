@@ -122,6 +122,136 @@ impl EntryService {
         }
     }
 
+    /// Validate `relation` fields against the database: every referenced id must
+    /// exist as an entry in the relation's target collection (resolved by slug
+    /// within the same site). Scalar/array shape, length, and `max_select` are
+    /// already checked by the pure [`validate_entry_data`].
+    async fn validate_relations(&self, site_id: &str, fields: &[Value], data: &Value) -> Result<(), EntryError> {
+        let obj = match data.as_object() {
+            Some(o) => o,
+            None => return Ok(()),
+        };
+
+        for field_def in fields {
+            if field_def.get("type").and_then(|t| t.as_str()) != Some("relation") {
+                continue;
+            }
+            let name = field_def.get("name").and_then(|n| n.as_str()).unwrap_or("");
+            let target_slug = match field_def.get("target_collection").and_then(|t| t.as_str()) {
+                Some(s) if !s.is_empty() => s,
+                _ => continue,
+            };
+            let value = match obj.get(name) {
+                Some(v) if !v.is_null() => v,
+                _ => continue,
+            };
+
+            let target = self
+                .collection_repo
+                .get_by_slug(site_id, target_slug)
+                .await
+                .map_err(|e| EntryError::DatabaseError(e.to_string()))?
+                .ok_or_else(|| {
+                    EntryError::ValidationFailed(format!(
+                        "Relation field '{}' targets unknown collection '{}'",
+                        name, target_slug
+                    ))
+                })?;
+
+            let ids: Vec<&str> = match value {
+                Value::String(s) => vec![s.as_str()],
+                Value::Array(arr) => arr.iter().filter_map(|v| v.as_str()).collect(),
+                _ => {
+                    return Err(EntryError::ValidationFailed(format!(
+                        "Relation field '{}' must be an entry id or array of ids",
+                        name
+                    )));
+                }
+            };
+
+            for id in ids {
+                let exists = self
+                    .entry_repo
+                    .get_by_id(id, site_id, false)
+                    .await
+                    .map_err(|e| EntryError::DatabaseError(e.to_string()))?
+                    .map(|e| e.collection_id == target.id)
+                    .unwrap_or(false);
+                if !exists {
+                    return Err(EntryError::ValidationFailed(format!(
+                        "Relation field '{}' references non-existent entry '{}' in '{}'",
+                        name, id, target_slug
+                    )));
+                }
+            }
+        }
+
+        Ok(())
+    }
+
+    /// After an entry is deleted, delete any entries that reference it through a
+    /// relation field marked `cascade_delete`. Best-effort and recursive (chains
+    /// of cascades). Failures are logged, not propagated — the primary delete has
+    /// already succeeded.
+    async fn cascade_relation_deletes(&self, site_id: &str, deleted_collection_id: &str, deleted_id: &str) {
+        let target_slug = match self.collection_repo.get_by_id(deleted_collection_id).await {
+            Ok(Some(c)) => c.slug,
+            _ => return,
+        };
+        let collections = match self.collection_repo.list(site_id).await {
+            Ok(cs) => cs,
+            Err(e) => {
+                warn!("cascade delete: failed to list collections: {}", e);
+                return;
+            }
+        };
+
+        for col in collections {
+            let definition: Value = match serde_json::from_str(&col.definition) {
+                Ok(d) => d,
+                Err(_) => continue,
+            };
+            let Some(fields) = definition.get("fields").and_then(|f| f.as_array()) else {
+                continue;
+            };
+            let cascade_fields: Vec<String> = fields
+                .iter()
+                .filter(|f| {
+                    f.get("type").and_then(|t| t.as_str()) == Some("relation")
+                        && f.get("target_collection").and_then(|t| t.as_str()) == Some(target_slug.as_str())
+                        && f.get("cascade_delete").and_then(|c| c.as_bool()).unwrap_or(false)
+                })
+                .filter_map(|f| f.get("name").and_then(|n| n.as_str()).map(str::to_string))
+                .collect();
+            if cascade_fields.is_empty() {
+                continue;
+            }
+
+            let entries = match self.entry_repo.get_by_collection_id(&col.id, None, false).await {
+                Ok(e) => e,
+                Err(_) => continue,
+            };
+            for e in entries {
+                let data: Value = match serde_json::from_str(&e.data) {
+                    Ok(d) => d,
+                    Err(_) => continue,
+                };
+                let references = cascade_fields.iter().any(|fname| match data.get(fname) {
+                    Some(Value::String(s)) => s == deleted_id,
+                    Some(Value::Array(arr)) => arr.iter().any(|v| v.as_str() == Some(deleted_id)),
+                    _ => false,
+                });
+                if references {
+                    info!(
+                        "cascade delete: removing entry {} referencing deleted {}",
+                        e.id, deleted_id
+                    );
+                    let _ = Box::pin(self.delete_entry(&e.id, site_id)).await;
+                }
+            }
+        }
+    }
+
     pub async fn list_entries(&self, params: ListEntriesParams<'_>) -> Result<EntriesListResult, EntryError> {
         // When a search index is available and a query is provided, use ranked
         // full-text search; otherwise fall back to the repository's SQL filter.
@@ -244,9 +374,11 @@ impl EntryService {
         if let Some(ref c) = collection
             && let Ok(definition) = serde_json::from_str::<Value>(&c.definition)
             && let Some(fields) = definition.get("fields").and_then(|f| f.as_array())
-            && let Some(err) = super::definition_validation::validate_entry_data(data, fields)
         {
-            return Err(EntryError::ValidationFailed(err));
+            if let Some(err) = super::definition_validation::validate_entry_data(data, fields) {
+                return Err(EntryError::ValidationFailed(err));
+            }
+            self.validate_relations(site_id, fields, data).await?;
         }
 
         let data_str = data.to_string();
@@ -329,9 +461,11 @@ impl EntryService {
         if let Ok(Some(collection)) = self.collection_repo.get_by_id(&existing.collection_id).await
             && let Ok(definition) = serde_json::from_str::<Value>(&collection.definition)
             && let Some(fields) = definition.get("fields").and_then(|f| f.as_array())
-            && let Some(err) = super::definition_validation::validate_entry_data(&resolved_data, fields)
         {
-            return Err(EntryError::ValidationFailed(err));
+            if let Some(err) = super::definition_validation::validate_entry_data(&resolved_data, fields) {
+                return Err(EntryError::ValidationFailed(err));
+            }
+            self.validate_relations(site_id, fields, &resolved_data).await?;
         }
 
         let data_str = resolved_data.to_string();
@@ -395,10 +529,24 @@ impl EntryService {
     pub async fn delete_entry(&self, id: &str, site_id: &str) -> Result<u64, EntryError> {
         info!("Deleting entry: id={}, site_id={}", id, site_id);
 
+        // Resolve the entry first so we can cascade relation deletes after removal.
+        let collection_id = self
+            .entry_repo
+            .get_by_id(id, site_id, false)
+            .await
+            .ok()
+            .flatten()
+            .map(|e| e.collection_id);
+
         match self.entry_repo.delete(id, site_id).await {
             Ok(deleted_count) => {
                 info!("Entry deleted successfully: id={}, deleted_count={}", id, deleted_count);
                 self.enqueue_delete(id, site_id).await;
+                if deleted_count > 0
+                    && let Some(collection_id) = collection_id
+                {
+                    self.cascade_relation_deletes(site_id, &collection_id, id).await;
+                }
                 Ok(deleted_count)
             }
             Err(e) => {

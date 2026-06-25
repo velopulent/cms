@@ -1,5 +1,6 @@
 import type { AnyFieldApi } from "@tanstack/react-form";
-import { Archive, FileText, Music } from "lucide-react";
+import { useQuery } from "@tanstack/react-query";
+import { Archive, Check, FileText, Music, Plus, X } from "lucide-react";
 import type React from "react";
 import {
   Component,
@@ -16,12 +17,25 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+} from "@/components/ui/command";
+import {
   Field,
   FieldError,
   FieldGroup,
   FieldLabel,
 } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
 import {
   Select,
   SelectContent,
@@ -32,7 +46,13 @@ import {
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { VideoPlayer } from "@/components/video-player";
-import type { ContentField, FileItem } from "@/lib/api";
+import {
+  type ContentField,
+  type Entry,
+  type FileItem,
+  getCollection,
+  getEntries,
+} from "@/lib/api";
 
 interface DynamicFormProps {
   fields: ContentField[];
@@ -373,8 +393,58 @@ const FieldInput = memo(function FieldInput({
         <Input
           {...inputBaseProps}
           type="number"
+          min={field.min}
+          max={field.max}
           value={numValue}
           onChange={stableNumberChange}
+        />
+      );
+
+    case "email":
+      return (
+        <Input
+          {...inputBaseProps}
+          type="email"
+          placeholder="name@example.com"
+          value={strValue}
+          onChange={stableStringChange}
+        />
+      );
+
+    case "url":
+      return (
+        <Input
+          {...inputBaseProps}
+          type="url"
+          placeholder="https://…"
+          value={strValue}
+          onChange={stableStringChange}
+        />
+      );
+
+    case "json":
+      return (
+        <JsonField
+          value={value}
+          onChange={onChange}
+          onBlur={onBlur}
+          isInvalid={isInvalid}
+          fieldName={fieldName}
+          errorId={errorId}
+          readOnly={readOnly}
+        />
+      );
+
+    case "relation":
+      return (
+        <RelationField
+          value={value}
+          onChange={onChange}
+          siteId={siteId}
+          targetSlug={field.target_collection}
+          multiple={field.multiple}
+          maxSelect={field.max_select}
+          readOnly={readOnly}
         />
       );
 
@@ -407,6 +477,17 @@ const FieldInput = memo(function FieldInput({
       );
 
     case "select":
+      if (field.multiple) {
+        return (
+          <MultiSelectField
+            value={value}
+            onChange={onChange}
+            options={options ?? []}
+            maxSelect={field.max_select}
+            readOnly={readOnly}
+          />
+        );
+      }
       return (
         <Select value={strValue} onValueChange={onChange} disabled={readOnly}>
           <SelectTrigger
@@ -430,31 +511,19 @@ const FieldInput = memo(function FieldInput({
         </Select>
       );
 
-    case "image_url":
-      return (
-        <div className="flex flex-col gap-2">
-          <Input
-            {...inputBaseProps}
-            placeholder="https://…"
-            value={strValue}
-            onChange={stableStringChange}
+    case "file":
+      if (field.multiple) {
+        return (
+          <MultiFileField
+            value={value}
+            onChange={onChange}
+            siteId={siteId}
+            readOnly={readOnly}
+            accept={accept}
+            maxSelect={field.max_select}
           />
-          {strValue && (
-            <img
-              src={strValue}
-              alt="Preview"
-              className="h-32 w-auto rounded-lg border object-cover"
-              loading="lazy"
-            />
-          )}
-        </div>
-      );
-
-    case "image":
-    case "video":
-    case "audio":
-    case "document":
-    case "archive":
+        );
+      }
       return (
         <FileField
           value={strValue}
@@ -464,7 +533,6 @@ const FieldInput = memo(function FieldInput({
           errorId={errorId}
           required={field.required}
           readOnly={readOnly}
-          category={field.type}
           accept={accept}
         />
       );
@@ -736,6 +804,444 @@ const FileTypeIcon = memo(function FileTypeIcon({
       aria-hidden="true"
     >
       {icon}
+    </div>
+  );
+});
+
+// ---------------------------------------------------------------------------
+// JsonField – textarea with live JSON parse feedback
+// ---------------------------------------------------------------------------
+
+function jsonToText(value: unknown): string {
+  if (value === undefined || value === null || value === "") return "";
+  if (typeof value === "string") return value;
+  try {
+    return JSON.stringify(value, null, 2);
+  } catch {
+    return "";
+  }
+}
+
+const JsonField = memo(function JsonField({
+  value,
+  onChange,
+  onBlur,
+  isInvalid,
+  fieldName,
+  errorId,
+  readOnly,
+}: {
+  value: unknown;
+  onChange: (val: unknown) => void;
+  onBlur: () => void;
+  isInvalid: boolean;
+  fieldName: string;
+  errorId: string;
+  readOnly?: boolean;
+}) {
+  const [text, setText] = useState(() => jsonToText(value));
+  const [parseError, setParseError] = useState<string | null>(null);
+
+  const handleChange = useCallback(
+    (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+      const t = e.target.value;
+      setText(t);
+      if (t.trim() === "") {
+        setParseError(null);
+        onChange(null);
+        return;
+      }
+      try {
+        const parsed = JSON.parse(t);
+        setParseError(null);
+        onChange(parsed);
+      } catch (err) {
+        setParseError(err instanceof Error ? err.message : "Invalid JSON");
+        // Clear the committed value so invalid JSON can't be submitted while the
+        // textarea still shows the unparseable text.
+        onChange(undefined);
+      }
+    },
+    [onChange],
+  );
+
+  return (
+    <div className="flex flex-col gap-1">
+      <Textarea
+        id={fieldName}
+        value={text}
+        onChange={handleChange}
+        onBlur={onBlur}
+        rows={6}
+        readOnly={readOnly}
+        disabled={readOnly}
+        aria-invalid={isInvalid || !!parseError || undefined}
+        aria-errormessage={isInvalid ? errorId : undefined}
+        className="font-mono text-xs"
+        placeholder={'{ "key": "value" }'}
+        spellCheck={false}
+      />
+      {parseError && (
+        <p className="text-xs text-destructive">Invalid JSON: {parseError}</p>
+      )}
+    </div>
+  );
+});
+
+// ---------------------------------------------------------------------------
+// MultiSelectField – toggle chips for `select` with multiple = true
+// ---------------------------------------------------------------------------
+
+const MultiSelectField = memo(function MultiSelectField({
+  value,
+  onChange,
+  options,
+  maxSelect,
+  readOnly,
+}: {
+  value: unknown;
+  onChange: (val: unknown) => void;
+  options: string[];
+  maxSelect?: number;
+  readOnly?: boolean;
+}) {
+  const selected = Array.isArray(value)
+    ? value.filter((v): v is string => typeof v === "string")
+    : [];
+
+  const toggle = (opt: string) => {
+    if (readOnly) return;
+    if (selected.includes(opt)) {
+      onChange(selected.filter((s) => s !== opt));
+    } else {
+      if (maxSelect && selected.length >= maxSelect) return;
+      onChange([...selected, opt]);
+    }
+  };
+
+  return (
+    <div className="flex flex-wrap gap-1">
+      {options.length === 0 && (
+        <p className="text-xs text-muted-foreground">No options defined.</p>
+      )}
+      {options.map((opt) => {
+        const isSel = selected.includes(opt);
+        return (
+          <button
+            key={opt}
+            type="button"
+            disabled={readOnly}
+            onClick={() => toggle(opt)}
+            className={`inline-flex items-center gap-1 rounded-md border px-2 py-1 text-xs transition-colors ${
+              isSel
+                ? "border-primary bg-primary/10 text-primary"
+                : "border-border bg-background text-muted-foreground hover:text-foreground"
+            }`}
+          >
+            {isSel && <Check className="size-3" />}
+            {opt}
+          </button>
+        );
+      })}
+    </div>
+  );
+});
+
+// ---------------------------------------------------------------------------
+// MultiFileField – array of file URLs via the file picker
+// ---------------------------------------------------------------------------
+
+const MultiFileField = memo(function MultiFileField({
+  value,
+  onChange,
+  siteId,
+  readOnly,
+  category,
+  accept,
+  maxSelect,
+}: {
+  value: unknown;
+  onChange: (val: unknown) => void;
+  siteId?: string;
+  readOnly?: boolean;
+  category?: string;
+  accept?: string[];
+  maxSelect?: number;
+}) {
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const urls = Array.isArray(value)
+    ? value.filter((v): v is string => typeof v === "string")
+    : [];
+
+  const filterAccept = useMemo(
+    () =>
+      accept?.join(", ") ?? (category ? CATEGORY_ACCEPT[category] : undefined),
+    [accept, category],
+  );
+
+  const handleSelect = useCallback(
+    (file: FileItem) => {
+      if (!urls.includes(file.url)) onChange([...urls, file.url]);
+    },
+    [urls, onChange],
+  );
+
+  const removeAt = (idx: number) => onChange(urls.filter((_, i) => i !== idx));
+
+  const limitReached = maxSelect != null && urls.length >= maxSelect;
+
+  return (
+    <div className="flex flex-col gap-2">
+      {urls.length > 0 && (
+        <div className="flex flex-wrap gap-1">
+          {urls.map((url, idx) => (
+            <span
+              key={url}
+              className="inline-flex max-w-full items-center gap-1 rounded-md border bg-background px-2 py-1 text-xs"
+            >
+              <span className="truncate">{url.split("/").pop() ?? url}</span>
+              {!readOnly && (
+                <button
+                  type="button"
+                  className="text-muted-foreground hover:text-foreground"
+                  onClick={() => removeAt(idx)}
+                  aria-label="Remove file"
+                >
+                  <X className="size-3" />
+                </button>
+              )}
+            </span>
+          ))}
+        </div>
+      )}
+      {!readOnly && (
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          className="w-fit"
+          disabled={!siteId || limitReached}
+          onClick={() => setPickerOpen(true)}
+        >
+          <Plus data-icon="inline-start" />
+          {limitReached ? `Max ${maxSelect} reached` : "Add file"}
+        </Button>
+      )}
+      {siteId && (
+        <FilePickerDialog
+          open={pickerOpen}
+          onOpenChange={setPickerOpen}
+          onSelect={handleSelect}
+          siteId={siteId}
+          accept={filterAccept}
+        />
+      )}
+    </div>
+  );
+});
+
+// ---------------------------------------------------------------------------
+// RelationField – search & pick entries from a target collection
+// ---------------------------------------------------------------------------
+
+function entryData(entry: Entry): Record<string, unknown> {
+  if (typeof entry.data === "string") {
+    try {
+      return JSON.parse(entry.data) as Record<string, unknown>;
+    } catch {
+      return {};
+    }
+  }
+  return entry.data ?? {};
+}
+
+/** Resolve the field name to display for a relation target (presentable → first text → undefined). */
+function resolvePresentable(definition?: string): string | undefined {
+  if (!definition) return undefined;
+  try {
+    const def = JSON.parse(definition) as { fields?: ContentField[] };
+    const fields = def.fields ?? [];
+    const presentable = fields.find((f) => f.presentable);
+    if (presentable) return presentable.name;
+    const firstText = fields.find(
+      (f) => f.type === "text" || f.type === "textarea",
+    );
+    return firstText?.name;
+  } catch {
+    return undefined;
+  }
+}
+
+const RelationField = memo(function RelationField({
+  value,
+  onChange,
+  siteId,
+  targetSlug,
+  multiple,
+  maxSelect,
+  readOnly,
+}: {
+  value: unknown;
+  onChange: (val: unknown) => void;
+  siteId?: string;
+  targetSlug?: string;
+  multiple?: boolean;
+  maxSelect?: number;
+  readOnly?: boolean;
+}) {
+  const [open, setOpen] = useState(false);
+  const [search, setSearch] = useState("");
+
+  const selectedIds: string[] = multiple
+    ? Array.isArray(value)
+      ? value.filter((v): v is string => typeof v === "string")
+      : []
+    : typeof value === "string" && value
+      ? [value]
+      : [];
+
+  const enabled = !!siteId && !!targetSlug && (open || selectedIds.length > 0);
+
+  const { data: targetCol } = useQuery({
+    queryKey: ["collection", siteId, targetSlug],
+    queryFn: () => getCollection(siteId as string, targetSlug as string),
+    enabled: !!siteId && !!targetSlug,
+  });
+
+  const { data: entriesRes } = useQuery({
+    queryKey: ["relation-entries", siteId, targetSlug, search],
+    queryFn: () =>
+      getEntries(siteId as string, {
+        type: targetSlug,
+        search: search || undefined,
+        pageSize: 20,
+      }),
+    enabled,
+  });
+
+  const presentable = useMemo(
+    () => resolvePresentable(targetCol?.definition),
+    [targetCol],
+  );
+
+  const items = entriesRes?.items ?? [];
+
+  const labelFor = useCallback(
+    (entry: Entry): string => {
+      const data = entryData(entry);
+      const fromField = presentable ? data[presentable] : undefined;
+      if (typeof fromField === "string" && fromField) return fromField;
+      return entry.slug || entry.id;
+    },
+    [presentable],
+  );
+
+  const labelMap = useMemo(() => {
+    const map: Record<string, string> = {};
+    for (const e of items) map[e.id] = labelFor(e);
+    return map;
+  }, [items, labelFor]);
+
+  const toggle = (id: string) => {
+    if (readOnly) return;
+    if (multiple) {
+      if (selectedIds.includes(id)) {
+        onChange(selectedIds.filter((s) => s !== id));
+      } else {
+        if (maxSelect && selectedIds.length >= maxSelect) return;
+        onChange([...selectedIds, id]);
+      }
+    } else {
+      // Emit null (not "") when clearing the current selection — the backend
+      // relation validator rejects an empty string as a bogus entry id.
+      onChange(selectedIds.includes(id) ? null : id);
+      setOpen(false);
+    }
+  };
+
+  if (!targetSlug) {
+    return (
+      <p className="text-xs text-muted-foreground">
+        No target collection configured for this relation.
+      </p>
+    );
+  }
+
+  return (
+    <div className="flex flex-col gap-2">
+      {selectedIds.length > 0 && (
+        <div className="flex flex-wrap gap-1">
+          {selectedIds.map((id) => (
+            <span
+              key={id}
+              className="inline-flex max-w-full items-center gap-1 rounded-md border bg-background px-2 py-1 text-xs"
+            >
+              <span className="truncate">
+                {labelMap[id] ?? `${id.slice(0, 8)}…`}
+              </span>
+              {!readOnly && (
+                <button
+                  type="button"
+                  className="text-muted-foreground hover:text-foreground"
+                  onClick={() => toggle(id)}
+                  aria-label="Remove"
+                >
+                  <X className="size-3" />
+                </button>
+              )}
+            </span>
+          ))}
+        </div>
+      )}
+      {!readOnly && (
+        <Popover open={open} onOpenChange={setOpen}>
+          <PopoverTrigger
+            render={
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="w-fit"
+              />
+            }
+          >
+            <Plus data-icon="inline-start" />
+            {multiple ? "Add reference" : "Select reference"}
+          </PopoverTrigger>
+          <PopoverContent
+            align="start"
+            className="w-[min(22rem,calc(100vw-2rem))] p-0"
+          >
+            <Command shouldFilter={false}>
+              <CommandInput
+                value={search}
+                onValueChange={setSearch}
+                placeholder="Search…"
+              />
+              <CommandList>
+                <CommandEmpty>No matching entries.</CommandEmpty>
+                <CommandGroup>
+                  {items.map((entry) => {
+                    const isSel = selectedIds.includes(entry.id);
+                    return (
+                      <CommandItem
+                        key={entry.id}
+                        value={entry.id}
+                        onSelect={() => toggle(entry.id)}
+                      >
+                        <Check
+                          className={`size-4 ${isSel ? "opacity-100" : "opacity-0"}`}
+                        />
+                        <span className="truncate">{labelFor(entry)}</span>
+                      </CommandItem>
+                    );
+                  })}
+                </CommandGroup>
+              </CommandList>
+            </Command>
+          </PopoverContent>
+        </Popover>
+      )}
     </div>
   );
 });

@@ -16,13 +16,12 @@ mod webhooks;
 
 use std::sync::Arc;
 
+use axum::extract::DefaultBodyLimit;
 use axum::http::{HeaderName, Method, header};
 use axum::{Extension, Router, middleware::from_fn, routing::get};
 use tokio_util::sync::CancellationToken;
 use tower_http::cors::{AllowOrigin, CorsLayer};
-use tower_http::limit::RequestBodyLimitLayer;
 use tower_http::trace::TraceLayer;
-use tracing::info;
 
 use crate::config::Config;
 use crate::handlers::site_handler::get_current_site;
@@ -163,7 +162,7 @@ pub fn create_router(
         .layer(from_fn(trace_request))
         .layer(TraceLayer::new_for_http())
         .layer(cors)
-        .layer(RequestBodyLimitLayer::new(10 * 1024 * 1024))
+        .layer(DefaultBodyLimit::max(10 * 1024 * 1024))
         .layer(Extension(repository.clone()))
         .layer(Extension(config.clone()))
         .layer(Extension(storage_registry.clone()))
@@ -181,7 +180,6 @@ pub fn create_router(
             mcp_ct,
         );
         router = router.merge(mcp_router);
-        info!("MCP HTTP endpoint enabled at /mcp");
     } else {
         drop(repository);
     }
