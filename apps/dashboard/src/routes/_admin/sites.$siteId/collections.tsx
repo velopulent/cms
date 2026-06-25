@@ -968,6 +968,8 @@ function TypeConfig({ field, set, siteId }: FieldConfigProps) {
           onChange={(v) => set("max_size", v)}
         />
       );
+    case "url":
+      return <UrlConfig field={field} set={set} />;
     case "select":
       return <SelectOptionsConfig field={field} set={set} />;
     case "relation":
@@ -977,6 +979,47 @@ function TypeConfig({ field, set, siteId }: FieldConfigProps) {
     default:
       return null;
   }
+}
+
+/**
+ * Domain allow/deny lists for `url` fields. Stored as string arrays; the backend
+ * validator rejects URLs whose host matches `except_domains` or, when
+ * `only_domains` is non-empty, fails to match it (host or subdomain).
+ */
+function UrlConfig({
+  field,
+  set,
+}: {
+  field: ContentFieldWithId;
+  set: (key: keyof ContentField, value: unknown) => void;
+}) {
+  const parse = (raw: string) => {
+    const arr = raw
+      .split(",")
+      .map((s) => s.trim())
+      .filter(Boolean);
+    return arr.length > 0 ? arr : undefined;
+  };
+  return (
+    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+      <ConfigBox label="Except domains" hint="Use comma as separator.">
+        <Input
+          placeholder="e.g. example.com, foo.org"
+          value={(field.except_domains ?? []).join(", ")}
+          onChange={(e) => set("except_domains", parse(e.target.value))}
+          className="h-8 border-0 bg-transparent px-0 font-mono text-xs shadow-none focus-visible:ring-0"
+        />
+      </ConfigBox>
+      <ConfigBox label="Only domains" hint="Use comma as separator.">
+        <Input
+          placeholder="e.g. example.com, foo.org"
+          value={(field.only_domains ?? []).join(", ")}
+          onChange={(e) => set("only_domains", parse(e.target.value))}
+          className="h-8 border-0 bg-transparent px-0 font-mono text-xs shadow-none focus-visible:ring-0"
+        />
+      </ConfigBox>
+    </div>
+  );
 }
 
 /**
@@ -1258,6 +1301,8 @@ const collectionFieldSchema = z.object({
   required: z.boolean().optional(),
   options: z.array(z.string()).optional(),
   accept: z.array(z.string()).optional(),
+  except_domains: z.array(z.string()).optional(),
+  only_domains: z.array(z.string()).optional(),
   _id: z.string(),
 });
 
