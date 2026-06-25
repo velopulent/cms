@@ -176,7 +176,7 @@ async fn read_schema_resource(
             {"type": "date", "label": "Date"},
             {"type": "select", "label": "Select", "properties": ["options"]},
             {"type": "email", "label": "Email"},
-            {"type": "url", "label": "URL"},
+            {"type": "url", "label": "URL", "properties": ["except_domains", "only_domains"]},
             {"type": "json", "label": "JSON", "properties": ["max_size"]},
             {"type": "relation", "label": "Relation", "properties": ["target_collection", "multiple", "min_select", "max_select"]},
             {"type": "file", "label": "File", "properties": ["accept", "max_size", "multiple"]}
