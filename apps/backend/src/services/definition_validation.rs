@@ -151,22 +151,6 @@ fn as_elements(v: &Value) -> Vec<&Value> {
     }
 }
 
-/// Lightweight email format check (no full RFC 5322 — catches obvious mistakes).
-fn looks_like_email(s: &str) -> bool {
-    let mut parts = s.split('@');
-    match (parts.next(), parts.next(), parts.next()) {
-        (Some(local), Some(domain), None) => {
-            !local.is_empty()
-                && !domain.is_empty()
-                && domain.contains('.')
-                && !domain.starts_with('.')
-                && !domain.ends_with('.')
-                && !s.chars().any(char::is_whitespace)
-        }
-        _ => false,
-    }
-}
-
 pub fn validate_entry_data(data: &Value, fields: &[Value]) -> Option<String> {
     let obj = match data.as_object() {
         Some(o) => o,
@@ -257,7 +241,7 @@ fn validate_field_value(name: &str, field_type: &str, field_def: &Value, v: &Val
         "email" => {
             for el in as_elements(v) {
                 match el.as_str() {
-                    Some(s) if s.is_empty() || looks_like_email(s) => {}
+                    Some(s) if s.is_empty() || email_address::EmailAddress::is_valid(s) => {}
                     Some(s) => return Some(format!("Field '{}' must be a valid email, got '{}'", name, s)),
                     None => return Some(format!("Field '{}' must be a string email", name)),
                 }
