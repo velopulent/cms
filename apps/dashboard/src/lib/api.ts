@@ -238,8 +238,7 @@ export interface ContentField {
   /** select/file/relation: bounds on number of selected values. */
   min_select?: number;
   max_select?: number;
-  /** File: thumbnail size hints (stored only) + protected flag (stored only). */
-  thumb_sizes?: string[];
+  /** File: protected flag (stored only). */
   protected?: boolean;
   /** Relation: target collection slug + cascade delete behavior. */
   target_collection?: string;

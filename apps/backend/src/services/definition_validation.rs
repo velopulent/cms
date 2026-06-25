@@ -89,21 +89,6 @@ pub fn normalize_definition(value: &Value) -> Result<Value, String> {
             None => {}
         }
 
-        match f.get("thumb_sizes") {
-            Some(Value::String(s)) => {
-                let v = s.clone();
-                f["thumb_sizes"] = serde_json::json!([v]);
-            }
-            Some(Value::Array(_)) => {}
-            Some(_) => {
-                return Err(format!(
-                    "field '{}' 'thumb_sizes' must be a string or array of sizes",
-                    name
-                ));
-            }
-            None => {}
-        }
-
         if field_type == RELATION_FIELD_TYPE
             && f.get("target_collection")
                 .and_then(|t| t.as_str())
