@@ -511,31 +511,7 @@ const FieldInput = memo(function FieldInput({
         </Select>
       );
 
-    case "image_url":
-      return (
-        <div className="flex flex-col gap-2">
-          <Input
-            {...inputBaseProps}
-            placeholder="https://…"
-            value={strValue}
-            onChange={stableStringChange}
-          />
-          {strValue && (
-            <img
-              src={strValue}
-              alt="Preview"
-              className="h-32 w-auto rounded-lg border object-cover"
-              loading="lazy"
-            />
-          )}
-        </div>
-      );
-
-    case "image":
-    case "video":
-    case "audio":
-    case "document":
-    case "archive":
+    case "file":
       if (field.multiple) {
         return (
           <MultiFileField
@@ -543,7 +519,6 @@ const FieldInput = memo(function FieldInput({
             onChange={onChange}
             siteId={siteId}
             readOnly={readOnly}
-            category={field.type}
             accept={accept}
             maxSelect={field.max_select}
           />
@@ -558,7 +533,6 @@ const FieldInput = memo(function FieldInput({
           errorId={errorId}
           required={field.required}
           readOnly={readOnly}
-          category={field.type}
           accept={accept}
         />
       );
