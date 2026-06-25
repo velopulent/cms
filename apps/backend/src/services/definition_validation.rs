@@ -142,6 +142,29 @@ fn is_http_url(s: &str) -> bool {
         .unwrap_or(false)
 }
 
+/// `host` equals `domain` or is a subdomain of it (case-insensitive). A leading
+/// dot on the configured domain is tolerated (e.g. ".example.com").
+fn host_matches(host: &str, domain: &str) -> bool {
+    let host = host.to_ascii_lowercase();
+    let domain = domain.trim().trim_start_matches('.').to_ascii_lowercase();
+    !domain.is_empty() && (host == domain || host.ends_with(&format!(".{domain}")))
+}
+
+/// Read an optional string-array config key, trimming and dropping empty entries.
+fn cfg_str_list<'a>(field_def: &'a Value, key: &str) -> Vec<&'a str> {
+    field_def
+        .get(key)
+        .and_then(Value::as_array)
+        .map(|a| {
+            a.iter()
+                .filter_map(Value::as_str)
+                .map(str::trim)
+                .filter(|s| !s.is_empty())
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
 /// Coerce a value into the list of element values to validate. For `multiple`
 /// fields the value is expected to be an array; otherwise it is a single scalar.
 fn as_elements(v: &Value) -> Vec<&Value> {
@@ -249,12 +272,26 @@ fn validate_field_value(name: &str, field_type: &str, field_def: &Value, v: &Val
             None
         }
         "url" => {
+            let except = cfg_str_list(field_def, "except_domains");
+            let only = cfg_str_list(field_def, "only_domains");
             for el in as_elements(v) {
-                match el.as_str() {
-                    Some("") => {}
-                    Some(s) if url::Url::parse(s).is_ok() => {}
-                    Some(s) => return Some(format!("Field '{}' must be a valid URL, got '{}'", name, s)),
+                let s = match el.as_str() {
+                    Some("") => continue,
+                    Some(s) => s,
                     None => return Some(format!("Field '{}' must be a string URL", name)),
+                };
+                let parsed = match url::Url::parse(s) {
+                    Ok(u) => u,
+                    Err(_) => return Some(format!("Field '{}' must be a valid URL, got '{}'", name, s)),
+                };
+                // A host-less URL (e.g. `mailto:`) is treated as an empty host: it
+                // can never satisfy an allow-list, and matches no deny-list entry.
+                let host = parsed.host_str().unwrap_or("");
+                if except.iter().any(|d| host_matches(host, d)) {
+                    return Some(format!("Field '{}' domain '{}' is not allowed", name, host));
+                }
+                if !only.is_empty() && !only.iter().any(|d| host_matches(host, d)) {
+                    return Some(format!("Field '{}' domain '{}' is not in the allowed list", name, host));
                 }
             }
             None
@@ -610,6 +647,66 @@ mod tests {
                 .contains("valid URL")
         );
         assert!(validate_entry_data(&json!({"u": "https://example.com"}), f).is_none());
+    }
+
+    #[test]
+    fn validate_url_except_domains() {
+        let fields = json!([{"name": "u", "type": "url", "except_domains": ["evil.com"]}]);
+        let f = fields.as_array().unwrap();
+        assert!(
+            validate_entry_data(&json!({"u": "https://evil.com/x"}), f)
+                .unwrap()
+                .contains("is not allowed")
+        );
+        // Subdomain of a denied domain is also rejected.
+        assert!(
+            validate_entry_data(&json!({"u": "https://sub.evil.com/x"}), f)
+                .unwrap()
+                .contains("is not allowed")
+        );
+        assert!(validate_entry_data(&json!({"u": "https://good.com/x"}), f).is_none());
+    }
+
+    #[test]
+    fn validate_url_only_domains() {
+        let fields = json!([{"name": "u", "type": "url", "only_domains": ["example.com"]}]);
+        let f = fields.as_array().unwrap();
+        // Exact host and subdomains pass.
+        assert!(validate_entry_data(&json!({"u": "https://example.com"}), f).is_none());
+        assert!(validate_entry_data(&json!({"u": "https://www.example.com/p"}), f).is_none());
+        // Anything else is rejected.
+        assert!(
+            validate_entry_data(&json!({"u": "https://other.com"}), f)
+                .unwrap()
+                .contains("is not in the allowed list")
+        );
+    }
+
+    #[test]
+    fn validate_url_no_domain_constraints_when_empty() {
+        // Empty/absent lists impose no restriction (preserves prior behavior).
+        let fields = json!([{"name": "u", "type": "url", "except_domains": [], "only_domains": []}]);
+        let f = fields.as_array().unwrap();
+        assert!(validate_entry_data(&json!({"u": "https://anything.example/x"}), f).is_none());
+    }
+
+    #[test]
+    fn validate_url_multiple_with_domain_constraints() {
+        let fields = json!([
+            {"name": "u", "type": "url", "multiple": true, "only_domains": ["example.com"]}
+        ]);
+        let f = fields.as_array().unwrap();
+        // All allowed → ok.
+        assert!(
+            validate_entry_data(&json!({"u": ["https://example.com/a", "https://x.example.com/b"]}), f)
+                .is_none()
+        );
+        // One disallowed element fails the whole field.
+        assert!(
+            validate_entry_data(&json!({"u": ["https://example.com/a", "https://other.com/b"]}), f)
+                .unwrap()
+                .contains("is not in the allowed list")
+        );
     }
 
     #[test]
