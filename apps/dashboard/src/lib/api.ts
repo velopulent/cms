@@ -226,6 +226,9 @@ export interface ContentField {
   max_length?: number;
   /** Text: validation regex the value must match. */
   pattern?: string;
+  /** url: domain allow/deny lists (host or subdomain match). */
+  except_domains?: string[];
+  only_domains?: string[];
   /** rich_text/json: max payload size in bytes. */
   max_size?: number;
   /** rich_text: stored only (strip URL domains). */
