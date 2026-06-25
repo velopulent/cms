@@ -15,25 +15,23 @@ import {
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { useForm } from "@tanstack/react-form";
+import { useForm, useStore } from "@tanstack/react-form";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
 import {
   AlignLeft,
-  Archive as ArchiveIcon,
   Braces,
   Calendar,
+  ChevronDown,
   Copy,
-  FileText,
+  File as FileIcon,
   GripVertical,
   Hash,
-  Image as ImageIcon,
   Layers,
   Link as LinkIcon,
   List,
   Mail,
   MoreHorizontal,
-  Music,
   Pencil,
   Plus,
   Settings2,
@@ -41,11 +39,20 @@ import {
   ToggleLeft,
   Trash2,
   Type as TypeIcon,
-  Video,
 } from "lucide-react";
-import { type ComponentType, type ReactNode, useState } from "react";
+import { type ComponentType, type ReactNode, useEffect, useState } from "react";
 import { toast } from "sonner";
 import { z } from "zod";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -56,23 +63,27 @@ import {
   CollapsibleTrigger,
 } from "@/components/ui/collapsible";
 import {
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+} from "@/components/ui/command";
+import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import {
-  Field,
-  FieldError,
-  FieldGroup,
-  FieldLabel,
-} from "@/components/ui/field";
+import { Field, FieldError, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import {
   Popover,
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import {
   Select,
   SelectContent,
@@ -83,7 +94,6 @@ import {
 } from "@/components/ui/select";
 import {
   Sheet,
-  SheetClose,
   SheetContent,
   SheetDescription,
   SheetFooter,
@@ -100,6 +110,12 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import {
   type Collection,
   type ContentField,
@@ -136,12 +152,7 @@ const FIELD_TYPES: FieldTypeMeta[] = [
   { value: "select", label: "Select", icon: List },
   { value: "json", label: "JSON", icon: Braces },
   { value: "relation", label: "Relation", icon: Share2 },
-  { value: "image_url", label: "Image URL", icon: LinkIcon },
-  { value: "image", label: "Image", icon: ImageIcon },
-  { value: "video", label: "Video", icon: Video },
-  { value: "audio", label: "Audio", icon: Music },
-  { value: "document", label: "Document", icon: FileText },
-  { value: "archive", label: "Archive", icon: ArchiveIcon },
+  { value: "file", label: "File", icon: FileIcon },
 ];
 
 const FIELD_TYPE_MAP: Record<string, FieldTypeMeta> = Object.fromEntries(
@@ -153,44 +164,108 @@ function fieldTypeMeta(type: string): FieldTypeMeta {
 }
 
 /** Types whose value can be single or multiple (array). */
-const MULTI_VALUE_TYPES = [
-  "select",
-  "relation",
-  "image",
-  "video",
-  "audio",
-  "document",
-  "archive",
+const MULTI_VALUE_TYPES = ["select", "relation", "file"];
+
+/**
+ * Known MIME types with a short extension label, mirrored from the backend
+ * `utils/content_types.rs`. Used by the file field's allowed-mime combobox/chips.
+ */
+const MIME_CATALOG: { mime: string; ext: string }[] = [
+  // images
+  { mime: "image/jpeg", ext: ".jpg" },
+  { mime: "image/png", ext: ".png" },
+  { mime: "image/gif", ext: ".gif" },
+  { mime: "image/webp", ext: ".webp" },
+  { mime: "image/avif", ext: ".avif" },
+  { mime: "image/svg+xml", ext: ".svg" },
+  { mime: "image/tiff", ext: ".tiff" },
+  { mime: "image/bmp", ext: ".bmp" },
+  // video
+  { mime: "video/mp4", ext: ".mp4" },
+  { mime: "video/webm", ext: ".webm" },
+  { mime: "video/ogg", ext: ".ogv" },
+  { mime: "video/quicktime", ext: ".mov" },
+  { mime: "video/x-msvideo", ext: ".avi" },
+  // audio
+  { mime: "audio/mpeg", ext: ".mp3" },
+  { mime: "audio/wav", ext: ".wav" },
+  { mime: "audio/ogg", ext: ".ogg" },
+  { mime: "audio/webm", ext: ".weba" },
+  { mime: "audio/aac", ext: ".aac" },
+  { mime: "audio/flac", ext: ".flac" },
+  // documents
+  { mime: "application/pdf", ext: ".pdf" },
+  { mime: "application/msword", ext: ".doc" },
+  {
+    mime: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    ext: ".docx",
+  },
+  { mime: "application/vnd.ms-excel", ext: ".xls" },
+  {
+    mime: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    ext: ".xlsx",
+  },
+  { mime: "application/vnd.ms-powerpoint", ext: ".ppt" },
+  {
+    mime: "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+    ext: ".pptx",
+  },
+  { mime: "text/plain", ext: ".txt" },
+  { mime: "text/csv", ext: ".csv" },
+  { mime: "text/html", ext: ".html" },
+  { mime: "text/markdown", ext: ".md" },
+  // archives
+  { mime: "application/zip", ext: ".zip" },
+  { mime: "application/gzip", ext: ".gz" },
+  { mime: "application/x-tar", ext: ".tar" },
+  { mime: "application/x-7z-compressed", ext: ".7z" },
+  { mime: "application/x-rar-compressed", ext: ".rar" },
 ];
 
-const CONTENT_TYPE_MIME_TYPES: Record<string, string[]> = {
-  image: [
-    "image/jpeg",
-    "image/png",
-    "image/gif",
-    "image/webp",
-    "image/avif",
-    "image/svg+xml",
-  ],
-  video: ["video/mp4", "video/webm", "video/ogg", "video/quicktime"],
-  audio: ["audio/mpeg", "audio/wav", "audio/ogg", "audio/webm", "audio/aac"],
-  document: [
-    "application/pdf",
-    "application/msword",
-    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-    "application/vnd.ms-excel",
-    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-    "text/plain",
-    "text/csv",
-    "text/markdown",
-  ],
-  archive: [
-    "application/zip",
-    "application/gzip",
-    "application/x-tar",
-    "application/x-7z-compressed",
-  ],
-};
+const MIME_EXT_MAP: Record<string, string> = Object.fromEntries(
+  MIME_CATALOG.map((m) => [m.mime, m.ext]),
+);
+
+/** Returns the short extension label for a MIME type, or the raw MIME. */
+function mimeExt(mime: string): string {
+  return MIME_EXT_MAP[mime] ?? mime;
+}
+
+/** Preset bundles of MIME types selectable from the "Choose presets" menu. */
+const MIME_PRESETS: { label: string; mimes: string[] }[] = [
+  {
+    label: "Images",
+    mimes: [
+      "image/jpeg",
+      "image/png",
+      "image/svg+xml",
+      "image/gif",
+      "image/webp",
+    ],
+  },
+  {
+    label: "Documents",
+    mimes: [
+      "application/pdf",
+      "application/msword",
+      "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+      "application/vnd.ms-excel",
+      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    ],
+  },
+  {
+    label: "Videos",
+    mimes: ["video/mp4", "video/ogg", "video/x-msvideo", "video/quicktime"],
+  },
+  {
+    label: "Archives",
+    mimes: [
+      "application/zip",
+      "application/x-7z-compressed",
+      "application/x-rar-compressed",
+    ],
+  },
+];
 
 function slugify(text: string) {
   return text
@@ -207,6 +282,30 @@ function CollectionsPage() {
   const [createOpen, setCreateOpen] = useState(false);
   const [editCollection, setEditCollection] = useState<Collection | null>(null);
   const [pendingIsSingleton, setPendingIsSingleton] = useState(false);
+  const [createDirty, setCreateDirty] = useState(false);
+  const [editDirty, setEditDirty] = useState(false);
+  const [discardTarget, setDiscardTarget] = useState<"create" | "edit" | null>(
+    null,
+  );
+
+  const closeCreate = () => {
+    setCreateOpen(false);
+    setPendingIsSingleton(false);
+    setCreateDirty(false);
+  };
+  const closeEdit = () => {
+    setEditCollection(null);
+    setEditDirty(false);
+  };
+  // Guard sheet close: when the form is dirty, prompt before discarding.
+  const requestCloseCreate = () => {
+    if (createDirty) setDiscardTarget("create");
+    else closeCreate();
+  };
+  const requestCloseEdit = () => {
+    if (editDirty) setDiscardTarget("edit");
+    else closeEdit();
+  };
 
   const { data: collections, isLoading } = useQuery({
     queryKey: ["collections", siteId],
@@ -223,222 +322,266 @@ function CollectionsPage() {
   });
 
   return (
-    <div className="flex flex-col gap-6 p-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-semibold">Collections</h1>
-          <p className="text-sm text-muted-foreground">
-            Define the structure of your content
-          </p>
+    <TooltipProvider>
+      <div className="flex flex-col gap-6 p-6">
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-2xl font-semibold">Collections</h1>
+            <p className="text-sm text-muted-foreground">
+              Define the structure of your content
+            </p>
+          </div>
+          <Sheet
+            open={createOpen}
+            onOpenChange={(open) => {
+              if (open) setCreateOpen(true);
+              else requestCloseCreate();
+            }}
+          >
+            <SheetTrigger render={<Button />}>
+              <Plus data-icon="inline-start" />
+              New
+            </SheetTrigger>
+            <SheetContent
+              className={
+                "data-[side=right]:w-full data-[side=right]:sm:max-w-2xl"
+              }
+            >
+              <SheetHeader>
+                <SheetTitle>
+                  {pendingIsSingleton
+                    ? "Create Singleton"
+                    : "Create Collection"}
+                </SheetTitle>
+                <SheetDescription>
+                  {pendingIsSingleton
+                    ? "Define a new singleton with custom fields."
+                    : "Define a new collection with custom fields."}
+                </SheetDescription>
+              </SheetHeader>
+              <ScrollArea className="min-h-0 flex-1 px-4">
+                <CollectionForm
+                  siteId={siteId}
+                  onIsSingletonChange={setPendingIsSingleton}
+                  onDirtyChange={setCreateDirty}
+                  onSubmit={(data) => {
+                    createCollection(siteId, data)
+                      .then(() => {
+                        queryClient.invalidateQueries({
+                          queryKey: ["collections", siteId],
+                        });
+                        closeCreate();
+                        toast.success(
+                          data.is_singleton
+                            ? "Singleton created"
+                            : "Collection created",
+                        );
+                      })
+                      .catch((err: Error) => toast.error(err.message));
+                  }}
+                />
+              </ScrollArea>
+              <SheetFooter>
+                <Button
+                  type="submit"
+                  form="collection-form-create"
+                  disabled={false}
+                >
+                  {pendingIsSingleton
+                    ? "Create Singleton"
+                    : "Create Collection"}
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={requestCloseCreate}
+                >
+                  Cancel
+                </Button>
+              </SheetFooter>
+            </SheetContent>
+          </Sheet>
         </div>
+
+        {isLoading ? (
+          <div className="flex flex-col gap-2">
+            <Skeleton className="h-12 w-full" />
+            <Skeleton className="h-12 w-full" />
+          </div>
+        ) : !collections?.length ? (
+          <Card>
+            <CardContent className="flex flex-col items-center justify-center py-12">
+              <Layers className="mb-4 size-10 text-muted-foreground" />
+              <p className="text-lg font-medium">No collections yet</p>
+              <p className="text-sm text-muted-foreground">
+                Create your first collection or singleton to get started.
+              </p>
+            </CardContent>
+          </Card>
+        ) : (
+          <Card>
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Name</TableHead>
+                  <TableHead>Type</TableHead>
+                  <TableHead>Slug</TableHead>
+                  <TableHead>Fields</TableHead>
+                  <TableHead className="text-right">Actions</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {collections.map((c: Collection) => {
+                  let fieldCount = 0;
+                  try {
+                    const def: SchemaDefinition = JSON.parse(c.definition);
+                    fieldCount = def.fields?.length ?? 0;
+                  } catch {
+                    // invalid json
+                  }
+                  return (
+                    <TableRow key={c.id}>
+                      <TableCell className="font-medium">{c.name}</TableCell>
+                      <TableCell>
+                        <Badge
+                          variant={c.is_singleton ? "secondary" : "outline"}
+                        >
+                          {c.is_singleton ? "Singleton" : "Collection"}
+                        </Badge>
+                      </TableCell>
+                      <TableCell>
+                        <Badge variant="outline">{c.slug}</Badge>
+                      </TableCell>
+                      <TableCell>{fieldCount} fields</TableCell>
+                      <TableCell className="text-right">
+                        <div className="flex justify-end gap-1">
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => setEditCollection(c)}
+                          >
+                            <Pencil />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => deleteMutation.mutate(c.slug)}
+                            disabled={deleteMutation.isPending}
+                          >
+                            <Trash2 />
+                          </Button>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
+              </TableBody>
+            </Table>
+          </Card>
+        )}
+
         <Sheet
-          open={createOpen}
+          open={editCollection !== null}
           onOpenChange={(open) => {
-            setCreateOpen(open);
-            if (!open) setPendingIsSingleton(false);
+            if (!open) requestCloseEdit();
           }}
         >
-          <SheetTrigger render={<Button />}>
-            <Plus data-icon="inline-start" />
-            New
-          </SheetTrigger>
           <SheetContent
-            className={
-              "data-[side=right]:w-full data-[side=right]:sm:max-w-2xl"
-            }
+            className={"data-[side=right]:w-full data-[side=right]:sm:max-w-xl"}
           >
             <SheetHeader>
               <SheetTitle>
-                {pendingIsSingleton ? "Create Singleton" : "Create Collection"}
+                {editCollection?.is_singleton
+                  ? "Edit Singleton"
+                  : "Edit Collection"}
               </SheetTitle>
               <SheetDescription>
-                {pendingIsSingleton
-                  ? "Define a new singleton with custom fields."
-                  : "Define a new collection with custom fields."}
+                {editCollection?.is_singleton
+                  ? "Update the singleton definition."
+                  : "Update the collection definition."}
               </SheetDescription>
             </SheetHeader>
-            <div className="flex-1 overflow-y-auto px-4">
-              <CollectionForm
-                siteId={siteId}
-                onIsSingletonChange={setPendingIsSingleton}
-                onSubmit={(data) => {
-                  createCollection(siteId, data)
-                    .then(() => {
-                      queryClient.invalidateQueries({
-                        queryKey: ["collections", siteId],
-                      });
-                      setCreateOpen(false);
-                      setPendingIsSingleton(false);
-                      toast.success(
-                        data.is_singleton
-                          ? "Singleton created"
-                          : "Collection created",
-                      );
+            <ScrollArea className="min-h-0 flex-1 px-4">
+              {editCollection && (
+                <CollectionForm
+                  key={editCollection.id}
+                  siteId={siteId}
+                  initialData={editCollection}
+                  onDirtyChange={setEditDirty}
+                  onSubmit={(data) => {
+                    updateCollection(siteId, editCollection.slug, {
+                      name: data.name,
+                      slug: data.slug,
+                      definition: data.definition,
                     })
-                    .catch((err: Error) => toast.error(err.message));
-                }}
-              />
-            </div>
+                      .then(() => {
+                        queryClient.invalidateQueries({
+                          queryKey: ["collections", siteId],
+                        });
+                        const wasSingleton = editCollection.is_singleton;
+                        closeEdit();
+                        toast.success(
+                          wasSingleton
+                            ? "Singleton updated"
+                            : "Collection updated",
+                        );
+                      })
+                      .catch((err: Error) => toast.error(err.message));
+                  }}
+                />
+              )}
+            </ScrollArea>
             <SheetFooter>
               <Button
                 type="submit"
-                form="collection-form-create"
+                form="collection-form-edit"
                 disabled={false}
               >
-                {pendingIsSingleton ? "Create Singleton" : "Create Collection"}
+                {editCollection?.is_singleton
+                  ? "Update Singleton"
+                  : "Update Collection"}
               </Button>
-              <SheetClose
-                render={
-                  <Button type="button" variant="outline">
-                    Cancel
-                  </Button>
-                }
-              />
+              <Button
+                type="button"
+                variant="outline"
+                onClick={requestCloseEdit}
+              >
+                Cancel
+              </Button>
             </SheetFooter>
           </SheetContent>
         </Sheet>
-      </div>
 
-      {isLoading ? (
-        <div className="flex flex-col gap-2">
-          <Skeleton className="h-12 w-full" />
-          <Skeleton className="h-12 w-full" />
-        </div>
-      ) : !collections?.length ? (
-        <Card>
-          <CardContent className="flex flex-col items-center justify-center py-12">
-            <Layers className="mb-4 size-10 text-muted-foreground" />
-            <p className="text-lg font-medium">No collections yet</p>
-            <p className="text-sm text-muted-foreground">
-              Create your first collection or singleton to get started.
-            </p>
-          </CardContent>
-        </Card>
-      ) : (
-        <Card>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Name</TableHead>
-                <TableHead>Type</TableHead>
-                <TableHead>Slug</TableHead>
-                <TableHead>Fields</TableHead>
-                <TableHead className="text-right">Actions</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {collections.map((c: Collection) => {
-                let fieldCount = 0;
-                try {
-                  const def: SchemaDefinition = JSON.parse(c.definition);
-                  fieldCount = def.fields?.length ?? 0;
-                } catch {
-                  // invalid json
-                }
-                return (
-                  <TableRow key={c.id}>
-                    <TableCell className="font-medium">{c.name}</TableCell>
-                    <TableCell>
-                      <Badge variant={c.is_singleton ? "secondary" : "outline"}>
-                        {c.is_singleton ? "Singleton" : "Collection"}
-                      </Badge>
-                    </TableCell>
-                    <TableCell>
-                      <Badge variant="outline">{c.slug}</Badge>
-                    </TableCell>
-                    <TableCell>{fieldCount} fields</TableCell>
-                    <TableCell className="text-right">
-                      <div className="flex justify-end gap-1">
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => setEditCollection(c)}
-                        >
-                          <Pencil />
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => deleteMutation.mutate(c.slug)}
-                          disabled={deleteMutation.isPending}
-                        >
-                          <Trash2 />
-                        </Button>
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                );
-              })}
-            </TableBody>
-          </Table>
-        </Card>
-      )}
-
-      <Sheet
-        open={editCollection !== null}
-        onOpenChange={(open) => !open && setEditCollection(null)}
-      >
-        <SheetContent
-          className={"data-[side=right]:w-full data-[side=right]:sm:max-w-xl"}
+        <AlertDialog
+          open={discardTarget !== null}
+          onOpenChange={(open) => {
+            if (!open) setDiscardTarget(null);
+          }}
         >
-          <SheetHeader>
-            <SheetTitle>
-              {editCollection?.is_singleton
-                ? "Edit Singleton"
-                : "Edit Collection"}
-            </SheetTitle>
-            <SheetDescription>
-              {editCollection?.is_singleton
-                ? "Update the singleton definition."
-                : "Update the collection definition."}
-            </SheetDescription>
-          </SheetHeader>
-          <div className="flex-1 overflow-y-auto px-4">
-            {editCollection && (
-              <CollectionForm
-                key={editCollection.id}
-                siteId={siteId}
-                initialData={editCollection}
-                onSubmit={(data) => {
-                  updateCollection(siteId, editCollection.slug, {
-                    name: data.name,
-                    slug: data.slug,
-                    definition: data.definition,
-                  })
-                    .then(() => {
-                      queryClient.invalidateQueries({
-                        queryKey: ["collections", siteId],
-                      });
-                      const wasSingleton = editCollection.is_singleton;
-                      setEditCollection(null);
-                      toast.success(
-                        wasSingleton
-                          ? "Singleton updated"
-                          : "Collection updated",
-                      );
-                    })
-                    .catch((err: Error) => toast.error(err.message));
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Discard changes?</AlertDialogTitle>
+              <AlertDialogDescription>
+                Your changes will be lost.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Keep editing</AlertDialogCancel>
+              <AlertDialogAction
+                variant="destructive"
+                onClick={() => {
+                  if (discardTarget === "create") closeCreate();
+                  else if (discardTarget === "edit") closeEdit();
+                  setDiscardTarget(null);
                 }}
-              />
-            )}
-          </div>
-          <SheetFooter>
-            <Button type="submit" form="collection-form-edit" disabled={false}>
-              {editCollection?.is_singleton
-                ? "Update Singleton"
-                : "Update Collection"}
-            </Button>
-            <SheetClose
-              render={
-                <Button type="button" variant="outline">
-                  Cancel
-                </Button>
-              }
-            />
-          </SheetFooter>
-        </SheetContent>
-      </Sheet>
-    </div>
+              >
+                Discard
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+      </div>
+    </TooltipProvider>
   );
 }
 
@@ -479,7 +622,7 @@ function SortableFieldItem({
     isDragging,
   } = useSortable({ id: field._id });
 
-  const [open, setOpen] = useState(!field.name);
+  const [open, setOpen] = useState(false);
   const [nameTouched, setNameTouched] = useState(false);
   const nameInvalid = nameTouched && !field.name.trim();
   const meta = fieldTypeMeta(field.type);
@@ -508,10 +651,20 @@ function SortableFieldItem({
           >
             <GripVertical className="size-4" />
           </button>
-          <Icon className="size-4 shrink-0 text-muted-foreground" />
+          <Tooltip>
+            <TooltipTrigger
+              render={
+                <span className="inline-flex shrink-0 cursor-default text-muted-foreground" />
+              }
+            >
+              <Icon className="size-4" />
+            </TooltipTrigger>
+            <TooltipContent>{meta.label}</TooltipContent>
+          </Tooltip>
           <Field data-invalid={nameInvalid} className="min-w-0 flex-1">
             <Input
-              placeholder="fieldName"
+              autoFocus
+              placeholder="Field name"
               value={field.name}
               onBlur={() => setNameTouched(true)}
               onChange={(e) => set("name", e.target.value)}
@@ -567,31 +720,6 @@ function SortableFieldItem({
         )}
         <CollapsibleContent>
           <div className="flex flex-col gap-4 border-t p-3 sm:p-4">
-            <Field className="max-w-xs">
-              <FieldLabel className="text-xs">Type</FieldLabel>
-              <Select
-                items={FIELD_TYPES.map((ft) => ({
-                  label: ft.label,
-                  value: ft.value,
-                }))}
-                value={field.type}
-                onValueChange={(val) => set("type", val as string)}
-              >
-                <SelectTrigger className="h-8 w-full">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectGroup>
-                    {FIELD_TYPES.map((ft) => (
-                      <SelectItem key={ft.value} value={ft.value}>
-                        {ft.label}
-                      </SelectItem>
-                    ))}
-                  </SelectGroup>
-                </SelectContent>
-              </Select>
-            </Field>
-
             <TypeConfig
               field={field}
               index={index}
@@ -836,11 +964,7 @@ function TypeConfig({ field, set, siteId }: FieldConfigProps) {
       return <SelectOptionsConfig field={field} set={set} />;
     case "relation":
       return <RelationConfig field={field} set={set} siteId={siteId} />;
-    case "image":
-    case "video":
-    case "audio":
-    case "document":
-    case "archive":
+    case "file":
       return <FileConfig field={field} set={set} />;
     default:
       return null;
@@ -904,42 +1028,119 @@ function FileConfig({
   field: ContentFieldWithId;
   set: (key: keyof ContentField, value: unknown) => void;
 }) {
-  const presets = CONTENT_TYPE_MIME_TYPES[field.type] ?? [];
-  const acceptCount = (field.accept ?? []).length;
+  const accept = field.accept ?? [];
+  const [comboOpen, setComboOpen] = useState(false);
+
+  const addMimes = (mimes: string[]) => {
+    const next = Array.from(new Set([...accept, ...mimes]));
+    set("accept", next.length > 0 ? next : undefined);
+  };
+  const removeMime = (mime: string) => {
+    const next = accept.filter((a) => a !== mime);
+    set("accept", next.length > 0 ? next : undefined);
+  };
+
+  const available = MIME_CATALOG.filter((m) => !accept.includes(m.mime));
+
   return (
     <div className="flex flex-col gap-3">
       <ConfigBox
         label="Allowed mime types"
         hint={
-          acceptCount === 0
-            ? "No restriction — all files in this category accepted"
-            : `${acceptCount} type${acceptCount === 1 ? "" : "s"} selected`
+          accept.length === 0
+            ? "No restriction — all file types allowed"
+            : `${accept.length} type${accept.length === 1 ? "" : "s"} selected`
         }
       >
-        <div className="flex flex-wrap gap-1">
-          {presets.map((mime) => {
-            const selected = (field.accept ?? []).includes(mime);
-            return (
-              <button
+        {accept.length > 0 && (
+          <div className="flex flex-wrap gap-1">
+            {accept.map((mime) => (
+              <span
                 key={mime}
-                type="button"
-                className={`inline-flex items-center rounded-md border px-2 py-0.5 text-xs transition-colors ${
-                  selected
-                    ? "border-primary bg-primary/10 text-primary"
-                    : "border-border bg-background text-muted-foreground hover:text-foreground"
-                }`}
-                onClick={() => {
-                  const current = field.accept ?? [];
-                  const next = selected
-                    ? current.filter((a) => a !== mime)
-                    : [...current, mime];
-                  set("accept", next.length > 0 ? next : undefined);
-                }}
+                className="inline-flex items-center gap-1.5 rounded-md border border-border bg-background px-2 py-0.5 text-xs"
               >
-                {mime.split("/")[1] ?? mime}
-              </button>
-            );
-          })}
+                <span className="font-medium">{mimeExt(mime)}</span>
+                <span className="text-muted-foreground">{mime}</span>
+                <button
+                  type="button"
+                  className="ml-0.5 text-muted-foreground hover:text-foreground"
+                  aria-label={`Remove ${mime}`}
+                  onClick={() => removeMime(mime)}
+                >
+                  ×
+                </button>
+              </span>
+            ))}
+          </div>
+        )}
+        <div className="mt-1 flex flex-wrap items-center gap-2">
+          <Popover open={comboOpen} onOpenChange={setComboOpen}>
+            <PopoverTrigger
+              render={
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="h-8"
+                />
+              }
+            >
+              <Plus data-icon="inline-start" />
+              Add mime type
+              <ChevronDown data-icon="inline-end" className="opacity-50" />
+            </PopoverTrigger>
+            <PopoverContent align="start" className="w-72 p-0">
+              <Command>
+                <CommandInput placeholder="Search mime types…" />
+                <CommandList>
+                  <CommandEmpty>No mime types found.</CommandEmpty>
+                  <CommandGroup>
+                    {available.map((m) => (
+                      <CommandItem
+                        key={m.mime}
+                        value={`${m.ext} ${m.mime}`}
+                        onSelect={() => {
+                          addMimes([m.mime]);
+                          setComboOpen(false);
+                        }}
+                      >
+                        <span className="font-medium">{m.ext}</span>
+                        <span className="text-muted-foreground">{m.mime}</span>
+                      </CommandItem>
+                    ))}
+                  </CommandGroup>
+                </CommandList>
+              </Command>
+            </PopoverContent>
+          </Popover>
+          <DropdownMenu>
+            <DropdownMenuTrigger
+              render={
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="h-8"
+                />
+              }
+            >
+              Choose presets
+              <ChevronDown data-icon="inline-end" className="opacity-50" />
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="start">
+              {MIME_PRESETS.map((preset) => (
+                <DropdownMenuItem
+                  key={preset.label}
+                  onClick={() => addMimes(preset.mimes)}
+                >
+                  {preset.label}
+                  <span className="ml-2 text-xs text-muted-foreground">
+                    {preset.mimes.map(mimeExt).join(", ")}
+                  </span>
+                </DropdownMenuItem>
+              ))}
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
       </ConfigBox>
       <NumberConfig
@@ -1051,6 +1252,7 @@ function CollectionForm({
   initialData,
   onSubmit,
   onIsSingletonChange,
+  onDirtyChange,
 }: {
   siteId: string;
   initialData?: Collection;
@@ -1061,6 +1263,7 @@ function CollectionForm({
     is_singleton?: boolean;
   }) => void;
   onIsSingletonChange?: (isSingleton: boolean) => void;
+  onDirtyChange?: (dirty: boolean) => void;
 }) {
   const [slugManuallyEdited, setSlugManuallyEdited] = useState(!!initialData);
   const isEdit = !!initialData;
@@ -1102,6 +1305,11 @@ function CollectionForm({
       });
     },
   });
+
+  const isDirty = useStore(form.store, (s) => s.isDirty);
+  useEffect(() => {
+    onDirtyChange?.(isDirty);
+  }, [isDirty, onDirtyChange]);
 
   const sensors = useSensors(
     useSensor(PointerSensor, {
@@ -1171,7 +1379,7 @@ function CollectionForm({
       }}
       className="flex flex-col gap-4 pb-4"
     >
-      <FieldGroup>
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         <form.Field
           name="name"
           children={(field) => {
@@ -1222,7 +1430,7 @@ function CollectionForm({
             );
           }}
         />
-      </FieldGroup>
+      </div>
 
       {!isEdit && (
         <form.Field
