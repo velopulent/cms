@@ -8,6 +8,8 @@ pub mod graphql;
 pub mod mcp;
 pub mod paths;
 pub mod secrets;
+pub mod server;
+pub mod service;
 pub mod signed_upload;
 pub mod test_helpers;
 pub mod tracing;
