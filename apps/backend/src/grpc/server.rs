@@ -26,6 +26,7 @@ pub async fn start_grpc_server(
     config: Arc<Config>,
     storage_registry: Arc<StorageRegistry>,
     grpc_addr: SocketAddr,
+    shutdown: impl Future<Output = ()> + Send + 'static,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let collection_svc = CollectionServiceImpl::new(services.collection.clone(), repository.clone());
     let entry_svc = EntryServiceImpl::new(services.entry.clone(), repository.clone());
@@ -90,7 +91,7 @@ pub async fn start_grpc_server(
         .add_service(file_svc)
         .add_service(site_svc)
         .add_service(webhook_svc)
-        .serve(grpc_addr)
+        .serve_with_shutdown(grpc_addr, shutdown)
         .await?;
 
     Ok(())
@@ -102,6 +103,7 @@ pub fn spawn_grpc_server(
     config: Arc<Config>,
     storage_registry: Arc<StorageRegistry>,
     grpc_addr: SocketAddr,
+    shutdown: Pin<Box<dyn Future<Output = ()> + Send>>,
 ) -> GrpcServerFuture {
     Box::pin(start_grpc_server(
         services,
@@ -109,5 +111,6 @@ pub fn spawn_grpc_server(
         config,
         storage_registry,
         grpc_addr,
+        shutdown,
     ))
 }
