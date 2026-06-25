@@ -139,6 +139,24 @@ fn is_multiple(field_def: &Value) -> bool {
     field_def.get("multiple").and_then(Value::as_bool).unwrap_or(false)
 }
 
+/// Field types whose value is a single scalar or, when `multiple`, an array of
+/// scalars — i.e. those whose shape must match the `multiple` flag. `number`,
+/// `boolean`, and `json` are exempt: their value may be an array or scalar
+/// regardless of `multiple`.
+fn is_element_based(field_type: &str) -> bool {
+    matches!(
+        field_type,
+        "text" | "textarea" | "rich_text" | "email" | "url" | "select" | "relation"
+    ) || FILE_FIELD_TYPES.contains(&field_type)
+}
+
+/// Accepts only proper absolute http/https URLs (used for external file refs).
+fn is_http_url(s: &str) -> bool {
+    url::Url::parse(s)
+        .map(|u| matches!(u.scheme(), "http" | "https"))
+        .unwrap_or(false)
+}
+
 /// Coerce a value into the list of element values to validate. For `multiple`
 /// fields the value is expected to be an array; otherwise it is a single scalar.
 fn as_elements(v: &Value) -> Vec<&Value> {
@@ -200,10 +218,9 @@ pub fn validate_entry_data(data: &Value, fields: &[Value]) -> Option<String> {
 
         if let Some(v) = value
             && !v.is_null()
+            && let Some(err) = validate_field_value(name, field_type, field_def, v)
         {
-            if let Some(err) = validate_field_value(name, field_type, field_def, v) {
-                return Some(err);
-            }
+            return Some(err);
         }
     }
 
@@ -212,19 +229,34 @@ pub fn validate_entry_data(data: &Value, fields: &[Value]) -> Option<String> {
 
 /// Validate one present, non-null value against its field definition.
 fn validate_field_value(name: &str, field_type: &str, field_def: &Value, v: &Value) -> Option<String> {
+    // Enforce the `multiple` shape before any per-element validation, so a stored
+    // value whose type does not match the flag is rejected immediately rather than
+    // being silently iterated as one element (array) or coerced (scalar).
+    if is_element_based(field_type) {
+        match (is_multiple(field_def), v.is_array()) {
+            (true, false) => {
+                return Some(format!("Field '{}' must be an array of values", name));
+            }
+            (false, true) => {
+                return Some(format!("Field '{}' must be a single value, not an array", name));
+            }
+            _ => {}
+        }
+    }
+
     // Enforce `max_select` for multi-value fields up front.
-    if is_multiple(field_def) {
-        if let Value::Array(arr) = v {
-            if let Some(max) = cfg_u64(field_def, "max_select")
-                && arr.len() as u64 > max
-            {
-                return Some(format!("Field '{}' allows at most {} selections", name, max));
-            }
-            if let Some(min) = cfg_u64(field_def, "min_select")
-                && (arr.len() as u64) < min
-            {
-                return Some(format!("Field '{}' requires at least {} selections", name, min));
-            }
+    if is_multiple(field_def)
+        && let Value::Array(arr) = v
+    {
+        if let Some(max) = cfg_u64(field_def, "max_select")
+            && arr.len() as u64 > max
+        {
+            return Some(format!("Field '{}' allows at most {} selections", name, max));
+        }
+        if let Some(min) = cfg_u64(field_def, "min_select")
+            && (arr.len() as u64) < min
+        {
+            return Some(format!("Field '{}' requires at least {} selections", name, min));
         }
     }
 
@@ -250,7 +282,7 @@ fn validate_field_value(name: &str, field_type: &str, field_def: &Value, v: &Val
         "url" => {
             for el in as_elements(v) {
                 match el.as_str() {
-                    Some(s) if s.is_empty() => {}
+                    Some("") => {}
                     Some(s) if url::Url::parse(s).is_ok() => {}
                     Some(s) => return Some(format!("Field '{}' must be a valid URL, got '{}'", name, s)),
                     None => return Some(format!("Field '{}' must be a string URL", name)),
@@ -301,25 +333,27 @@ fn validate_field_value(name: &str, field_type: &str, field_def: &Value, v: &Val
                 return None;
             }
             for el in as_elements(v) {
-                if let Some(s) = el.as_str()
-                    && !valid.contains(&s)
-                {
-                    return Some(format!(
-                        "Field '{}' value '{}' is not in allowed options: {:?}",
-                        name, s, valid
-                    ));
+                match el.as_str() {
+                    Some(s) if valid.contains(&s) => {}
+                    Some(s) => {
+                        return Some(format!(
+                            "Field '{}' value '{}' is not in allowed options: {:?}",
+                            name, s, valid
+                        ));
+                    }
+                    None => return Some(format!("Field '{}' options must be strings", name)),
                 }
             }
             None
         }
         t if FILE_FIELD_TYPES.contains(&t) => {
             for el in as_elements(v) {
-                if let Some(s) = el.as_str()
-                    && !s.is_empty()
-                    && !s.starts_with("/api/files/")
-                    && !s.starts_with("http")
-                {
-                    return Some(format!("Field '{}' must be a valid file URL, got '{}'", name, s));
+                match el.as_str() {
+                    Some(s) if s.is_empty() || s.starts_with("/api/files/") || is_http_url(s) => {}
+                    Some(s) => {
+                        return Some(format!("Field '{}' must be a valid file URL, got '{}'", name, s));
+                    }
+                    None => return Some(format!("Field '{}' file values must be URLs (strings)", name)),
                 }
             }
             None
@@ -648,6 +682,58 @@ mod tests {
                 .contains("at most 2")
         );
         assert!(validate_entry_data(&json!({"tags": ["a", "b"]}), f).is_none());
+    }
+
+    #[test]
+    fn validate_rejects_array_for_single_valued_field() {
+        // A single-valued select must not accept an array, nor a multiple field a scalar.
+        let single = json!([{"name": "s", "type": "select", "options": ["a", "b"]}]);
+        let f = single.as_array().unwrap();
+        assert!(
+            validate_entry_data(&json!({"s": ["a"]}), f)
+                .unwrap()
+                .contains("single value")
+        );
+
+        let multi = json!([{"name": "s", "type": "select", "multiple": true, "options": ["a", "b"]}]);
+        let f = multi.as_array().unwrap();
+        assert!(
+            validate_entry_data(&json!({"s": "a"}), f)
+                .unwrap()
+                .contains("must be an array")
+        );
+    }
+
+    #[test]
+    fn validate_rejects_non_string_select_and_file_elements() {
+        let select = json!([{"name": "s", "type": "select", "options": ["a", "b"]}]);
+        let f = select.as_array().unwrap();
+        assert!(
+            validate_entry_data(&json!({"s": 1}), f)
+                .unwrap()
+                .contains("options must be strings")
+        );
+
+        let file = json!([{"name": "a", "type": "file"}]);
+        let f = file.as_array().unwrap();
+        assert!(
+            validate_entry_data(&json!({"a": 42}), f)
+                .unwrap()
+                .contains("file values must be URLs")
+        );
+    }
+
+    #[test]
+    fn validate_file_rejects_non_http_scheme() {
+        // `starts_with("http")` used to wave through bogus values like "httpfoo://x".
+        let file = json!([{"name": "a", "type": "file"}]);
+        let f = file.as_array().unwrap();
+        assert!(
+            validate_entry_data(&json!({"a": "httpfoo://nope"}), f)
+                .unwrap()
+                .contains("must be a valid file URL")
+        );
+        assert!(validate_entry_data(&json!({"a": "http://example.com/x.png"}), f).is_none());
     }
 
     #[test]
