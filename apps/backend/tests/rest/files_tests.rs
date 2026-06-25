@@ -301,8 +301,14 @@ async fn test_upload_file_exceeds_max_size() {
             "over-cap upload should be rejected with 413: {}",
             resp.text().await.unwrap_or_default()
         ),
-        // Connection reset by the body-limit layer before the response was read.
-        Err(_) => {}
+        // The only acceptable transport failure is the body-limit layer aborting
+        // the connection mid-upload (the request body was already being streamed).
+        // A connect/timeout/builder error means the request never reached that
+        // path, so it points at an unrelated failure and must fail the test.
+        Err(e) => assert!(
+            !e.is_connect() && !e.is_timeout() && !e.is_builder(),
+            "over-cap upload failed with an unexpected transport error (not a body-limit abort): {e}"
+        ),
     }
 }
 
