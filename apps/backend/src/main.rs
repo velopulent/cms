@@ -1,29 +1,26 @@
 use clap::Parser;
 use cms::cli::{AdminAction, BackupAction, Cli, Command, ConfigAction, McpTransport};
 use cms::config::{self, Config};
-use cms::database::{connect_db_without_migrations, init_db_with_config};
-use cms::middleware::auth::Actor;
+use cms::database::init_db_with_config;
 use cms::repository::Repository;
-use cms::services::Services;
 
 use std::error::Error;
-use std::sync::Arc;
-use tracing::{debug, info};
+use tracing::info;
 
 #[tokio::main]
 async fn main() {
     // Load env from the cwd `.env` (dev) first, then `$VCMS_HOME/.env` (installed
-    // services + `mcp stdio`, which run from an arbitrary cwd). dotenvy is
-    // first-wins, so real env vars and the cwd file keep precedence over the home
-    // file. VCMS_HOME must be a real env var — resolved here before the home `.env`
-    // loads — never set inside that file (chicken-and-egg).
+    // services run from an arbitrary cwd). dotenvy is first-wins, so real env vars and
+    // the cwd file keep precedence over the config-dir file. VCMS_HOME must be a real
+    // env var — resolved here before the `.env` loads — never set inside that file
+    // (chicken-and-egg).
     dotenvy::dotenv().ok();
-    let home_env = cms::paths::home().join(".env");
-    match dotenvy::from_path(&home_env) {
+    let env_file = cms::paths::env_file();
+    match dotenvy::from_path(&env_file) {
         Ok(()) => {}
         Err(e) if e.not_found() => {} // missing file is fine
         Err(e) => {
-            eprintln!("Error: cannot load {}: {e}", home_env.display());
+            eprintln!("Error: cannot load {}: {e}", env_file.display());
             std::process::exit(1);
         }
     }
@@ -44,7 +41,7 @@ async fn main() {
         Some(Command::Service { action }) => cms::service::run_service(action, &cli).await,
         Some(Command::Mcp {
             transport: McpTransport::Stdio,
-        }) => run_mcp_stdio(&cli).await,
+        }) => run_mcp_stdio().await,
         Some(Command::Serve) | None => cms::server::run(&cli, cms::server::shutdown_signal()).await,
     };
 
@@ -54,64 +51,24 @@ async fn main() {
     }
 }
 
-async fn run_mcp_stdio(cli: &Cli) -> Result<(), Box<dyn Error>> {
-    // Read-only: never create the home dir, database, or secrets file here. The
-    // persisted secrets written by `vcms serve` are what make this process verify
-    // the site token with the same HMAC secret the server signed it with.
-    if cms::secrets::load()?.is_none() && std::env::var("HMAC_SECRET").is_err() {
-        return Err("No instance secrets found. Run `vcms serve` once to initialize \
-                    ~/.vcms (or set HMAC_SECRET) before `vcms mcp stdio`."
-            .into());
-    }
-
-    let config = Config::load(cli)?;
-    cms::tracing::init_stdio_tracing(&config);
-
-    info!("Starting standalone MCP stdio process");
-    debug!(
-        database_backend = ?cms::database::backend::DatabaseBackend::from_url(&config.database_url),
-        "MCP stdio configuration loaded"
-    );
-
-    if let Err(error) = config.validate_security() {
-        return Err(format!("Invalid production security configuration: {error}").into());
-    }
+async fn run_mcp_stdio() -> Result<(), Box<dyn Error>> {
+    // A thin proxy to the running server's `/mcp` endpoint — it touches no disk
+    // (no home dir, database, secrets, or search index), so it works even when those
+    // belong to the privileged service account. It needs only a server URL and a
+    // `vcms_site_*` access token, forwarded as the bearer credential.
+    cms::tracing::init_proxy_tracing();
 
     let token = std::env::var("VCMS_MCP_TOKEN").map_err(|_| "VCMS_MCP_TOKEN is required for `vcms mcp stdio`")?;
-    if token.trim().is_empty() {
+    let token = token.trim().to_string();
+    if token.is_empty() {
         return Err("VCMS_MCP_TOKEN must not be empty".into());
     }
 
-    let pool = connect_db_without_migrations(&config).await?;
-    info!("Existing CMS database schema is compatible; no migrations were run");
+    let base = std::env::var("VCMS_MCP_URL").unwrap_or_else(|_| "http://127.0.0.1:3000".to_string());
+    let endpoint = format!("{}/mcp", base.trim_end_matches('/'));
 
-    let repository = Repository::new(&pool);
-    let actor = cms::mcp::auth::verify_stdio_token(&token, &repository, &config.hmac_secret)
-        .await
-        .map_err(|error| format!("MCP stdio authentication failed: {}", error.message))?;
-    match &actor {
-        Actor::ApiKey(api_key) => info!(
-            site_id = %api_key.site_id,
-            permission = %api_key.permission,
-            "MCP stdio site token authenticated"
-        ),
-        Actor::User(_) => return Err("MCP stdio requires a CMS site access token".into()),
-    }
-
-    let storage_registry = cms::server::initialize_storage(&config);
-    let repository = Arc::new(repository);
-    let config = Arc::new(config);
-    // Read-only search: stdio can run alongside the server without contending for
-    // the writer lock; its content writes enqueue for the server to index.
-    let services = Arc::new(Services::new_read_only(repository.clone(), &pool, &config));
-    let server = cms::mcp::server::CmsServer::new_stdio(services, repository, storage_registry, config, token);
-
-    let result = cms::mcp::transports::stdio::serve(server).await;
-    match &result {
-        Ok(()) => info!("Standalone MCP stdio process exited cleanly"),
-        Err(error) => tracing::error!(error = %error, "Standalone MCP stdio process exiting after failure"),
-    }
-    result
+    info!(%endpoint, "Starting MCP stdio proxy");
+    cms::mcp::transports::stdio::serve(endpoint, token).await
 }
 
 fn run_config(action: &ConfigAction, cli: &Cli) -> Result<(), Box<dyn Error>> {
