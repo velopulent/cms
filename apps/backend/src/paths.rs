@@ -1,116 +1,201 @@
-//! Resolution of the CMS home directory and the runtime files within it.
+//! Resolution of where the CMS keeps its runtime files.
 //!
-//! Everything the running instance owns lives under a single root so a fresh
-//! install "just works" regardless of the current working directory:
+//! There are two layouts:
 //!
-//! ```text
-//! ~/.vcms/
-//!   config.toml     # non-secret configuration
-//!   secrets.toml    # auto-generated HMAC + backup encryption secrets (0600)
-//!   vcms.db         # default SQLite database (+ -wal / -shm)
-//!   logs/           # rolling logs when log output = "file"
-//!   storage/        # default filesystem storage for uploads
-//! ```
+//! * **Split** (the default for an interactive install) — files land in the
+//!   platform-conventional per-type directories via the `directories` crate:
+//!   config/secrets in the config dir, the database/uploads/backups in the data dir,
+//!   the (rebuildable) search index in the cache dir, and logs in the state dir.
+//!   On Linux this is XDG (`~/.config/vcms`, `~/.local/share/vcms`, `~/.cache/vcms`,
+//!   `~/.local/state/vcms`); on macOS `~/Library/Application Support/vcms` (+ Caches);
+//!   on Windows `%APPDATA%`/`%LOCALAPPDATA%` under `vcms`.
 //!
-//! The root is `$VCMS_HOME` when set, otherwise `~/.vcms` resolved cross-platform
-//! via the `directories` crate. This mirrors the convention used by tools like
-//! `CARGO_HOME` / `PGDATA`: one predictable, overridable home.
+//! * **Single** — everything nests under one root. Chosen when `$VCMS_HOME` is set
+//!   (the OS-service installer pins it to a system dir like `/var/lib/vcms` or
+//!   `C:\ProgramData\vcms`), or when a legacy `~/.vcms` already holds data (so an
+//!   existing install keeps working untouched).
 
 use std::path::PathBuf;
 
-/// Environment variable that overrides the home directory location.
+/// Environment variable that forces the single-directory layout at a chosen root.
 pub const CMS_HOME_ENV: &str = "VCMS_HOME";
 
-/// The CMS home directory root.
-///
-/// `$VCMS_HOME` wins if set and non-empty. Otherwise `~/.vcms`. As a last resort
-/// (no detectable home directory) falls back to `.vcms` in the current dir.
-pub fn home() -> PathBuf {
+/// Where each class of file lives. Resolved fresh on each call (cheap) so tests and
+/// the service can change `$VCMS_HOME` without a process restart.
+enum Layout {
+    /// One root holding everything (`$VCMS_HOME`, a legacy `~/.vcms`, or a `.vcms`
+    /// fallback when no platform dirs are detectable).
+    Single(PathBuf),
+    /// Per-type platform directories.
+    Split {
+        config: PathBuf,
+        data: PathBuf,
+        cache: PathBuf,
+        state: PathBuf,
+    },
+}
+
+impl Layout {
+    fn config(&self) -> PathBuf {
+        match self {
+            Layout::Single(root) => root.clone(),
+            Layout::Split { config, .. } => config.clone(),
+        }
+    }
+
+    fn data(&self) -> PathBuf {
+        match self {
+            Layout::Single(root) => root.clone(),
+            Layout::Split { data, .. } => data.clone(),
+        }
+    }
+
+    fn cache(&self) -> PathBuf {
+        match self {
+            Layout::Single(root) => root.clone(),
+            Layout::Split { cache, .. } => cache.clone(),
+        }
+    }
+
+    fn state(&self) -> PathBuf {
+        match self {
+            Layout::Single(root) => root.clone(),
+            Layout::Split { state, .. } => state.clone(),
+        }
+    }
+}
+
+/// Resolve the active layout: `$VCMS_HOME` → legacy `~/.vcms` → platform split.
+fn layout() -> Layout {
     if let Some(value) = std::env::var_os(CMS_HOME_ENV)
         && !value.is_empty()
     {
-        return PathBuf::from(value);
+        return Layout::Single(PathBuf::from(value));
     }
 
-    directories::BaseDirs::new()
-        .map(|dirs| dirs.home_dir().join(".vcms"))
-        .unwrap_or_else(|| PathBuf::from(".vcms"))
+    if let Some(base) = directories::BaseDirs::new() {
+        // Back-compat: a pre-existing single `~/.vcms` keeps owning everything so an
+        // upgrade never strands a user's database or secrets.
+        let legacy = base.home_dir().join(".vcms");
+        if legacy.is_dir() {
+            return Layout::Single(legacy);
+        }
+    }
+
+    match directories::ProjectDirs::from("", "", "vcms") {
+        Some(dirs) => split_from(&dirs),
+        // No detectable platform dirs (rare): fall back to a local blob.
+        None => Layout::Single(PathBuf::from(".vcms")),
+    }
 }
 
-/// `~/.vcms/config.toml` — the user-level config file.
+/// Map `ProjectDirs` onto our four directory classes. Logs use the state dir where
+/// the platform has one (Linux), else the local data dir (macOS/Windows).
+fn split_from(dirs: &directories::ProjectDirs) -> Layout {
+    Layout::Split {
+        config: dirs.config_dir().to_path_buf(),
+        data: dirs.data_dir().to_path_buf(),
+        cache: dirs.cache_dir().to_path_buf(),
+        state: dirs.state_dir().unwrap_or_else(|| dirs.data_local_dir()).to_path_buf(),
+    }
+}
+
+/// `config.toml` — the non-secret config file (config dir).
 pub fn config_file() -> PathBuf {
-    home().join("config.toml")
+    layout().config().join("config.toml")
 }
 
-/// `~/.vcms/secrets.toml` — auto-generated secrets file.
+/// `secrets.toml` — auto-generated secrets file (config dir, 0600 on unix).
 pub fn secrets_file() -> PathBuf {
-    home().join("secrets.toml")
+    layout().config().join("secrets.toml")
 }
 
-/// `~/.vcms/vcms.db` — the default SQLite database file.
+/// `.env` — optional environment file loaded at startup (config dir).
+pub fn env_file() -> PathBuf {
+    layout().config().join(".env")
+}
+
+/// `vcms.db` — the default SQLite database file (data dir).
 pub fn default_db_path() -> PathBuf {
-    home().join("vcms.db")
+    layout().data().join("vcms.db")
 }
 
-/// `~/.vcms/logs` — directory for rolling log files.
-pub fn logs_dir() -> PathBuf {
-    home().join("logs")
-}
-
-/// `~/.vcms/storage` — default filesystem storage directory for uploads.
+/// `storage/` — default filesystem storage directory for uploads (data dir).
 pub fn storage_dir() -> PathBuf {
-    home().join("storage")
+    layout().data().join("storage")
 }
 
-/// `~/.vcms/backups` — default local destination for backup artifacts.
+/// `backups/` — default local destination for backup artifacts (data dir).
 pub fn backups_dir() -> PathBuf {
-    home().join("backups")
+    layout().data().join("backups")
 }
 
-/// `~/.vcms/search` — default location for the Tantivy full-text search index.
+/// `search/` — default location for the derived Tantivy index (cache dir).
 pub fn search_dir() -> PathBuf {
-    home().join("search")
+    layout().cache().join("search")
 }
 
-/// Build the default `DATABASE_URL` (`sqlite://<home>/vcms.db`).
+/// `logs/` — directory for rolling log files (state dir).
+pub fn logs_dir() -> PathBuf {
+    layout().state().join("logs")
+}
+
+/// Build the default `DATABASE_URL` (`sqlite://<data>/vcms.db`).
 ///
 /// SQLite URLs use forward slashes, so backslashes are normalized for Windows.
 pub fn default_database_url() -> String {
     format!("sqlite://{}", default_db_path().to_string_lossy().replace('\\', "/"))
 }
 
-/// Create the home directory and its subdirectories (`logs/`, `storage/`).
-///
-/// Called by commands that own/initialize the instance (`serve`, `admin`).
-/// Read-only commands such as `mcp stdio` must not create anything.
+/// Create the directories the running instance writes to (config, data, storage,
+/// logs). Called by commands that own/initialize the instance (`serve`, `admin`);
+/// read-only commands such as `mcp stdio` must not create anything.
 pub fn ensure() -> std::io::Result<()> {
-    let root = home();
-    std::fs::create_dir_all(&root)?;
-    std::fs::create_dir_all(logs_dir())?;
-    std::fs::create_dir_all(storage_dir())?;
+    let layout = layout();
+    for dir in [
+        layout.config(),
+        layout.data(),
+        layout.state().join("logs"),
+        layout.data().join("storage"),
+    ] {
+        std::fs::create_dir_all(dir)?;
+    }
     Ok(())
+}
+
+/// Whether a file sits inside the home root in single-dir mode. Only meaningful for
+/// `$VCMS_HOME`/legacy installs; in split mode there is no single root.
+pub fn single_root() -> Option<PathBuf> {
+    match layout() {
+        Layout::Single(root) => Some(root),
+        Layout::Split { .. } => None,
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::test_helpers::with_home;
+    use std::path::Path;
 
     #[test]
-    fn cms_home_env_overrides_root() {
+    fn vcms_home_forces_single_layout() {
         let dir = tempfile::tempdir().expect("temp dir");
         with_home(dir.path(), || {
-            assert_eq!(home(), dir.path());
+            assert_eq!(single_root().as_deref(), Some(dir.path()));
             assert_eq!(config_file(), dir.path().join("config.toml"));
             assert_eq!(secrets_file(), dir.path().join("secrets.toml"));
+            assert_eq!(env_file(), dir.path().join(".env"));
             assert_eq!(default_db_path(), dir.path().join("vcms.db"));
-            assert_eq!(logs_dir(), dir.path().join("logs"));
             assert_eq!(storage_dir(), dir.path().join("storage"));
+            assert_eq!(backups_dir(), dir.path().join("backups"));
+            assert_eq!(search_dir(), dir.path().join("search"));
+            assert_eq!(logs_dir(), dir.path().join("logs"));
         });
     }
 
     #[test]
-    fn ensure_creates_subdirectories() {
+    fn ensure_creates_subdirectories_in_single_mode() {
         let dir = tempfile::tempdir().expect("temp dir");
         let root = dir.path().join("home");
         with_home(&root, || {
@@ -129,5 +214,38 @@ mod tests {
             assert!(url.starts_with("sqlite://"));
             assert!(!url.contains('\\'));
         });
+    }
+
+    #[test]
+    fn split_layout_separates_file_classes() {
+        // Drive the pure mapping directly so the assertion is platform-independent
+        // (real ProjectDirs vary by OS and ambient env).
+        let layout = Layout::Split {
+            config: PathBuf::from("/cfg"),
+            data: PathBuf::from("/dat"),
+            cache: PathBuf::from("/cch"),
+            state: PathBuf::from("/st"),
+        };
+        assert!(layout.config().join("config.toml").starts_with(Path::new("/cfg")));
+        assert!(layout.data().join("vcms.db").starts_with(Path::new("/dat")));
+        assert!(layout.cache().join("search").starts_with(Path::new("/cch")));
+        assert!(layout.state().join("logs").starts_with(Path::new("/st")));
+        // config / data / cache / state are genuinely distinct in split mode.
+        assert_ne!(layout.config(), layout.data());
+        assert_ne!(layout.data(), layout.cache());
+        assert_ne!(layout.cache(), layout.state());
+    }
+
+    #[test]
+    fn split_state_falls_back_to_local_data_when_absent() {
+        // When a platform lacks a state dir, logs must still resolve (we feed the
+        // local-data dir into `state`). Modeled here as state == data.
+        let layout = Layout::Split {
+            config: PathBuf::from("/cfg"),
+            data: PathBuf::from("/dat"),
+            cache: PathBuf::from("/cch"),
+            state: PathBuf::from("/dat"),
+        };
+        assert!(layout.state().join("logs").starts_with(Path::new("/dat")));
     }
 }

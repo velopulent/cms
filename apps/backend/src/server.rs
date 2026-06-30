@@ -218,8 +218,8 @@ pub async fn shutdown_signal() {
 pub fn initialize_storage(config: &Config) -> Arc<StorageRegistry> {
     let mut storage_registry = StorageRegistry::new();
 
-    // Use an explicit filesystem path if set; otherwise default to ~/.vcms/storage
-    // so uploads work out of the box — unless S3 is configured and takes over.
+    // Use an explicit filesystem path if set; otherwise default to the data dir's
+    // storage/ so uploads work out of the box — unless S3 is configured and takes over.
     let fs_path = match (&config.storage_fs_path, config.has_s3()) {
         (Some(path), _) => Some(path.clone()),
         (None, false) => Some(crate::paths::storage_dir().to_string_lossy().into_owned()),
