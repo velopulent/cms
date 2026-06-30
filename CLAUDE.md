@@ -94,30 +94,44 @@ Layers merge with precedence: **CLI flag > env var > config file > built-in defa
 Config file search order (first existing wins; missing is fine):
 1. `--config` flag / `VCMS_CONFIG` env
 2. `./vcms.toml` (current dir)
-3. `~/.vcms/config.toml` (CMS home; `$VCMS_HOME/config.toml` if set) — where `vcms config init` writes
+3. the platform config dir (`config.toml`; `$VCMS_HOME/config.toml` in single-dir mode) — where `vcms config init` writes
 4. `/etc/vcms/config.toml`
 
-## Data directory (CMS home)
+## Data directory
 
-All runtime files live under one home directory: `$VCMS_HOME` if set, else `~/.vcms`
-(same layout on Windows, macOS, Linux via the `directories` crate). `vcms serve`
-creates it on first run. Resolution lives in `apps/backend/src/paths.rs`.
+Resolution lives in `apps/backend/src/paths.rs` and has two layouts:
+
+**Split (default, interactive installs)** — files land in the platform-conventional
+per-type directories via the `directories` crate (`ProjectDirs`):
+
+| File(s) | Dir | Linux | macOS | Windows |
+|---------|-----|-------|-------|---------|
+| `config.toml`, `secrets.toml`, `.env` | config | `~/.config/vcms` | `~/Library/Application Support/vcms` | `%APPDATA%\vcms\config` |
+| `vcms.db`, `storage/`, `backups/` | data | `~/.local/share/vcms` | `~/Library/Application Support/vcms` | `%APPDATA%\vcms\data` |
+| `search/` (derived, rebuildable) | cache | `~/.cache/vcms` | `~/Library/Caches/vcms` | `%LOCALAPPDATA%\vcms\cache` |
+| `logs/` | state | `~/.local/state/vcms` | `~/Library/Application Support/vcms` | `%LOCALAPPDATA%\vcms\data` |
+
+(`logs/` uses the state dir where the platform has one — Linux — else the local data dir.)
+
+**Single** — everything nests under one root. Chosen when **`$VCMS_HOME` is set** (the
+`vcms service` installer pins it to a system dir: Linux `/var/lib/vcms`, macOS
+`/Library/Application Support/vcms`, Windows `C:\ProgramData\vcms`), or when a legacy
+**`~/.vcms`** already exists (so an existing install keeps working untouched):
 
 ```text
-~/.vcms/
-  config.toml     # non-secret config (vcms config init target)
-  secrets.toml    # auto-generated HMAC_SECRET + backup key (0600 on unix)
-  vcms.db          # default SQLite database (+ -wal / -shm)
-  logs/           # rolling logs when [log] output = "file"
-  storage/        # default filesystem storage for uploads
-  search/         # Tantivy full-text search index (derived; rebuildable)
+$VCMS_HOME/                # or ~/.vcms (legacy)
+  config.toml secrets.toml .env
+  vcms.db (+ -wal / -shm)  logs/  storage/  backups/  search/
 ```
+
+`vcms serve`/`admin` create the dirs they need on first run; `vcms mcp stdio` creates
+nothing.
 
 Secrets: on first `serve`/`admin`, a random `HMAC_SECRET` is generated
 and persisted to `secrets.toml` (`apps/backend/src/secrets.rs`), then loaded by
-every process — including `vcms mcp stdio`, which is launched from an arbitrary cwd
-and so cannot rely on a cwd `.env`. Env vars still override the file. `mcp stdio`
-is read-only: it never creates the home dir, database, or secrets file.
+the server processes. `vcms mcp stdio` does **not** load secrets, the database, or
+any home-dir file: it is a thin HTTP proxy (see below) and the server it forwards to
+owns all of those.
 
 Env-only secrets (never read from `config.toml` by convention, omitted from
 `config init`): `DATABASE_URL`, `HMAC_SECRET`, `S3_ACCESS_KEY_ID`,
@@ -156,8 +170,10 @@ Logging keys map to the `[log]` table: `RUST_LOG`→`log.level`, `LOG_OUTPUT`→
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `VCMS_CONFIG` | - | Explicit config file path (same as `--config`) |
-| `VCMS_HOME` | `~/.vcms` | CMS home directory (db, config, secrets, logs, storage) |
-| `DATABASE_URL` | `sqlite://~/.vcms/vcms.db` | Database URL: `sqlite:path`, `postgres://...`, `mysql://...` |
+| `VCMS_HOME` | - | If set, forces single-dir mode: db/config/secrets/logs/storage all nest under this root (else files use the platform split dirs) |
+| `VCMS_MCP_TOKEN` | - | `vcms_site_*` access token forwarded by `vcms mcp stdio` as the bearer credential (required for stdio) |
+| `VCMS_MCP_URL` | `http://127.0.0.1:3000` | Running server's base URL that `vcms mcp stdio` proxies to (`{url}/mcp`) |
+| `DATABASE_URL` | `sqlite://<data dir>/vcms.db` | Database URL: `sqlite:path`, `postgres://...`, `mysql://...` |
 | `HMAC_SECRET` | auto | HMAC key for token lookup (required; auto-generated to `secrets.toml`, env overrides) |
 | `BIND_ADDRESS` | `0.0.0.0:3000` | REST API listen address |
 | `GRPC_BIND_ADDRESS` | `0.0.0.0:50051` | gRPC server listen address |
@@ -170,7 +186,7 @@ Logging keys map to the `[log]` table: `RUST_LOG`→`log.level`, `LOG_OUTPUT`→
 | `S3_PUBLIC_URL` | - | Public URL for S3 assets |
 | `BACKUP_ENABLED` | `true` | Run the scheduled-backup poller / allow backups |
 | `BACKUP_DESTINATION` | `filesystem` | Backup destination: `filesystem` or `s3` |
-| `BACKUP_LOCAL_PATH` | `~/.vcms/backups` | Local backup dir (when destination is filesystem) |
+| `BACKUP_LOCAL_PATH` | `<data dir>/backups` | Local backup dir (when destination is filesystem) |
 | `BACKUP_ZSTD_LEVEL` | `12` | zstd compression level for backups |
 | `BACKUP_DEFAULT_RETENTION` | `7` | Default "keep last N" for new schedules |
 | `BACKUP_S3_BUCKET` / `_REGION` / `_ENDPOINT` / `_PUBLIC_URL` | - | S3 backup destination (non-secret parts) |
@@ -178,7 +194,7 @@ Logging keys map to the `[log]` table: `RUST_LOG`→`log.level`, `LOG_OUTPUT`→
 | `BACKUP_S3_SECRET_ACCESS_KEY` | - | S3 backup secret key (secret, env-only) |
 | `BACKUP_ENCRYPTION_KEY` | auto | AES-256 backup key (hex); auto-generated to `secrets.toml` |
 | `SEARCH_ENABLED` | `true` | Build/use the Tantivy full-text index for entry search (else SQL `LIKE`) |
-| `SEARCH_INDEX_PATH` | `~/.vcms/search` | Directory for the Tantivy search index |
+| `SEARCH_INDEX_PATH` | `<cache dir>/search` | Directory for the Tantivy search index |
 | `MAX_UPLOAD_SIZE_MB` | `50` | Max upload size in MB |
 | `COOKIE_SECURE` | `false` | Require HTTPS cookies |
 | `DB_MAX_CONNECTIONS` | `10` | Max DB connections |
@@ -190,10 +206,10 @@ Logging keys map to the `[log]` table: `RUST_LOG`→`log.level`, `LOG_OUTPUT`→
 | `LOG_OUTPUT` | `stdout` | `stdout` or `file` (`[log] output`) |
 | `LOG_FORMAT` | `pretty` | `pretty` or `json` (`[log] format`) |
 | `LOG_ANNOTATIONS` | `false` | Include file + line numbers (`[log] annotations`) |
-| `LOG_DIR` | `~/.vcms/logs` | Log directory when `output = file` (`[log] dir`) |
+| `LOG_DIR` | `<state dir>/logs` | Log directory when `output = file` (`[log] dir`) |
 
-**Note**: `HMAC_SECRET` is auto-generated and persisted to
-`~/.vcms/secrets.toml` on first run. Set it explicitly via env to override.
+**Note**: `HMAC_SECRET` is auto-generated and persisted to the config dir's
+`secrets.toml` on first run. Set it explicitly via env to override.
 
 ## Proto Compilation
 
@@ -298,8 +314,9 @@ is **derived** and fully rebuildable.
   scalar text of `data`, English-stemmed, BM25-ranked). `fields_from` re-resolves the
   schema when opening an existing index read-only.
 - `mod.rs` — `SearchService`. **Reading** needs no lock: `open_read_only` (reader
-  only) lets *any* process search the index, including a separate `vcms mcp stdio`
-  running next to the server. **Writing** requires the directory lock: `open`
+  only) lets *any* auxiliary process search the index alongside the server (this is a
+  general capability; `vcms mcp stdio` itself no longer opens the index — it proxies
+  over HTTP). **Writing** requires the directory lock: `open`
   (reader + writer) is held only by the running server. `index_doc`/`delete_doc`
   stage uncommitted ops; `commit` flushes; `rebuild_all`/`rebuild_site` reindex from
   the DB by reusing `EntryRepository::list` (covers singletons too). Write/commit on
@@ -314,7 +331,8 @@ is **derived** and fully rebuildable.
 
 Wiring: `Services` holds `search: Option<Arc<SearchService>>` (reads) and
 `search_queue: Option<Arc<SearchQueue>>` (writes). `Services::new` opens the index
-read-write (server); `Services::new_read_only` opens it read-only (`vcms mcp stdio`).
+read-write (server); `Services::new_read_only` opens it read-only for an auxiliary
+process that searches without taking the writer lock.
 `EntryService`/`SingletonService` **enqueue** on write; `EntryService::list_entries`
 queries the index — so REST, GraphQL, gRPC, and MCP all get ranked search via the
 existing `search` param with **no handler changes**. Indexing is asynchronous
@@ -324,9 +342,9 @@ index builds on startup when empty, rebuilds after a restore, and exposes
 owner/operator reindex routes: `POST /api/dashboard/instance/search/reindex` and
 `POST /api/dashboard/sites/{site_id}/search/reindex`.
 
-This is the cross-process model: writes from `vcms mcp stdio` (or any process) land in
-the durable queue and the running server indexes them; if the server is down they
-drain on its next start. The remaining hard limit is *concurrent writers* — only one
+This is the cross-process model: writes from any process land in the durable queue
+and the running server indexes them; if the server is down they drain on its next
+start. The remaining hard limit is *concurrent writers* — only one
 process indexes at a time.
 
 ### No typo tolerance (deliberate) — and how to add it
