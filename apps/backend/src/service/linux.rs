@@ -1,13 +1,16 @@
 //! systemd integration for `vcms service` on Linux.
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::Command;
 
-use super::{InstallOptions, SERVICE_NAME, require_root, resolve_run_user, systemd_unit, user_home};
+use super::{InstallOptions, SERVICE_NAME, require_root, resolve_run_user, systemd_unit};
 use crate::cli::{Cli, ServiceAction};
 
 /// Where the generated unit file is written.
 const UNIT_PATH: &str = "/etc/systemd/system/vcms.service";
+
+/// System data directory the daemon owns (FHS convention for service state).
+const SERVICE_HOME: &str = "/var/lib/vcms";
 
 pub fn dispatch(action: &ServiceAction, _cli: &Cli) -> Result<(), Box<dyn std::error::Error>> {
     match action {
@@ -28,7 +31,9 @@ fn install(user: Option<&str>) -> Result<(), Box<dyn std::error::Error>> {
     }
 
     let user = resolve_run_user(user)?;
-    let vcms_home = user_home(&user)?.join(".vcms");
+    // The daemon stores everything under one system dir (VCMS_HOME single-layout),
+    // owned by the run-as account — not that account's per-user `~/.config` etc.
+    let vcms_home = PathBuf::from(SERVICE_HOME);
     let exe_path = std::env::current_exe()?;
     let opts = InstallOptions {
         user: user.clone(),
@@ -59,7 +64,7 @@ fn uninstall() -> Result<(), Box<dyn std::error::Error>> {
         println!("Removed {UNIT_PATH}");
     }
     run(Command::new("systemctl").arg("daemon-reload"))?;
-    println!("Service '{SERVICE_NAME}' uninstalled. Your data under ~/.vcms was left intact.");
+    println!("Service '{SERVICE_NAME}' uninstalled. Your data under {SERVICE_HOME} was left intact.");
     Ok(())
 }
 
@@ -90,8 +95,8 @@ fn status() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
-/// Create the run-as user's `~/.vcms` + optional `.env` (0600) and hand ownership
-/// to that account so the daemon can read and write its home.
+/// Create the service home (`/var/lib/vcms`) + optional `.env` (0600) and hand
+/// ownership to the run-as account so the daemon can read and write it.
 fn prepare_home(opts: &InstallOptions) -> Result<(), Box<dyn std::error::Error>> {
     super::reject_symlink(&opts.vcms_home)?;
     std::fs::create_dir_all(&opts.vcms_home)?;

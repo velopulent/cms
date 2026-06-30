@@ -9,18 +9,18 @@ use clap::{Parser, Subcommand};
     version,
     about = "Headless CMS server",
     long_about = "Headless CMS server.\n\n\
-        All runtime files live under one home directory ($VCMS_HOME, default ~/.vcms): \
-        config.toml, secrets.toml, the SQLite database, logs/, and storage/. \
-        `vcms serve` creates it on first run and generates secrets if absent.",
-    after_help = "DATA DIRECTORY ($VCMS_HOME, default ~/.vcms):\n  \
-        config.toml   non-secret config (written by `vcms config init`)\n  \
-        secrets.toml  auto-generated HMAC + backup secrets (0600 on unix)\n  \
-        vcms.db       default SQLite database (+ -wal / -shm)\n  \
-        logs/         rolling logs when [log] output = \"file\"\n  \
-        storage/      default filesystem storage for uploads\n\n\
+        Runtime files default to the platform's per-type directories (config, data, \
+        cache, state) via the `directories` crate. Set $VCMS_HOME to keep everything \
+        under one root instead (the `vcms service` installer pins it to a system dir). \
+        `vcms serve` creates what it needs on first run and generates secrets if absent.",
+    after_help = "DATA DIRECTORIES (defaults; set $VCMS_HOME for a single root):\n  \
+        config dir   config.toml, secrets.toml (0600 on unix), .env\n  \
+        data dir     vcms.db (+ -wal / -shm), storage/, backups/\n  \
+        cache dir    search/ (derived Tantivy index, rebuildable)\n  \
+        state dir    logs/ (when [log] output = \"file\")\n\n\
         KEY ENVIRONMENT (env overrides config; CLI flags override env):\n  \
-        VCMS_HOME     home directory                   [default: ~/.vcms]\n  \
-        DATABASE_URL  sqlite/postgres/mysql URL        [default: sqlite://~/.vcms/vcms.db]\n  \
+        VCMS_HOME     force single-root layout         [default: platform split dirs]\n  \
+        DATABASE_URL  sqlite/postgres/mysql URL        [default: sqlite://<data dir>/vcms.db]\n  \
         HMAC_SECRET   token-lookup HMAC key            [auto-generated to secrets.toml]"
 )]
 pub struct Cli {
@@ -33,7 +33,7 @@ pub struct Cli {
     pub bind: Option<String>,
 
     /// Database URL, e.g. sqlite:path / postgres://… (overrides config + env)
-    /// [default: sqlite://~/.vcms/vcms.db].
+    /// [default: sqlite://<data dir>/vcms.db].
     #[arg(long, global = true, value_name = "URL")]
     pub database_url: Option<String>,
 
@@ -123,8 +123,9 @@ pub enum BackupAction {
 pub enum ServiceAction {
     /// Install the service, enable it at boot, and start it now (requires root/admin).
     ///
-    /// The service runs `vcms serve` as the chosen OS account; runtime files live
-    /// under that account's `$VCMS_HOME` (default `~/.vcms`).
+    /// The service runs `vcms serve` as the chosen OS account; `VCMS_HOME` is pinned
+    /// to a system dir (Linux `/var/lib/vcms`, macOS `/Library/Application Support/vcms`,
+    /// Windows `C:\ProgramData\vcms`) so all runtime files live under one owned root.
     Install {
         /// OS account the service runs as.
         ///

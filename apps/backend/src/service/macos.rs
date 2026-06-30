@@ -1,13 +1,16 @@
 //! launchd integration for `vcms service` on macOS (system LaunchDaemon).
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::Command;
 
-use super::{InstallOptions, LAUNCHD_LABEL, launchd_plist, require_root, resolve_run_user, user_home};
+use super::{InstallOptions, LAUNCHD_LABEL, launchd_plist, require_root, resolve_run_user};
 use crate::cli::{Cli, ServiceAction};
 
 /// Where the generated LaunchDaemon plist is written.
 const PLIST_PATH: &str = "/Library/LaunchDaemons/local.vcms.plist";
+
+/// System data directory the daemon owns (macOS convention for shared app data).
+const SERVICE_HOME: &str = "/Library/Application Support/vcms";
 
 /// Modern launchctl service target (`system/<label>`).
 fn target() -> String {
@@ -27,7 +30,8 @@ pub fn dispatch(action: &ServiceAction, _cli: &Cli) -> Result<(), Box<dyn std::e
 fn install(user: Option<&str>) -> Result<(), Box<dyn std::error::Error>> {
     require_root("install")?;
     let user = resolve_run_user(user)?;
-    let vcms_home = user_home(&user)?.join(".vcms");
+    // One system dir (VCMS_HOME single-layout), owned by the run-as account.
+    let vcms_home = PathBuf::from(SERVICE_HOME);
     let exe_path = std::env::current_exe()?;
     let opts = InstallOptions {
         user: user.clone(),
@@ -62,7 +66,7 @@ fn uninstall() -> Result<(), Box<dyn std::error::Error>> {
         std::fs::remove_file(PLIST_PATH)?;
         println!("Removed {PLIST_PATH}");
     }
-    println!("Service '{LAUNCHD_LABEL}' uninstalled. Your data under ~/.vcms was left intact.");
+    println!("Service '{LAUNCHD_LABEL}' uninstalled. Your data under {SERVICE_HOME} was left intact.");
     Ok(())
 }
 
@@ -90,7 +94,8 @@ fn status() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
-/// Create the run-as user's `~/.vcms` + optional `.env` (0600), owned by that user.
+/// Create the service home (`/Library/Application Support/vcms`) + optional `.env`
+/// (0600), owned by the run-as account.
 fn prepare_home(opts: &InstallOptions) -> Result<(), Box<dyn std::error::Error>> {
     super::reject_symlink(&opts.vcms_home)?;
     std::fs::create_dir_all(&opts.vcms_home)?;
