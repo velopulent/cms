@@ -63,12 +63,6 @@ pub fn resolve_actor(ctx: &RequestContext<RoleServer>) -> Result<Actor, ErrorDat
     Ok(actor)
 }
 
-pub async fn verify_stdio_token(token: &str, repository: &Repository, hmac_secret: &str) -> Result<Actor, ErrorData> {
-    verify_access_token(token, repository, hmac_secret)
-        .await
-        .map_err(|(_, Json(error))| mcp_error(ErrorCode::INVALID_REQUEST, error.message))
-}
-
 pub async fn authenticate_mcp_request(mut request: Request<Body>, next: Next) -> Response {
     let repository = match request.extensions().get::<Arc<Repository>>() {
         Some(repository) => repository.clone(),
