@@ -89,51 +89,51 @@ password after your first login.*
 
 ### MCP over stdio
 
-Run a standalone MCP process for clients that launch local stdio servers:
+For clients that launch a local stdio MCP server, run `vcms mcp stdio`. It is a
+**thin proxy** to a running server's `/mcp` endpoint — it opens no database, secrets,
+or search index of its own. It forwards JSON-RPC between stdin/stdout and the server
+over HTTP, so it keeps working even when the data is owned by a system-service account
+that the client process can't read.
 
 ```bash
-VCMS_MCP_TOKEN=vcms_site_... vcms mcp stdio
+VCMS_MCP_TOKEN=vcms_site_... VCMS_MCP_URL=http://127.0.0.1:3000 vcms mcp stdio
 ```
 
-The command connects to an existing CMS database and never starts HTTP/gRPC
-listeners, seeds users, creates a SQLite database, or runs migrations. Run
-`vcms serve` first when the database schema needs initialization or migration.
-MCP protocol messages use stdout; structured process logs use stderr.
-
-Because the process is launched by the MCP client from an arbitrary working
-directory, it does **not** rely on a `.env` in the current directory. The
-database path and the `HMAC_SECRET` it needs to verify the token are
-read from the CMS home directory (`~/.vcms`, see [Data directory](#data-directory))
-that `vcms serve` initialized. The client only needs to supply `VCMS_MCP_TOKEN`
-(and `VCMS_HOME` if you moved the home directory):
+It needs only two env vars: `VCMS_MCP_TOKEN` (a `vcms_site_*` access token, forwarded
+as the `Authorization: Bearer` credential) and `VCMS_MCP_URL` (the running server's
+base URL, default `http://127.0.0.1:3000`; the proxy posts to `{url}/mcp`). A `vcms
+serve` instance must be running. MCP protocol messages use stdout; logs use stderr.
 
 ```jsonc
 // Example MCP client config
 {
   "command": "vcms",
   "args": ["mcp", "stdio"],
-  "env": { "VCMS_MCP_TOKEN": "vcms_site_..." }
+  "env": { "VCMS_MCP_TOKEN": "vcms_site_...", "VCMS_MCP_URL": "http://127.0.0.1:3000" }
 }
 ```
 
 ### Data directory
 
-All runtime files live under a single home directory so a fresh install works
-from any working directory. The location is `$VCMS_HOME` when set, otherwise
-`~/.vcms` (resolved cross-platform — same layout on Windows, macOS, and Linux):
+By default, runtime files go to the platform-conventional per-type directories
+(resolved cross-platform via the `directories` crate):
 
-```text
-~/.vcms/
-  config.toml     # non-secret configuration (vcms config init writes here)
-  secrets.toml    # auto-generated HMAC_SECRET + backup key (0600 on unix)
-  vcms.db          # default SQLite database (+ -wal / -shm)
-  logs/           # rolling logs when [log] output = "file"
-  storage/        # default filesystem storage for uploads
-```
+| File(s) | Linux | macOS | Windows |
+|---------|-------|-------|---------|
+| `config.toml`, `secrets.toml`, `.env` | `~/.config/vcms` | `~/Library/Application Support/vcms` | `%APPDATA%\vcms\config` |
+| `vcms.db`, `storage/`, `backups/` | `~/.local/share/vcms` | `~/Library/Application Support/vcms` | `%APPDATA%\vcms\data` |
+| `search/` (rebuildable index) | `~/.cache/vcms` | `~/Library/Caches/vcms` | `%LOCALAPPDATA%\vcms\cache` |
+| `logs/` | `~/.local/state/vcms` | `~/Library/Application Support/vcms` | `%LOCALAPPDATA%\vcms\data` |
 
-`vcms serve` creates this directory on first run and generates `secrets.toml` if
-absent. Environment variables (`DATABASE_URL`, `HMAC_SECRET`,
-`STORAGE_FS_PATH`, S3 settings, …) still override these defaults.
+Set **`$VCMS_HOME`** to keep everything under a single root instead (and an existing
+`~/.vcms` is honored automatically, so upgrades don't move your data). The `vcms
+service` installer uses this to pin the daemon to one system dir — `/var/lib/vcms`
+(Linux), `/Library/Application Support/vcms` (macOS), or `C:\ProgramData\vcms`
+(Windows).
+
+`vcms serve` creates what it needs on first run and generates `secrets.toml` if
+absent. Environment variables (`DATABASE_URL`, `HMAC_SECRET`, `STORAGE_FS_PATH`,
+S3 settings, …) still override these defaults.
 
 
 
