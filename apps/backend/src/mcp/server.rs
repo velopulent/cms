@@ -28,7 +28,6 @@ pub struct CmsServer {
     pub storage_registry: Arc<StorageRegistry>,
     pub config: Arc<Config>,
     pub authorizer: Arc<AuthorizationService>,
-    stdio_token: Option<Arc<str>>,
 }
 
 #[tool_router]
@@ -46,20 +45,7 @@ impl CmsServer {
             storage_registry,
             config,
             authorizer,
-            stdio_token: None,
         }
-    }
-
-    pub fn new_stdio(
-        services: Arc<Services>,
-        repository: Arc<Repository>,
-        storage_registry: Arc<StorageRegistry>,
-        config: Arc<Config>,
-        token: String,
-    ) -> Self {
-        let mut server = Self::new(services, repository, storage_registry, config);
-        server.stdio_token = Some(Arc::from(token));
-        server
     }
 
     #[tool(description = "Get details of a specific site by ID")]
@@ -488,12 +474,6 @@ impl ServerHandler for CmsServer {
 
 impl CmsServer {
     async fn authenticate_context(&self, ctx: &mut RequestContext<RoleServer>) -> Result<Actor, McpError> {
-        if let Some(token) = &self.stdio_token {
-            let actor = crate::mcp::auth::verify_stdio_token(token, &self.repository, &self.config.hmac_secret).await?;
-            ctx.extensions.insert(actor.clone());
-            return Ok(actor);
-        }
-
         self.resolve_actor(ctx)
     }
 

@@ -8,4 +8,5 @@ mod protocol_tests;
 mod resource_tests;
 mod singleton_tests;
 mod site_tests;
+mod stdio_proxy_tests;
 mod webhook_tests;

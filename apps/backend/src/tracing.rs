@@ -85,33 +85,13 @@ pub fn init_tracing(config: &crate::config::Config) -> Option<tracing_appender::
     }
 }
 
-pub fn init_stdio_tracing(config: &crate::config::Config) {
-    let env_filter = EnvFilter::new(&config.log_level);
-    let annotations = config.log_annotations;
-
-    if config.log_format == "json" {
-        let layer = fmt::layer()
-            .with_writer(std::io::stderr)
-            .with_target(true)
-            .with_file(annotations)
-            .with_line_number(annotations)
-            .json();
-        tracing_subscriber::registry().with(env_filter).with(layer).init();
-    } else {
-        let layer = fmt::layer()
-            .with_writer(std::io::stderr)
-            .with_target(true)
-            .with_file(annotations)
-            .with_line_number(annotations)
-            .pretty();
-        tracing_subscriber::registry().with(env_filter).with(layer).init();
-    }
-
-    tracing::info!(
-        log_output = "stderr",
-        log_format = %config.log_format,
-        "MCP stdio tracing initialized"
-    );
+/// Minimal stderr tracing for `vcms mcp stdio`, which is a thin proxy that loads no
+/// `Config` (it touches no disk). The filter comes straight from `RUST_LOG`, falling
+/// back to a quiet default. stdout is the MCP protocol channel, so logs go to stderr.
+pub fn init_proxy_tracing() {
+    let env_filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("vcms=info,cms=info"));
+    let layer = fmt::layer().with_writer(std::io::stderr).with_target(true);
+    tracing_subscriber::registry().with(env_filter).with(layer).init();
 }
 
 pub async fn trace_request(req: Request, next: Next) -> Response {
