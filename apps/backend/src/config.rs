@@ -185,8 +185,8 @@ impl Config {
     pub fn load(cli: &Cli) -> Result<Self, Box<figment::Error>> {
         let mut figment = Figment::new();
 
-        // Lowest-precedence secret layer: persisted HMAC secret from
-        // `~/.vcms/secrets.toml`. Read-only here (generation happens in
+        // Lowest-precedence secret layer: persisted HMAC secret from the config dir's
+        // `secrets.toml`. Read-only here (generation happens in
         // `secrets::ensure()` during serve/admin). Best-effort: a missing or
         // unreadable file just leaves the built-in defaults in play. Env vars
         // and CLI flags still override these.
@@ -357,11 +357,10 @@ impl RawConfig {
         // `secrets::ensure()` and `mcp stdio` guards on its presence, so this only
         // fires on a genuinely uninitialized instance.
         let hmac_secret = self.hmac_secret.ok_or_else(|| {
-            Box::new(figment::Error::from(
-                "No HMAC secret resolved; run `vcms serve` once to generate ~/.vcms/secrets.toml, \
-                 or set HMAC_SECRET"
-                    .to_string(),
-            ))
+            Box::new(figment::Error::from(format!(
+                "No HMAC secret resolved; run `vcms serve` once to generate {}, or set HMAC_SECRET",
+                paths::secrets_file().display(),
+            )))
         })?;
 
         let log = self.log.unwrap_or_default();
@@ -441,8 +440,8 @@ pub fn config_search_paths() -> Vec<PathBuf> {
     paths
 }
 
-/// The user-config location for the config file: `~/.vcms/config.toml`
-/// (or `$VCMS_HOME/config.toml`).
+/// The user-config location for the config file: the platform config dir
+/// (`config.toml`), or `$VCMS_HOME/config.toml` in single-dir mode.
 pub fn user_config_path() -> Option<PathBuf> {
     Some(paths::config_file())
 }
@@ -498,7 +497,7 @@ pub fn default_config_toml() -> String {
          # --- Backups ---\n\
          # Run the scheduled-backup poller and allow on-demand backups.\n\
          backup_enabled = true\n\
-         # Destination for backup artifacts: \"filesystem\" (default, under ~/.vcms/backups)\n\
+         # Destination for backup artifacts: \"filesystem\" (default, the data dir's backups/)\n\
          # or \"s3\". S3 credentials are secrets — set them via env (see below).\n\
          backup_destination = \"filesystem\"\n\
          # backup_local_path = \"./backups\"\n\
@@ -515,7 +514,7 @@ pub fn default_config_toml() -> String {
          # Build a local inverted index so entry search is ranked + tokenized.\n\
          # When false, search falls back to a basic SQL LIKE match.\n\
          search_enabled = true\n\
-         # search_index_path = \"./search\"   # defaults to ~/.vcms/search\n\n\
+         # search_index_path = \"./search\"   # defaults to the cache dir's search/\n\n\
          # --- MCP ---\n\
          mcp_enabled = true\n\
          mcp_allowed_hosts = [{hosts}]\n\

@@ -1,4 +1,4 @@
-//! Persisted instance secrets (`~/.vcms/secrets.toml`).
+//! Persisted instance secrets (`secrets.toml` in the config dir).
 //!
 //! On first `serve`/`admin`, a random `HMAC_SECRET` value is
 //! generated and written to `secrets.toml` (perms `0600` on unix). Every later
