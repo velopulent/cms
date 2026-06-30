@@ -245,22 +245,6 @@ pub(crate) fn resolve_run_user(explicit: Option<&str>) -> Result<String, Box<dyn
     Ok(current)
 }
 
-/// Resolve a user's home directory via shell tilde expansion. The username must be
-/// pre-validated by [`validate_username`] (no shell metacharacters).
-#[cfg(unix)]
-pub(crate) fn user_home(user: &str) -> Result<PathBuf, Box<dyn std::error::Error>> {
-    validate_username(user)?;
-    let output = std::process::Command::new("sh")
-        .arg("-c")
-        .arg(format!("echo ~{user}"))
-        .output()?;
-    let home = String::from_utf8_lossy(&output.stdout).trim().to_string();
-    if home.is_empty() || home.starts_with('~') {
-        return Err(format!("could not resolve home directory for user '{user}'").into());
-    }
-    Ok(PathBuf::from(home))
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -270,7 +254,7 @@ mod tests {
         InstallOptions {
             user: "deploy".into(),
             exe_path: PathBuf::from("/usr/local/bin/vcms"),
-            vcms_home: PathBuf::from("/home/deploy/.vcms"),
+            vcms_home: PathBuf::from("/var/lib/vcms"),
         }
     }
 
@@ -279,8 +263,8 @@ mod tests {
         let unit = systemd_unit(&sample());
         assert!(unit.contains("ExecStart=/usr/local/bin/vcms serve"));
         assert!(unit.contains("User=deploy"));
-        assert!(unit.contains("Environment=VCMS_HOME=/home/deploy/.vcms"));
-        assert!(unit.contains("EnvironmentFile=-/home/deploy/.vcms/.env"));
+        assert!(unit.contains("Environment=VCMS_HOME=/var/lib/vcms"));
+        assert!(unit.contains("EnvironmentFile=-/var/lib/vcms/.env"));
         assert!(unit.contains("Restart=always"));
         assert!(unit.contains("WantedBy=multi-user.target"));
     }
@@ -293,7 +277,7 @@ mod tests {
         assert!(plist.contains("<string>serve</string>"));
         assert!(plist.contains("<string>deploy</string>"));
         assert!(plist.contains("<key>VCMS_HOME</key>"));
-        assert!(plist.contains("<string>/home/deploy/.vcms</string>"));
+        assert!(plist.contains("<string>/var/lib/vcms</string>"));
     }
 
     #[test]
