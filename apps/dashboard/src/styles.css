@@ -557,8 +557,19 @@
   transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
 }
 @media (prefers-reduced-motion: reduce) {
-  :is(.theme-dark, .theme-light) * {
-    transition-duration: 0ms !important;
+  /* Mirror the selector above so specificity ties and this later rule wins —
+     neutralizes the added motion without needing !important. */
+  :is(.theme-dark, .theme-light)
+    :is(
+      a,
+      [data-slot="button"],
+      [data-slot="table-row"],
+      [data-slot="sidebar-menu-button"],
+      [data-slot="input"],
+      [data-slot="textarea"],
+      [data-slot="card"]
+    ) {
+    transition-duration: 0.01ms;
   }
 }
 
