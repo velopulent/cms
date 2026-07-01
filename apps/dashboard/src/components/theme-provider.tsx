@@ -11,8 +11,11 @@ export type Theme =
   | "dusk"
   | "citrus-sherbet";
 
-// Custom palettes derive their tokens from the shared `.theme-dark` /
-// `.theme-light` markers, added alongside the palette class in the effect below.
+// Custom palettes are applied to <html> as a `theme-<key>` class (e.g.
+// `theme-sepia`) — the `theme-` prefix keeps them from colliding with Tailwind
+// utility classes of the same name (notably `sepia`, `grayscale`, `invert`).
+// Each derives its tokens from the shared `.theme-dark` / `.theme-light` marker,
+// added alongside the palette class in the effect below.
 const DARK_THEMES = [
   "crimson-moon",
   "sepia",
@@ -59,7 +62,7 @@ export function ThemeProvider({
       "dark",
       "theme-dark",
       "theme-light",
-      ...CUSTOM_THEMES,
+      ...CUSTOM_THEMES.map((t) => `theme-${t}`),
     );
 
     if (theme === "system") {
@@ -73,12 +76,12 @@ export function ThemeProvider({
     }
 
     if ((DARK_THEMES as readonly string[]).includes(theme)) {
-      root.classList.add(theme, "theme-dark");
+      root.classList.add(`theme-${theme}`, "theme-dark");
       return;
     }
 
     if ((LIGHT_THEMES as readonly string[]).includes(theme)) {
-      root.classList.add(theme, "theme-light");
+      root.classList.add(`theme-${theme}`, "theme-light");
       return;
     }
 
