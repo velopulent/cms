@@ -9,8 +9,12 @@ use crate::cli::{Cli, ServiceAction};
 /// Where the generated unit file is written.
 const UNIT_PATH: &str = "/etc/systemd/system/vcms.service";
 
-/// System data directory the daemon owns (FHS convention for service state).
-const SERVICE_HOME: &str = "/var/lib/vcms";
+/// System data directory the daemon owns (FHS convention for service state). Defined
+/// once in `paths::system_home()` so a plain CLI invocation resolves to the same store;
+/// always `Some` on Linux.
+fn service_home() -> PathBuf {
+    crate::paths::system_home().expect("system_home is always set on Linux")
+}
 
 pub fn dispatch(action: &ServiceAction, _cli: &Cli) -> Result<(), Box<dyn std::error::Error>> {
     match action {
@@ -33,7 +37,7 @@ fn install(user: Option<&str>) -> Result<(), Box<dyn std::error::Error>> {
     let user = resolve_run_user(user)?;
     // The daemon stores everything under one system dir (VCMS_HOME single-layout),
     // owned by the run-as account — not that account's per-user `~/.config` etc.
-    let vcms_home = PathBuf::from(SERVICE_HOME);
+    let vcms_home = service_home();
     let exe_path = std::env::current_exe()?;
     let opts = InstallOptions {
         user: user.clone(),
@@ -64,7 +68,10 @@ fn uninstall() -> Result<(), Box<dyn std::error::Error>> {
         println!("Removed {UNIT_PATH}");
     }
     run(Command::new("systemctl").arg("daemon-reload"))?;
-    println!("Service '{SERVICE_NAME}' uninstalled. Your data under {SERVICE_HOME} was left intact.");
+    println!(
+        "Service '{SERVICE_NAME}' uninstalled. Your data under {} was left intact.",
+        service_home().display()
+    );
     Ok(())
 }
 
