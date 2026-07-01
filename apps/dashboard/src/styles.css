@@ -338,6 +338,13 @@
   --theme-grad-color: linear-gradient(48.17deg, #5348ca 11.21%, #140730 61.92%);
 }
 
+/* Blurple Twilight */
+.theme-blurple-twilight {
+  --theme-surface-tint: rgb(2 0 26);
+  --theme-foreground-tint: rgb(153 163 255);
+  --theme-grad-color: linear-gradient(47.61deg, #2c3fe7 11.18%, #261d83 64.54%);
+}
+
 /* Forest */
 .theme-forest {
   --theme-surface-tint: rgb(0 26 2);
@@ -357,6 +364,20 @@
   --theme-surface-tint: rgb(22 0 26);
   --theme-foreground-tint: rgb(153 182 255);
   --theme-grad-color: linear-gradient(180deg, #665069 12.84%, #91a3d1 85.99%);
+}
+
+/* Aurora */
+.theme-aurora {
+  --theme-surface-tint: rgb(0 9 26);
+  --theme-foreground-tint: rgb(153 171 255);
+  --theme-grad-color: linear-gradient(
+    239.16deg,
+    #062053 10.39%,
+    #191fbb 26.87%,
+    #13929a 48.31%,
+    #218573 64.98%,
+    #051a81 92.5%
+  );
 }
 
 /* Citrus Sherbet (light) */
@@ -654,6 +675,9 @@
 .theme-swatch-midnight-blurple {
   background: linear-gradient(48.17deg, #5348ca, #140730);
 }
+.theme-swatch-blurple-twilight {
+  background: linear-gradient(47.61deg, #2c3fe7, #261d83);
+}
 .theme-swatch-forest {
   background: linear-gradient(
     162.27deg,
@@ -666,6 +690,16 @@
 }
 .theme-swatch-dusk {
   background: linear-gradient(180deg, #665069, #91a3d1);
+}
+.theme-swatch-aurora {
+  background: linear-gradient(
+    239.16deg,
+    #062053,
+    #191fbb,
+    #13929a,
+    #218573,
+    #051a81
+  );
 }
 .theme-swatch-citrus-sherbet {
   background: linear-gradient(180deg, #f3b336, #ee8558);

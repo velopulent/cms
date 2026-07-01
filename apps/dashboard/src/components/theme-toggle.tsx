@@ -20,8 +20,10 @@ const NITRO_THEMES: { key: Theme; label: string }[] = [
   { key: "crimson-moon", label: "Crimson Moon" },
   { key: "sepia", label: "Sepia" },
   { key: "midnight-blurple", label: "Midnight Blurple" },
+  { key: "blurple-twilight", label: "Blurple Twilight" },
   { key: "forest", label: "Forest" },
   { key: "dusk", label: "Dusk" },
+  { key: "aurora", label: "Aurora" },
   { key: "citrus-sherbet", label: "Citrus Sherbet" },
 ];
 

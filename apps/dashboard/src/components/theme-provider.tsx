@@ -7,8 +7,10 @@ export type Theme =
   | "crimson-moon"
   | "sepia"
   | "midnight-blurple"
+  | "blurple-twilight"
   | "forest"
   | "dusk"
+  | "aurora"
   | "citrus-sherbet";
 
 // Custom palettes are applied to <html> as a `theme-<key>` class (e.g.
@@ -20,8 +22,10 @@ const DARK_THEMES = [
   "crimson-moon",
   "sepia",
   "midnight-blurple",
+  "blurple-twilight",
   "forest",
   "dusk",
+  "aurora",
 ] as const;
 const LIGHT_THEMES = ["citrus-sherbet"] as const;
 const CUSTOM_THEMES: readonly string[] = [...DARK_THEMES, ...LIGHT_THEMES];
