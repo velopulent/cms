@@ -126,10 +126,16 @@ By default, runtime files go to the platform-conventional per-type directories
 | `logs/` | `~/.local/state/vcms` | `~/Library/Application Support/vcms` | `%LOCALAPPDATA%\vcms\data` |
 
 Set **`$VCMS_HOME`** to keep everything under a single root instead (and an existing
-`~/.vcms` is honored automatically, so upgrades don't move your data). The `vcms
-service` installer uses this to pin the daemon to one system dir — `/var/lib/vcms`
-(Linux), `/Library/Application Support/vcms` (macOS), or `C:\ProgramData\vcms`
-(Windows).
+`~/.vcms` is honored automatically, so upgrades don't move your data).
+
+The `vcms service` installer stores the daemon's data under one system dir —
+`/var/lib/vcms` (Linux), `/Library/Application Support/vcms` (macOS), or
+`C:\ProgramData\vcms` (Windows). **Once that directory exists, the CLI uses it too**:
+a plain `vcms serve`/`admin`/`backup` — even after the service is stopped or
+uninstalled — targets the *same* store rather than a separate per-user copy, so you
+never end up with two sets of data. Because that directory is owned by SYSTEM/root,
+run those commands from an elevated (Administrator/`sudo`) terminal; a non-elevated
+run fails with a clear hint instead of silently creating a second store.
 
 `vcms serve` creates what it needs on first run and generates `secrets.toml` if
 absent. Environment variables (`DATABASE_URL`, `HMAC_SECRET`, `STORAGE_FS_PATH`,
