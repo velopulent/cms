@@ -8,10 +8,10 @@
 
 use std::ffi::OsString;
 use std::sync::Arc;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use windows_service::service::{
-    ServiceAccess, ServiceControl, ServiceControlAccept, ServiceErrorControl, ServiceExitCode, ServiceInfo,
+    Service, ServiceAccess, ServiceControl, ServiceControlAccept, ServiceErrorControl, ServiceExitCode, ServiceInfo,
     ServiceStartType, ServiceState, ServiceStatus, ServiceType,
 };
 use windows_service::service_control_handler::{self, ServiceControlHandlerResult};
@@ -22,7 +22,20 @@ use super::{ENV_TEMPLATE, SERVICE_DISPLAY_NAME, SERVICE_NAME};
 use crate::cli::{Cli, ServiceAction};
 
 /// Fixed home for the LocalSystem service (Windows convention is ProgramData).
-const WINDOWS_SERVICE_HOME: &str = r"C:\ProgramData\vcms";
+/// Defined once in `paths::system_home()` so a plain CLI invocation resolves to the
+/// same store; always `Some` on Windows.
+fn service_home() -> std::path::PathBuf {
+    crate::paths::system_home().expect("system_home is always set on Windows")
+}
+
+/// `ERROR_SERVICE_DOES_NOT_EXIST` — returned by `OpenServiceW` once the SCM has actually
+/// removed a record (deletion is deferred until every handle closes and the host exits).
+const ERROR_SERVICE_DOES_NOT_EXIST: i32 = 1060;
+
+/// Upper bound on any SCM state transition we wait for (stop, delete-finalize, start).
+const SCM_WAIT: Duration = Duration::from_secs(30);
+/// Poll interval while waiting on the SCM.
+const SCM_POLL: Duration = Duration::from_millis(200);
 
 pub fn dispatch(action: &ServiceAction, _cli: &Cli) -> Result<(), Box<dyn std::error::Error>> {
     match action {
@@ -63,40 +76,124 @@ fn install() -> Result<(), Box<dyn std::error::Error>> {
         account_password: None,
     };
 
-    let access = ServiceAccess::CHANGE_CONFIG | ServiceAccess::START;
-    let service = match manager.create_service(&info, access) {
-        Ok(service) => service,
-        // Already installed: update config and reuse it (idempotent install).
-        Err(_) => {
-            let service = manager.open_service(SERVICE_NAME, access).map_err(elevation_hint)?;
-            service.change_config(&info).map_err(elevation_hint)?;
-            println!("Service '{SERVICE_NAME}' already existed; configuration updated.");
-            service
+    // Start from a clean slate: tear down any lingering record first so we always
+    // `create_service` fresh. Reusing an existing entry is the reinstall trap — after an
+    // uninstall the old record can still be present (Windows defers deletion), and a
+    // reused/DELETE_PENDING service ends up Stopped instead of running the new config.
+    if let Ok(existing) = manager.open_service(
+        SERVICE_NAME,
+        ServiceAccess::STOP | ServiceAccess::DELETE | ServiceAccess::QUERY_STATUS,
+    ) {
+        stop_and_wait(&existing);
+        let _ = existing.delete(); // marks for deletion; finalizes once handles close
+        drop(existing); // close our handle so the SCM can finish removing the record
+        if !wait_until_deleted(&manager, SCM_WAIT) {
+            return Err("a previous 'vcms' service is still being removed by Windows; \
+                        wait a few seconds and re-run `vcms service install`"
+                .into());
         }
-    };
+    }
+
+    let access = ServiceAccess::CHANGE_CONFIG | ServiceAccess::START | ServiceAccess::QUERY_STATUS;
+    let service = manager.create_service(&info, access).map_err(elevation_hint)?;
     let _ = service.set_description(SERVICE_DISPLAY_NAME);
 
     prepare_home()?;
 
-    let already_running = service
-        .query_status()
-        .map(|s| s.current_state == windows_service::service::ServiceState::Running)
-        .unwrap_or(false);
-    if !already_running {
-        service.start::<&str>(&[])?;
+    service.start::<&str>(&[]).map_err(elevation_hint)?;
+    // Verify the service actually reached Running before claiming success — the old code
+    // printed "started" unconditionally, which is how a crash-on-boot slipped through.
+    if !wait_for_state(&service, ServiceState::Running, SCM_WAIT) {
+        return Err(format!(
+            "Service '{SERVICE_NAME}' was installed but did not reach Running. Check the logs under \
+             {}\\logs (read them from an elevated terminal). A common cause is another process already \
+             bound to the REST/gRPC ports.",
+            service_home().display()
+        )
+        .into());
     }
     println!("Service '{SERVICE_NAME}' installed (auto-start, LocalSystem) and started.");
-    println!("Home + secrets (.env): {WINDOWS_SERVICE_HOME}");
+    println!("Home + secrets (.env): {}", service_home().display());
     println!("Check it with:  vcms service status");
     Ok(())
 }
 
 fn uninstall() -> Result<(), Box<dyn std::error::Error>> {
-    let service = open_service(ServiceAccess::STOP | ServiceAccess::DELETE | ServiceAccess::QUERY_STATUS)?;
-    let _ = service.stop(); // best-effort; may already be stopped
+    let manager =
+        ServiceManager::local_computer(None::<&str>, ServiceManagerAccess::CONNECT).map_err(elevation_hint)?;
+    let service = match manager.open_service(
+        SERVICE_NAME,
+        ServiceAccess::STOP | ServiceAccess::DELETE | ServiceAccess::QUERY_STATUS,
+    ) {
+        Ok(service) => service,
+        Err(windows_service::Error::Winapi(e)) if e.raw_os_error() == Some(ERROR_SERVICE_DOES_NOT_EXIST) => {
+            println!("Service '{SERVICE_NAME}' is not installed.");
+            return Ok(());
+        }
+        Err(e) => return Err(elevation_hint(e)),
+    };
+
+    stop_and_wait(&service);
     service.delete()?;
-    println!("Service '{SERVICE_NAME}' uninstalled. Your data under {WINDOWS_SERVICE_HOME} was left intact.");
+    drop(service); // close our handle so the SCM can finalize removal
+
+    if wait_until_deleted(&manager, SCM_WAIT) {
+        println!(
+            "Service '{SERVICE_NAME}' uninstalled. Your data under {} was left intact.",
+            service_home().display()
+        );
+    } else {
+        // Deletion is queued but a handle elsewhere (e.g. an open Services.msc) is holding
+        // it; it will vanish once that closes. Report honestly instead of implying it's gone.
+        println!(
+            "Service '{SERVICE_NAME}' stop + delete requested; Windows will finish removing it once all \
+             handles close. Your data under {} was left intact.",
+            service_home().display()
+        );
+    }
     Ok(())
+}
+
+/// Request a stop and wait until the service reports `Stopped` (bounded). Tolerates a
+/// service that is already stopped or marked for deletion — both surface as `stop()`
+/// errors we intentionally ignore.
+fn stop_and_wait(service: &Service) {
+    let _ = service.stop();
+    wait_for_state(service, ServiceState::Stopped, SCM_WAIT);
+}
+
+/// Poll `query_status` until the service reaches `target` or the timeout elapses.
+/// Returns whether the target state was observed.
+fn wait_for_state(service: &Service, target: ServiceState, timeout: Duration) -> bool {
+    let deadline = Instant::now() + timeout;
+    loop {
+        if matches!(service.query_status(), Ok(status) if status.current_state == target) {
+            return true;
+        }
+        if Instant::now() >= deadline {
+            return false;
+        }
+        std::thread::sleep(SCM_POLL);
+    }
+}
+
+/// Poll until opening the service fails with `ERROR_SERVICE_DOES_NOT_EXIST` — i.e. the
+/// SCM has actually removed the record — or the timeout elapses. Each probe drops its
+/// handle immediately so it never itself keeps the record alive.
+fn wait_until_deleted(manager: &ServiceManager, timeout: Duration) -> bool {
+    let deadline = Instant::now() + timeout;
+    loop {
+        match manager.open_service(SERVICE_NAME, ServiceAccess::QUERY_STATUS) {
+            Err(windows_service::Error::Winapi(e)) if e.raw_os_error() == Some(ERROR_SERVICE_DOES_NOT_EXIST) => {
+                return true;
+            }
+            _ => {}
+        }
+        if Instant::now() >= deadline {
+            return false;
+        }
+        std::thread::sleep(SCM_POLL);
+    }
 }
 
 fn start() -> Result<(), Box<dyn std::error::Error>> {
@@ -136,7 +233,7 @@ fn elevation_hint(e: windows_service::Error) -> Box<dyn std::error::Error> {
 /// Create the service home + optional `.env` under ProgramData, locked to
 /// SYSTEM and Administrators only.
 fn prepare_home() -> Result<(), Box<dyn std::error::Error>> {
-    let home = std::path::PathBuf::from(WINDOWS_SERVICE_HOME);
+    let home = service_home();
     std::fs::create_dir_all(&home)?;
     let env_file = home.join(".env");
     if !env_file.exists() {
@@ -182,7 +279,7 @@ fn run_dispatcher() -> Result<(), Box<dyn std::error::Error>> {
     if std::env::var_os(crate::paths::CMS_HOME_ENV).is_none() {
         // SAFETY: called once at process start, before tokio/threads spin up.
         unsafe {
-            std::env::set_var(crate::paths::CMS_HOME_ENV, WINDOWS_SERVICE_HOME);
+            std::env::set_var(crate::paths::CMS_HOME_ENV, service_home());
         }
     }
     service_dispatcher::start(SERVICE_NAME, ffi_service_main)?;
