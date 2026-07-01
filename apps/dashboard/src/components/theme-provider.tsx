@@ -1,6 +1,27 @@
 import { createContext, useContext, useEffect, useState } from "react";
 
-type Theme = "dark" | "light" | "system";
+export type Theme =
+  | "dark"
+  | "light"
+  | "system"
+  | "crimson-moon"
+  | "sepia"
+  | "midnight-blurple"
+  | "forest"
+  | "dusk"
+  | "citrus-sherbet";
+
+// Custom palettes derive their tokens from the shared `.theme-dark` /
+// `.theme-light` markers, added alongside the palette class in the effect below.
+const DARK_THEMES = [
+  "crimson-moon",
+  "sepia",
+  "midnight-blurple",
+  "forest",
+  "dusk",
+] as const;
+const LIGHT_THEMES = ["citrus-sherbet"] as const;
+const CUSTOM_THEMES: readonly string[] = [...DARK_THEMES, ...LIGHT_THEMES];
 
 type ThemeProviderProps = {
   children: React.ReactNode;
@@ -33,7 +54,13 @@ export function ThemeProvider({
   useEffect(() => {
     const root = window.document.documentElement;
 
-    root.classList.remove("light", "dark");
+    root.classList.remove(
+      "light",
+      "dark",
+      "theme-dark",
+      "theme-light",
+      ...CUSTOM_THEMES,
+    );
 
     if (theme === "system") {
       const systemTheme = window.matchMedia("(prefers-color-scheme: dark)")
@@ -42,6 +69,16 @@ export function ThemeProvider({
         : "light";
 
       root.classList.add(systemTheme);
+      return;
+    }
+
+    if ((DARK_THEMES as readonly string[]).includes(theme)) {
+      root.classList.add(theme, "theme-dark");
+      return;
+    }
+
+    if ((LIGHT_THEMES as readonly string[]).includes(theme)) {
+      root.classList.add(theme, "theme-light");
       return;
     }
 

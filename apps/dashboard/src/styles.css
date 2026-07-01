@@ -6,7 +6,10 @@
 
 @import "@fontsource-variable/geist";
 
-@custom-variant dark (&:is(.dark *));
+/* The custom DARK themes carry a `.theme-dark` marker, so every `dark:` utility
+   the shadcn components already ship activates under them too. `.theme-light`
+   (Citrus Sherbet) is intentionally excluded. `:root` and `.dark` are unchanged. */
+@custom-variant dark (&:is(.dark *, .theme-dark *));
 
 :root {
   --background: oklch(1 0 0);
@@ -79,6 +82,204 @@
   --sidebar-ring: oklch(0.553 0.013 58.071);
 }
 
+/* =========================================================================
+   Discord Nitro–inspired theme engine.
+
+   Each palette declares only three tints (+ a gradient and a shadow hue) at the
+   bottom of this file; every shadcn token below is DERIVED from them via OKLCH
+   ramps + color-mix(in oklab). The shadcn variables stay the public API —
+   nothing hardcodes a per-token color, so adding a theme is a ~6-line block.
+
+   `.theme-dark` = dark surface + light foreground (Crimson Moon, Sepia,
+   Midnight Blurple, Forest, Dusk). `.theme-light` = the mirror, for a light
+   surface + dark foreground (Citrus Sherbet). The ThemeProvider adds the
+   matching marker class alongside the palette name. `:root` and `.dark` (the
+   original stone light/dark themes) are never touched.
+   ========================================================================= */
+
+/* ---- shared derivation for the DARK palettes ---- */
+.theme-dark {
+  color-scheme: dark;
+
+  /* surfaces: surface tint on an elevation ramp (mixed toward white) */
+  --background: color-mix(in oklab, var(--theme-surface-tint) 95%, white); /* +5%  canvas */
+  --card: color-mix(in oklab, var(--theme-surface-tint) 92%, white); /* +8%  one step up */
+  --popover: color-mix(in oklab, var(--theme-surface-tint) 86%, white); /* +14% elevated */
+  --sidebar: color-mix(in oklab, var(--theme-surface-tint) 97%, black); /* darker than bg */
+  --muted: color-mix(in oklab, var(--theme-surface-tint) 89%, white); /* +11% fills */
+  --accent: color-mix(in oklab, var(--theme-surface-tint) 87%, white); /* +13% hover fills */
+  --secondary: color-mix(in oklab, var(--theme-surface-tint) 89%, white);
+  --input: color-mix(in oklab, var(--theme-surface-tint) 86%, white);
+  --sidebar-accent: color-mix(in oklab, var(--theme-surface-tint) 87%, white);
+
+  /* primary: bright surface (buttons), deep-tint text */
+  --primary: color-mix(in oklab, var(--theme-foreground-tint) 88%, var(--theme-surface-tint));
+  --primary-foreground: color-mix(in oklab, var(--theme-surface-tint) 90%, black);
+  --sidebar-primary: var(--primary);
+  --sidebar-primary-foreground: var(--primary-foreground);
+
+  /* text: foreground tint toward pure white (subtle tint, never loud) */
+  --foreground: color-mix(in oklab, var(--theme-foreground-tint) 55%, white);
+  --card-foreground: var(--foreground);
+  --popover-foreground: var(--foreground);
+  --sidebar-foreground: color-mix(in oklab, var(--theme-foreground-tint) 60%, white);
+  --muted-foreground: color-mix(in oklab, var(--theme-foreground-tint) 92%, transparent);
+  --secondary-foreground: color-mix(in oklab, var(--theme-foreground-tint) 70%, white);
+  --accent-foreground: color-mix(in oklab, var(--theme-foreground-tint) 70%, white);
+  --sidebar-accent-foreground: var(--accent-foreground);
+
+  /* borders at low alpha; ring is a tinted glow derived from the foreground */
+  --border: color-mix(in oklab, var(--theme-foreground-tint) 7%, transparent);
+  --sidebar-border: color-mix(in oklab, var(--theme-foreground-tint) 6%, transparent);
+  --ring: color-mix(in oklab, var(--theme-foreground-tint) 60%, transparent);
+  --sidebar-ring: var(--ring);
+
+  /* destructive stays a true red across every theme */
+  --destructive: oklch(0.6 0.22 25);
+  --destructive-foreground: color-mix(in oklab, var(--theme-foreground-tint) 40%, white);
+
+  /* charts: a monochrome ramp from the foreground tint down to the surface */
+  --chart-1: var(--theme-foreground-tint);
+  --chart-2: color-mix(in oklab, var(--theme-foreground-tint) 78%, var(--theme-surface-tint));
+  --chart-3: color-mix(in oklab, var(--theme-foreground-tint) 58%, var(--theme-surface-tint));
+  --chart-4: color-mix(in oklab, var(--theme-foreground-tint) 40%, var(--theme-surface-tint));
+  --chart-5: color-mix(in oklab, var(--theme-foreground-tint) 25%, var(--theme-surface-tint));
+}
+
+/* ---- shared derivation for the LIGHT palettes (light surface, dark fg) ---- */
+.theme-light {
+  color-scheme: light;
+
+  /* surfaces: cards/popovers climb toward white; fills recede toward the fg tint */
+  --background: color-mix(in oklab, var(--theme-surface-tint) 90%, white);
+  --card: color-mix(in oklab, var(--theme-surface-tint) 55%, white);
+  --popover: color-mix(in oklab, var(--theme-surface-tint) 45%, white);
+  --sidebar: color-mix(in oklab, var(--theme-foreground-tint) 4%, var(--theme-surface-tint));
+  --muted: color-mix(in oklab, var(--theme-foreground-tint) 6%, var(--theme-surface-tint));
+  --accent: color-mix(in oklab, var(--theme-foreground-tint) 9%, var(--theme-surface-tint));
+  --secondary: color-mix(in oklab, var(--theme-foreground-tint) 6%, var(--theme-surface-tint));
+  --input: color-mix(in oklab, var(--theme-surface-tint) 62%, white);
+  --sidebar-accent: color-mix(in oklab, var(--theme-foreground-tint) 9%, var(--theme-surface-tint));
+
+  /* primary: dark warm surface (buttons), light text */
+  --primary: color-mix(in oklab, var(--theme-foreground-tint) 90%, var(--theme-surface-tint));
+  --primary-foreground: color-mix(in oklab, var(--theme-surface-tint) 92%, white);
+  --sidebar-primary: var(--primary);
+  --sidebar-primary-foreground: var(--primary-foreground);
+
+  /* text: foreground tint toward black (raise contrast on light surfaces) */
+  --foreground: color-mix(in oklab, var(--theme-foreground-tint) 92%, black);
+  --card-foreground: var(--foreground);
+  --popover-foreground: var(--foreground);
+  --sidebar-foreground: color-mix(in oklab, var(--theme-foreground-tint) 88%, black);
+  --muted-foreground: color-mix(in oklab, var(--theme-foreground-tint) 60%, transparent);
+  --secondary-foreground: color-mix(in oklab, var(--theme-foreground-tint) 85%, black);
+  --accent-foreground: color-mix(in oklab, var(--theme-foreground-tint) 85%, black);
+  --sidebar-accent-foreground: var(--accent-foreground);
+
+  --border: color-mix(in oklab, var(--theme-foreground-tint) 14%, transparent);
+  --sidebar-border: color-mix(in oklab, var(--theme-foreground-tint) 12%, transparent);
+  --ring: color-mix(in oklab, var(--theme-foreground-tint) 45%, transparent);
+  --sidebar-ring: var(--ring);
+
+  --destructive: oklch(0.58 0.22 27);
+  --destructive-foreground: oklch(0.985 0 0);
+
+  --chart-1: var(--theme-foreground-tint);
+  --chart-2: color-mix(in oklab, var(--theme-foreground-tint) 78%, var(--theme-surface-tint));
+  --chart-3: color-mix(in oklab, var(--theme-foreground-tint) 58%, var(--theme-surface-tint));
+  --chart-4: color-mix(in oklab, var(--theme-foreground-tint) 40%, var(--theme-surface-tint));
+  --chart-5: color-mix(in oklab, var(--theme-foreground-tint) 25%, var(--theme-surface-tint));
+}
+
+/* ---- layered premium shadows (shared): inset highlight + soft ambient +
+       a subtle colored glow tinted by each palette's --theme-shadow-color.
+       Applied per data-slot below (Tailwind v4 inlines shadow-* utilities at
+       build time, so we set box-shadow directly rather than override tokens). ---- */
+.theme-dark,
+.theme-light {
+  --cm-shadow-sm:
+    inset 0 1px 0 0 hsl(0 0% 100% / 0.05),
+    0 1px 2px 0 hsl(var(--theme-shadow-color) / 0.4),
+    0 2px 6px -1px hsl(var(--theme-shadow-color) / 0.3);
+  --cm-shadow-lg:
+    inset 0 1px 0 0 hsl(0 0% 100% / 0.06),
+    0 4px 8px -2px hsl(var(--theme-shadow-color) / 0.42),
+    0 12px 28px -6px hsl(var(--theme-shadow-color) / 0.4),
+    0 0 40px -8px hsl(var(--theme-shadow-color) / 0.25);
+  --cm-shadow-xl:
+    inset 0 1px 0 0 hsl(0 0% 100% / 0.07),
+    0 8px 16px -4px hsl(var(--theme-shadow-color) / 0.45),
+    0 20px 48px -10px hsl(var(--theme-shadow-color) / 0.45),
+    0 0 64px -12px hsl(var(--theme-shadow-color) / 0.28);
+}
+
+/* =========================================================================
+   Palettes — each declares only its three tints, a full-page gradient (dim
+   wash + color layer, already fixed/cover), and a shadow hue (bare HSL
+   channels consumed by the shadow recipes above).
+   ========================================================================= */
+
+/* Crimson Moon */
+.crimson-moon {
+  --theme-surface-tint: rgb(26 0 0);
+  --theme-foreground-tint: rgb(255 229 229);
+  --theme-gradient:
+    linear-gradient(rgb(0 0 0 / 0.82), rgb(0 0 0 / 0.82)) fixed 0 0 / cover,
+    linear-gradient(64.92deg, #950909 16.17%, #000000 72%) fixed 0 0 / cover;
+  --theme-shadow-color: 0 72% 12%;
+}
+
+/* Sepia */
+.sepia {
+  --theme-surface-tint: rgb(26 15 0);
+  --theme-foreground-tint: rgb(255 243 229);
+  --theme-gradient:
+    linear-gradient(rgb(0 0 0 / 0.9), rgb(0 0 0 / 0.9)) fixed 0 0 / cover,
+    linear-gradient(69.98deg, #857664 14.14%, #5b4421 60.35%) fixed 0 0 / cover;
+  --theme-shadow-color: 28 70% 10%;
+}
+
+/* Midnight Blurple */
+.midnight-blurple {
+  --theme-surface-tint: rgb(8 0 26);
+  --theme-foreground-tint: rgb(162 153 255);
+  --theme-gradient:
+    linear-gradient(rgb(0 0 0 / 0.9), rgb(0 0 0 / 0.9)) fixed 0 0 / cover,
+    linear-gradient(48.17deg, #5348ca 11.21%, #140730 61.92%) fixed 0 0 / cover;
+  --theme-shadow-color: 250 65% 14%;
+}
+
+/* Forest */
+.forest {
+  --theme-surface-tint: rgb(0 26 2);
+  --theme-foreground-tint: rgb(255 248 229);
+  --theme-gradient:
+    linear-gradient(rgb(0 0 0 / 0.9), rgb(0 0 0 / 0.9)) fixed 0 0 / cover,
+    linear-gradient(162.27deg, #142215 11.2%, #2d4d39 29.93%, #454c32 48.64%, #5a7c58 67.85%, #a98e4b 83.54%) fixed 0 0 / cover;
+  --theme-shadow-color: 130 60% 8%;
+}
+
+/* Dusk */
+.dusk {
+  --theme-surface-tint: rgb(22 0 26);
+  --theme-foreground-tint: rgb(153 182 255);
+  --theme-gradient:
+    linear-gradient(rgb(0 0 0 / 0.9), rgb(0 0 0 / 0.9)) fixed 0 0 / cover,
+    linear-gradient(180deg, #665069 12.84%, #91a3d1 85.99%) fixed 0 0 / cover;
+  --theme-shadow-color: 285 45% 14%;
+}
+
+/* Citrus Sherbet (light) */
+.citrus-sherbet {
+  --theme-surface-tint: rgb(255 238 204);
+  --theme-foreground-tint: rgb(77 23 0);
+  --theme-gradient:
+    linear-gradient(rgb(255 255 255 / 0.85), rgb(255 255 255 / 0.85)) fixed 0 0 / cover,
+    linear-gradient(180deg, #f3b336 31.1%, #ee8558 67.09%) fixed 0 0 / cover;
+  --theme-shadow-color: 28 55% 45%;
+}
+
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
@@ -133,4 +334,171 @@
   html {
     @apply font-sans;
   }
+}
+
+/* =========================================================================
+   Custom themes — scoped atmosphere, motion, and per-component polish.
+   Keyed off the .theme-dark / .theme-light markers so every palette shares
+   them; unlayered so they win over `@layer base`. `:root`/`.dark` (the
+   original stone themes) are never matched.
+   ========================================================================= */
+
+/* Atmospheric page background: the palette's full gradient value (dim wash +
+   color layer, already fixed/cover) reads as depth behind the panels. */
+:is(.theme-dark, .theme-light) body {
+  background: var(--theme-gradient);
+}
+
+/* Text selection tinted from the foreground tint. */
+:is(.theme-dark, .theme-light) ::selection {
+  background: color-mix(in oklab, var(--theme-foreground-tint) 22%, transparent);
+  color: var(--foreground);
+}
+
+/* Thin, rounded, low-contrast scrollbars. */
+:is(.theme-dark, .theme-light) * {
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in oklab, var(--theme-foreground-tint) 14%, transparent) transparent;
+}
+:is(.theme-dark, .theme-light) *::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+:is(.theme-dark, .theme-light) *::-webkit-scrollbar-track {
+  background: transparent;
+}
+:is(.theme-dark, .theme-light) *::-webkit-scrollbar-thumb {
+  background: color-mix(in oklab, var(--theme-foreground-tint) 12%, transparent);
+  border-radius: 9999px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+:is(.theme-dark, .theme-light) *::-webkit-scrollbar-thumb:hover {
+  background: color-mix(in oklab, var(--theme-foreground-tint) 22%, transparent);
+  background-clip: padding-box;
+}
+
+/* Premium hover timing (150–180ms) on the surfaces users actually touch. */
+:is(.theme-dark, .theme-light)
+  :is(
+    a,
+    [data-slot="button"],
+    [data-slot="table-row"],
+    [data-slot="sidebar-menu-button"],
+    [data-slot="input"],
+    [data-slot="textarea"],
+    [data-slot="card"]
+  ) {
+  transition-property: color, background-color, border-color, box-shadow, transform, opacity;
+  transition-duration: 165ms;
+  transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+}
+@media (prefers-reduced-motion: reduce) {
+  :is(.theme-dark, .theme-light) * {
+    transition-duration: 0ms !important;
+  }
+}
+
+/* Layered shadows on the shadow-bearing slots (sm cards, lg menus, xl modals). */
+:is(.theme-dark, .theme-light) [data-slot="card"] {
+  box-shadow: var(--cm-shadow-sm);
+}
+:is(.theme-dark, .theme-light)
+  :is(
+    [data-slot="popover-content"],
+    [data-slot="dropdown-menu-content"],
+    [data-slot="select-content"],
+    [data-slot="tooltip-content"]
+  ) {
+  box-shadow: var(--cm-shadow-lg);
+}
+:is(.theme-dark, .theme-light)
+  :is(
+    [data-slot="dialog-content"],
+    [data-slot="alert-dialog-content"],
+    [data-slot="sheet-content"],
+    [data-slot="drawer-content"]
+  ) {
+  box-shadow: var(--cm-shadow-xl);
+}
+
+/* Primary button: subtle vertical gradient, premium shadow, hover lift.
+   `.bg-primary` targets shadcn's default button variant without touching the
+   component. */
+:is(.theme-dark, .theme-light) [data-slot="button"].bg-primary {
+  background-image: linear-gradient(
+    180deg,
+    color-mix(in oklab, var(--primary) 94%, white) 0%,
+    var(--primary) 55%,
+    color-mix(in oklab, var(--primary) 92%, black) 100%
+  );
+  box-shadow: var(--cm-shadow-sm);
+}
+:is(.theme-dark, .theme-light) [data-slot="button"].bg-primary:hover {
+  transform: translateY(-1px);
+  box-shadow: var(--cm-shadow-lg);
+}
+:is(.theme-dark, .theme-light) [data-slot="button"].bg-primary:active {
+  transform: translateY(0);
+}
+
+/* Tables: tinted hover + selected rows. */
+:is(.theme-dark, .theme-light) [data-slot="table-row"]:hover {
+  background: color-mix(in oklab, var(--theme-foreground-tint) 4%, transparent);
+}
+:is(.theme-dark, .theme-light) [data-slot="table-row"][data-state="selected"] {
+  background: color-mix(in oklab, var(--theme-foreground-tint) 7%, transparent);
+}
+
+/* Inputs: tinted fill, restrained blur, themed focus glow. */
+:is(.theme-dark, .theme-light)
+  :is([data-slot="input"], [data-slot="textarea"]) {
+  background: color-mix(in oklab, var(--input) 88%, transparent);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+}
+:is(.theme-dark, .theme-light)
+  :is([data-slot="input"], [data-slot="textarea"]):focus-visible {
+  box-shadow:
+    0 0 0 3px color-mix(in oklab, var(--ring) 28%, transparent),
+    0 0 18px -4px color-mix(in oklab, var(--ring) 40%, transparent);
+}
+
+/* Sidebar menu: gentle tinted hover, no loud background. */
+:is(.theme-dark, .theme-light) [data-slot="sidebar-menu-button"]:hover {
+  background: color-mix(in oklab, var(--theme-foreground-tint) 5%, transparent);
+}
+
+/* =========================================================================
+   Theme swatches — the little gradient discs shown next to each theme name in
+   the picker. These are the color layer only (no dim wash) so they stay vivid,
+   and they are unscoped/global so every swatch renders regardless of the
+   active theme. Geometry (size / shape / ring) comes from Tailwind on the span.
+   ========================================================================= */
+.theme-swatch-light {
+  background: #ffffff;
+}
+.theme-swatch-dark {
+  background: #1c1917;
+}
+.theme-swatch-system {
+  background: linear-gradient(135deg, #fafafa 0 50%, #1c1917 50% 100%);
+}
+.theme-swatch-crimson-moon {
+  background: linear-gradient(64.92deg, #950909, #000000);
+}
+.theme-swatch-sepia {
+  background: linear-gradient(69.98deg, #857664, #5b4421);
+}
+.theme-swatch-midnight-blurple {
+  background: linear-gradient(48.17deg, #5348ca, #140730);
+}
+.theme-swatch-forest {
+  background: linear-gradient(162.27deg, #142215, #2d4d39, #454c32, #5a7c58, #a98e4b);
+}
+.theme-swatch-dusk {
+  background: linear-gradient(180deg, #665069, #91a3d1);
+}
+.theme-swatch-citrus-sherbet {
+  background: linear-gradient(180deg, #f3b336, #ee8558);
 }
