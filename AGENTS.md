@@ -122,16 +122,28 @@ per-type directories via the `directories` crate (`ProjectDirs`):
 
 (`logs/` uses the state dir where the platform has one — Linux — else the local data dir.)
 
-**Single** — everything nests under one root. Chosen when **`$VCMS_HOME` is set** (the
-`vcms service` installer pins it to a system dir: Linux `/var/lib/vcms`, macOS
-`/Library/Application Support/vcms`, Windows `C:\ProgramData\vcms`), or when a legacy
-**`~/.vcms`** already exists (so an existing install keeps working untouched):
+**Single** — everything nests under one root. Chosen (in precedence order) when:
+1. **`$VCMS_HOME` is set** — forces the root explicitly.
+2. **the system service home dir exists** — Linux `/var/lib/vcms`, macOS
+   `/Library/Application Support/vcms`, Windows `C:\ProgramData\vcms`. The
+   `vcms service` installer creates it (and leaves it behind on uninstall), so a plain
+   `vcms serve`/`admin`/`backup` **follows the service's data instead of forking to a
+   per-user split store**. This path is defined once in `paths::system_home()` and
+   imported by the `service` submodules.
+3. **a legacy `~/.vcms` exists** — an existing install keeps working untouched.
+
+Otherwise (dev/eval boxes with no service) files use the platform split dirs.
 
 ```text
-$VCMS_HOME/                # or ~/.vcms (legacy)
+$VCMS_HOME/                # or system home, or ~/.vcms (legacy)
   config.toml secrets.toml .env
   vcms.db (+ -wal / -shm)  logs/  storage/  backups/  search/
 ```
+
+When the active home is the system service home (owned by SYSTEM/root), the
+data-touching commands (`serve`/`admin`/`backup`/`restore`) require elevation — a
+non-elevated invocation **fails fast** with an "Administrator/root" hint (in
+`paths::ensure`'s preflight) rather than silently forking to a second store.
 
 Secrets: on first `serve`/`admin`, a random `HMAC_SECRET` is generated and persisted to
 `secrets.toml` (`apps/backend/src/secrets.rs`), then loaded by the server processes.
