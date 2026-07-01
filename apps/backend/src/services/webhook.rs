@@ -512,11 +512,11 @@ fn derive_encryption_key(secret: &str) -> [u8; 32] {
 /// `base64(nonce[12] || ciphertext||tag)`. A fresh random nonce is used per call.
 fn encrypt_headers(headers: &HashMap<String, String>, key: &[u8; 32]) -> String {
     let json = serde_json::to_string(headers).unwrap_or_default();
-    let cipher = Aes256Gcm::new(Key::<Aes256Gcm>::from_slice(key));
+    let cipher = Aes256Gcm::new(&Key::<Aes256Gcm>::from(*key));
     let mut nonce_bytes = [0u8; 12];
     rand::rng().fill_bytes(&mut nonce_bytes);
-    let nonce = Nonce::from_slice(&nonce_bytes);
-    match cipher.encrypt(nonce, json.as_bytes()) {
+    let nonce = Nonce::from(nonce_bytes);
+    match cipher.encrypt(&nonce, json.as_bytes()) {
         Ok(ciphertext) => {
             let mut out = Vec::with_capacity(nonce_bytes.len() + ciphertext.len());
             out.extend_from_slice(&nonce_bytes);
@@ -539,9 +539,13 @@ fn decrypt_headers(encrypted: &str, key: &[u8; 32]) -> HashMap<String, String> {
         return HashMap::new();
     }
     let (nonce_bytes, ciphertext) = raw.split_at(12);
-    let cipher = Aes256Gcm::new(Key::<Aes256Gcm>::from_slice(key));
-    let nonce = Nonce::from_slice(nonce_bytes);
-    match cipher.decrypt(nonce, ciphertext) {
+    let cipher = Aes256Gcm::new(&Key::<Aes256Gcm>::from(*key));
+    let nonce_arr: [u8; 12] = match nonce_bytes.try_into() {
+        Ok(n) => n,
+        Err(_) => return HashMap::new(),
+    };
+    let nonce = Nonce::from(nonce_arr);
+    match cipher.decrypt(&nonce, ciphertext) {
         Ok(plaintext) => match String::from_utf8(plaintext) {
             Ok(s) => serde_json::from_str(&s).unwrap_or_default(),
             Err(_) => HashMap::new(),

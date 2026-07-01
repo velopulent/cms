@@ -589,12 +589,12 @@ impl BackupService {
         if encrypt {
             let key = self.encryption_key.ok_or(BackupError::MissingKey)?;
             out.push(FLAG_ENCRYPTED);
-            let cipher = Aes256Gcm::new(Key::<Aes256Gcm>::from_slice(&key));
+            let cipher = Aes256Gcm::new(&Key::<Aes256Gcm>::from(key));
             let mut nonce_bytes = [0u8; 12];
             rand::rng().fill_bytes(&mut nonce_bytes);
-            let nonce = Nonce::from_slice(&nonce_bytes);
+            let nonce = Nonce::from(nonce_bytes);
             let ciphertext = cipher
-                .encrypt(nonce, compressed.as_ref())
+                .encrypt(&nonce, compressed.as_ref())
                 .map_err(|e| BackupError::Crypto(e.to_string()))?;
             out.extend_from_slice(&nonce_bytes);
             out.extend_from_slice(&ciphertext);
@@ -619,9 +619,13 @@ impl BackupService {
                 return Err(BackupError::Invalid("truncated encrypted backup".into()));
             }
             let (nonce_bytes, ciphertext) = body.split_at(12);
-            let cipher = Aes256Gcm::new(Key::<Aes256Gcm>::from_slice(&key));
+            let cipher = Aes256Gcm::new(&Key::<Aes256Gcm>::from(key));
+            let nonce_arr: [u8; 12] = nonce_bytes
+                .try_into()
+                .map_err(|_| BackupError::Invalid("truncated encrypted backup".into()))?;
+            let nonce = Nonce::from(nonce_arr);
             cipher
-                .decrypt(Nonce::from_slice(nonce_bytes), ciphertext)
+                .decrypt(&nonce, ciphertext)
                 .map_err(|_| BackupError::Crypto("decryption failed (wrong key?)".into()))?
         } else {
             body.to_vec()
