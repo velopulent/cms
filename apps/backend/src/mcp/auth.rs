@@ -5,7 +5,7 @@ use axum::{
     middleware::Next,
     response::{IntoResponse, Response},
 };
-use rmcp::model::{CallToolResult, Content, ErrorCode, ErrorData};
+use rmcp::model::{CallToolResult, ContentBlock, ErrorCode, ErrorData};
 use rmcp::service::{RequestContext, RoleServer};
 use serde_json::json;
 
@@ -26,11 +26,11 @@ pub fn ok_result(data: &impl serde::Serialize) -> Result<CallToolResult, ErrorDa
             format!("Failed to serialize response: {}", e),
         )
     })?;
-    Ok(CallToolResult::success(vec![Content::text(json)]))
+    Ok(CallToolResult::success(vec![ContentBlock::text(json)]))
 }
 
 pub fn text_result(message: impl Into<String>) -> CallToolResult {
-    CallToolResult::success(vec![Content::text(message.into())])
+    CallToolResult::success(vec![ContentBlock::text(message.into())])
 }
 
 pub fn map_err(e: impl Into<crate::services::error::ServiceError>) -> ErrorData {
@@ -41,7 +41,7 @@ pub fn map_err(e: impl Into<crate::services::error::ServiceError>) -> ErrorData 
 /// Use this for business logic errors that the LLM can act on (not found, validation, permission).
 pub fn tool_error(e: impl Into<crate::services::error::ServiceError>) -> CallToolResult {
     let error = e.into();
-    CallToolResult::error(vec![Content::text(error.error_message())])
+    CallToolResult::error(vec![ContentBlock::text(error.error_message())])
 }
 
 pub fn resolve_actor(ctx: &RequestContext<RoleServer>) -> Result<Actor, ErrorData> {

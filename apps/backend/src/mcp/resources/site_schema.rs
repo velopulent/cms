@@ -2,8 +2,7 @@ use std::sync::Arc;
 
 use chrono::Utc;
 use rmcp::ErrorData as McpError;
-use rmcp::model::RawResource;
-use rmcp::model::{Annotated, Annotations, ListResourcesResult, ReadResourceResult, Resource, ResourceContents};
+use rmcp::model::{Annotations, ListResourcesResult, ReadResourceResult, Resource, ResourceContents};
 
 use crate::middleware::auth::Actor;
 use crate::models::authorization::Action;
@@ -26,19 +25,11 @@ fn resource_uri(site_id: &str, path: &str) -> String {
 }
 
 fn make_resource(uri: &str, name: &str, title: &str, description: &str) -> Resource {
-    Annotated::new(
-        RawResource {
-            uri: uri.to_string(),
-            name: name.to_string(),
-            title: Some(title.to_string()),
-            description: Some(description.to_string()),
-            mime_type: Some("application/json".to_string()),
-            size: None,
-            icons: None,
-            meta: None,
-        },
-        Some(Annotations::for_resource(0.5, Utc::now())),
-    )
+    Resource::new(uri, name)
+        .with_title(title)
+        .with_description(description)
+        .with_mime_type("application/json")
+        .with_annotations(Annotations::for_resource(0.5, Utc::now()))
 }
 
 fn collection_to_schema_value(c: &Collection) -> serde_json::Value {
