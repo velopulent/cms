@@ -19,6 +19,13 @@ async fn main() {
     match dotenvy::from_path(&env_file) {
         Ok(()) => {}
         Err(e) if e.not_found() => {} // missing file is fine
+        // The home `.env` is optional. When it lives in the system service home
+        // (`C:\ProgramData\vcms`, `/var/lib/vcms`) it's ACL-locked to SYSTEM/root, so a
+        // non-elevated CLI legitimately can't read it — most notably `vcms mcp stdio`,
+        // a proxy that needs no home file at all. Treat "permission denied" like
+        // "absent" and move on: the data-touching commands still hit `paths::ensure`'s
+        // elevate preflight, which reports the access problem with an actionable hint.
+        Err(dotenvy::Error::Io(io)) if io.kind() == std::io::ErrorKind::PermissionDenied => {}
         Err(e) => {
             eprintln!("Error: cannot load {}: {e}", env_file.display());
             std::process::exit(1);
