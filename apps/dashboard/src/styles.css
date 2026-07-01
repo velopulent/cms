@@ -102,19 +102,51 @@
   color-scheme: dark;
 
   /* surfaces: surface tint on an elevation ramp (mixed toward white) */
-  --background: color-mix(in oklab, var(--theme-surface-tint) 95%, white); /* +5%  canvas */
-  --card: color-mix(in oklab, var(--theme-surface-tint) 92%, white); /* +8%  one step up */
-  --popover: color-mix(in oklab, var(--theme-surface-tint) 86%, white); /* +14% elevated */
-  --sidebar: color-mix(in oklab, var(--theme-surface-tint) 97%, black); /* darker than bg */
-  --muted: color-mix(in oklab, var(--theme-surface-tint) 89%, white); /* +11% fills */
-  --accent: color-mix(in oklab, var(--theme-surface-tint) 87%, white); /* +13% hover fills */
+  --background: color-mix(
+    in oklab,
+    var(--theme-surface-tint) 95%,
+    white
+  ); /* +5%  canvas */
+  --card: color-mix(
+    in oklab,
+    var(--theme-surface-tint) 92%,
+    white
+  ); /* +8%  one step up */
+  --popover: color-mix(
+    in oklab,
+    var(--theme-surface-tint) 86%,
+    white
+  ); /* +14% elevated */
+  --sidebar: color-mix(
+    in oklab,
+    var(--theme-surface-tint) 97%,
+    black
+  ); /* darker than bg */
+  --muted: color-mix(
+    in oklab,
+    var(--theme-surface-tint) 89%,
+    white
+  ); /* +11% fills */
+  --accent: color-mix(
+    in oklab,
+    var(--theme-surface-tint) 87%,
+    white
+  ); /* +13% hover fills */
   --secondary: color-mix(in oklab, var(--theme-surface-tint) 89%, white);
   --input: color-mix(in oklab, var(--theme-surface-tint) 86%, white);
   --sidebar-accent: color-mix(in oklab, var(--theme-surface-tint) 87%, white);
 
   /* primary: bright surface (buttons), deep-tint text */
-  --primary: color-mix(in oklab, var(--theme-foreground-tint) 88%, var(--theme-surface-tint));
-  --primary-foreground: color-mix(in oklab, var(--theme-surface-tint) 90%, black);
+  --primary: color-mix(
+    in oklab,
+    var(--theme-foreground-tint) 88%,
+    var(--theme-surface-tint)
+  );
+  --primary-foreground: color-mix(
+    in oklab,
+    var(--theme-surface-tint) 90%,
+    black
+  );
   --sidebar-primary: var(--primary);
   --sidebar-primary-foreground: var(--primary-foreground);
 
@@ -122,28 +154,68 @@
   --foreground: color-mix(in oklab, var(--theme-foreground-tint) 55%, white);
   --card-foreground: var(--foreground);
   --popover-foreground: var(--foreground);
-  --sidebar-foreground: color-mix(in oklab, var(--theme-foreground-tint) 60%, white);
-  --muted-foreground: color-mix(in oklab, var(--theme-foreground-tint) 92%, transparent);
-  --secondary-foreground: color-mix(in oklab, var(--theme-foreground-tint) 70%, white);
-  --accent-foreground: color-mix(in oklab, var(--theme-foreground-tint) 70%, white);
+  --sidebar-foreground: color-mix(
+    in oklab,
+    var(--theme-foreground-tint) 60%,
+    white
+  );
+  --muted-foreground: color-mix(
+    in oklab,
+    var(--theme-foreground-tint) 92%,
+    transparent
+  );
+  --secondary-foreground: color-mix(
+    in oklab,
+    var(--theme-foreground-tint) 70%,
+    white
+  );
+  --accent-foreground: color-mix(
+    in oklab,
+    var(--theme-foreground-tint) 70%,
+    white
+  );
   --sidebar-accent-foreground: var(--accent-foreground);
 
   /* borders at low alpha; ring is a tinted glow derived from the foreground */
   --border: color-mix(in oklab, var(--theme-foreground-tint) 7%, transparent);
-  --sidebar-border: color-mix(in oklab, var(--theme-foreground-tint) 6%, transparent);
+  --sidebar-border: color-mix(
+    in oklab,
+    var(--theme-foreground-tint) 6%,
+    transparent
+  );
   --ring: color-mix(in oklab, var(--theme-foreground-tint) 60%, transparent);
   --sidebar-ring: var(--ring);
 
   /* destructive stays a true red across every theme */
   --destructive: oklch(0.6 0.22 25);
-  --destructive-foreground: color-mix(in oklab, var(--theme-foreground-tint) 40%, white);
+  --destructive-foreground: color-mix(
+    in oklab,
+    var(--theme-foreground-tint) 40%,
+    white
+  );
 
   /* charts: a monochrome ramp from the foreground tint down to the surface */
   --chart-1: var(--theme-foreground-tint);
-  --chart-2: color-mix(in oklab, var(--theme-foreground-tint) 78%, var(--theme-surface-tint));
-  --chart-3: color-mix(in oklab, var(--theme-foreground-tint) 58%, var(--theme-surface-tint));
-  --chart-4: color-mix(in oklab, var(--theme-foreground-tint) 40%, var(--theme-surface-tint));
-  --chart-5: color-mix(in oklab, var(--theme-foreground-tint) 25%, var(--theme-surface-tint));
+  --chart-2: color-mix(
+    in oklab,
+    var(--theme-foreground-tint) 78%,
+    var(--theme-surface-tint)
+  );
+  --chart-3: color-mix(
+    in oklab,
+    var(--theme-foreground-tint) 58%,
+    var(--theme-surface-tint)
+  );
+  --chart-4: color-mix(
+    in oklab,
+    var(--theme-foreground-tint) 40%,
+    var(--theme-surface-tint)
+  );
+  --chart-5: color-mix(
+    in oklab,
+    var(--theme-foreground-tint) 25%,
+    var(--theme-surface-tint)
+  );
 }
 
 /* ---- shared derivation for the LIGHT palettes (light surface, dark fg) ---- */
@@ -154,16 +226,44 @@
   --background: color-mix(in oklab, var(--theme-surface-tint) 90%, white);
   --card: color-mix(in oklab, var(--theme-surface-tint) 55%, white);
   --popover: color-mix(in oklab, var(--theme-surface-tint) 45%, white);
-  --sidebar: color-mix(in oklab, var(--theme-foreground-tint) 4%, var(--theme-surface-tint));
-  --muted: color-mix(in oklab, var(--theme-foreground-tint) 6%, var(--theme-surface-tint));
-  --accent: color-mix(in oklab, var(--theme-foreground-tint) 9%, var(--theme-surface-tint));
-  --secondary: color-mix(in oklab, var(--theme-foreground-tint) 6%, var(--theme-surface-tint));
+  --sidebar: color-mix(
+    in oklab,
+    var(--theme-foreground-tint) 4%,
+    var(--theme-surface-tint)
+  );
+  --muted: color-mix(
+    in oklab,
+    var(--theme-foreground-tint) 6%,
+    var(--theme-surface-tint)
+  );
+  --accent: color-mix(
+    in oklab,
+    var(--theme-foreground-tint) 9%,
+    var(--theme-surface-tint)
+  );
+  --secondary: color-mix(
+    in oklab,
+    var(--theme-foreground-tint) 6%,
+    var(--theme-surface-tint)
+  );
   --input: color-mix(in oklab, var(--theme-surface-tint) 62%, white);
-  --sidebar-accent: color-mix(in oklab, var(--theme-foreground-tint) 9%, var(--theme-surface-tint));
+  --sidebar-accent: color-mix(
+    in oklab,
+    var(--theme-foreground-tint) 9%,
+    var(--theme-surface-tint)
+  );
 
   /* primary: dark warm surface (buttons), light text */
-  --primary: color-mix(in oklab, var(--theme-foreground-tint) 90%, var(--theme-surface-tint));
-  --primary-foreground: color-mix(in oklab, var(--theme-surface-tint) 92%, white);
+  --primary: color-mix(
+    in oklab,
+    var(--theme-foreground-tint) 90%,
+    var(--theme-surface-tint)
+  );
+  --primary-foreground: color-mix(
+    in oklab,
+    var(--theme-surface-tint) 92%,
+    white
+  );
   --sidebar-primary: var(--primary);
   --sidebar-primary-foreground: var(--primary-foreground);
 
@@ -171,14 +271,34 @@
   --foreground: color-mix(in oklab, var(--theme-foreground-tint) 92%, black);
   --card-foreground: var(--foreground);
   --popover-foreground: var(--foreground);
-  --sidebar-foreground: color-mix(in oklab, var(--theme-foreground-tint) 88%, black);
-  --muted-foreground: color-mix(in oklab, var(--theme-foreground-tint) 60%, transparent);
-  --secondary-foreground: color-mix(in oklab, var(--theme-foreground-tint) 85%, black);
-  --accent-foreground: color-mix(in oklab, var(--theme-foreground-tint) 85%, black);
+  --sidebar-foreground: color-mix(
+    in oklab,
+    var(--theme-foreground-tint) 88%,
+    black
+  );
+  --muted-foreground: color-mix(
+    in oklab,
+    var(--theme-foreground-tint) 60%,
+    transparent
+  );
+  --secondary-foreground: color-mix(
+    in oklab,
+    var(--theme-foreground-tint) 85%,
+    black
+  );
+  --accent-foreground: color-mix(
+    in oklab,
+    var(--theme-foreground-tint) 85%,
+    black
+  );
   --sidebar-accent-foreground: var(--accent-foreground);
 
   --border: color-mix(in oklab, var(--theme-foreground-tint) 14%, transparent);
-  --sidebar-border: color-mix(in oklab, var(--theme-foreground-tint) 12%, transparent);
+  --sidebar-border: color-mix(
+    in oklab,
+    var(--theme-foreground-tint) 12%,
+    transparent
+  );
   --ring: color-mix(in oklab, var(--theme-foreground-tint) 45%, transparent);
   --sidebar-ring: var(--ring);
 
@@ -186,10 +306,26 @@
   --destructive-foreground: oklch(0.985 0 0);
 
   --chart-1: var(--theme-foreground-tint);
-  --chart-2: color-mix(in oklab, var(--theme-foreground-tint) 78%, var(--theme-surface-tint));
-  --chart-3: color-mix(in oklab, var(--theme-foreground-tint) 58%, var(--theme-surface-tint));
-  --chart-4: color-mix(in oklab, var(--theme-foreground-tint) 40%, var(--theme-surface-tint));
-  --chart-5: color-mix(in oklab, var(--theme-foreground-tint) 25%, var(--theme-surface-tint));
+  --chart-2: color-mix(
+    in oklab,
+    var(--theme-foreground-tint) 78%,
+    var(--theme-surface-tint)
+  );
+  --chart-3: color-mix(
+    in oklab,
+    var(--theme-foreground-tint) 58%,
+    var(--theme-surface-tint)
+  );
+  --chart-4: color-mix(
+    in oklab,
+    var(--theme-foreground-tint) 40%,
+    var(--theme-surface-tint)
+  );
+  --chart-5: color-mix(
+    in oklab,
+    var(--theme-foreground-tint) 25%,
+    var(--theme-surface-tint)
+  );
 }
 
 /* ---- layered premium shadows (shared): inset highlight + soft ambient +
@@ -256,7 +392,15 @@
   --theme-foreground-tint: rgb(255 248 229);
   --theme-gradient:
     linear-gradient(rgb(0 0 0 / 0.9), rgb(0 0 0 / 0.9)) fixed 0 0 / cover,
-    linear-gradient(162.27deg, #142215 11.2%, #2d4d39 29.93%, #454c32 48.64%, #5a7c58 67.85%, #a98e4b 83.54%) fixed 0 0 / cover;
+    linear-gradient(
+      162.27deg,
+      #142215 11.2%,
+      #2d4d39 29.93%,
+      #454c32 48.64%,
+      #5a7c58 67.85%,
+      #a98e4b 83.54%
+    )
+    fixed 0 0 / cover;
   --theme-shadow-color: 130 60% 8%;
 }
 
@@ -275,7 +419,8 @@
   --theme-surface-tint: rgb(255 238 204);
   --theme-foreground-tint: rgb(77 23 0);
   --theme-gradient:
-    linear-gradient(rgb(255 255 255 / 0.85), rgb(255 255 255 / 0.85)) fixed 0 0 / cover,
+    linear-gradient(rgb(255 255 255 / 0.85), rgb(255 255 255 / 0.85)) fixed 0 0
+    / cover,
     linear-gradient(180deg, #f3b336 31.1%, #ee8558 67.09%) fixed 0 0 / cover;
   --theme-shadow-color: 28 55% 45%;
 }
@@ -351,14 +496,23 @@
 
 /* Text selection tinted from the foreground tint. */
 :is(.theme-dark, .theme-light) ::selection {
-  background: color-mix(in oklab, var(--theme-foreground-tint) 22%, transparent);
+  background: color-mix(
+    in oklab,
+    var(--theme-foreground-tint) 22%,
+    transparent
+  );
   color: var(--foreground);
 }
 
 /* Thin, rounded, low-contrast scrollbars. */
 :is(.theme-dark, .theme-light) * {
   scrollbar-width: thin;
-  scrollbar-color: color-mix(in oklab, var(--theme-foreground-tint) 14%, transparent) transparent;
+  scrollbar-color: color-mix(
+      in oklab,
+      var(--theme-foreground-tint) 14%,
+      transparent
+    )
+    transparent;
 }
 :is(.theme-dark, .theme-light) *::-webkit-scrollbar {
   width: 10px;
@@ -368,13 +522,21 @@
   background: transparent;
 }
 :is(.theme-dark, .theme-light) *::-webkit-scrollbar-thumb {
-  background: color-mix(in oklab, var(--theme-foreground-tint) 12%, transparent);
+  background: color-mix(
+    in oklab,
+    var(--theme-foreground-tint) 12%,
+    transparent
+  );
   border-radius: 9999px;
   border: 2px solid transparent;
   background-clip: padding-box;
 }
 :is(.theme-dark, .theme-light) *::-webkit-scrollbar-thumb:hover {
-  background: color-mix(in oklab, var(--theme-foreground-tint) 22%, transparent);
+  background: color-mix(
+    in oklab,
+    var(--theme-foreground-tint) 22%,
+    transparent
+  );
   background-clip: padding-box;
 }
 
@@ -389,7 +551,8 @@
     [data-slot="textarea"],
     [data-slot="card"]
   ) {
-  transition-property: color, background-color, border-color, box-shadow, transform, opacity;
+  transition-property:
+    color, background-color, border-color, box-shadow, transform, opacity;
   transition-duration: 165ms;
   transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
 }
@@ -494,7 +657,14 @@
   background: linear-gradient(48.17deg, #5348ca, #140730);
 }
 .theme-swatch-forest {
-  background: linear-gradient(162.27deg, #142215, #2d4d39, #454c32, #5a7c58, #a98e4b);
+  background: linear-gradient(
+    162.27deg,
+    #142215,
+    #2d4d39,
+    #454c32,
+    #5a7c58,
+    #a98e4b
+  );
 }
 .theme-swatch-dusk {
   background: linear-gradient(180deg, #665069, #91a3d1);
