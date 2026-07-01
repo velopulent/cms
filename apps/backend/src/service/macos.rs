@@ -10,7 +10,11 @@ use crate::cli::{Cli, ServiceAction};
 const PLIST_PATH: &str = "/Library/LaunchDaemons/local.vcms.plist";
 
 /// System data directory the daemon owns (macOS convention for shared app data).
-const SERVICE_HOME: &str = "/Library/Application Support/vcms";
+/// Defined once in `paths::system_home()` so a plain CLI invocation resolves to the
+/// same store; always `Some` on macOS.
+fn service_home() -> PathBuf {
+    crate::paths::system_home().expect("system_home is always set on macOS")
+}
 
 /// Modern launchctl service target (`system/<label>`).
 fn target() -> String {
@@ -31,7 +35,7 @@ fn install(user: Option<&str>) -> Result<(), Box<dyn std::error::Error>> {
     require_root("install")?;
     let user = resolve_run_user(user)?;
     // One system dir (VCMS_HOME single-layout), owned by the run-as account.
-    let vcms_home = PathBuf::from(SERVICE_HOME);
+    let vcms_home = service_home();
     let exe_path = std::env::current_exe()?;
     let opts = InstallOptions {
         user: user.clone(),
@@ -66,7 +70,10 @@ fn uninstall() -> Result<(), Box<dyn std::error::Error>> {
         std::fs::remove_file(PLIST_PATH)?;
         println!("Removed {PLIST_PATH}");
     }
-    println!("Service '{LAUNCHD_LABEL}' uninstalled. Your data under {SERVICE_HOME} was left intact.");
+    println!(
+        "Service '{LAUNCHD_LABEL}' uninstalled. Your data under {} was left intact.",
+        service_home().display()
+    );
     Ok(())
 }
 
