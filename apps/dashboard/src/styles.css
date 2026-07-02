@@ -101,38 +101,42 @@
 .theme-dark {
   color-scheme: dark;
 
-  /* Each STRUCTURAL surface paints `scrim + color gradient`,
-     viewport-fixed + cover, so they all sample ONE continuous
-     gradient and differ only by scrim opacity (elevation). Painted on the
-     structural containers below; component tokens stay solid (crisp). */
-  --grad-chrome:
-    linear-gradient(rgb(0 0 0 / 0.86), rgb(0 0 0 / 0.86)) fixed 0 0 / cover,
-    var(--theme-grad-color) fixed 0 0 / cover;
-  --grad-base:
-    linear-gradient(rgb(0 0 0 / 0.82), rgb(0 0 0 / 0.82)) fixed 0 0 / cover,
-    var(--theme-grad-color) fixed 0 0 / cover;
-  --grad-raised:
-    linear-gradient(rgb(0 0 0 / 0.58), rgb(0 0 0 / 0.58)) fixed 0 0 / cover,
-    var(--theme-grad-color) fixed 0 0 / cover;
+  /* The gradient is painted ONCE, on the fixed `body::before` shell layer
+     (scrim over `--theme-grad-color`). Every surface above it is either an
+     alpha-neutral veil (guaranteed monotonic darken/lighten over the shell)
+     or a fully OPAQUE solid mixed from the surface tint (chrome, floating). */
+  --shell-scrim: rgb(0 0 0 / 0.82);
+
+  /* chrome: sidebar darkens the shell; header + mobile sidebar are opaque */
+  --surface-chrome: rgb(0 0 0 / 0.25);
+  --surface-chrome-solid: color-mix(
+    in oklab,
+    var(--theme-surface-tint) 65%,
+    oklch(0.17 0 0)
+  );
 
   /* neutral hover / selected overlays */
   --mod-hover: color-mix(in oklab, white 6%, transparent);
   --mod-active: color-mix(in oklab, white 12%, transparent);
 
-  /* TRANSLUCENT component surfaces: veils over the painted gradient, so every
-     input / chip / menu / tab picks up the theme instead of reading as flat gray.
-     Dark veils recess (input, muted, popover); light veils lift (card, chips,
-     hovers). Legible because they sit over the already-dark gradient. */
+  /* Component surfaces. Veils are alpha-neutral so they composite predictably
+     over the shell; the card lift comes from the near-white foreground tint,
+     which is STRICTLY lighter than any backdrop — even pure black gradient
+     stops — so cards always separate. Floating (`--popover`) is opaque:
+     overlays cover arbitrary content and must never bleed it through. */
   --sidebar: color-mix(in oklab, oklch(0.16 0 0) 55%, transparent);
   --background: color-mix(in oklab, oklch(0.16 0 0) 14%, transparent);
-  --card: color-mix(in oklab, white 5%, transparent);
-  --popover: color-mix(in oklab, oklch(0.15 0 0) 82%, transparent);
+  --card: color-mix(in oklab, var(--theme-foreground-tint) 7%, transparent);
+  --popover: color-mix(
+    in oklab,
+    var(--theme-surface-tint) 55%,
+    oklch(0.23 0 0)
+  );
   --muted: color-mix(in oklab, oklch(0 0 0) 22%, transparent);
   --secondary: color-mix(in oklab, white 7%, transparent);
   --accent: color-mix(in oklab, white 11%, transparent);
   --sidebar-accent: color-mix(in oklab, white 10%, transparent);
-  --input: color-mix(in oklab, oklch(0 0 0) 42%, transparent);
-  --header-bg: color-mix(in oklab, oklch(0.14 0 0) 55%, transparent);
+  --input: color-mix(in oklab, black 25%, transparent);
 
   /* primary: bright surface (buttons), deep-tint text */
   --primary: color-mix(
@@ -157,13 +161,13 @@
     var(--theme-foreground-tint) 22%,
     white
   );
-  --muted-foreground: color-mix(in oklab, var(--foreground) 62%, transparent);
+  --muted-foreground: color-mix(in oklab, var(--foreground) 72%, transparent);
   --secondary-foreground: var(--foreground);
   --accent-foreground: var(--foreground);
   --sidebar-accent-foreground: var(--foreground);
 
   /* borders / ring: neutral, low alpha */
-  --border: color-mix(in oklab, white 10%, transparent);
+  --border: color-mix(in oklab, white 12%, transparent);
   --sidebar-border: color-mix(in oklab, white 7%, transparent);
   --ring: color-mix(in oklab, var(--theme-foreground-tint) 55%, transparent);
   --sidebar-ring: var(--ring);
@@ -204,37 +208,32 @@
 .theme-light {
   color-scheme: light;
 
-  /* light mirror: structural surfaces paint the color gradient under a WHITE
-     scrim (lighter scrim = more color), viewport-fixed + cover. */
-  --grad-chrome:
-    linear-gradient(rgb(255 255 255 / 0.6), rgb(255 255 255 / 0.6)) fixed 0 0 /
-    cover,
-    var(--theme-grad-color) fixed 0 0 / cover;
-  --grad-base:
-    linear-gradient(rgb(255 255 255 / 0.5), rgb(255 255 255 / 0.5)) fixed 0 0 /
-    cover,
-    var(--theme-grad-color) fixed 0 0 / cover;
-  --grad-raised:
-    linear-gradient(rgb(255 255 255 / 0.24), rgb(255 255 255 / 0.24)) fixed 0 0
-    / cover,
-    var(--theme-grad-color) fixed 0 0 / cover;
+  /* light mirror: WHITE shell scrim, white veils lift, black veils recess.
+     Same roles as the dark layer, so new light palettes are 3-line blocks. */
+  --shell-scrim: rgb(255 255 255 / 0.5);
+
+  --surface-chrome: rgb(255 255 255 / 0.22);
+  --surface-chrome-solid: color-mix(
+    in oklab,
+    var(--theme-surface-tint) 55%,
+    white
+  );
 
   --mod-hover: color-mix(in oklab, black 5%, transparent);
   --mod-active: color-mix(in oklab, black 9%, transparent);
 
-  /* TRANSLUCENT component surfaces (mirror of the dark theme): veils over the
-     painted gradient so components pick up the theme. White veils lift, black
-     veils recess. */
+  /* Component surfaces: `--card` (white 60%) is strictly lighter than any
+     light-theme backdrop, so lift is guaranteed; `--popover` is an opaque
+     tinted off-white (nothing bleeds through floating layers). */
   --sidebar: color-mix(in oklab, white 55%, transparent);
   --background: color-mix(in oklab, white 16%, transparent);
-  --card: color-mix(in oklab, white 32%, transparent);
-  --popover: color-mix(in oklab, white 82%, transparent);
+  --card: color-mix(in oklab, white 60%, transparent);
+  --popover: color-mix(in oklab, var(--theme-surface-tint) 35%, white);
   --muted: color-mix(in oklab, black 6%, transparent);
   --secondary: color-mix(in oklab, black 5%, transparent);
   --accent: color-mix(in oklab, black 8%, transparent);
   --sidebar-accent: color-mix(in oklab, black 8%, transparent);
-  --input: color-mix(in oklab, white 55%, transparent);
-  --header-bg: color-mix(in oklab, white 55%, transparent);
+  --input: color-mix(in oklab, white 45%, transparent);
 
   /* primary: dark warm surface (buttons), light text */
   --primary: color-mix(
@@ -259,12 +258,12 @@
     var(--theme-foreground-tint) 82%,
     black
   );
-  --muted-foreground: color-mix(in oklab, var(--foreground) 58%, transparent);
+  --muted-foreground: color-mix(in oklab, var(--foreground) 62%, transparent);
   --secondary-foreground: var(--foreground);
   --accent-foreground: var(--foreground);
   --sidebar-accent-foreground: var(--foreground);
 
-  --border: color-mix(in oklab, black 12%, transparent);
+  --border: color-mix(in oklab, black 15%, transparent);
   --sidebar-border: color-mix(in oklab, black 9%, transparent);
   --ring: color-mix(in oklab, var(--theme-foreground-tint) 45%, transparent);
   --sidebar-ring: var(--ring);
@@ -313,8 +312,8 @@
 
 /* =========================================================================
    Palettes — each declares only its three tints + the raw color gradient
-   (`--theme-grad-color`, no scrim). The shared blocks above build the fixed
-   scrim-elevation levels and derive every token from these.
+   (`--theme-grad-color`, no scrim). The shared blocks above paint the shell
+   scrim over it and derive every token from these.
    ========================================================================= */
 
 /* Crimson Moon */
@@ -450,34 +449,42 @@
    original stone themes) are never matched.
    ========================================================================= */
 
+/* The shell: the theme gradient painted exactly once, on a fixed pseudo behind
+   everything. No `background-attachment: fixed` (broken on iOS Safari, breaks
+   under transforms) — surfaces above are alpha veils, so the "one continuous
+   gradient" look survives by construction. */
 :is(.theme-dark, .theme-light) body {
-  background: var(--grad-base);
+  background: transparent;
+}
+:is(.theme-dark, .theme-light) body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background:
+    linear-gradient(var(--shell-scrim), var(--shell-scrim)),
+    var(--theme-grad-color);
 }
 :is(.theme-dark, .theme-light) [data-slot="sidebar-inner"] {
-  background: var(--grad-chrome); /* left nav — darkest chrome */
-}
-:is(.theme-dark, .theme-light) [data-slot="sidebar-inset"] {
-  background: var(--grad-base); /* main content — same level as the canvas */
+  background: var(--surface-chrome); /* left nav — darkens the shell */
 }
 :is(.theme-dark, .theme-light) [data-slot="card"] {
-  background: var(--grad-raised); /* elevated — lightest scrim, glows */
-  /* a hairline ring so cards always separate from the canvas, even where the
-    gradient is near-black and the scrim difference alone is invisible */
+  /* lifted by the near-white tint veil — strictly lighter than any backdrop —
+     plus a hairline ring as the second separation channel */
+  background: var(--card);
   box-shadow:
     var(--cm-shadow-sm),
     inset 0 0 0 1px var(--border);
 }
 
-/* Header: frosted glass over the fixed gradient (sticky, so content blurs under it). */
+/* Header: opaque chrome, same layer family as the sidebar. */
 :is(.theme-dark, .theme-light) header {
-  background: var(--header-bg);
-  backdrop-filter: blur(12px) saturate(1.2);
-  -webkit-backdrop-filter: blur(12px) saturate(1.2);
+  background: var(--surface-chrome-solid);
 }
 
-/* Floating overlays: dark glass (translucent `--popover`) + blur — transform-safe
-   (a `fixed` gradient would break under their translate()); the translucency lets
-   the theme tint through. */
+/* Floating overlays: fully OPAQUE tinted surface (`--popover`), no blur —
+   they cover arbitrary content, so nothing may bleed through. */
 :is(.theme-dark, .theme-light)
   :is(
     [data-slot="popover-content"],
@@ -490,8 +497,13 @@
     [data-slot="tooltip-content"]
   ) {
   background: var(--popover);
-  backdrop-filter: blur(16px) saturate(1.2);
-  -webkit-backdrop-filter: blur(16px) saturate(1.2);
+}
+
+/* Mobile sidebar sheet (its popup's data-slot is overridden to "sidebar"):
+   opaque chrome, never a translucent veil floating over page content. */
+:is(.theme-dark, .theme-light) [data-slot="sidebar"][data-mobile="true"] {
+  background: var(--surface-chrome-solid);
+  box-shadow: var(--cm-shadow-xl);
 }
 
 /* Tabs: the default (pill) active tab uses `bg-input/30`, which is invisible over
@@ -581,10 +593,8 @@
   }
 }
 
-/* Layered shadows on the shadow-bearing slots (sm cards, lg menus, xl modals). */
-:is(.theme-dark, .theme-light) [data-slot="card"] {
-  box-shadow: var(--cm-shadow-sm);
-}
+/* Layered shadows on the shadow-bearing slots (lg menus, xl modals; the card
+   shadow lives in the card rule above, merged with its hairline ring). */
 :is(.theme-dark, .theme-light)
   :is(
     [data-slot="popover-content"],
@@ -632,12 +642,10 @@
   background: var(--mod-active);
 }
 
-/* Inputs: recessed translucent fill, restrained blur, themed focus glow. */
+/* Inputs: recessed translucent fill, themed focus glow. */
 :is(.theme-dark, .theme-light)
   :is([data-slot="input"], [data-slot="textarea"]) {
   background: var(--input);
-  backdrop-filter: blur(6px);
-  -webkit-backdrop-filter: blur(6px);
 }
 :is(.theme-dark, .theme-light)
   :is([data-slot="input"], [data-slot="textarea"]):focus-visible {
