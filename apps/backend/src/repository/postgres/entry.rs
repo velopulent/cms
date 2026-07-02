@@ -346,14 +346,18 @@ impl EntryRepository for PostgresEntryRepository {
             .execute(&mut *tx)
             .await?;
 
-        for file_id in &file_ids {
+        if !file_ids.is_empty() {
+            // One multi-row statement instead of a query per file id; the
+            // SELECT keeps the "file must exist in this site" filter.
             sqlx::query(
-                "INSERT INTO entry_file_references (entry_id, file_id, site_id) SELECT $1, id, $2 FROM files WHERE id = $3 AND site_id = $4 ON CONFLICT DO NOTHING",
+                "INSERT INTO entry_file_references (entry_id, file_id, site_id)
+                 SELECT $1, id, $2 FROM files WHERE site_id = $3 AND id = ANY($4)
+                 ON CONFLICT DO NOTHING",
             )
             .bind(entry_id)
             .bind(site_id)
-            .bind(file_id)
             .bind(site_id)
+            .bind(&file_ids)
             .execute(&mut *tx)
             .await?;
         }

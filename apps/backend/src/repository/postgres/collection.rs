@@ -127,6 +127,9 @@ impl CollectionRepository for PostgresCollectionRepository {
         entry_items: &[Entry],
         rename_map: &std::collections::HashMap<String, String>,
     ) -> Result<(), RepositoryError> {
+        // One transaction for the whole migration: per-statement commit overhead
+        // dominated this loop, and a partial rename is never left behind.
+        let mut tx = self.pool.begin().await?;
         for entry in entry_items {
             if let Ok(mut data) = serde_json::from_str::<serde_json::Value>(&entry.data)
                 && let Some(obj) = data.as_object_mut()
@@ -142,10 +145,11 @@ impl CollectionRepository for PostgresCollectionRepository {
                 sqlx::query("UPDATE entries SET data = $1::jsonb, updated_at = NOW() WHERE id = $2")
                     .bind(&new_data_str)
                     .bind(&entry.id)
-                    .execute(&self.pool)
+                    .execute(&mut *tx)
                     .await?;
             }
         }
+        tx.commit().await?;
         Ok(())
     }
 }
