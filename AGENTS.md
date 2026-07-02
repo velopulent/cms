@@ -211,6 +211,7 @@ Logging keys map to the `[log]` table: `RUST_LOG`→`log.level`, `LOG_OUTPUT`→
 | `BACKUP_S3_SECRET_ACCESS_KEY` | - | S3 backup secret key (secret, env-only) |
 | `BACKUP_ENCRYPTION_KEY` | auto | AES-256 backup key (hex); auto-generated to `secrets.toml` |
 | `MAX_UPLOAD_SIZE_MB` | `50` | Max upload size in MB |
+| `UPLOAD_TOKEN_EXPIRY_SECS` | `900` | Signed upload URL lifetime (seconds) |
 | `COOKIE_SECURE` | `false` | Require HTTPS cookies |
 | `DB_MAX_CONNECTIONS` | `10` | Max DB connections |
 | `DB_MIN_CONNECTIONS` | `2` | Min DB connections |
