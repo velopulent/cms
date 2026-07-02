@@ -41,6 +41,7 @@ use crate::models::site::Site;
         // Public API: Files
         crate::handlers::file_handler::list_files,
         crate::handlers::file_handler::upload_file,
+        crate::handlers::file_handler::upload_via_signed_url,
         crate::handlers::file_handler::get_file,
         crate::handlers::file_handler::delete_file_handler,
         crate::handlers::file_handler::get_file_references,
