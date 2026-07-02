@@ -105,9 +105,9 @@ fn install() -> Result<(), Box<dyn std::error::Error>> {
     // printed "started" unconditionally, which is how a crash-on-boot slipped through.
     if !wait_for_state(&service, ServiceState::Running, SCM_WAIT) {
         return Err(format!(
-            "Service '{SERVICE_NAME}' was installed but did not reach Running. Check the logs under \
-             {}\\logs (read them from an elevated terminal). A common cause is another process already \
-             bound to the REST/gRPC ports.",
+            "Service '{SERVICE_NAME}' was installed but did not reach Running.{} Full logs are under \
+             {}\\logs (read them from an elevated terminal).",
+            recent_service_errors(),
             service_home().display()
         )
         .into());
@@ -197,16 +197,32 @@ fn wait_until_deleted(manager: &ServiceManager, timeout: Duration) -> bool {
 }
 
 fn start() -> Result<(), Box<dyn std::error::Error>> {
-    let service = open_service(ServiceAccess::START)?;
+    let service = open_service(ServiceAccess::START | ServiceAccess::QUERY_STATUS)?;
     service.start::<&str>(&[])?;
+    // Wait for Running before claiming success (same rationale as install()).
+    if !wait_for_state(&service, ServiceState::Running, SCM_WAIT) {
+        return Err(format!(
+            "Service '{SERVICE_NAME}' was told to start but did not reach Running.{} Full logs are under \
+             {}\\logs (read them from an elevated terminal).",
+            recent_service_errors(),
+            service_home().display()
+        )
+        .into());
+    }
     println!("Service '{SERVICE_NAME}' started.");
     Ok(())
 }
 
 fn stop() -> Result<(), Box<dyn std::error::Error>> {
-    let service = open_service(ServiceAccess::STOP)?;
+    let service = open_service(ServiceAccess::STOP | ServiceAccess::QUERY_STATUS)?;
+    // Unlike stop_and_wait (which tolerates already-stopped during teardown), an
+    // explicit user stop should surface the SCM error.
     service.stop()?;
-    println!("Service '{SERVICE_NAME}' stop requested.");
+    if wait_for_state(&service, ServiceState::Stopped, SCM_WAIT) {
+        println!("Service '{SERVICE_NAME}' stopped.");
+    } else {
+        println!("Service '{SERVICE_NAME}' stop requested; still stopping after 30s — check `vcms service status`.");
+    }
     Ok(())
 }
 
@@ -252,20 +268,124 @@ fn prepare_home() -> Result<(), Box<dyn std::error::Error>> {
 /// works regardless of the OS display language (`S-1-5-18` = LocalSystem,
 /// `S-1-5-32-544` = Administrators).
 fn harden_acl(path: &std::path::Path) -> Result<(), Box<dyn std::error::Error>> {
-    let status = std::process::Command::new("icacls")
-        .arg(path)
+    harden_acl_for(path, &["*S-1-5-18:(OI)(CI)F", "*S-1-5-32-544:(OI)(CI)F"])
+}
+
+/// The two-pass icacls sequence behind [`harden_acl`], parameterized over the grant
+/// specs so a non-elevated unit test can exercise it with the current user.
+///
+/// Pass 1 hardens the **root directory only**: strip inherited ACEs, drop broad
+/// explicit ACEs (Everyone `S-1-1-0`, Users `S-1-5-32-545`, Authenticated Users
+/// `S-1-5-11`), grant the given principals as inheritable ACEs. Pass 2 `/reset`s
+/// every child so it re-inherits from the root.
+///
+/// Never apply pass 1's inheritance-flagged grants to files (the old code's `/T`):
+/// icacls silently *drops* an `(OI)(CI)` grant on a file while `/inheritance:r`
+/// still strips its existing ACEs, leaving an **empty DACL — deny everyone,
+/// including SYSTEM**. That bricked every pre-existing file (db, secrets.toml) on
+/// reinstall, which is why the service booted fresh but died with "Access is
+/// denied (os error 5)" after an uninstall/install cycle. Pass 2 also *repairs*
+/// trees damaged that way.
+fn harden_acl_for(path: &std::path::Path, grant_specs: &[&str]) -> Result<(), Box<dyn std::error::Error>> {
+    let mut root = std::process::Command::new("icacls");
+    root.arg(path)
         .arg("/inheritance:r")
-        // Drop explicit broad ACEs a pre-existing dir may carry (`/inheritance:r` only
-        // removes *inherited* ones): Everyone, Users, Authenticated Users.
-        .args(["/remove:g", "*S-1-1-0", "*S-1-5-32-545", "*S-1-5-11"])
-        .args(["/grant:r", "*S-1-5-18:(OI)(CI)F"])
-        .args(["/grant:r", "*S-1-5-32-544:(OI)(CI)F"])
-        .arg("/T")
-        .status()?;
+        .args(["/remove:g", "*S-1-1-0", "*S-1-5-32-545", "*S-1-5-11"]);
+    for spec in grant_specs {
+        root.args(["/grant:r", spec]);
+    }
+    let status = root.status()?;
     if !status.success() {
         return Err(format!("icacls failed to harden {} ({status})", path.display()).into());
     }
+
+    // `<path>\*` matches the immediate children; `/T` recurses below them. An empty
+    // dir makes icacls fail with "file not found" — fine, nothing to reset.
+    let mut children = std::ffi::OsString::from(path);
+    children.push(r"\*");
+    let reset = std::process::Command::new("icacls")
+        .arg(children)
+        .args(["/reset", "/T", "/Q"])
+        .status()?;
+    if !reset.success() && path.read_dir().map(|mut d| d.next().is_some()).unwrap_or(false) {
+        return Err(format!(
+            "icacls failed to reset file ACLs under {} ({reset}); if files there were left \
+             inaccessible by an older vcms install, run `takeown /f {} /r /d y` once and re-run \
+             `vcms service install`",
+            path.display(),
+            path.display()
+        )
+        .into());
+    }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// `DOMAIN\user:(OI)(CI)F` for the current account — lets the tests run the real
+    /// icacls sequence on a user-owned temp dir without elevation.
+    fn current_user_grant() -> String {
+        let domain = std::env::var("USERDOMAIN").unwrap_or_default();
+        let user = std::env::var("USERNAME").expect("USERNAME is always set on Windows");
+        if domain.is_empty() {
+            format!("{user}:(OI)(CI)F")
+        } else {
+            format!("{domain}\\{user}:(OI)(CI)F")
+        }
+    }
+
+    /// Regression: the old single-pass `icacls ... /grant:r X:(OI)(CI)F /T` left every
+    /// *pre-existing file* with an empty DACL (deny-everyone) because icacls drops
+    /// inheritance-flagged grants on files. The two-pass sequence must keep such files
+    /// readable — this is the exact bug that made the Windows service fail to start
+    /// after an uninstall/reinstall cycle.
+    #[test]
+    fn harden_keeps_existing_files_readable() {
+        let dir = tempfile::tempdir().expect("temp dir");
+        let pre_existing = dir.path().join("secrets.toml");
+        std::fs::write(&pre_existing, "hmac_secret = \"x\"").expect("write");
+
+        let grant = current_user_grant();
+        harden_acl_for(dir.path(), &[grant.as_str()]).expect("harden");
+
+        let read = std::fs::read_to_string(&pre_existing).expect("pre-existing file must stay readable");
+        assert_eq!(read, "hmac_secret = \"x\"");
+
+        // Files created after hardening inherit from the root and stay readable too.
+        let created_after = dir.path().join("vcms.db");
+        std::fs::write(&created_after, "db").expect("write after harden");
+        assert_eq!(std::fs::read_to_string(&created_after).expect("readable"), "db");
+    }
+
+    /// The children `/reset` pass must also *repair* a tree bricked by the old
+    /// sequence (files left with an empty DACL by a previous vcms install).
+    #[test]
+    fn harden_repairs_files_bricked_by_old_sequence() {
+        let dir = tempfile::tempdir().expect("temp dir");
+        let file = dir.path().join("vcms.db");
+        std::fs::write(&file, "data").expect("write");
+
+        // Reproduce the old bug: inheritance-flagged grant with /T strips the file's
+        // ACEs without adding effective ones.
+        let grant = current_user_grant();
+        let status = std::process::Command::new("icacls")
+            .arg(dir.path())
+            .arg("/inheritance:r")
+            .args(["/grant:r", &grant])
+            .arg("/T")
+            .status()
+            .expect("icacls runs");
+        assert!(status.success());
+        assert!(
+            std::fs::read_to_string(&file).is_err(),
+            "old sequence should brick the file (if this fails, icacls semantics changed)"
+        );
+
+        harden_acl_for(dir.path(), &[grant.as_str()]).expect("harden");
+        assert_eq!(std::fs::read_to_string(&file).expect("repaired and readable"), "data");
+    }
 }
 
 // ----- SCM-hosted run path -----
@@ -282,13 +402,57 @@ fn run_dispatcher() -> Result<(), Box<dyn std::error::Error>> {
             std::env::set_var(crate::paths::CMS_HOME_ENV, service_home());
         }
     }
+    // A service has no console, so the default stdout logging goes nowhere. Default
+    // to file output (lands in the home's logs/ — where install() tells the user to
+    // look); an explicit LOG_OUTPUT (env or .env) still wins.
+    if std::env::var_os("LOG_OUTPUT").is_none() {
+        // SAFETY: same single-threaded process-start window as above.
+        unsafe {
+            std::env::set_var("LOG_OUTPUT", "file");
+        }
+    }
     service_dispatcher::start(SERVICE_NAME, ffi_service_main)?;
     Ok(())
 }
 
 fn service_main(_arguments: Vec<OsString>) {
     if let Err(e) = run_service_session() {
-        eprintln!("vcms service error: {e}");
+        // No console exists here — stderr goes nowhere — so failures land in a file.
+        log_service_error(&format!("vcms service error: {e}"));
+    }
+}
+
+/// Tail of `service-error.log`, pre-formatted for appending to a start-failure
+/// message. The installer runs elevated (it can read the ACL-locked home), so it
+/// surfaces the service's own boot error directly instead of making the user go
+/// find it. Empty string when the file is absent/unreadable.
+fn recent_service_errors() -> String {
+    let path = service_home().join("logs").join("service-error.log");
+    let Ok(contents) = std::fs::read_to_string(path) else {
+        return String::new();
+    };
+    let mut tail: Vec<&str> = contents.lines().rev().take(5).collect();
+    tail.reverse();
+    if tail.is_empty() {
+        return String::new();
+    }
+    format!(" Recent service errors:\n  {}\n", tail.join("\n  "))
+}
+
+/// Append a fatal service error to `<home>\logs\service-error.log`. Deliberately
+/// plain `std::fs` (no tracing): it must work even when startup failed before —
+/// or because — tracing/config initialization broke. Best-effort: a service can't
+/// report its reporter failing.
+fn log_service_error(msg: &str) {
+    use std::io::Write;
+    let dir = service_home().join("logs");
+    let _ = std::fs::create_dir_all(&dir);
+    if let Ok(mut file) = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(dir.join("service-error.log"))
+    {
+        let _ = writeln!(file, "[{}] {msg}", crate::services::backup::now_iso());
     }
 }
 
@@ -330,31 +494,57 @@ fn run_service_session() -> Result<(), Box<dyn std::error::Error>> {
     })?;
     *status_handle_cell.lock().map_err(|e| format!("{e}"))? = Some(status_handle);
 
-    let running = ServiceStatus {
+    // Report StartPending while the server actually boots (home preflight, secrets,
+    // config, DB open + migrations, port binds). Running is published only from the
+    // readiness hook below — the old code set Running up front, so install() saw a
+    // healthy service even when boot failed a moment later.
+    let start_pending = ServiceStatus {
         service_type: ServiceType::OWN_PROCESS,
-        current_state: ServiceState::Running,
-        controls_accepted: ServiceControlAccept::STOP | ServiceControlAccept::SHUTDOWN,
+        current_state: ServiceState::StartPending,
+        controls_accepted: ServiceControlAccept::empty(),
         exit_code: ServiceExitCode::Win32(0),
         checkpoint: 0,
-        wait_hint: Duration::default(),
+        wait_hint: Duration::from_secs(60),
         process_id: None,
     };
-    status_handle.set_service_status(running.clone())?;
+    status_handle.set_service_status(start_pending)?;
+
+    let ready_handle = status_handle;
+    let on_ready = move || {
+        let _ = ready_handle.set_service_status(ServiceStatus {
+            service_type: ServiceType::OWN_PROCESS,
+            current_state: ServiceState::Running,
+            controls_accepted: ServiceControlAccept::STOP | ServiceControlAccept::SHUTDOWN,
+            exit_code: ServiceExitCode::Win32(0),
+            checkpoint: 0,
+            wait_hint: Duration::default(),
+            process_id: None,
+        });
+    };
 
     // This thread is owned by the SCM dispatcher (not a tokio worker), so building
     // a fresh runtime here is safe — no nested-runtime panic.
     let runtime = tokio::runtime::Builder::new_multi_thread().enable_all().build()?;
     let shutdown = async move { notify.notified().await };
-    let result = runtime.block_on(crate::server::run(&Cli::default(), shutdown));
+    let result = runtime.block_on(crate::server::run(&Cli::default(), shutdown, on_ready));
 
+    if let Err(e) = &result {
+        log_service_error(&format!("server startup/run failed: {e}"));
+    }
     let stopped = ServiceStatus {
+        service_type: ServiceType::OWN_PROCESS,
         current_state: ServiceState::Stopped,
+        controls_accepted: ServiceControlAccept::empty(),
+        // ServiceSpecific(1) (instead of a generic Win32 code) marks "vcms itself
+        // failed" in the SCM/Event Log; details are in logs\service-error.log.
         exit_code: if result.is_ok() {
             ServiceExitCode::Win32(0)
         } else {
-            ServiceExitCode::Win32(1)
+            ServiceExitCode::ServiceSpecific(1)
         },
-        ..running
+        checkpoint: 0,
+        wait_hint: Duration::default(),
+        process_id: None,
     };
     status_handle.set_service_status(stopped)?;
     result
