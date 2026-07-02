@@ -28,6 +28,8 @@ const NITRO_THEMES: { key: Theme; label: string }[] = [
   { key: "mars", label: "Mars" },
   { key: "retro-storm", label: "Retro Storm" },
   { key: "under-the-sea", label: "Under the Sea" },
+  { key: "strawberry-lemonade", label: "Strawberry Lemonade" },
+  { key: "neon-nights", label: "Neon Nights" },
   { key: "citrus-sherbet", label: "Citrus Sherbet" },
   { key: "desert-khaki", label: "Desert Khaki" },
   { key: "sunrise", label: "Sunrise" },

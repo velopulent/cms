@@ -427,6 +427,30 @@
   );
 }
 
+/* Strawberry Lemonade */
+.theme-strawberry-lemonade {
+  --theme-surface-tint: rgb(26 0 14);
+  --theme-foreground-tint: rgb(255 246 229);
+  --theme-grad-color: linear-gradient(
+    161.03deg,
+    #af1a6c 18.79%,
+    #c26b20 49.76%,
+    #e7a525 80.72%
+  );
+}
+
+/* Neon Nights */
+.theme-neon-nights {
+  --theme-surface-tint: rgb(26 0 20);
+  --theme-foreground-tint: rgb(229 255 253);
+  --theme-grad-color: linear-gradient(
+    180deg,
+    #01a89e 0%,
+    #7d60ba 50%,
+    #b43898 100%
+  );
+}
+
 /* Citrus Sherbet (light) */
 .theme-citrus-sherbet {
   --theme-surface-tint: rgb(255 238 204);
@@ -832,6 +856,12 @@
 }
 .theme-swatch-retro-storm {
   background: linear-gradient(148.71deg, #3a7ca1, #58579a, #58579a, #3a7ca1);
+}
+.theme-swatch-strawberry-lemonade {
+  background: linear-gradient(161.03deg, #af1a6c, #c26b20, #e7a525);
+}
+.theme-swatch-neon-nights {
+  background: linear-gradient(180deg, #01a89e, #7d60ba, #b43898);
 }
 .theme-swatch-under-the-sea {
   background: linear-gradient(179.14deg, #647962, #588575, #6a8482);

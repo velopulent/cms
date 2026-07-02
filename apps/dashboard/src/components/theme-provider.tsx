@@ -15,6 +15,8 @@ export type Theme =
   | "mars"
   | "retro-storm"
   | "under-the-sea"
+  | "strawberry-lemonade"
+  | "neon-nights"
   | "citrus-sherbet"
   | "desert-khaki"
   | "sunrise"
@@ -39,6 +41,8 @@ const DARK_THEMES = [
   "mars",
   "retro-storm",
   "under-the-sea",
+  "strawberry-lemonade",
+  "neon-nights",
 ] as const;
 const LIGHT_THEMES = [
   "citrus-sherbet",
