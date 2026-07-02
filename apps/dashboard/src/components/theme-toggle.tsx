@@ -8,6 +8,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import { cn } from "@/lib/utils";
 
 const BASE_THEMES: { key: Theme; label: string }[] = [
@@ -67,7 +68,9 @@ export function ModeToggle() {
       <DropdownMenuContent align="end" className={"w-fit"}>
         {BASE_THEMES.map(renderItem)}
         <DropdownMenuSeparator />
-        {NITRO_THEMES.map(renderItem)}
+        <ScrollArea className="h-64 pr-1">
+          {NITRO_THEMES.map(renderItem)}
+        </ScrollArea>
       </DropdownMenuContent>
     </DropdownMenu>
   );
