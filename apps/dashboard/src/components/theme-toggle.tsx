@@ -1,37 +1,87 @@
-import { Moon, Sun } from "lucide-react";
-import { useTheme } from "@/components/theme-provider";
+import { Check, Palette } from "lucide-react";
+import { type Theme, useTheme } from "@/components/theme-provider";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { cn } from "@/lib/utils";
+
+const BASE_THEMES: { key: Theme; label: string }[] = [
+  { key: "light", label: "Light" },
+  { key: "dark", label: "Dark" },
+  { key: "system", label: "System" },
+];
+
+const NITRO_THEMES: { key: Theme; label: string }[] = [
+  { key: "crimson-moon", label: "Crimson Moon" },
+  { key: "sepia", label: "Sepia" },
+  { key: "midnight-blurple", label: "Midnight Blurple" },
+  { key: "blurple-twilight", label: "Blurple Twilight" },
+  { key: "forest", label: "Forest" },
+  { key: "dusk", label: "Dusk" },
+  { key: "aurora", label: "Aurora" },
+  { key: "sunset", label: "Sunset" },
+  { key: "mars", label: "Mars" },
+  { key: "retro-storm", label: "Retro Storm" },
+  { key: "under-the-sea", label: "Under the Sea" },
+  { key: "strawberry-lemonade", label: "Strawberry Lemonade" },
+  { key: "neon-nights", label: "Neon Nights" },
+  { key: "citrus-sherbet", label: "Citrus Sherbet" },
+  { key: "desert-khaki", label: "Desert Khaki" },
+  { key: "sunrise", label: "Sunrise" },
+  { key: "hanami", label: "Hanami" },
+  { key: "cotton-candy", label: "Cotton Candy" },
+  { key: "mint-apple", label: "Mint Apple" },
+];
 
 export function ModeToggle() {
-  const { setTheme } = useTheme();
+  const { theme, setTheme } = useTheme();
+
+  const renderItem = ({ key, label }: { key: Theme; label: string }) => {
+    const active = theme === key;
+    return (
+      <DropdownMenuItem
+        key={key}
+        aria-checked={active}
+        className={cn(active && "bg-accent text-accent-foreground")}
+        onClick={() => setTheme(key)}
+      >
+        <span
+          aria-hidden="true"
+          className={cn(
+            "size-3.5 shrink-0 rounded-full ring-1 ring-foreground/25 ring-inset",
+            `theme-swatch-${key}`,
+          )}
+        />
+        {label}
+        <Check
+          className={cn("ml-auto size-4", active ? "opacity-100" : "opacity-0")}
+        />
+      </DropdownMenuItem>
+    );
+  };
 
   return (
     <DropdownMenu>
       <DropdownMenuTrigger
         render={
           <Button variant="outline" size="icon">
-            <Sun className="h-[1.2rem] w-[1.2rem] scale-100 rotate-0 transition-all dark:scale-0 dark:-rotate-90" />
-            <Moon className="absolute h-[1.2rem] w-[1.2rem] scale-0 rotate-90 transition-all dark:scale-100 dark:rotate-0" />
+            <Palette className="h-[1.2rem] w-[1.2rem]" />
             <span className="sr-only">Toggle theme</span>
           </Button>
         }
       />
-      <DropdownMenuContent align="end">
-        <DropdownMenuItem onClick={() => setTheme("light")}>
-          Light
-        </DropdownMenuItem>
-        <DropdownMenuItem onClick={() => setTheme("dark")}>
-          Dark
-        </DropdownMenuItem>
-        <DropdownMenuItem onClick={() => setTheme("system")}>
-          System
-        </DropdownMenuItem>
+      <DropdownMenuContent align="end" className={"w-fit"}>
+        {BASE_THEMES.map(renderItem)}
+        <DropdownMenuSeparator />
+        <ScrollArea className="h-64 pr-1">
+          {NITRO_THEMES.map(renderItem)}
+        </ScrollArea>
       </DropdownMenuContent>
     </DropdownMenu>
   );

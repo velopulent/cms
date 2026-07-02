@@ -6,7 +6,10 @@
 
 @import "@fontsource-variable/geist";
 
-@custom-variant dark (&:is(.dark *));
+/* The custom DARK themes carry a `.theme-dark` marker, so every `dark:` utility
+   the shadcn components already ship activates under them too. `.theme-light`
+   (Citrus Sherbet) is intentionally excluded. `:root` and `.dark` are unchanged. */
+@custom-variant dark (&:is(.dark *, .theme-dark *));
 
 :root {
   --background: oklch(1 0 0);
@@ -79,6 +82,437 @@
   --sidebar-ring: oklch(0.553 0.013 58.071);
 }
 
+/* =========================================================================
+   Discord Nitro–inspired theme engine.
+
+   Each palette declares only three tints (+ a gradient and a shadow hue) at the
+   bottom of this file; every shadcn token below is DERIVED from them via OKLCH
+   ramps + color-mix(in oklab). The shadcn variables stay the public API —
+   nothing hardcodes a per-token color, so adding a theme is a ~6-line block.
+
+   `.theme-dark` = dark surface + light foreground (Crimson Moon, Sepia,
+   Midnight Blurple, Forest, Dusk). `.theme-light` = the mirror, for a light
+   surface + dark foreground (Citrus Sherbet). The ThemeProvider adds the
+   matching marker class alongside the palette name. `:root` and `.dark` (the
+   original stone light/dark themes) are never touched.
+   ========================================================================= */
+
+/* ---- shared derivation for the DARK palettes ---- */
+.theme-dark {
+  color-scheme: dark;
+
+  /* The gradient is painted ONCE, on the fixed `body::before` shell layer
+     (scrim over `--theme-grad-color`). Every surface above it is either an
+     alpha-neutral veil (guaranteed monotonic darken/lighten over the shell)
+     or a fully OPAQUE solid mixed from the surface tint (chrome, floating). */
+  --shell-scrim: rgb(0 0 0 / 0.82);
+
+  /* chrome: sidebar darkens the shell; mobile sidebar is opaque; the header
+     is transparent (shell gradient shows through, blur-on-scroll only) */
+  --surface-chrome: rgb(0 0 0 / 0.25);
+  --surface-chrome-solid: color-mix(
+    in oklab,
+    var(--theme-surface-tint) 65%,
+    oklch(0.17 0 0)
+  );
+
+  /* neutral hover / selected overlays */
+  --mod-hover: color-mix(in oklab, white 6%, transparent);
+  --mod-active: color-mix(in oklab, white 12%, transparent);
+
+  /* Component surfaces. Veils are alpha-neutral so they composite predictably
+     over the shell; the card lift comes from the near-white foreground tint,
+     which is STRICTLY lighter than any backdrop — even pure black gradient
+     stops — so cards always separate. Floating (`--popover`) is opaque:
+     overlays cover arbitrary content and must never bleed it through. */
+  --sidebar: color-mix(in oklab, oklch(0.16 0 0) 55%, transparent);
+  --background: color-mix(in oklab, oklch(0.16 0 0) 14%, transparent);
+  --card: color-mix(in oklab, var(--theme-foreground-tint) 7%, transparent);
+  --popover: color-mix(
+    in oklab,
+    var(--theme-surface-tint) 55%,
+    oklch(0.23 0 0)
+  );
+  --muted: color-mix(in oklab, oklch(0 0 0) 22%, transparent);
+  --secondary: color-mix(in oklab, white 7%, transparent);
+  --accent: color-mix(in oklab, white 11%, transparent);
+  --sidebar-accent: color-mix(in oklab, white 10%, transparent);
+  --input: color-mix(in oklab, black 25%, transparent);
+
+  /* primary: bright surface (buttons), deep-tint text */
+  --primary: color-mix(
+    in oklab,
+    var(--theme-foreground-tint) 90%,
+    var(--theme-surface-tint)
+  );
+  --primary-foreground: color-mix(
+    in oklab,
+    var(--theme-surface-tint) 88%,
+    black
+  );
+  --sidebar-primary: var(--primary);
+  --sidebar-primary-foreground: var(--primary-foreground);
+
+  /* text: crisp near-white, negligible tint */
+  --foreground: color-mix(in oklab, var(--theme-foreground-tint) 16%, white);
+  --card-foreground: var(--foreground);
+  --popover-foreground: var(--foreground);
+  --sidebar-foreground: color-mix(
+    in oklab,
+    var(--theme-foreground-tint) 22%,
+    white
+  );
+  --muted-foreground: color-mix(in oklab, var(--foreground) 72%, transparent);
+  --secondary-foreground: var(--foreground);
+  --accent-foreground: var(--foreground);
+  --sidebar-accent-foreground: var(--foreground);
+
+  /* borders / ring: neutral, low alpha */
+  --border: color-mix(in oklab, white 12%, transparent);
+  --sidebar-border: color-mix(in oklab, white 7%, transparent);
+  --ring: color-mix(in oklab, var(--theme-foreground-tint) 55%, transparent);
+  --sidebar-ring: var(--ring);
+
+  /* destructive stays a true red across every theme */
+  --destructive: oklch(0.6 0.22 25);
+  --destructive-foreground: color-mix(
+    in oklab,
+    var(--theme-foreground-tint) 40%,
+    white
+  );
+
+  /* charts: a monochrome ramp from the foreground tint down to the surface */
+  --chart-1: var(--theme-foreground-tint);
+  --chart-2: color-mix(
+    in oklab,
+    var(--theme-foreground-tint) 78%,
+    var(--theme-surface-tint)
+  );
+  --chart-3: color-mix(
+    in oklab,
+    var(--theme-foreground-tint) 58%,
+    var(--theme-surface-tint)
+  );
+  --chart-4: color-mix(
+    in oklab,
+    var(--theme-foreground-tint) 40%,
+    var(--theme-surface-tint)
+  );
+  --chart-5: color-mix(
+    in oklab,
+    var(--theme-foreground-tint) 25%,
+    var(--theme-surface-tint)
+  );
+}
+
+/* ---- shared derivation for the LIGHT palettes (light surface, dark fg) ---- */
+.theme-light {
+  color-scheme: light;
+
+  /* light mirror: WHITE shell scrim, white veils lift, black veils recess.
+     Same roles as the dark layer, so new light palettes are 3-line blocks. */
+  --shell-scrim: rgb(255 255 255 / 0.5);
+
+  --surface-chrome: rgb(255 255 255 / 0.22);
+  --surface-chrome-solid: color-mix(
+    in oklab,
+    var(--theme-surface-tint) 55%,
+    white
+  );
+
+  --mod-hover: color-mix(in oklab, black 5%, transparent);
+  --mod-active: color-mix(in oklab, black 9%, transparent);
+
+  /* Component surfaces: `--card` (white 60%) is strictly lighter than any
+     light-theme backdrop, so lift is guaranteed; `--popover` is an opaque
+     tinted off-white (nothing bleeds through floating layers). */
+  --sidebar: color-mix(in oklab, white 55%, transparent);
+  --background: color-mix(in oklab, white 16%, transparent);
+  --card: color-mix(in oklab, white 60%, transparent);
+  --popover: color-mix(in oklab, var(--theme-surface-tint) 35%, white);
+  --muted: color-mix(in oklab, black 6%, transparent);
+  --secondary: color-mix(in oklab, black 5%, transparent);
+  --accent: color-mix(in oklab, black 8%, transparent);
+  --sidebar-accent: color-mix(in oklab, black 8%, transparent);
+  --input: color-mix(in oklab, white 45%, transparent);
+
+  /* primary: dark warm surface (buttons), light text */
+  --primary: color-mix(
+    in oklab,
+    var(--theme-foreground-tint) 90%,
+    var(--theme-surface-tint)
+  );
+  --primary-foreground: color-mix(
+    in oklab,
+    var(--theme-surface-tint) 92%,
+    white
+  );
+  --sidebar-primary: var(--primary);
+  --sidebar-primary-foreground: var(--primary-foreground);
+
+  /* text: near-black with a whisper of hue */
+  --foreground: color-mix(in oklab, var(--theme-foreground-tint) 88%, black);
+  --card-foreground: var(--foreground);
+  --popover-foreground: var(--foreground);
+  --sidebar-foreground: color-mix(
+    in oklab,
+    var(--theme-foreground-tint) 82%,
+    black
+  );
+  --muted-foreground: color-mix(in oklab, var(--foreground) 62%, transparent);
+  --secondary-foreground: var(--foreground);
+  --accent-foreground: var(--foreground);
+  --sidebar-accent-foreground: var(--foreground);
+
+  --border: color-mix(in oklab, black 15%, transparent);
+  --sidebar-border: color-mix(in oklab, black 9%, transparent);
+  --ring: color-mix(in oklab, var(--theme-foreground-tint) 45%, transparent);
+  --sidebar-ring: var(--ring);
+
+  --destructive: oklch(0.58 0.22 27);
+  --destructive-foreground: oklch(0.985 0 0);
+
+  --chart-1: var(--theme-foreground-tint);
+  --chart-2: color-mix(
+    in oklab,
+    var(--theme-foreground-tint) 78%,
+    var(--theme-surface-tint)
+  );
+  --chart-3: color-mix(
+    in oklab,
+    var(--theme-foreground-tint) 58%,
+    var(--theme-surface-tint)
+  );
+  --chart-4: color-mix(
+    in oklab,
+    var(--theme-foreground-tint) 40%,
+    var(--theme-surface-tint)
+  );
+  --chart-5: color-mix(
+    in oklab,
+    var(--theme-foreground-tint) 25%,
+    var(--theme-surface-tint)
+  );
+}
+
+/* ---- layered shadows (shared): a faint inset highlight + soft NEUTRAL ambient.
+       Elevation now comes mostly from the scrim lightness, so shadows stay subtle
+       and neutral — no colored glow (that was a source of muddiness). Applied per
+       data-slot below (Tailwind v4 inlines shadow-* utilities at build time). ---- */
+.theme-dark,
+.theme-light {
+  --cm-shadow-sm:
+    inset 0 1px 0 0 hsl(0 0% 100% / 0.04), 0 1px 2px 0 hsl(0 0% 0% / 0.35);
+  --cm-shadow-lg:
+    inset 0 1px 0 0 hsl(0 0% 100% / 0.05), 0 6px 16px -4px hsl(0 0% 0% / 0.4),
+    0 12px 32px -8px hsl(0 0% 0% / 0.3);
+  --cm-shadow-xl:
+    inset 0 1px 0 0 hsl(0 0% 100% / 0.06), 0 12px 32px -6px hsl(0 0% 0% / 0.5),
+    0 24px 56px -12px hsl(0 0% 0% / 0.4);
+}
+
+/* =========================================================================
+   Palettes — each declares only its three tints + the raw color gradient
+   (`--theme-grad-color`, no scrim). The shared blocks above paint the shell
+   scrim over it and derive every token from these.
+   ========================================================================= */
+
+/* Crimson Moon */
+.theme-crimson-moon {
+  --theme-surface-tint: rgb(26 0 0);
+  --theme-foreground-tint: rgb(255 229 229);
+  --theme-grad-color: linear-gradient(64.92deg, #950909 16.17%, #000000 72%);
+}
+
+/* Sepia */
+.theme-sepia {
+  --theme-surface-tint: rgb(26 15 0);
+  --theme-foreground-tint: rgb(255 243 229);
+  --theme-grad-color: linear-gradient(69.98deg, #857664 14.14%, #5b4421 60.35%);
+}
+
+/* Midnight Blurple */
+.theme-midnight-blurple {
+  --theme-surface-tint: rgb(8 0 26);
+  --theme-foreground-tint: rgb(162 153 255);
+  --theme-grad-color: linear-gradient(48.17deg, #5348ca 11.21%, #140730 61.92%);
+}
+
+/* Blurple Twilight */
+.theme-blurple-twilight {
+  --theme-surface-tint: rgb(2 0 26);
+  --theme-foreground-tint: rgb(153 163 255);
+  --theme-grad-color: linear-gradient(47.61deg, #2c3fe7 11.18%, #261d83 64.54%);
+}
+
+/* Forest */
+.theme-forest {
+  --theme-surface-tint: rgb(0 26 2);
+  --theme-foreground-tint: rgb(255 248 229);
+  --theme-grad-color: linear-gradient(
+    162.27deg,
+    #142215 11.2%,
+    #2d4d39 29.93%,
+    #454c32 48.64%,
+    #5a7c58 67.85%,
+    #a98e4b 83.54%
+  );
+}
+
+/* Dusk */
+.theme-dusk {
+  --theme-surface-tint: rgb(22 0 26);
+  --theme-foreground-tint: rgb(153 182 255);
+  --theme-grad-color: linear-gradient(180deg, #665069 12.84%, #91a3d1 85.99%);
+}
+
+/* Aurora */
+.theme-aurora {
+  --theme-surface-tint: rgb(0 9 26);
+  --theme-foreground-tint: rgb(153 171 255);
+  --theme-grad-color: linear-gradient(
+    239.16deg,
+    #062053 10.39%,
+    #191fbb 26.87%,
+    #13929a 48.31%,
+    #218573 64.98%,
+    #051a81 92.5%
+  );
+}
+
+/* Sunset */
+.theme-sunset {
+  --theme-surface-tint: rgb(8 0 26);
+  --theme-foreground-tint: rgb(255 239 229);
+  --theme-grad-color: linear-gradient(
+    141.68deg,
+    #48288c 27.57%,
+    #db7f4b 71.25%
+  );
+}
+
+/* Mars */
+.theme-mars {
+  --theme-surface-tint: rgb(26 6 0);
+  --theme-foreground-tint: rgb(255 236 229);
+  --theme-grad-color: linear-gradient(
+    170.82deg,
+    #895240 14.61%,
+    #8f4343 74.62%
+  );
+}
+
+/* Retro Storm */
+.theme-retro-storm {
+  --theme-surface-tint: rgb(0 16 26);
+  --theme-foreground-tint: rgb(153 218 255);
+  --theme-grad-color: linear-gradient(
+    148.71deg,
+    #3a7ca1 5.64%,
+    #58579a 26.38%,
+    #58579a 49.92%,
+    #3a7ca1 73.12%
+  );
+}
+
+/* Under the Sea */
+.theme-under-the-sea {
+  --theme-surface-tint: rgb(2 26 0);
+  --theme-foreground-tint: rgb(229 255 253);
+  --theme-grad-color: linear-gradient(
+    179.14deg,
+    #647962 1.91%,
+    #588575 48.99%,
+    #6a8482 96.35%
+  );
+}
+
+/* Strawberry Lemonade */
+.theme-strawberry-lemonade {
+  --theme-surface-tint: rgb(26 0 14);
+  --theme-foreground-tint: rgb(255 246 229);
+  --theme-grad-color: linear-gradient(
+    161.03deg,
+    #af1a6c 18.79%,
+    #c26b20 49.76%,
+    #e7a525 80.72%
+  );
+}
+
+/* Neon Nights */
+.theme-neon-nights {
+  --theme-surface-tint: rgb(26 0 20);
+  --theme-foreground-tint: rgb(229 255 253);
+  --theme-grad-color: linear-gradient(
+    180deg,
+    #01a89e 0%,
+    #7d60ba 50%,
+    #b43898 100%
+  );
+}
+
+/* Citrus Sherbet (light) */
+.theme-citrus-sherbet {
+  --theme-surface-tint: rgb(255 238 204);
+  --theme-foreground-tint: rgb(77 23 0);
+  --theme-grad-color: linear-gradient(180deg, #f3b336 31.1%, #ee8558 67.09%);
+}
+
+/* Desert Khaki (light) */
+.theme-desert-khaki {
+  --theme-surface-tint: rgb(255 228 204);
+  --theme-foreground-tint: rgb(77 64 0);
+  --theme-grad-color: linear-gradient(
+    38.99deg,
+    #e7dbd0 12.92%,
+    #dfd0b2 32.92%,
+    #e0d6a3 52.11%
+  );
+}
+
+/* Sunrise (light) */
+.theme-sunrise {
+  --theme-surface-tint: rgb(255 247 204);
+  --theme-foreground-tint: rgb(77 0 42);
+  --theme-grad-color: linear-gradient(
+    154.19deg,
+    #9f4175 8.62%,
+    #c49064 48.07%,
+    #a6953d 76.04%
+  );
+}
+
+/* Hanami (light) */
+.theme-hanami {
+  --theme-surface-tint: rgb(208 255 204);
+  --theme-foreground-tint: rgb(77 0 10);
+  --theme-grad-color: linear-gradient(
+    38.08deg,
+    #efaab3 3.56%,
+    #efd696 35.49%,
+    #a6daa2 68.78%
+  );
+}
+
+/* Cotton Candy (light) */
+.theme-cotton-candy {
+  --theme-surface-tint: rgb(204 215 255);
+  --theme-foreground-tint: rgb(77 0 14);
+  --theme-grad-color: linear-gradient(180.14deg, #f4abb8 8.5%, #b1c2fc 94.28%);
+}
+
+/* Mint Apple (light) */
+.theme-mint-apple {
+  --theme-surface-tint: rgb(232 255 204);
+  --theme-foreground-tint: rgb(0 77 58);
+  --theme-grad-color: linear-gradient(
+    180deg,
+    #56b69f 6.15%,
+    #63bc61 48.7%,
+    #9eca67 93.07%
+  );
+}
+
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
@@ -133,4 +567,334 @@
   html {
     @apply font-sans;
   }
+}
+
+/* =========================================================================
+   Custom themes — scoped atmosphere, motion, and per-component polish.
+   Keyed off the .theme-dark / .theme-light markers so every palette shares
+   them; unlayered so they win over `@layer base`. `:root`/`.dark` (the
+   original stone themes) are never matched.
+   ========================================================================= */
+
+/* The shell: the theme gradient painted exactly once, on a fixed pseudo behind
+   everything. No `background-attachment: fixed` (broken on iOS Safari, breaks
+   under transforms) — surfaces above are alpha veils, so the "one continuous
+   gradient" look survives by construction. */
+:is(.theme-dark, .theme-light) body {
+  background: transparent;
+}
+:is(.theme-dark, .theme-light) body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background:
+    linear-gradient(var(--shell-scrim), var(--shell-scrim)),
+    var(--theme-grad-color);
+}
+:is(.theme-dark, .theme-light) [data-slot="sidebar-inner"] {
+  background: var(--surface-chrome); /* left nav — darkens the shell */
+}
+:is(.theme-dark, .theme-light) [data-slot="card"] {
+  /* lifted by the near-white tint veil — strictly lighter than any backdrop —
+     plus a hairline ring as the second separation channel */
+  background: var(--card);
+  box-shadow:
+    var(--cm-shadow-sm),
+    inset 0 0 0 1px var(--border);
+}
+
+/* Header: fully transparent — the shell gradient shows straight through. The
+   blur only becomes visible when content scrolls underneath (keeps it legible). */
+:is(.theme-dark, .theme-light) header {
+  background: transparent;
+  backdrop-filter: blur(12px) saturate(1.2);
+  -webkit-backdrop-filter: blur(12px) saturate(1.2);
+}
+
+/* Floating overlays: fully OPAQUE tinted surface (`--popover`), no blur —
+   they cover arbitrary content, so nothing may bleed through. */
+:is(.theme-dark, .theme-light)
+  :is(
+    [data-slot="popover-content"],
+    [data-slot="dropdown-menu-content"],
+    [data-slot="select-content"],
+    [data-slot="dialog-content"],
+    [data-slot="alert-dialog-content"],
+    [data-slot="sheet-content"],
+    [data-slot="drawer-content"],
+    [data-slot="tooltip-content"]
+  ) {
+  background: var(--popover);
+}
+
+/* Tooltip ships inverted colors (`bg-foreground text-background`); with its
+   background overridden to `--popover` above, its text and its arrow (the
+   little `bg-foreground fill-foreground` diamond) must follow suit. */
+:is(.theme-dark, .theme-light) [data-slot="tooltip-content"] {
+  color: var(--popover-foreground);
+}
+:is(.theme-dark, .theme-light) [data-slot="tooltip-content"] .bg-foreground {
+  background: var(--popover);
+  fill: var(--popover);
+}
+
+/* Mobile sidebar sheet (its popup's data-slot is overridden to "sidebar"):
+   opaque chrome, never a translucent veil floating over page content. */
+:is(.theme-dark, .theme-light) [data-slot="sidebar"][data-mobile="true"] {
+  background: var(--surface-chrome-solid);
+  box-shadow: var(--cm-shadow-xl);
+}
+
+/* Tabs: the default (pill) active tab uses `bg-input/30`, which is invisible over
+   a translucent input — give it a clear neutral lift instead (skip line variant). */
+:is(.theme-dark, .theme-light)
+  [data-slot="tabs-list"]:not([data-variant="line"])
+  [data-slot="tabs-trigger"][data-active] {
+  background: var(--mod-active);
+}
+
+/* Text selection tinted from the foreground tint. */
+:is(.theme-dark, .theme-light) ::selection {
+  background: color-mix(
+    in oklab,
+    var(--theme-foreground-tint) 22%,
+    transparent
+  );
+  color: var(--foreground);
+}
+
+/* Thin, rounded, low-contrast scrollbars. */
+:is(.theme-dark, .theme-light) * {
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(
+      in oklab,
+      var(--theme-foreground-tint) 14%,
+      transparent
+    )
+    transparent;
+}
+:is(.theme-dark, .theme-light) *::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+:is(.theme-dark, .theme-light) *::-webkit-scrollbar-track {
+  background: transparent;
+}
+:is(.theme-dark, .theme-light) *::-webkit-scrollbar-thumb {
+  background: color-mix(
+    in oklab,
+    var(--theme-foreground-tint) 12%,
+    transparent
+  );
+  border-radius: 9999px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+:is(.theme-dark, .theme-light) *::-webkit-scrollbar-thumb:hover {
+  background: color-mix(
+    in oklab,
+    var(--theme-foreground-tint) 22%,
+    transparent
+  );
+  background-clip: padding-box;
+}
+
+/* ScrollArea (base-ui) draws its own themed thumb; the global `*` scrollbar
+   rules above would re-force the NATIVE scrollbar onto its viewport, giving
+   double bars (and the reserved 10px width causes phantom horizontal
+   overflow). Hide native scrollbars there entirely. */
+:is(.theme-dark, .theme-light) [data-slot="scroll-area-viewport"] {
+  scrollbar-width: none;
+}
+:is(.theme-dark, .theme-light)
+  [data-slot="scroll-area-viewport"]::-webkit-scrollbar {
+  display: none;
+}
+
+/* Premium hover timing (150–180ms) on the surfaces users actually touch. */
+:is(.theme-dark, .theme-light)
+  :is(
+    a,
+    [data-slot="button"],
+    [data-slot="table-row"],
+    [data-slot="sidebar-menu-button"],
+    [data-slot="input"],
+    [data-slot="textarea"],
+    [data-slot="card"]
+  ) {
+  transition-property:
+    color, background-color, border-color, box-shadow, transform, opacity;
+  transition-duration: 165ms;
+  transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+}
+@media (prefers-reduced-motion: reduce) {
+  /* Mirror the selector above so specificity ties and this later rule wins —
+     neutralizes the added motion without needing !important. */
+  :is(.theme-dark, .theme-light)
+    :is(
+      a,
+      [data-slot="button"],
+      [data-slot="table-row"],
+      [data-slot="sidebar-menu-button"],
+      [data-slot="input"],
+      [data-slot="textarea"],
+      [data-slot="card"]
+    ) {
+    transition-duration: 0.01ms;
+  }
+}
+
+/* Layered shadows on the shadow-bearing slots (lg menus, xl modals; the card
+   shadow lives in the card rule above, merged with its hairline ring). */
+:is(.theme-dark, .theme-light)
+  :is(
+    [data-slot="popover-content"],
+    [data-slot="dropdown-menu-content"],
+    [data-slot="select-content"],
+    [data-slot="tooltip-content"]
+  ) {
+  box-shadow: var(--cm-shadow-lg);
+}
+:is(.theme-dark, .theme-light)
+  :is(
+    [data-slot="dialog-content"],
+    [data-slot="alert-dialog-content"],
+    [data-slot="sheet-content"],
+    [data-slot="drawer-content"]
+  ) {
+  box-shadow: var(--cm-shadow-xl);
+}
+
+/* Primary button: subtle vertical gradient, premium shadow, hover lift.
+   `.bg-primary` targets shadcn's default button variant without touching the
+   component. */
+:is(.theme-dark, .theme-light) [data-slot="button"].bg-primary {
+  background-image: linear-gradient(
+    180deg,
+    color-mix(in oklab, var(--primary) 94%, white) 0%,
+    var(--primary) 55%,
+    color-mix(in oklab, var(--primary) 92%, black) 100%
+  );
+  box-shadow: var(--cm-shadow-sm);
+}
+:is(.theme-dark, .theme-light) [data-slot="button"].bg-primary:hover {
+  transform: translateY(-1px);
+  box-shadow: var(--cm-shadow-lg);
+}
+:is(.theme-dark, .theme-light) [data-slot="button"].bg-primary:active {
+  transform: translateY(0);
+}
+
+/* Tables: neutral hover + selected rows */
+:is(.theme-dark, .theme-light) [data-slot="table-row"]:hover {
+  background: var(--mod-hover);
+}
+:is(.theme-dark, .theme-light) [data-slot="table-row"][data-state="selected"] {
+  background: var(--mod-active);
+}
+
+/* Inputs: recessed translucent fill, themed focus glow. */
+:is(.theme-dark, .theme-light)
+  :is([data-slot="input"], [data-slot="textarea"]) {
+  background: var(--input);
+}
+:is(.theme-dark, .theme-light)
+  :is([data-slot="input"], [data-slot="textarea"]):focus-visible {
+  box-shadow:
+    0 0 0 3px color-mix(in oklab, var(--ring) 28%, transparent),
+    0 0 18px -4px color-mix(in oklab, var(--ring) 40%, transparent);
+}
+
+/* Sidebar menu: gentle neutral hover, no loud background. */
+:is(.theme-dark, .theme-light) [data-slot="sidebar-menu-button"]:hover {
+  background: var(--mod-hover);
+}
+
+/* =========================================================================
+   Theme swatches — the little gradient discs shown next to each theme name in
+   the picker. These are the color layer only (no dim wash) so they stay vivid,
+   and they are unscoped/global so every swatch renders regardless of the
+   active theme. Geometry (size / shape / ring) comes from Tailwind on the span.
+   ========================================================================= */
+.theme-swatch-light {
+  background: #ffffff;
+}
+.theme-swatch-dark {
+  background: #1c1917;
+}
+.theme-swatch-system {
+  background: linear-gradient(135deg, #fafafa 0 50%, #1c1917 50% 100%);
+}
+.theme-swatch-crimson-moon {
+  background: linear-gradient(64.92deg, #950909, #000000);
+}
+.theme-swatch-sepia {
+  background: linear-gradient(69.98deg, #857664, #5b4421);
+}
+.theme-swatch-midnight-blurple {
+  background: linear-gradient(48.17deg, #5348ca, #140730);
+}
+.theme-swatch-blurple-twilight {
+  background: linear-gradient(47.61deg, #2c3fe7, #261d83);
+}
+.theme-swatch-forest {
+  background: linear-gradient(
+    162.27deg,
+    #142215,
+    #2d4d39,
+    #454c32,
+    #5a7c58,
+    #a98e4b
+  );
+}
+.theme-swatch-dusk {
+  background: linear-gradient(180deg, #665069, #91a3d1);
+}
+.theme-swatch-aurora {
+  background: linear-gradient(
+    239.16deg,
+    #062053,
+    #191fbb,
+    #13929a,
+    #218573,
+    #051a81
+  );
+}
+.theme-swatch-citrus-sherbet {
+  background: linear-gradient(180deg, #f3b336, #ee8558);
+}
+.theme-swatch-sunset {
+  background: linear-gradient(141.68deg, #48288c, #db7f4b);
+}
+.theme-swatch-mars {
+  background: linear-gradient(170.82deg, #895240, #8f4343);
+}
+.theme-swatch-retro-storm {
+  background: linear-gradient(148.71deg, #3a7ca1, #58579a, #58579a, #3a7ca1);
+}
+.theme-swatch-strawberry-lemonade {
+  background: linear-gradient(161.03deg, #af1a6c, #c26b20, #e7a525);
+}
+.theme-swatch-neon-nights {
+  background: linear-gradient(180deg, #01a89e, #7d60ba, #b43898);
+}
+.theme-swatch-under-the-sea {
+  background: linear-gradient(179.14deg, #647962, #588575, #6a8482);
+}
+.theme-swatch-desert-khaki {
+  background: linear-gradient(38.99deg, #e7dbd0, #dfd0b2, #e0d6a3);
+}
+.theme-swatch-sunrise {
+  background: linear-gradient(154.19deg, #9f4175, #c49064, #a6953d);
+}
+.theme-swatch-hanami {
+  background: linear-gradient(38.08deg, #efaab3, #efd696, #a6daa2);
+}
+.theme-swatch-cotton-candy {
+  background: linear-gradient(180.14deg, #f4abb8, #b1c2fc);
+}
+.theme-swatch-mint-apple {
+  background: linear-gradient(180deg, #56b69f, #63bc61, #9eca67);
 }

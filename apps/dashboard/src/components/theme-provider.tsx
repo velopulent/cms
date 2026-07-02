@@ -1,6 +1,58 @@
 import { createContext, useContext, useEffect, useState } from "react";
 
-type Theme = "dark" | "light" | "system";
+export type Theme =
+  | "dark"
+  | "light"
+  | "system"
+  | "crimson-moon"
+  | "sepia"
+  | "midnight-blurple"
+  | "blurple-twilight"
+  | "forest"
+  | "dusk"
+  | "aurora"
+  | "sunset"
+  | "mars"
+  | "retro-storm"
+  | "under-the-sea"
+  | "strawberry-lemonade"
+  | "neon-nights"
+  | "citrus-sherbet"
+  | "desert-khaki"
+  | "sunrise"
+  | "hanami"
+  | "cotton-candy"
+  | "mint-apple";
+
+// Custom palettes are applied to <html> as a `theme-<key>` class (e.g.
+// `theme-sepia`) — the `theme-` prefix keeps them from colliding with Tailwind
+// utility classes of the same name (notably `sepia`, `grayscale`, `invert`).
+// Each derives its tokens from the shared `.theme-dark` / `.theme-light` marker,
+// added alongside the palette class in the effect below.
+const DARK_THEMES = [
+  "crimson-moon",
+  "sepia",
+  "midnight-blurple",
+  "blurple-twilight",
+  "forest",
+  "dusk",
+  "aurora",
+  "sunset",
+  "mars",
+  "retro-storm",
+  "under-the-sea",
+  "strawberry-lemonade",
+  "neon-nights",
+] as const;
+const LIGHT_THEMES = [
+  "citrus-sherbet",
+  "desert-khaki",
+  "sunrise",
+  "hanami",
+  "cotton-candy",
+  "mint-apple",
+] as const;
+const CUSTOM_THEMES: readonly string[] = [...DARK_THEMES, ...LIGHT_THEMES];
 
 type ThemeProviderProps = {
   children: React.ReactNode;
@@ -33,7 +85,13 @@ export function ThemeProvider({
   useEffect(() => {
     const root = window.document.documentElement;
 
-    root.classList.remove("light", "dark");
+    root.classList.remove(
+      "light",
+      "dark",
+      "theme-dark",
+      "theme-light",
+      ...CUSTOM_THEMES.map((t) => `theme-${t}`),
+    );
 
     if (theme === "system") {
       const systemTheme = window.matchMedia("(prefers-color-scheme: dark)")
@@ -42,6 +100,16 @@ export function ThemeProvider({
         : "light";
 
       root.classList.add(systemTheme);
+      return;
+    }
+
+    if ((DARK_THEMES as readonly string[]).includes(theme)) {
+      root.classList.add(`theme-${theme}`, "theme-dark");
+      return;
+    }
+
+    if ((LIGHT_THEMES as readonly string[]).includes(theme)) {
+      root.classList.add(`theme-${theme}`, "theme-light");
       return;
     }
 
