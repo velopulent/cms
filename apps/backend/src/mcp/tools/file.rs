@@ -113,6 +113,7 @@ fn default_content_type() -> String {
 
 pub async fn create_upload_url(
     authorization: &Arc<AuthorizationService>,
+    services: &Arc<Services>,
     config: &Arc<Config>,
     actor: &Actor,
     public_base_url: Option<String>,
@@ -126,11 +127,28 @@ pub async fn create_upload_url(
         return Ok(tool_error(e));
     }
 
-    let (token, upload_path) = SignedUploadToken::generate(
+    // Fail fast at mint time instead of returning a URL doomed to a 400 PUT.
+    if !crate::utils::content_types::is_allowed(&params.0.content_type) {
+        return Ok(tool_error(crate::services::error::ServiceError::BadRequest(format!(
+            "Content type '{}' is not allowed. Accepted types: images, videos, audio, documents, archives",
+            params.0.content_type
+        ))));
+    }
+
+    // Mint against the site's actual storage provider, not a hardcoded default.
+    let storage_provider = services
+        .file
+        .get_storage_provider(&site_id)
+        .await
+        .unwrap_or_else(|_| "filesystem".into());
+
+    let (token, upload_path) = SignedUploadToken::generate_with_storage_provider(
         &site_id,
         &params.0.filename,
         &params.0.content_type,
+        &storage_provider,
         &config.hmac_secret,
+        config.upload_token_expiry_secs,
     );
 
     let fallback_base_url = format!("http://{}", config.bind_address);
