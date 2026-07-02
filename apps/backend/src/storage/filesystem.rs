@@ -81,6 +81,14 @@ impl StorageProvider for FileSystemStorage {
     fn url(&self, key: &str, file_id: &str) -> String {
         self.url(key, file_id)
     }
+
+    async fn start_multipart(
+        &self,
+        key: &str,
+    ) -> Result<Box<dyn object_store::MultipartUpload>, Box<dyn std::error::Error + Send + Sync>> {
+        let path = ObjectPath::from(key);
+        Ok(self.store.put_multipart(&path).await?)
+    }
 }
 
 #[cfg(test)]
