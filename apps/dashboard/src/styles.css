@@ -107,7 +107,8 @@
      or a fully OPAQUE solid mixed from the surface tint (chrome, floating). */
   --shell-scrim: rgb(0 0 0 / 0.82);
 
-  /* chrome: sidebar darkens the shell; header + mobile sidebar are opaque */
+  /* chrome: sidebar darkens the shell; mobile sidebar is opaque; the header
+     is transparent (shell gradient shows through, blur-on-scroll only) */
   --surface-chrome: rgb(0 0 0 / 0.25);
   --surface-chrome-solid: color-mix(
     in oklab,
@@ -478,9 +479,12 @@
     inset 0 0 0 1px var(--border);
 }
 
-/* Header: opaque chrome, same layer family as the sidebar. */
+/* Header: fully transparent — the shell gradient shows straight through. The
+   blur only becomes visible when content scrolls underneath (keeps it legible). */
 :is(.theme-dark, .theme-light) header {
-  background: var(--surface-chrome-solid);
+  background: transparent;
+  backdrop-filter: blur(12px) saturate(1.2);
+  -webkit-backdrop-filter: blur(12px) saturate(1.2);
 }
 
 /* Floating overlays: fully OPAQUE tinted surface (`--popover`), no blur —
@@ -497,6 +501,12 @@
     [data-slot="tooltip-content"]
   ) {
   background: var(--popover);
+}
+
+/* Tooltip ships inverted colors (`bg-foreground text-background`); with its
+   background overridden to `--popover` above, its text must follow suit. */
+:is(.theme-dark, .theme-light) [data-slot="tooltip-content"] {
+  color: var(--popover-foreground);
 }
 
 /* Mobile sidebar sheet (its popup's data-slot is overridden to "sidebar"):
