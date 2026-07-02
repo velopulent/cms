@@ -238,7 +238,9 @@ impl CmsServer {
         file::get_file(&self.authorizer, &self.services, &actor, params).await
     }
 
-    #[tool(description = "Create a signed upload URL for uploading a file")]
+    #[tool(
+        description = "Create a single-use signed upload URL. To upload: send an HTTP PUT to upload_url with the raw file bytes as the request body and a Content-Type header equal to content_type. The URL expires at expires_at and can be used exactly once. The PUT response body is the created file record (JSON, includes the file id and url)."
+    )]
     async fn create_upload_url(
         &self,
         ctx: RequestContext<RoleServer>,
@@ -246,7 +248,15 @@ impl CmsServer {
     ) -> Result<CallToolResult, McpError> {
         let actor = self.resolve_actor(&ctx)?;
         let public_base_url = self.public_base_url(&ctx);
-        file::create_upload_url(&self.authorizer, &self.config, &actor, public_base_url, params).await
+        file::create_upload_url(
+            &self.authorizer,
+            &self.services,
+            &self.config,
+            &actor,
+            public_base_url,
+            params,
+        )
+        .await
     }
 
     #[tool(description = "Delete a file (soft delete)")]
