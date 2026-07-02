@@ -106,6 +106,8 @@ impl ServiceError {
                 FileError::StorageError(_) => StatusCode::INTERNAL_SERVER_ERROR,
                 FileError::NoStorageConfigured => StatusCode::INTERNAL_SERVER_ERROR,
                 FileError::DatabaseError(_) => StatusCode::INTERNAL_SERVER_ERROR,
+                FileError::AlreadyExists => StatusCode::CONFLICT,
+                FileError::ReadError(_) => StatusCode::BAD_REQUEST,
             },
             ServiceError::Singleton(e) => match e {
                 SingletonError::NotFound | SingletonError::NotASingleton => StatusCode::NOT_FOUND,
