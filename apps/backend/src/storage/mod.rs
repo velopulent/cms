@@ -78,11 +78,51 @@ pub trait StorageProvider: Send + Sync {
     async fn get(&self, key: &str) -> Result<Bytes, Box<dyn std::error::Error + Send + Sync>>;
     async fn delete(&self, key: &str) -> Result<(), Box<dyn std::error::Error + Send + Sync>>;
     fn url(&self, key: &str, file_id: &str) -> String;
+    /// Begin a streaming (multipart) upload to `key`. Drive it with
+    /// [`object_store::WriteMultipart`]; `abort()` cleans up partial state.
+    async fn start_multipart(
+        &self,
+        key: &str,
+    ) -> Result<Box<dyn object_store::MultipartUpload>, Box<dyn std::error::Error + Send + Sync>>;
 }
 
 #[derive(Default)]
 pub struct MockStorage {
-    pub files: std::sync::Mutex<std::collections::HashMap<String, Bytes>>,
+    pub files: Arc<std::sync::Mutex<std::collections::HashMap<String, Bytes>>>,
+}
+
+/// In-memory [`object_store::MultipartUpload`] so `MockStorage` supports the
+/// streaming path: parts accumulate in a buffer, `complete` publishes to the map.
+#[derive(Debug)]
+struct MockMultipartUpload {
+    files: Arc<std::sync::Mutex<std::collections::HashMap<String, Bytes>>>,
+    key: String,
+    buf: Vec<u8>,
+}
+
+#[async_trait]
+impl object_store::MultipartUpload for MockMultipartUpload {
+    fn put_part(&mut self, data: object_store::PutPayload) -> object_store::UploadPart {
+        for chunk in data.iter() {
+            self.buf.extend_from_slice(chunk);
+        }
+        Box::pin(futures_util::future::ready(Ok(())))
+    }
+
+    async fn complete(&mut self) -> object_store::Result<object_store::PutResult> {
+        let data = Bytes::from(std::mem::take(&mut self.buf));
+        self.files.lock().unwrap().insert(self.key.clone(), data);
+        Ok(object_store::PutResult {
+            e_tag: None,
+            version: None,
+            extensions: Default::default(),
+        })
+    }
+
+    async fn abort(&mut self) -> object_store::Result<()> {
+        self.buf.clear();
+        Ok(())
+    }
 }
 
 #[async_trait]
@@ -108,6 +148,17 @@ impl StorageProvider for MockStorage {
 
     fn url(&self, _key: &str, file_id: &str) -> String {
         format!("/mock/{}", file_id)
+    }
+
+    async fn start_multipart(
+        &self,
+        key: &str,
+    ) -> Result<Box<dyn object_store::MultipartUpload>, Box<dyn std::error::Error + Send + Sync>> {
+        Ok(Box::new(MockMultipartUpload {
+            files: self.files.clone(),
+            key: key.to_string(),
+            buf: Vec::new(),
+        }))
     }
 }
 
