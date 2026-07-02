@@ -87,8 +87,28 @@ fn start() -> Result<(), Box<dyn std::error::Error>> {
 fn stop() -> Result<(), Box<dyn std::error::Error>> {
     require_root("stop")?;
     run(Command::new("launchctl").args(["kill", "SIGTERM", &target()]))?;
-    println!("Service '{LAUNCHD_LABEL}' stop signal sent.");
-    Ok(())
+    // launchctl kill only sends the signal; poll briefly so the user learns
+    // whether the process actually exited.
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+    loop {
+        let running = Command::new("launchctl")
+            .args(["print", &target()])
+            .output()
+            .ok()
+            .filter(|out| out.status.success())
+            .is_some_and(|out| String::from_utf8_lossy(&out.stdout).contains("pid ="));
+        if !running {
+            println!("Service '{LAUNCHD_LABEL}' stopped.");
+            return Ok(());
+        }
+        if std::time::Instant::now() >= deadline {
+            println!(
+                "Service '{LAUNCHD_LABEL}' stop signal sent; still running after 10s — check `vcms service status`."
+            );
+            return Ok(());
+        }
+        std::thread::sleep(std::time::Duration::from_millis(500));
+    }
 }
 
 fn status() -> Result<(), Box<dyn std::error::Error>> {
