@@ -334,16 +334,22 @@ impl EntryRepository for MysqlEntryRepository {
             .execute(&mut *tx)
             .await?;
 
-        for file_id in &file_ids {
-            sqlx::query(
-                "INSERT IGNORE INTO entry_file_references (entry_id, file_id, site_id) SELECT ?, id, ? FROM files WHERE id = ? AND site_id = ?",
-            )
-            .bind(entry_id)
-            .bind(site_id)
-            .bind(file_id)
-            .bind(site_id)
-            .execute(&mut *tx)
-            .await?;
+        if !file_ids.is_empty() {
+            // One multi-row statement instead of a query per file id; the
+            // SELECT keeps the "file must exist in this site" filter.
+            let placeholders = vec!["?"; file_ids.len()].join(", ");
+            let sql = format!(
+                "INSERT IGNORE INTO entry_file_references (entry_id, file_id, site_id)
+                 SELECT ?, id, ? FROM files WHERE site_id = ? AND id IN ({placeholders})",
+            );
+            let mut query = sqlx::query(sqlx::AssertSqlSafe(sql.as_str()))
+                .bind(entry_id)
+                .bind(site_id)
+                .bind(site_id);
+            for file_id in &file_ids {
+                query = query.bind(file_id);
+            }
+            query.execute(&mut *tx).await?;
         }
 
         tx.commit().await?;
