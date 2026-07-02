@@ -679,7 +679,7 @@ pub async fn inspect_instance_backup(
         Ok(b) => b,
         Err(r) => return r,
     };
-    inspect_response(backup.inspect_sites(&bytes), None)
+    inspect_response(backup.inspect_sites(bytes).await, None)
 }
 
 /// Inspect an uploaded backup file, list its sites, and stage the bytes so the
@@ -699,7 +699,7 @@ pub async fn inspect_instance_backup_upload(
     };
     // Validate + read the site list before staging, so a bad file is rejected
     // without leaving an orphan temp object.
-    let (manifest, sites) = match backup.inspect_sites(&bytes) {
+    let (manifest, sites) = match backup.inspect_sites(bytes.clone()).await {
         Ok(v) => v,
         Err(e) => return err_response(e),
     };
