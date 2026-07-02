@@ -630,9 +630,14 @@
 }
 
 /* Tooltip ships inverted colors (`bg-foreground text-background`); with its
-   background overridden to `--popover` above, its text must follow suit. */
+   background overridden to `--popover` above, its text and its arrow (the
+   little `bg-foreground fill-foreground` diamond) must follow suit. */
 :is(.theme-dark, .theme-light) [data-slot="tooltip-content"] {
   color: var(--popover-foreground);
+}
+:is(.theme-dark, .theme-light) [data-slot="tooltip-content"] .bg-foreground {
+  background: var(--popover);
+  fill: var(--popover);
 }
 
 /* Mobile sidebar sheet (its popup's data-slot is overridden to "sidebar"):
