@@ -49,7 +49,7 @@ async fn main() {
         Some(Command::Mcp {
             transport: McpTransport::Stdio,
         }) => run_mcp_stdio().await,
-        Some(Command::Serve) | None => cms::server::run(&cli, cms::server::shutdown_signal()).await,
+        Some(Command::Serve) | None => cms::server::run(&cli, cms::server::shutdown_signal(), || {}).await,
     };
 
     if let Err(e) = result {
