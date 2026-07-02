@@ -206,6 +206,7 @@ Logging keys map to the `[log]` table: `RUST_LOG`→`log.level`, `LOG_OUTPUT`→
 | `SEARCH_ENABLED` | `true` | Build/use the Tantivy full-text index for entry search (else SQL `LIKE`) |
 | `SEARCH_INDEX_PATH` | `<cache dir>/search` | Directory for the Tantivy search index |
 | `MAX_UPLOAD_SIZE_MB` | `50` | Max upload size in MB |
+| `UPLOAD_TOKEN_EXPIRY_SECS` | `900` | Signed upload URL lifetime (seconds) |
 | `COOKIE_SECURE` | `false` | Require HTTPS cookies |
 | `DB_MAX_CONNECTIONS` | `10` | Max DB connections |
 | `DB_MIN_CONNECTIONS` | `2` | Min DB connections |
@@ -332,12 +333,15 @@ is **derived** and fully rebuildable.
   the DB by reusing `EntryRepository::list` (covers singletons too). Write/commit on
   a read-only instance returns `SearchError::ReadOnly`.
 - `queue.rs` — `SearchQueue` over the `search_index_queue` table (migration
-  `20260618000000`). Content writes from *any* process enqueue here
+  `20260618000000`). Content writes enqueue here
   (`enqueue`/`dequeue_batch`/`delete_ids`); UUIDv7 ids order the queue chronologically.
+  The table exists purely for **durability** (crash recovery), not cross-process
+  signaling — all producers run in the server process (`vcms mcp stdio` is an HTTP proxy).
 - `indexer.rs` — the **single consumer**, spawned once by the server (it owns the
   writer). Drains the queue in batches (present in DB ⇒ upsert doc, absent ⇒ delete
-  doc — `op` is advisory), commits per batch, deletes processed rows. Wakes instantly
-  on a local enqueue (`Notify`) and polls every 2s to catch other processes' enqueues.
+  doc — `op` is advisory), commits per batch, deletes processed rows. **Purely
+  event-driven**: one startup drain (rows left by a crash), then sleeps until an
+  enqueue rings the in-process `Notify` — no polling.
 
 Wiring: `Services` holds `search: Option<Arc<SearchService>>` (reads) and
 `search_queue: Option<Arc<SearchQueue>>` (writes). `Services::new` opens the index
@@ -352,10 +356,9 @@ index builds on startup when empty, rebuilds after a restore, and exposes
 owner/operator reindex routes: `POST /api/dashboard/instance/search/reindex` and
 `POST /api/dashboard/sites/{site_id}/search/reindex`.
 
-This is the cross-process model: writes from any process land in the durable queue
-and the running server indexes them; if the server is down they drain on its next
-start. The remaining hard limit is *concurrent writers* — only one
-process indexes at a time.
+Writes land in the durable queue and the running server indexes them; rows enqueued
+before a crash drain on the next start. The remaining hard limit is *concurrent
+writers* — only one process indexes at a time.
 
 ### No typo tolerance (deliberate) — and how to add it
 
