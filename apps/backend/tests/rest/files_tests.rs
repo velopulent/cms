@@ -342,3 +342,177 @@ async fn test_upload_file_invalid_mime_type() {
         error
     );
 }
+
+// ── Signed-URL uploads ──────────────────────────────────────────────────────
+//
+// Tokens are minted directly with the lib (same HMAC secret as TestServer), so
+// these tests cover the PUT endpoint without an MCP round-trip.
+
+const TEST_HMAC_SECRET: &str = "test-hmac-secret-integration";
+
+fn mint_upload_url(server: &TestServer, site_id: &str, filename: &str, mime: &str, expiry_secs: i64) -> String {
+    let (_, encoded) = cms::signed_upload::SignedUploadToken::generate_with_storage_provider(
+        site_id,
+        filename,
+        mime,
+        "filesystem",
+        TEST_HMAC_SECRET,
+        expiry_secs,
+    );
+    format!("{}/api/v1/files/upload/{}", server.base_url, encoded)
+}
+
+#[tokio::test]
+async fn test_signed_upload_happy_path() {
+    let server = TestServer::start().await;
+    let (_token, _csrf, site_id) = setup(&server).await;
+    let client = reqwest::Client::builder().build().unwrap();
+
+    let url = mint_upload_url(&server, &site_id, "signed.txt", "text/plain", 900);
+    let resp = client
+        .put(&url)
+        .header(reqwest::header::CONTENT_TYPE, "text/plain")
+        .body("signed upload body")
+        .send()
+        .await
+        .unwrap();
+
+    assert_eq!(resp.status(), 201, "{}", resp.text().await.unwrap_or_default());
+    let body: Value = resp.json().await.unwrap();
+    let file_id = body["id"].as_str().unwrap();
+    assert_eq!(body["original_name"], "signed.txt");
+    assert_eq!(body["mime_type"], "text/plain");
+    assert_eq!(body["size"], 18);
+
+    // The stored bytes are servable through the public file route.
+    let served = client
+        .get(format!("{}/api/files/{}", server.base_url, file_id))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(served.status(), 200);
+    assert_eq!(served.text().await.unwrap(), "signed upload body");
+}
+
+#[tokio::test]
+async fn test_signed_upload_expired_token() {
+    let server = TestServer::start().await;
+    let (_token, _csrf, site_id) = setup(&server).await;
+    let client = reqwest::Client::builder().build().unwrap();
+
+    let url = mint_upload_url(&server, &site_id, "late.txt", "text/plain", -10);
+    let resp = client.put(&url).body("too late").send().await.unwrap();
+    assert_eq!(resp.status(), 410);
+}
+
+#[tokio::test]
+async fn test_signed_upload_tampered_signature() {
+    let server = TestServer::start().await;
+    let (_token, _csrf, site_id) = setup(&server).await;
+    let client = reqwest::Client::builder().build().unwrap();
+
+    // Minted with a different secret => signature check must fail.
+    let (_, encoded) = cms::signed_upload::SignedUploadToken::generate_with_storage_provider(
+        &site_id,
+        "evil.txt",
+        "text/plain",
+        "filesystem",
+        "not-the-server-secret",
+        900,
+    );
+    let url = format!("{}/api/v1/files/upload/{}", server.base_url, encoded);
+    let resp = client.put(&url).body("nope").send().await.unwrap();
+    assert_eq!(resp.status(), 401);
+}
+
+#[tokio::test]
+async fn test_signed_upload_single_use() {
+    let server = TestServer::start().await;
+    let (_token, _csrf, site_id) = setup(&server).await;
+    let client = reqwest::Client::builder().build().unwrap();
+
+    let url = mint_upload_url(&server, &site_id, "once.txt", "text/plain", 900);
+    let first = client.put(&url).body("first").send().await.unwrap();
+    assert_eq!(first.status(), 201);
+
+    let second = client.put(&url).body("second").send().await.unwrap();
+    assert_eq!(second.status(), 409, "reused upload URL must be rejected");
+}
+
+#[tokio::test]
+async fn test_signed_upload_magic_byte_mismatch() {
+    let server = TestServer::start().await;
+    let (_token, _csrf, site_id) = setup(&server).await;
+    let client = reqwest::Client::builder().build().unwrap();
+
+    // Token says PNG; body is plain text => sniffed mismatch => 400.
+    let url = mint_upload_url(&server, &site_id, "fake.png", "image/png", 900);
+    let resp = client
+        .put(&url)
+        .header(reqwest::header::CONTENT_TYPE, "image/png")
+        .body("definitely not a png")
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), 400);
+}
+
+#[tokio::test]
+async fn test_signed_upload_content_type_header_mismatch() {
+    let server = TestServer::start().await;
+    let (_token, _csrf, site_id) = setup(&server).await;
+    let client = reqwest::Client::builder().build().unwrap();
+
+    let url = mint_upload_url(&server, &site_id, "a.txt", "text/plain", 900);
+    let resp = client
+        .put(&url)
+        .header(reqwest::header::CONTENT_TYPE, "application/pdf")
+        .body("hello")
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), 400);
+}
+
+#[tokio::test]
+async fn test_signed_upload_oversize_rejected() {
+    let server = TestServer::start().await;
+    let (_token, _csrf, site_id) = setup(&server).await;
+    let client = reqwest::Client::builder().build().unwrap();
+
+    let url = mint_upload_url(&server, &site_id, "big.txt", "text/plain", 900);
+    // 52MB > the 50MB cap; the Content-Length fast path rejects upfront.
+    let body = vec![b'a'; 52 * 1024 * 1024];
+    let result = client.put(&url).body(body).send().await;
+    match result {
+        Ok(resp) => assert_eq!(resp.status(), 413, "{}", resp.text().await.unwrap_or_default()),
+        Err(e) => assert!(
+            !e.is_connect() && !e.is_timeout() && !e.is_builder(),
+            "unexpected transport error: {e}"
+        ),
+    }
+}
+
+/// Multipart path enforces the same sniffing as the signed path.
+#[tokio::test]
+async fn test_multipart_upload_magic_byte_mismatch() {
+    let server = TestServer::start().await;
+    let (token, csrf, site_id) = setup(&server).await;
+    let api_key = get_api_key(&server, &token, &csrf, &site_id).await;
+    let client = reqwest::Client::builder().build().unwrap();
+
+    let part = reqwest::multipart::Part::bytes(b"just some text".to_vec())
+        .file_name("fake.png")
+        .mime_str("image/png")
+        .unwrap();
+    let form = reqwest::multipart::Form::new().part("file", part);
+
+    let resp = client
+        .post(format!("{}/files", server.base_url))
+        .headers(api_key_header(&api_key))
+        .multipart(form)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), 400);
+}
