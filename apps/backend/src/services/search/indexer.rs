@@ -1,34 +1,36 @@
 //! The single-consumer search indexer.
 //!
 //! Spawned once by the running server (it owns the Tantivy writer). It drains the
-//! [`SearchQueue`] — populated by content writes from *any* process — and applies
-//! the changes to the index. It wakes immediately on a local enqueue (via the
-//! queue's `Notify`) and also polls on an interval to pick up enqueues from other
-//! processes (e.g. `vcms mcp stdio`).
+//! [`SearchQueue`] and applies the changes to the index. The server is the only
+//! process that writes content (`vcms mcp stdio` is an HTTP proxy to it), and
+//! every enqueue rings the queue's in-process `Notify`, so the indexer is purely
+//! event-driven: one startup drain for rows a previous process left behind
+//! (crash recovery), then sleep until notified.
 
 use std::collections::HashSet;
 use std::sync::Arc;
-use std::time::Duration;
 
 use super::SearchError;
 use super::SearchService;
 use super::queue::SearchQueue;
 use crate::repository::Repository;
 
-/// Fallback poll interval for enqueues made by other processes (which can't ring
-/// this process's in-memory `Notify`).
-const POLL_INTERVAL: Duration = Duration::from_secs(2);
 /// Max rows processed per drain iteration.
 const BATCH_SIZE: i64 = 256;
 
 /// Run the indexer loop forever. Owns the writer-side `SearchService`.
 pub async fn run(search: Arc<SearchService>, queue: Arc<SearchQueue>, repository: Arc<Repository>) {
     let notify = queue.notify_handle();
+
+    // Startup drain: pick up rows committed before a crash/restart. `Notify`
+    // stores a permit, so an enqueue racing this drain is never lost — it just
+    // wakes the loop below for an empty (cheap) drain in the worst case.
+    if let Err(e) = drain(&search, &queue, &repository).await {
+        tracing::error!("Search indexer startup drain failed: {}", e);
+    }
+
     loop {
-        tokio::select! {
-            _ = notify.notified() => {}
-            _ = tokio::time::sleep(POLL_INTERVAL) => {}
-        }
+        notify.notified().await;
         if let Err(e) = drain(&search, &queue, &repository).await {
             tracing::error!("Search indexer drain failed: {}", e);
         }
