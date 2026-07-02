@@ -19,10 +19,26 @@ async fn seed_file(ctx: &GrpcTestContext, site_id: &str, name: &str) -> String {
     body["id"].as_str().unwrap().to_string()
 }
 
+/// Minimal bytes carrying the right magic signature — uploads are now sniffed
+/// against the declared mime type, so plain text can't pose as png/jpeg/pdf.
+fn body_for_mime(mime_type: &str) -> Vec<u8> {
+    match mime_type {
+        "image/png" => vec![0x89, b'P', b'N', b'G', 0x0D, 0x0A, 0x1A, 0x0A, 0, 0, 0, 0],
+        "image/jpeg" => vec![0xFF, 0xD8, 0xFF, 0xE0, 0, 0, 0, 0],
+        "application/pdf" => b"%PDF-1.4 test".to_vec(),
+        _ => b"test content".to_vec(),
+    }
+}
+
 async fn seed_file_with_mime(ctx: &GrpcTestContext, site_id: &str, name: &str, mime_type: &str) -> String {
     let ext = mime_type.split('/').next_back().unwrap_or("bin");
     let body = ctx
-        .upload_file(site_id, &format!("{}.{}", name, ext), b"test content", mime_type)
+        .upload_file(
+            site_id,
+            &format!("{}.{}", name, ext),
+            &body_for_mime(mime_type),
+            mime_type,
+        )
         .await;
     body["id"].as_str().unwrap().to_string()
 }
