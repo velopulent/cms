@@ -1,10 +1,11 @@
-//! Durable, cross-process queue of pending search-index updates
-//! (`search_index_queue` table).
+//! Durable queue of pending search-index updates (`search_index_queue` table).
 //!
-//! Producers (any process that writes entry content) call [`SearchQueue::enqueue`]
-//! after a write. The single writer-owning server drains the queue via the
-//! [`indexer`](super::indexer). Because the queue lives in the database it works
-//! across processes (e.g. a separate `vcms mcp stdio`) and survives restarts.
+//! Content writes call [`SearchQueue::enqueue`] after committing; the server's
+//! [`indexer`](super::indexer) drains the queue. All producers run in the server
+//! process (`vcms mcp stdio` is an HTTP proxy), so every enqueue also rings the
+//! in-process `Notify` and the indexer needs no polling. The queue lives in the
+//! database purely for durability: rows enqueued before a crash are drained on
+//! the next startup.
 
 use std::sync::Arc;
 
@@ -31,8 +32,7 @@ pub struct QueueRow {
 /// Handle for enqueuing index updates and draining them.
 pub struct SearchQueue {
     pool: DbPool,
-    /// Wakes the in-process indexer immediately on a local enqueue (cross-process
-    /// enqueues are picked up by the indexer's poll fallback instead).
+    /// Wakes the indexer immediately on an enqueue (all producers are in-process).
     notify: Arc<Notify>,
 }
 
