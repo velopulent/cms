@@ -11,7 +11,16 @@ export type Theme =
   | "forest"
   | "dusk"
   | "aurora"
-  | "citrus-sherbet";
+  | "sunset"
+  | "mars"
+  | "retro-storm"
+  | "under-the-sea"
+  | "citrus-sherbet"
+  | "desert-khaki"
+  | "sunrise"
+  | "hanami"
+  | "cotton-candy"
+  | "mint-apple";
 
 // Custom palettes are applied to <html> as a `theme-<key>` class (e.g.
 // `theme-sepia`) — the `theme-` prefix keeps them from colliding with Tailwind
@@ -26,8 +35,19 @@ const DARK_THEMES = [
   "forest",
   "dusk",
   "aurora",
+  "sunset",
+  "mars",
+  "retro-storm",
+  "under-the-sea",
 ] as const;
-const LIGHT_THEMES = ["citrus-sherbet"] as const;
+const LIGHT_THEMES = [
+  "citrus-sherbet",
+  "desert-khaki",
+  "sunrise",
+  "hanami",
+  "cotton-candy",
+  "mint-apple",
+] as const;
 const CUSTOM_THEMES: readonly string[] = [...DARK_THEMES, ...LIGHT_THEMES];
 
 type ThemeProviderProps = {

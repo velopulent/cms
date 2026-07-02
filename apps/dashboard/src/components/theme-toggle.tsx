@@ -24,7 +24,16 @@ const NITRO_THEMES: { key: Theme; label: string }[] = [
   { key: "forest", label: "Forest" },
   { key: "dusk", label: "Dusk" },
   { key: "aurora", label: "Aurora" },
+  { key: "sunset", label: "Sunset" },
+  { key: "mars", label: "Mars" },
+  { key: "retro-storm", label: "Retro Storm" },
+  { key: "under-the-sea", label: "Under the Sea" },
   { key: "citrus-sherbet", label: "Citrus Sherbet" },
+  { key: "desert-khaki", label: "Desert Khaki" },
+  { key: "sunrise", label: "Sunrise" },
+  { key: "hanami", label: "Hanami" },
+  { key: "cotton-candy", label: "Cotton Candy" },
+  { key: "mint-apple", label: "Mint Apple" },
 ];
 
 export function ModeToggle() {

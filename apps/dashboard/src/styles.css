@@ -380,11 +380,113 @@
   );
 }
 
+/* Sunset */
+.theme-sunset {
+  --theme-surface-tint: rgb(8 0 26);
+  --theme-foreground-tint: rgb(255 239 229);
+  --theme-grad-color: linear-gradient(
+    141.68deg,
+    #48288c 27.57%,
+    #db7f4b 71.25%
+  );
+}
+
+/* Mars */
+.theme-mars {
+  --theme-surface-tint: rgb(26 6 0);
+  --theme-foreground-tint: rgb(255 236 229);
+  --theme-grad-color: linear-gradient(
+    170.82deg,
+    #895240 14.61%,
+    #8f4343 74.62%
+  );
+}
+
+/* Retro Storm */
+.theme-retro-storm {
+  --theme-surface-tint: rgb(0 16 26);
+  --theme-foreground-tint: rgb(153 218 255);
+  --theme-grad-color: linear-gradient(
+    148.71deg,
+    #3a7ca1 5.64%,
+    #58579a 26.38%,
+    #58579a 49.92%,
+    #3a7ca1 73.12%
+  );
+}
+
+/* Under the Sea */
+.theme-under-the-sea {
+  --theme-surface-tint: rgb(2 26 0);
+  --theme-foreground-tint: rgb(229 255 253);
+  --theme-grad-color: linear-gradient(
+    179.14deg,
+    #647962 1.91%,
+    #588575 48.99%,
+    #6a8482 96.35%
+  );
+}
+
 /* Citrus Sherbet (light) */
 .theme-citrus-sherbet {
   --theme-surface-tint: rgb(255 238 204);
   --theme-foreground-tint: rgb(77 23 0);
   --theme-grad-color: linear-gradient(180deg, #f3b336 31.1%, #ee8558 67.09%);
+}
+
+/* Desert Khaki (light) */
+.theme-desert-khaki {
+  --theme-surface-tint: rgb(255 228 204);
+  --theme-foreground-tint: rgb(77 64 0);
+  --theme-grad-color: linear-gradient(
+    38.99deg,
+    #e7dbd0 12.92%,
+    #dfd0b2 32.92%,
+    #e0d6a3 52.11%
+  );
+}
+
+/* Sunrise (light) */
+.theme-sunrise {
+  --theme-surface-tint: rgb(255 247 204);
+  --theme-foreground-tint: rgb(77 0 42);
+  --theme-grad-color: linear-gradient(
+    154.19deg,
+    #9f4175 8.62%,
+    #c49064 48.07%,
+    #a6953d 76.04%
+  );
+}
+
+/* Hanami (light) */
+.theme-hanami {
+  --theme-surface-tint: rgb(208 255 204);
+  --theme-foreground-tint: rgb(77 0 10);
+  --theme-grad-color: linear-gradient(
+    38.08deg,
+    #efaab3 3.56%,
+    #efd696 35.49%,
+    #a6daa2 68.78%
+  );
+}
+
+/* Cotton Candy (light) */
+.theme-cotton-candy {
+  --theme-surface-tint: rgb(204 215 255);
+  --theme-foreground-tint: rgb(77 0 14);
+  --theme-grad-color: linear-gradient(180.14deg, #f4abb8 8.5%, #b1c2fc 94.28%);
+}
+
+/* Mint Apple (light) */
+.theme-mint-apple {
+  --theme-surface-tint: rgb(232 255 204);
+  --theme-foreground-tint: rgb(0 77 58);
+  --theme-grad-color: linear-gradient(
+    180deg,
+    #56b69f 6.15%,
+    #63bc61 48.7%,
+    #9eca67 93.07%
+  );
 }
 
 @theme inline {
@@ -721,4 +823,31 @@
 }
 .theme-swatch-citrus-sherbet {
   background: linear-gradient(180deg, #f3b336, #ee8558);
+}
+.theme-swatch-sunset {
+  background: linear-gradient(141.68deg, #48288c, #db7f4b);
+}
+.theme-swatch-mars {
+  background: linear-gradient(170.82deg, #895240, #8f4343);
+}
+.theme-swatch-retro-storm {
+  background: linear-gradient(148.71deg, #3a7ca1, #58579a, #58579a, #3a7ca1);
+}
+.theme-swatch-under-the-sea {
+  background: linear-gradient(179.14deg, #647962, #588575, #6a8482);
+}
+.theme-swatch-desert-khaki {
+  background: linear-gradient(38.99deg, #e7dbd0, #dfd0b2, #e0d6a3);
+}
+.theme-swatch-sunrise {
+  background: linear-gradient(154.19deg, #9f4175, #c49064, #a6953d);
+}
+.theme-swatch-hanami {
+  background: linear-gradient(38.08deg, #efaab3, #efd696, #a6daa2);
+}
+.theme-swatch-cotton-candy {
+  background: linear-gradient(180.14deg, #f4abb8, #b1c2fc);
+}
+.theme-swatch-mint-apple {
+  background: linear-gradient(180deg, #56b69f, #63bc61, #9eca67);
 }
