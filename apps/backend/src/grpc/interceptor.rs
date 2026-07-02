@@ -89,7 +89,7 @@ async fn validate_auth(ctx: &AuthContext, repository: &Repository) -> Result<Grp
         tonic::Status::internal("Authentication service unavailable")
     })?;
 
-    for (key_id, site_id, stored_hash, stored_hmac, expires_at, revoked_at, permission) in keys {
+    for (key_id, site_id, stored_hash, stored_hmac, expires_at, revoked_at, permission, last_used_at) in keys {
         let valid = if let Some(ref stored) = stored_hmac {
             stored == &ctx.hmac
         } else {
@@ -111,7 +111,9 @@ async fn validate_auth(ctx: &AuthContext, repository: &Repository) -> Result<Grp
             return Err(tonic::Status::unauthenticated("Access token has expired"));
         }
 
-        if let Err(e) = repository.access_token.update_last_used(&key_id).await {
+        if crate::middleware::auth::needs_touch(last_used_at.as_deref())
+            && let Err(e) = repository.access_token.update_last_used(&key_id).await
+        {
             tracing::warn!(error = ?e, key_id = %key_id, "Failed to update last_used");
         }
 

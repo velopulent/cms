@@ -176,6 +176,34 @@ fn extract_csrf_token(parts: &Parts) -> Option<String> {
 
 // ── HMAC / sessions ──
 
+/// How stale a session/token "last seen" timestamp may get before we rewrite
+/// it. Skipping the unconditional per-request UPDATE keeps the auth hot path
+/// read-only for most requests.
+pub(crate) const TOUCH_INTERVAL_SECS: i64 = 60;
+
+/// Lenient parse of the backend-specific timestamp texts: RFC3339, Postgres
+/// `::text` (`YYYY-MM-DD HH:MM:SS[.fff]+00`), or naive UTC (SQLite/MySQL).
+pub(crate) fn parse_db_timestamp(s: &str) -> Option<chrono::DateTime<chrono::Utc>> {
+    if let Ok(dt) = chrono::DateTime::parse_from_rfc3339(s) {
+        return Some(dt.with_timezone(&chrono::Utc));
+    }
+    if let Ok(dt) = chrono::DateTime::parse_from_str(s, "%Y-%m-%d %H:%M:%S%.f%#z") {
+        return Some(dt.with_timezone(&chrono::Utc));
+    }
+    chrono::NaiveDateTime::parse_from_str(s, "%Y-%m-%d %H:%M:%S%.f")
+        .ok()
+        .map(|naive| naive.and_utc())
+}
+
+/// True when a "last seen/used" timestamp is missing, unparseable, or older
+/// than [`TOUCH_INTERVAL_SECS`] — i.e. it should be rewritten (safe fallback).
+pub(crate) fn needs_touch(last: Option<&str>) -> bool {
+    match last.and_then(parse_db_timestamp) {
+        Some(ts) => (chrono::Utc::now() - ts).num_seconds() > TOUCH_INTERVAL_SECS,
+        None => true,
+    }
+}
+
 pub fn compute_key_hmac(key: &str, hmac_secret: &str) -> String {
     let mut mac = HmacSha256::new_from_slice(hmac_secret.as_bytes()).expect("HMAC can take key of any size");
     mac.update(key.as_bytes());
@@ -193,7 +221,9 @@ pub async fn verify_session(
         .await
         .map_err(|_| AuthError::unauthorized("Authentication service unavailable"))?
         .ok_or_else(|| AuthError::unauthorized("Invalid or expired session"))?;
-    let _ = repository.session.touch(&session.id).await;
+    if needs_touch(Some(&session.last_seen_at)) {
+        let _ = repository.session.touch(&session.id).await;
+    }
     Ok(UserActor {
         user_id: session.user_id,
         session_id: session.id,
@@ -221,7 +251,7 @@ pub(crate) async fn verify_access_token(
 
     let token_hmac = compute_key_hmac(token, hmac_secret);
 
-    for (token_id, site_id, stored_hash, stored_hmac, expires_at, revoked_at, permission) in keys {
+    for (token_id, site_id, stored_hash, stored_hmac, expires_at, revoked_at, permission, last_used_at) in keys {
         if let Some(ref stored) = stored_hmac {
             if stored != &token_hmac {
                 continue;
@@ -242,7 +272,9 @@ pub(crate) async fn verify_access_token(
             .parse::<AccessTokenPermission>()
             .map_err(|_| AuthError::unauthorized("Invalid access token"))?;
 
-        let _ = repository.access_token.update_last_used(&token_id).await;
+        if needs_touch(last_used_at.as_deref()) {
+            let _ = repository.access_token.update_last_used(&token_id).await;
+        }
 
         Span::current().record("site_id", tracing::field::display(&site_id));
         return Ok(Actor::ApiKey(ApiKeyActor {
