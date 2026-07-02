@@ -71,7 +71,7 @@ impl AccessTokenRepository for PostgresAccessTokenRepository {
 
     async fn find_by_prefix(&self, prefix: &str) -> Result<Vec<AccessTokenLookupRow>, RepositoryError> {
         let rows = sqlx::query_as::<_, AccessTokenLookupRow>(
-            "SELECT id, site_id, token_hash, token_hmac, expires_at::text, revoked_at::text, permission
+            "SELECT id, site_id, token_hash, token_hmac, expires_at::text, revoked_at::text, permission, last_used_at::text
              FROM access_tokens WHERE token_prefix = $1",
         )
         .bind(prefix)

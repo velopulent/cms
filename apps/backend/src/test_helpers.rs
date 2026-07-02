@@ -993,6 +993,9 @@ impl FileRepository for InMemoryFileRepository {
             created_by,
         } = file;
         let mut files = self.files.lock().unwrap();
+        if files.iter().any(|f| f.id == id) {
+            return Err(RepositoryError::UniqueViolation("files.id".into()));
+        }
         let file = File {
             id: id.to_string(),
             site_id: site_id.to_string(),
@@ -1100,6 +1103,22 @@ impl FileRepository for InMemoryFileRepository {
             .map(|f| f.storage_provider.clone())
             .unwrap_or_else(|| "filesystem".to_string()))
     }
+
+    async fn set_thumbnail_meta(
+        &self,
+        id: &str,
+        thumbnail_key: &str,
+        width: Option<i32>,
+        height: Option<i32>,
+    ) -> Result<(), RepositoryError> {
+        let mut files = self.files.lock().unwrap();
+        if let Some(file) = files.iter_mut().find(|f| f.id == id) {
+            file.thumbnail_key = Some(thumbnail_key.to_string());
+            file.width = width;
+            file.height = height;
+        }
+        Ok(())
+    }
 }
 
 #[derive(Clone)]
@@ -1183,6 +1202,7 @@ impl AccessTokenRepository for InMemoryAccessTokenRepository {
                     t.expires_at.clone(),
                     t.revoked_at.clone(),
                     t.permission.clone(),
+                    t.last_used_at.clone(),
                 )
             })
             .collect())

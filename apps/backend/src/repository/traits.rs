@@ -268,16 +268,25 @@ pub trait FileRepository: Send + Sync {
         site_id: &str,
     ) -> Result<Vec<FileReference>, RepositoryError>;
     async fn get_storage_provider(&self, site_id: &str) -> Result<String, RepositoryError>;
+    /// Attach thumbnail metadata generated after the upload response (background task).
+    async fn set_thumbnail_meta(
+        &self,
+        id: &str,
+        thumbnail_key: &str,
+        width: Option<i32>,
+        height: Option<i32>,
+    ) -> Result<(), RepositoryError>;
 }
 
 pub type AccessTokenLookupRow = (
-    String,
-    String,
-    String,
-    Option<String>,
-    Option<String>,
-    Option<String>,
-    String,
+    String,         // id
+    String,         // site_id
+    String,         // token_hash
+    Option<String>, // token_hmac
+    Option<String>, // expires_at
+    Option<String>, // revoked_at
+    String,         // permission
+    Option<String>, // last_used_at (for the touch debounce)
 );
 
 /// A new access token to persist (see [`AccessTokenRepository::create`]).
