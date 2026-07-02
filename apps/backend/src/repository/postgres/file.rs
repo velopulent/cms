@@ -344,4 +344,21 @@ impl FileRepository for PostgresFileRepository {
 
         Ok(provider.unwrap_or_else(|| "filesystem".into()))
     }
+
+    async fn set_thumbnail_meta(
+        &self,
+        id: &str,
+        thumbnail_key: &str,
+        width: Option<i32>,
+        height: Option<i32>,
+    ) -> Result<(), RepositoryError> {
+        sqlx::query("UPDATE files SET thumbnail_key = $1, width = $2, height = $3 WHERE id = $4")
+            .bind(thumbnail_key)
+            .bind(width)
+            .bind(height)
+            .bind(id)
+            .execute(&self.pool)
+            .await?;
+        Ok(())
+    }
 }
