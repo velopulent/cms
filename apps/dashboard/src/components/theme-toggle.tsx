@@ -1,4 +1,4 @@
-import { Palette } from "lucide-react";
+import { Check, Palette } from "lucide-react";
 import { type Theme, useTheme } from "@/components/theme-provider";
 import { Button } from "@/components/ui/button";
 import {
@@ -40,20 +40,31 @@ const NITRO_THEMES: { key: Theme; label: string }[] = [
 ];
 
 export function ModeToggle() {
-  const { setTheme } = useTheme();
+  const { theme, setTheme } = useTheme();
 
-  const renderItem = ({ key, label }: { key: Theme; label: string }) => (
-    <DropdownMenuItem key={key} onClick={() => setTheme(key)}>
-      <span
-        aria-hidden="true"
-        className={cn(
-          "size-3.5 shrink-0 rounded-full ring-1 ring-foreground/25 ring-inset",
-          `theme-swatch-${key}`,
-        )}
-      />
-      {label}
-    </DropdownMenuItem>
-  );
+  const renderItem = ({ key, label }: { key: Theme; label: string }) => {
+    const active = theme === key;
+    return (
+      <DropdownMenuItem
+        key={key}
+        aria-checked={active}
+        className={cn(active && "bg-accent text-accent-foreground")}
+        onClick={() => setTheme(key)}
+      >
+        <span
+          aria-hidden="true"
+          className={cn(
+            "size-3.5 shrink-0 rounded-full ring-1 ring-foreground/25 ring-inset",
+            `theme-swatch-${key}`,
+          )}
+        />
+        {label}
+        <Check
+          className={cn("ml-auto size-4", active ? "opacity-100" : "opacity-0")}
+        />
+      </DropdownMenuItem>
+    );
+  };
 
   return (
     <DropdownMenu>
