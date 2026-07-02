@@ -31,11 +31,20 @@ const ADMIN_EMAIL: &str = "admin@cms.local";
 ///
 /// Shared by the foreground `serve` command and the OS service runners. The
 /// `shutdown` future is the single trigger that gracefully drains both the REST
-/// and gRPC listeners.
-pub async fn run(cli: &Cli, shutdown: impl Future<Output = ()> + Send + 'static) -> Result<(), Box<dyn Error>> {
-    crate::paths::ensure()?;
-    crate::secrets::ensure()?;
-    let config = Config::load(cli)?;
+/// and gRPC listeners. `on_ready` fires once startup has actually succeeded —
+/// database open + migrated and both listeners bound — so a service host (the
+/// Windows SCM runner) can report `Running` truthfully instead of optimistically.
+pub async fn run(
+    cli: &Cli,
+    shutdown: impl Future<Output = ()> + Send + 'static,
+    on_ready: impl FnOnce(),
+) -> Result<(), Box<dyn Error>> {
+    // Each early step gets a context prefix: a bare io error ("Access is denied.
+    // (os error 5)") from a service host is undebuggable without knowing which
+    // file/step produced it.
+    crate::paths::ensure().map_err(|e| format!("preparing data directories: {e}"))?;
+    crate::secrets::ensure().map_err(|e| format!("initializing secrets.toml: {e}"))?;
+    let config = Config::load(cli).map_err(|e| format!("loading configuration: {e}"))?;
 
     let _guard = crate::tracing::init_tracing(&config);
 
@@ -43,7 +52,9 @@ pub async fn run(cli: &Cli, shutdown: impl Future<Output = ()> + Send + 'static)
         return Err(format!("Invalid production security configuration: {e}").into());
     }
 
-    let pool = init_db_with_config(&config).await?;
+    let pool = init_db_with_config(&config)
+        .await
+        .map_err(|e| format!("opening database: {e}"))?;
 
     let repository = Repository::new(&pool);
 
@@ -122,6 +133,18 @@ pub async fn run(cli: &Cli, shutdown: impl Future<Output = ()> + Send + 'static)
         .map_err(|e| format!("Invalid GRPC_BIND_ADDRESS '{}': {e}", config.grpc_bind_address))?;
     info!("gRPC server running on {}", grpc_addr);
 
+    // Bind both listeners *before* declaring readiness (and before the serve loops
+    // spawn): a bind failure — the classic "port already taken" — must surface as a
+    // startup error, not as a background task that dies after we claimed to be up.
+    let rest_listener = tokio::net::TcpListener::bind(addr)
+        .await
+        .map_err(|e| format!("Failed to bind REST address {addr}: {e}"))?;
+    let grpc_listener = tokio::net::TcpListener::bind(grpc_addr)
+        .await
+        .map_err(|e| format!("Failed to bind gRPC address {grpc_addr}: {e}"))?;
+
+    on_ready();
+
     // One shutdown signal fans out to both listeners via a watch channel: the
     // injected `shutdown` future flips it, and both servers drain on the change.
     let (shutdown_tx, shutdown_rx) = tokio::sync::watch::channel(false);
@@ -133,13 +156,8 @@ pub async fn run(cli: &Cli, shutdown: impl Future<Output = ()> + Send + 'static)
 
     let rest_rx = shutdown_rx.clone();
     let rest_handle = tokio::spawn(async move {
-        let listener = tokio::net::TcpListener::bind(addr).await.map_err(|e| {
-            tracing::error!("Failed to bind REST address {addr}: {e}");
-            e
-        })?;
-
         axum::serve(
-            listener,
+            rest_listener,
             app.into_make_service_with_connect_info::<std::net::SocketAddr>(),
         )
         .with_graceful_shutdown(wait_for_shutdown(rest_rx))
@@ -155,7 +173,7 @@ pub async fn run(cli: &Cli, shutdown: impl Future<Output = ()> + Send + 'static)
         repository_arc.clone(),
         config_arc.clone(),
         storage_registry.clone(),
-        grpc_addr,
+        grpc_listener,
         Box::pin(wait_for_shutdown(shutdown_rx)),
     ));
 
