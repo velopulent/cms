@@ -230,11 +230,19 @@ impl BackupService {
             files: file_manifest,
         };
 
-        let tar_bytes = build_tar(&manifest, &tar_tables, &file_blobs)?;
-        let compressed =
-            zstd::stream::encode_all(&tar_bytes[..], self.zstd_level).map_err(|e| BackupError::Io(e.to_string()))?;
-        let outer = self.wrap(compressed, encrypt)?;
-        Ok((manifest, outer))
+        // tar + zstd + AES-GCM are CPU-bound; keep them off the async runtime
+        // so a large backup doesn't starve request handling.
+        let zstd_level = self.zstd_level;
+        let key = self.encryption_key;
+        tokio::task::spawn_blocking(move || {
+            let tar_bytes = build_tar(&manifest, &tar_tables, &file_blobs)?;
+            let compressed =
+                zstd::stream::encode_all(&tar_bytes[..], zstd_level).map_err(|e| BackupError::Io(e.to_string()))?;
+            let outer = Self::wrap_bytes(key, compressed, encrypt)?;
+            Ok((manifest, outer))
+        })
+        .await
+        .map_err(|e| BackupError::Io(format!("backup task failed: {e}")))?
     }
 
     /// Run a backup: build the artifact, write it to the destination, and record
@@ -378,16 +386,16 @@ impl BackupService {
     // --- Restore ---
 
     /// Inspect a backup artifact's manifest (decrypting/decompressing as needed).
-    pub fn inspect(&self, bytes: &[u8]) -> Result<Manifest, BackupError> {
-        let (manifest, _, _) = self.open(bytes)?;
+    pub async fn inspect(&self, bytes: Vec<u8>) -> Result<Manifest, BackupError> {
+        let (manifest, _, _) = self.open_blocking(bytes).await?;
         Ok(manifest)
     }
 
     /// Inspect a backup artifact and list the sites it contains, so a caller can
     /// offer a pick-list. An instance backup yields every site in its `sites`
     /// table; a site backup yields its single site.
-    pub fn inspect_sites(&self, bytes: &[u8]) -> Result<(Manifest, Vec<SiteRef>), BackupError> {
-        let (manifest, tables_ndjson, _) = self.open(bytes)?;
+    pub async fn inspect_sites(&self, bytes: Vec<u8>) -> Result<(Manifest, Vec<SiteRef>), BackupError> {
+        let (manifest, tables_ndjson, _) = self.open_blocking(bytes).await?;
         let sites = match tables_ndjson.get("sites") {
             Some(ndjson) => parse_ndjson(ndjson)?
                 .iter()
@@ -442,7 +450,7 @@ impl BackupService {
             RestoreSource::Destination(key) => self.read_destination(key).await?,
         };
 
-        let (manifest, tables_ndjson, file_blobs) = self.open(&bytes)?;
+        let (manifest, tables_ndjson, file_blobs) = self.open_blocking(bytes).await?;
 
         if manifest.format_version > FORMAT_VERSION {
             return Err(BackupError::Invalid(format!(
@@ -583,11 +591,15 @@ impl BackupService {
 
     // --- Artifact wrapping ---
 
-    fn wrap(&self, compressed: Vec<u8>, encrypt: bool) -> Result<Vec<u8>, BackupError> {
+    fn wrap_bytes(
+        encryption_key: Option<[u8; 32]>,
+        compressed: Vec<u8>,
+        encrypt: bool,
+    ) -> Result<Vec<u8>, BackupError> {
         let mut out = Vec::with_capacity(compressed.len() + 32);
         out.extend_from_slice(MAGIC);
         if encrypt {
-            let key = self.encryption_key.ok_or(BackupError::MissingKey)?;
+            let key = encryption_key.ok_or(BackupError::MissingKey)?;
             out.push(FLAG_ENCRYPTED);
             let cipher = Aes256Gcm::new(&Key::<Aes256Gcm>::from(key));
             let mut nonce_bytes = [0u8; 12];
@@ -605,8 +617,17 @@ impl BackupService {
         Ok(out)
     }
 
+    /// Async wrapper for [`Self::open_bytes`]: decrypt/zstd-decode/untar are
+    /// CPU-bound, so they run on the blocking pool.
+    async fn open_blocking(&self, bytes: Vec<u8>) -> Result<ArtifactBundle, BackupError> {
+        let key = self.encryption_key;
+        tokio::task::spawn_blocking(move || Self::open_bytes(key, &bytes))
+            .await
+            .map_err(|e| BackupError::Io(format!("restore task failed: {e}")))?
+    }
+
     /// Decrypt/decompress an artifact into (manifest, table NDJSON, file blobs).
-    fn open(&self, bytes: &[u8]) -> Result<ArtifactBundle, BackupError> {
+    fn open_bytes(encryption_key: Option<[u8; 32]>, bytes: &[u8]) -> Result<ArtifactBundle, BackupError> {
         if bytes.len() < MAGIC.len() + 1 || &bytes[..MAGIC.len()] != MAGIC {
             return Err(BackupError::Invalid("not a CMS backup artifact".into()));
         }
@@ -614,7 +635,7 @@ impl BackupService {
         let body = &bytes[MAGIC.len() + 1..];
 
         let compressed = if flags & FLAG_ENCRYPTED != 0 {
-            let key = self.encryption_key.ok_or(BackupError::MissingKey)?;
+            let key = encryption_key.ok_or(BackupError::MissingKey)?;
             if body.len() < 12 {
                 return Err(BackupError::Invalid("truncated encrypted backup".into()));
             }
