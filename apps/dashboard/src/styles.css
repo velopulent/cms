@@ -696,6 +696,18 @@
   background-clip: padding-box;
 }
 
+/* ScrollArea (base-ui) draws its own themed thumb; the global `*` scrollbar
+   rules above would re-force the NATIVE scrollbar onto its viewport, giving
+   double bars (and the reserved 10px width causes phantom horizontal
+   overflow). Hide native scrollbars there entirely. */
+:is(.theme-dark, .theme-light) [data-slot="scroll-area-viewport"] {
+  scrollbar-width: none;
+}
+:is(.theme-dark, .theme-light)
+  [data-slot="scroll-area-viewport"]::-webkit-scrollbar {
+  display: none;
+}
+
 /* Premium hover timing (150–180ms) on the surfaces users actually touch. */
 :is(.theme-dark, .theme-light)
   :is(
