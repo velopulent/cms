@@ -5,7 +5,9 @@ use thiserror::Error;
 
 type HmacSha256 = Hmac<Sha256>;
 
-const UPLOAD_TOKEN_EXPIRY_SECS: i64 = 900; // 15 minutes
+/// Default signed-URL lifetime; the runtime value comes from
+/// `Config::upload_token_expiry_secs` (default 900).
+pub const DEFAULT_UPLOAD_TOKEN_EXPIRY_SECS: i64 = 900;
 
 #[derive(Debug, Clone)]
 pub struct SignedUploadToken {
@@ -35,31 +37,14 @@ pub enum SignedUploadError {
 
 impl SignedUploadToken {
     pub fn generate(site_id: &str, filename: &str, content_type: &str, hmac_secret: &str) -> (Self, String) {
-        let file_id = uuid::Uuid::now_v7().to_string();
-        let storage_provider = "filesystem".to_string();
-        let expires_at = chrono::Utc::now().timestamp() + UPLOAD_TOKEN_EXPIRY_SECS;
-
-        let payload = format!(
-            "{}:{}:{}:{}:{}:{}",
-            file_id, site_id, filename, content_type, storage_provider, expires_at
-        );
-
-        let mut mac = HmacSha256::new_from_slice(hmac_secret.as_bytes()).expect("HMAC can take key of any size");
-        mac.update(payload.as_bytes());
-        let signature = hex::encode(mac.finalize().into_bytes());
-
-        let token = Self {
-            file_id,
-            site_id: site_id.to_string(),
-            filename: filename.to_string(),
-            content_type: content_type.to_string(),
-            storage_provider,
-            expires_at,
-            signature,
-        };
-
-        let encoded = Self::encode(&token);
-        (token, encoded)
+        Self::generate_with_storage_provider(
+            site_id,
+            filename,
+            content_type,
+            "filesystem",
+            hmac_secret,
+            DEFAULT_UPLOAD_TOKEN_EXPIRY_SECS,
+        )
     }
 
     pub fn generate_with_storage_provider(
@@ -68,9 +53,10 @@ impl SignedUploadToken {
         content_type: &str,
         storage_provider: &str,
         hmac_secret: &str,
+        expiry_secs: i64,
     ) -> (Self, String) {
         let file_id = uuid::Uuid::now_v7().to_string();
-        let expires_at = chrono::Utc::now().timestamp() + UPLOAD_TOKEN_EXPIRY_SECS;
+        let expires_at = chrono::Utc::now().timestamp() + expiry_secs;
 
         let payload = format!(
             "{}:{}:{}:{}:{}:{}",
@@ -211,11 +197,31 @@ mod tests {
 
     #[test]
     fn test_generate_with_storage_provider() {
-        let (token, encoded) =
-            SignedUploadToken::generate_with_storage_provider("site-123", "doc.pdf", "application/pdf", "s3", "secret");
+        let (token, encoded) = SignedUploadToken::generate_with_storage_provider(
+            "site-123",
+            "doc.pdf",
+            "application/pdf",
+            "s3",
+            "secret",
+            DEFAULT_UPLOAD_TOKEN_EXPIRY_SECS,
+        );
         assert_eq!(token.storage_provider, "s3");
 
         let verified = SignedUploadToken::verify(&encoded, "secret").unwrap();
         assert_eq!(verified.storage_provider, "s3");
+    }
+
+    #[test]
+    fn test_verify_expired_token() {
+        let (_, encoded) = SignedUploadToken::generate_with_storage_provider(
+            "site-123",
+            "doc.pdf",
+            "application/pdf",
+            "filesystem",
+            "secret",
+            -10,
+        );
+        let result = SignedUploadToken::verify(&encoded, "secret");
+        assert!(matches!(result, Err(SignedUploadError::Expired)));
     }
 }

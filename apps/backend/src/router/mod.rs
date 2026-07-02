@@ -142,6 +142,8 @@ pub fn create_router(
         )
         // ── File serving (no auth — file IDs are effectively opaque) ──
         .merge(files::file_serve_routes())
+        // ── Signed-URL upload (no auth — the HMAC token is the credential) ──
+        .merge(files::signed_upload_routes(max_upload_bytes))
         // ── Dashboard API (/api/dashboard/*) ──
         .nest(
             "/api/dashboard",

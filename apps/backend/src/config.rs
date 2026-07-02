@@ -44,6 +44,8 @@ pub struct Config {
 
     // Upload limits
     pub max_upload_size_bytes: usize,
+    /// Lifetime of signed upload URLs (seconds).
+    pub upload_token_expiry_secs: i64,
 
     // Cookie security
     pub cookie_secure: bool,
@@ -129,6 +131,7 @@ struct RawConfig {
     backup_encryption_key: Option<String>,
 
     max_upload_size_mb: Option<usize>,
+    upload_token_expiry_secs: Option<i64>,
 
     #[serde(default, deserialize_with = "de_opt_lenient_bool")]
     cookie_secure: Option<bool>,
@@ -285,7 +288,8 @@ impl Config {
              s3_endpoint = {}\n\
              s3_public_url = {}\n\n\
              # Uploads\n\
-             max_upload_size_mb = {}\n\n\
+             max_upload_size_mb = {}\n\
+             upload_token_expiry_secs = {}\n\n\
              # Security / sessions\n\
              cookie_secure = {}\n\
              session_lifetime_hours = {}\n\
@@ -326,6 +330,7 @@ impl Config {
             opt_str(&self.s3_endpoint),
             opt_str(&self.s3_public_url),
             self.max_upload_size_bytes / (1024 * 1024),
+            self.upload_token_expiry_secs,
             self.cookie_secure,
             self.session_lifetime_hours,
             self.public_registration_enabled,
@@ -390,6 +395,7 @@ impl RawConfig {
             backup_s3_public_url: self.backup_s3_public_url,
             backup_encryption_key: self.backup_encryption_key,
             max_upload_size_bytes: self.max_upload_size_mb.unwrap_or(50) * 1024 * 1024,
+            upload_token_expiry_secs: self.upload_token_expiry_secs.unwrap_or(900),
             cookie_secure: self.cookie_secure.unwrap_or(false),
             session_lifetime_hours: self.session_lifetime_hours.unwrap_or(24),
             public_registration_enabled: self.public_registration_enabled.unwrap_or(false),
@@ -473,7 +479,9 @@ pub fn default_config_toml() -> String {
          # s3_endpoint = \"https://s3.example.com\"\n\
          # s3_public_url = \"https://cdn.example.com\"\n\n\
          # --- Uploads ---\n\
-         max_upload_size_mb = 50\n\n\
+         max_upload_size_mb = 50\n\
+         # Signed upload URL lifetime (seconds)\n\
+         upload_token_expiry_secs = 900\n\n\
          # --- Security / sessions ---\n\
          cookie_secure = false\n\
          session_lifetime_hours = 24\n\
