@@ -197,10 +197,7 @@ const SWEEP_MIN_AGE_MS: u64 = 5 * 60 * 1000;
 /// first 12 hex chars are the 48-bit unix-ms creation time. Names that don't
 /// parse are legacy leftovers — treat as stale so they still get reclaimed.
 fn is_stale(db_name: &str) -> bool {
-    let Some(ts_hex) = db_name
-        .strip_prefix(DB_PREFIX)
-        .and_then(|uuid| uuid.get(..12))
-    else {
+    let Some(ts_hex) = db_name.strip_prefix(DB_PREFIX).and_then(|uuid| uuid.get(..12)) else {
         return true;
     };
     let Ok(created_ms) = u64::from_str_radix(ts_hex, 16) else {
