@@ -13,9 +13,10 @@
 //! - **SQLite** stays `sqlite::memory:` — no Docker, identical to the original
 //!   behaviour, so a bare `cargo test` keeps working with zero setup.
 //! - **Postgres / MySQL** get a fresh `cms_test_<uuidv7>` database created here
-//!   and dropped on teardown (best-effort). A one-time startup sweep drops any
-//!   leftover `cms_test_*` databases from a previous aborted run, so local
-//!   re-runs are self-healing.
+//!   and dropped on teardown (best-effort). A startup sweep drops leftover
+//!   `cms_test_*` databases from a previous aborted run (only ones older than
+//!   [`SWEEP_MIN_AGE_MS`], so concurrent test processes never sweep each
+//!   other), keeping local re-runs self-healing.
 
 use sqlx::Connection;
 use tokio::sync::OnceCell;
@@ -180,7 +181,37 @@ async fn drop_database(admin_url: &str, db_name: &str, backend: Backend) -> Resu
 }
 
 /// Run the leftover-database sweep exactly once per test process.
+///
+/// Under `cargo nextest` every test runs in its own process, so the sweep runs
+/// many times concurrently — the age gate in `sweep_leftovers` is what keeps
+/// those concurrent sweeps from dropping each other's live databases.
 static SWEEP: OnceCell<()> = OnceCell::const_new();
+
+/// Only databases older than this are swept. Live tests never get close (a
+/// single test finishes in seconds); anything past it is a leak from an
+/// aborted run.
+const SWEEP_MIN_AGE_MS: u64 = 5 * 60 * 1000;
+
+/// Age gate for the sweep: `true` when the database was created more than
+/// [`SWEEP_MIN_AGE_MS`] ago. The name embeds a UUIDv7 (`cms_test_<uuid>`) whose
+/// first 12 hex chars are the 48-bit unix-ms creation time. Names that don't
+/// parse are legacy leftovers — treat as stale so they still get reclaimed.
+fn is_stale(db_name: &str) -> bool {
+    let Some(ts_hex) = db_name
+        .strip_prefix(DB_PREFIX)
+        .and_then(|uuid| uuid.get(..12))
+    else {
+        return true;
+    };
+    let Ok(created_ms) = u64::from_str_radix(ts_hex, 16) else {
+        return true;
+    };
+    let now_ms = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .expect("system clock before unix epoch")
+        .as_millis() as u64;
+    now_ms.saturating_sub(created_ms) > SWEEP_MIN_AGE_MS
+}
 
 async fn ensure_swept(admin_url: &str, backend: Backend) {
     SWEEP
@@ -192,9 +223,11 @@ async fn ensure_swept(admin_url: &str, backend: Backend) {
         .await;
 }
 
-/// Drop every pre-existing `cms_test_*` database — reclaims leaks from a
-/// previous run that aborted before teardown. CI containers are ephemeral, so
-/// this mainly keeps local dev idempotent.
+/// Drop stale `cms_test_*` databases — reclaims leaks from a previous run that
+/// aborted before teardown. CI containers are ephemeral, so this mainly keeps
+/// local dev idempotent. Only databases older than [`SWEEP_MIN_AGE_MS`] are
+/// dropped so concurrent test processes (nextest) can't sweep away databases
+/// of tests that are still running.
 async fn sweep_leftovers(admin_url: &str, backend: Backend) -> Result<(), sqlx::Error> {
     let names: Vec<String> = match backend {
         Backend::Postgres => {
@@ -223,7 +256,7 @@ async fn sweep_leftovers(admin_url: &str, backend: Backend) -> Result<(), sqlx::
         Backend::Sqlite => return Ok(()),
     };
 
-    for name in names {
+    for name in names.into_iter().filter(|n| is_stale(n)) {
         drop_database(admin_url, &name, backend).await?;
     }
     Ok(())
