@@ -229,11 +229,12 @@ pub(crate) fn resolve_run_user(explicit: Option<&str>) -> Result<String, Box<dyn
         }
         return Ok(user.to_string());
     }
-    if let Ok(sudo_user) = std::env::var("SUDO_USER") {
-        if !sudo_user.is_empty() && sudo_user != "root" {
-            validate_username(&sudo_user)?;
-            return Ok(sudo_user);
-        }
+    if let Ok(sudo_user) = std::env::var("SUDO_USER")
+        && !sudo_user.is_empty()
+        && sudo_user != "root"
+    {
+        validate_username(&sudo_user)?;
+        return Ok(sudo_user);
     }
     let current = std::env::var("USER").unwrap_or_default();
     if current.is_empty() || current == "root" {
