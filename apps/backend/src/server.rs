@@ -155,7 +155,7 @@ pub async fn run(
     });
 
     let rest_rx = shutdown_rx.clone();
-    let rest_handle = tokio::spawn(async move {
+    let mut rest_handle = tokio::spawn(async move {
         axum::serve(
             rest_listener,
             app.into_make_service_with_connect_info::<std::net::SocketAddr>(),
@@ -168,7 +168,7 @@ pub async fn run(
         })
     });
 
-    let grpc_handle = tokio::spawn(spawn_grpc_server(
+    let mut grpc_handle = tokio::spawn(spawn_grpc_server(
         services.clone(),
         repository_arc.clone(),
         config_arc.clone(),
@@ -177,25 +177,32 @@ pub async fn run(
         Box::pin(wait_for_shutdown(shutdown_rx)),
     ));
 
-    tokio::select! {
-        result = rest_handle => {
+    // Whichever server finishes first flips the shutdown signal; the sibling is
+    // then awaited so both are fully drained before `run()` returns.
+    let (rest_result, grpc_result) = tokio::select! {
+        result = &mut rest_handle => {
             let _ = shutdown_tx2.send(true);
-            match result {
-                Ok(Ok(())) => {}
-                Ok(Err(e)) => return Err(e.into()),
-                Err(e) => return Err(e.into()),
-            }
+            let grpc_result = grpc_handle.await;
+            (result, grpc_result)
         }
-        result = grpc_handle => {
+        result = &mut grpc_handle => {
             let _ = shutdown_tx2.send(true);
-            match result {
-                Ok(Ok(())) => {}
-                // gRPC's error is `Box<dyn Error + Send + Sync>`; format it so the
-                // conversion to this fn's `Box<dyn Error>` is unambiguous.
-                Ok(Err(e)) => return Err(format!("gRPC server error: {e}").into()),
-                Err(e) => return Err(format!("gRPC server task panicked: {e}").into()),
-            }
+            let rest_result = rest_handle.await;
+            (rest_result, result)
         }
+    };
+
+    match rest_result {
+        Ok(Ok(())) => {}
+        Ok(Err(e)) => return Err(e.into()),
+        Err(e) => return Err(e.into()),
+    }
+    match grpc_result {
+        Ok(Ok(())) => {}
+        // gRPC's error is `Box<dyn Error + Send + Sync>`; format it so the
+        // conversion to this fn's `Box<dyn Error>` is unambiguous.
+        Ok(Err(e)) => return Err(format!("gRPC server error: {e}").into()),
+        Err(e) => return Err(format!("gRPC server task panicked: {e}").into()),
     }
 
     Ok(())
@@ -280,7 +287,14 @@ pub fn initialize_storage(config: &Config) -> Arc<StorageRegistry> {
 
 async fn seed_admin(repository: &Repository) {
     debug!("Checking if admin user needs to be seeded");
-    if !repository.user.exists(ADMIN_EMAIL).await.unwrap_or(false) {
+    let exists = match repository.user.exists(ADMIN_EMAIL).await {
+        Ok(exists) => exists,
+        Err(e) => {
+            tracing::error!("Failed to check for existing admin user; skipping seed: {e}");
+            return;
+        }
+    };
+    if !exists {
         info!("Seeding default admin user");
         let id = uuid::Uuid::now_v7().to_string();
         let password_hash = bcrypt::hash("admin", bcrypt::DEFAULT_COST).expect("Failed to hash password");
