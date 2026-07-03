@@ -130,7 +130,8 @@ pub enum ServiceAction {
         /// OS account the service runs as.
         ///
         /// Defaults to the real invoking user (`$SUDO_USER` when run via sudo). The
-        /// service never runs as root. Ignored on Windows (runs as LocalSystem).
+        /// service never runs as root. On Windows the service always runs as
+        /// LocalSystem; custom accounts are unsupported and passing `--user` fails.
         #[arg(long, value_name = "NAME")]
         user: Option<String>,
     },
