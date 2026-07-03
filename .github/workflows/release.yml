@@ -102,7 +102,9 @@ jobs:
           toolchain: "1.94"
       - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2
         with:
-          workspaces: apps/backend
+          # Workspace root is the REPO root (Cargo.lock + target/ live there);
+          # cargo runs from apps/backend but artifacts land in <root>/target.
+          workspaces: ". -> target"
           key: release-${{ matrix.os }}-${{ matrix.arch }}
 
       # Build cargo directly (dist is already present from the artifact); keep the
