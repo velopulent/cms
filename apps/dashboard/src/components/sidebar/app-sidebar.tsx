@@ -130,7 +130,7 @@ export function AppSidebar({ ...props }: ComponentProps<typeof Sidebar>) {
           <SidebarMenuItem>
             <SidebarMenuButton
               tooltip="Settings"
-              isActive={pathname === settingsUrl}
+              isActive={pathname.startsWith(settingsUrl)}
               render={<Link to={settingsUrl} />}
             >
               <Settings />
