@@ -15,6 +15,14 @@ ignore = [
   # vulnerability and there is no safe upgrade available. Revisit when `image`
   # drops the dependency.
   "RUSTSEC-2024-0436",
+  # quick-xml < 0.41 CPU/memory DoS when parsing hostile XML (quadratic
+  # duplicate-attribute check; unbounded namespace allocations). Pulled in only
+  # via object_store's S3 client, which parses XML *responses from the
+  # configured S3 endpoint* — an operator-chosen, trusted-ish peer, not
+  # arbitrary user input. No upgrade path yet: even object_store 0.14 pins
+  # quick-xml ^0.40.1 (< 0.41). Revisit when object_store moves to >= 0.41.
+  "RUSTSEC-2026-0194",
+  "RUSTSEC-2026-0195",
 ]
 
 [licenses]
