@@ -370,6 +370,15 @@ impl RawConfig {
 
         let log = self.log.unwrap_or_default();
 
+        let upload_token_expiry_secs = self
+            .upload_token_expiry_secs
+            .unwrap_or(crate::signed_upload::DEFAULT_UPLOAD_TOKEN_EXPIRY_SECS);
+        if upload_token_expiry_secs <= 0 {
+            return Err(Box::new(figment::Error::from(format!(
+                "upload_token_expiry_secs must be positive (got {upload_token_expiry_secs})"
+            ))));
+        }
+
         Ok(Config {
             database_url: self.database_url.unwrap_or_else(paths::default_database_url),
             hmac_secret,
@@ -395,7 +404,7 @@ impl RawConfig {
             backup_s3_public_url: self.backup_s3_public_url,
             backup_encryption_key: self.backup_encryption_key,
             max_upload_size_bytes: self.max_upload_size_mb.unwrap_or(50) * 1024 * 1024,
-            upload_token_expiry_secs: self.upload_token_expiry_secs.unwrap_or(900),
+            upload_token_expiry_secs,
             cookie_secure: self.cookie_secure.unwrap_or(false),
             session_lifetime_hours: self.session_lifetime_hours.unwrap_or(24),
             public_registration_enabled: self.public_registration_enabled.unwrap_or(false),
@@ -481,7 +490,7 @@ pub fn default_config_toml() -> String {
          # --- Uploads ---\n\
          max_upload_size_mb = 50\n\
          # Signed upload URL lifetime (seconds)\n\
-         upload_token_expiry_secs = 900\n\n\
+         upload_token_expiry_secs = {default_upload_expiry}\n\n\
          # --- Security / sessions ---\n\
          cookie_secure = false\n\
          session_lifetime_hours = 24\n\
@@ -534,6 +543,7 @@ pub fn default_config_toml() -> String {
          format = \"pretty\"   # pretty | json\n\
          annotations = false  # include file + line numbers\n\
          dir = \"logs\"        # used when output = \"file\"\n",
+        default_upload_expiry = crate::signed_upload::DEFAULT_UPLOAD_TOKEN_EXPIRY_SECS,
     )
 }
 
