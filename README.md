@@ -125,8 +125,10 @@ By default, runtime files go to the platform-conventional per-type directories
 | `search/` (rebuildable index) | `~/.cache/vcms` | `~/Library/Caches/vcms` | `%LOCALAPPDATA%\vcms\cache` |
 | `logs/` | `~/.local/state/vcms` | `~/Library/Application Support/vcms` | `%LOCALAPPDATA%\vcms\data` |
 
-Set **`$VCMS_HOME`** to keep everything under a single root instead (and an existing
-`~/.vcms` is honored automatically, so upgrades don't move your data).
+Set **`$VCMS_HOME`** to keep everything under a single root instead. When several
+locations exist, the first match wins: **`$VCMS_HOME`** → the service's system
+directory (below) → a legacy `~/.vcms` (honored automatically, so upgrades don't
+move your data) → the split per-type defaults above.
 
 The `vcms service` installer stores the daemon's data under one system dir —
 `/var/lib/vcms` (Linux), `/Library/Application Support/vcms` (macOS), or
