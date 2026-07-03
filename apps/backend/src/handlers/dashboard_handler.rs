@@ -79,6 +79,41 @@ pub async fn dashboard_handler(Path(path): Path<String>, headers: HeaderMap) -> 
     }
 }
 
+#[cfg(all(test, feature = "embed-dashboard"))]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn cache_control_hashed_assets_are_immutable() {
+        assert_eq!(
+            cache_control_for("assets/index-abc123.js"),
+            "public, max-age=31536000, immutable"
+        );
+    }
+
+    #[test]
+    fn cache_control_index_html_revalidates() {
+        assert_eq!(cache_control_for("index.html"), "no-cache");
+    }
+
+    #[test]
+    fn cache_control_other_files_get_short_ttl() {
+        assert_eq!(cache_control_for("favicon.ico"), "public, max-age=3600");
+    }
+
+    #[test]
+    fn serve_embedded_returns_304_on_matching_etag() {
+        let Some(content) = Assets::get("index.html") else {
+            return; // no dashboard build embedded in this test run
+        };
+        let etag = format!("\"{}\"", hex::encode(content.metadata.sha256_hash()));
+        let mut headers = HeaderMap::new();
+        headers.insert(header::IF_NONE_MATCH, etag.parse().unwrap());
+        let response = serve_embedded("index.html", content, &headers);
+        assert_eq!(response.status(), StatusCode::NOT_MODIFIED);
+    }
+}
+
 #[cfg(not(feature = "embed-dashboard"))]
 pub async fn dashboard_handler(Path(_path): Path<String>, _headers: axum::http::HeaderMap) -> Response {
     (
