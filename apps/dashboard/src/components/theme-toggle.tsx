@@ -1,10 +1,11 @@
-import { Check, Palette } from "lucide-react";
+import { Palette } from "lucide-react";
 import { type Theme, useTheme } from "@/components/theme-provider";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
   DropdownMenuContent,
-  DropdownMenuItem,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
@@ -45,11 +46,10 @@ export function ModeToggle() {
   const renderItem = ({ key, label }: { key: Theme; label: string }) => {
     const active = theme === key;
     return (
-      <DropdownMenuItem
+      <DropdownMenuRadioItem
         key={key}
-        aria-checked={active}
+        value={key}
         className={cn(active && "bg-accent text-accent-foreground")}
-        onClick={() => setTheme(key)}
       >
         <span
           aria-hidden="true"
@@ -59,10 +59,7 @@ export function ModeToggle() {
           )}
         />
         {label}
-        <Check
-          className={cn("ml-auto size-4", active ? "opacity-100" : "opacity-0")}
-        />
-      </DropdownMenuItem>
+      </DropdownMenuRadioItem>
     );
   };
 
@@ -77,11 +74,16 @@ export function ModeToggle() {
         }
       />
       <DropdownMenuContent align="end" className={"w-fit"}>
-        {BASE_THEMES.map(renderItem)}
-        <DropdownMenuSeparator />
-        <ScrollArea className="h-64 pr-1">
-          {NITRO_THEMES.map(renderItem)}
-        </ScrollArea>
+        <DropdownMenuRadioGroup
+          value={theme}
+          onValueChange={(value) => setTheme(value as Theme)}
+        >
+          {BASE_THEMES.map(renderItem)}
+          <DropdownMenuSeparator />
+          <ScrollArea className="h-64 pr-1">
+            {NITRO_THEMES.map(renderItem)}
+          </ScrollArea>
+        </DropdownMenuRadioGroup>
       </DropdownMenuContent>
     </DropdownMenu>
   );
