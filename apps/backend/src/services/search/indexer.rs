@@ -18,6 +18,9 @@ use crate::repository::Repository;
 /// Max rows processed per drain iteration.
 const BATCH_SIZE: i64 = 256;
 
+/// Retries after a failed drain before giving up until the next enqueue.
+const MAX_DRAIN_RETRIES: u32 = 5;
+
 /// Run the indexer loop forever. Owns the writer-side `SearchService`.
 pub async fn run(search: Arc<SearchService>, queue: Arc<SearchQueue>, repository: Arc<Repository>) {
     let notify = queue.notify_handle();
@@ -25,14 +28,30 @@ pub async fn run(search: Arc<SearchService>, queue: Arc<SearchQueue>, repository
     // Startup drain: pick up rows committed before a crash/restart. `Notify`
     // stores a permit, so an enqueue racing this drain is never lost — it just
     // wakes the loop below for an empty (cheap) drain in the worst case.
-    if let Err(e) = drain(&search, &queue, &repository).await {
-        tracing::error!("Search indexer startup drain failed: {}", e);
-    }
+    drain_with_retry(&search, &queue, &repository).await;
 
     loop {
         notify.notified().await;
-        if let Err(e) = drain(&search, &queue, &repository).await {
-            tracing::error!("Search indexer drain failed: {}", e);
+        drain_with_retry(&search, &queue, &repository).await;
+    }
+}
+
+/// Drain, retrying transient failures with exponential backoff so queued rows
+/// don't sit stuck until the next enqueue. After [`MAX_DRAIN_RETRIES`] the rows
+/// stay in the durable queue for the next notification or restart.
+async fn drain_with_retry(search: &SearchService, queue: &SearchQueue, repository: &Repository) {
+    let mut delay = std::time::Duration::from_millis(500);
+    for attempt in 0..=MAX_DRAIN_RETRIES {
+        match drain(search, queue, repository).await {
+            Ok(()) => return,
+            Err(e) if attempt == MAX_DRAIN_RETRIES => {
+                tracing::error!("Search indexer drain failed after {MAX_DRAIN_RETRIES} retries: {e}");
+            }
+            Err(e) => {
+                tracing::warn!("Search indexer drain failed (attempt {}): {e}; retrying", attempt + 1);
+                tokio::time::sleep(delay).await;
+                delay = (delay * 2).min(std::time::Duration::from_secs(10));
+            }
         }
     }
 }
