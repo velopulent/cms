@@ -813,7 +813,6 @@ dependencies = [
  "image",
  "infer",
  "json-patch",
- "libc",
  "mime_guess",
  "object_store",
  "prost",
