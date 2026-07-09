@@ -117,10 +117,10 @@ per-type directories via the `directories` crate (`ProjectDirs`):
 1. **`$VCMS_HOME` is set** — forces the root explicitly.
 2. **the system service home dir exists** — Linux `/var/lib/vcms`, macOS
    `/Library/Application Support/vcms`, Windows `C:\ProgramData\vcms`. The
-   `vcms service` installer creates it (and leaves it behind on uninstall), so a plain
+   platform installer creates it (and leaves it behind on uninstall), so a plain
    `vcms serve`/`admin`/`backup` **follows the service's data instead of forking to a
    per-user split store**. This path is defined once in `paths::system_home()` and
-   imported by the `service` submodules.
+   imported by the Windows SCM host.
 3. **a legacy `~/.vcms` exists** — an existing install keeps working untouched.
 
 Otherwise (dev/eval boxes with no service) files use the platform split dirs.
