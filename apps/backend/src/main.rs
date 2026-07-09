@@ -45,6 +45,7 @@ async fn main() {
             import_as_new,
             yes,
         }) => run_restore(file, scope, site, *import_as_new, *yes, &cli).await,
+        #[cfg(windows)]
         Some(Command::Service { action }) => cms::service::run_service(action, &cli).await,
         Some(Command::Mcp {
             transport: McpTransport::Stdio,
