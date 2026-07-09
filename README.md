@@ -130,7 +130,7 @@ locations exist, the first match wins: **`$VCMS_HOME`** → the service's system
 directory (below) → a legacy `~/.vcms` (honored automatically, so upgrades don't
 move your data) → the split per-type defaults above.
 
-The `vcms service` installer stores the daemon's data under one system dir —
+The platform service installer stores the daemon's data under one system dir —
 `/var/lib/vcms` (Linux), `/Library/Application Support/vcms` (macOS), or
 `C:\ProgramData\vcms` (Windows). **Once that directory exists, the CLI uses it too**:
 a plain `vcms serve`/`admin`/`backup` — even after the service is stopped or

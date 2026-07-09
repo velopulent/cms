@@ -75,8 +75,6 @@ vcms admin reset-password --email U --password P
 vcms backup create [--scope instance|site] [--site ID] [--out FILE] [--no-files] [--encrypt]
 vcms backup list                       # list recorded backups
 vcms restore --file PATH [--scope instance|site] [--site ID] [--import-as-new] --yes
-vcms service install [--user NAME]     # install/enable/start as an OS service (systemd/launchd/SCM)
-vcms service uninstall|status|start|stop
 vcms mcp stdio                         # thin HTTP proxy to a running server's /mcp (for MCP clients)
 ```
 
@@ -88,7 +86,7 @@ and requires `--yes`.
 JSON-RPC between stdin/stdout and the server's `/mcp` Streamable-HTTP endpoint,
 reading only `VCMS_MCP_TOKEN` (bearer) and `VCMS_MCP_URL` (default
 `http://127.0.0.1:3000`). So it works even when the data is owned by the OS-service
-account. `vcms service install` pins `VCMS_HOME` to a system dir so the daemon stores
+account. The installed service pins `VCMS_HOME` to a system dir so the daemon stores
 everything under one owned root.
 
 Global flags (highest precedence): `--config <PATH>`, `--bind <ADDR>`, `--database-url <URL>`, `--log-level <LEVEL>`.
@@ -126,10 +124,10 @@ per-type directories via the `directories` crate (`ProjectDirs`):
 1. **`$VCMS_HOME` is set** — forces the root explicitly.
 2. **the system service home dir exists** — Linux `/var/lib/vcms`, macOS
    `/Library/Application Support/vcms`, Windows `C:\ProgramData\vcms`. The
-   `vcms service` installer creates it (and leaves it behind on uninstall), so a plain
+   platform installer creates it (and leaves it behind on uninstall), so a plain
    `vcms serve`/`admin`/`backup` **follows the service's data instead of forking to a
    per-user split store**. This path is defined once in `paths::system_home()` and
-   imported by the `service` submodules.
+   imported by the Windows SCM host.
 3. **a legacy `~/.vcms` exists** — an existing install keeps working untouched.
 
 Otherwise (dev/eval boxes with no service) files use the platform split dirs.
