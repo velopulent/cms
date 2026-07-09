@@ -80,11 +80,7 @@ tar = "0.4"
 croner = "3"
 tantivy = "0.26"
 
-# Unix: effective-uid check for the `service` elevation guard.
-[target.'cfg(unix)'.dependencies]
-libc = "0.2"
-
-# Windows: native Service Control Manager integration for `vcms service`.
+# Windows: native Service Control Manager host for `vcms service run`.
 [target.'cfg(windows)'.dependencies]
 windows-service = "0.8"
 
