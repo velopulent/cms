@@ -3,13 +3,13 @@
 pub mod cli;
 pub mod config;
 pub mod database;
+pub mod diagnostics;
 pub mod error;
 pub mod graphql;
 pub mod mcp;
 pub mod paths;
 pub mod secrets;
 pub mod server;
-#[cfg(windows)]
 pub mod service;
 pub mod signed_upload;
 pub mod test_helpers;

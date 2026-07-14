@@ -9,22 +9,19 @@ use tracing::info;
 
 #[tokio::main]
 async fn main() {
-    // Load env from the cwd `.env` (dev) first, then `$VCMS_HOME/.env` (installed
-    // services run from an arbitrary cwd). dotenvy is first-wins, so real env vars and
-    // the cwd file keep precedence over the config-dir file. VCMS_HOME must be a real
-    // env var — resolved here before the `.env` loads — never set inside that file
-    // (chicken-and-egg).
+    // Load env from the cwd `.env` (dev) first, then `$VCMS_HOME/.env`. dotenvy is
+    // first-wins, so real env vars and the cwd file keep precedence over the home file.
+    // VCMS_HOME must be a real env var — resolved here before the `.env` loads — never
+    // set inside that file (chicken-and-egg).
     dotenvy::dotenv().ok();
     let env_file = cms::paths::env_file();
     match dotenvy::from_path(&env_file) {
         Ok(()) => {}
         Err(e) if e.not_found() => {} // missing file is fine
-        // The home `.env` is optional. When it lives in the system service home
-        // (`C:\ProgramData\vcms`, `/var/lib/vcms`) it's ACL-locked to SYSTEM/root, so a
-        // non-elevated CLI legitimately can't read it — most notably `vcms mcp stdio`,
-        // a proxy that needs no home file at all. Treat "permission denied" like
-        // "absent" and move on: the data-touching commands still hit `paths::ensure`'s
-        // elevate preflight, which reports the access problem with an actionable hint.
+        // The home `.env` is optional. If VCMS_HOME points at a service-owned directory,
+        // a non-elevated CLI may not read it — most notably `vcms mcp stdio`, a proxy
+        // that needs no home file. Treat "permission denied" like "absent" and move on:
+        // data-touching commands still hit `paths::ensure`'s preflight.
         Err(dotenvy::Error::Io(io)) if io.kind() == std::io::ErrorKind::PermissionDenied => {}
         Err(e) => {
             eprintln!("Error: cannot load {}: {e}", env_file.display());
@@ -45,8 +42,8 @@ async fn main() {
             import_as_new,
             yes,
         }) => run_restore(file, scope, site, *import_as_new, *yes, &cli).await,
-        #[cfg(windows)]
         Some(Command::Service { action }) => cms::service::run_service(action, &cli).await,
+        Some(Command::Doctor) => cms::diagnostics::run(&cli).await,
         Some(Command::Mcp {
             transport: McpTransport::Stdio,
         }) => run_mcp_stdio().await,

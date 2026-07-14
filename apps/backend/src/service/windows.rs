@@ -22,8 +22,8 @@ use super::SERVICE_NAME;
 use crate::cli::{Cli, ServiceAction};
 
 /// Fixed home for the LocalSystem service (Windows convention is ProgramData).
-/// Defined once in `paths::system_home()` so a plain CLI invocation resolves to the
-/// same store; always `Some` on Windows.
+/// The service host sets this before runtime startup so direct SCM launches always
+/// use the machine-wide data directory.
 fn service_home() -> std::path::PathBuf {
     crate::paths::system_home().expect("system_home is always set on Windows")
 }
@@ -31,6 +31,7 @@ fn service_home() -> std::path::PathBuf {
 pub fn dispatch(action: &ServiceAction, _cli: &Cli) -> Result<(), Box<dyn std::error::Error>> {
     match action {
         ServiceAction::Run => run_dispatcher(),
+        ServiceAction::Status => unreachable!("status is dispatched by service::run_service"),
     }
 }
 
@@ -49,12 +50,6 @@ fn run_dispatcher() -> Result<(), Box<dyn std::error::Error>> {
     // A service has no console, so the default stdout logging goes nowhere. Default
     // to file output (lands in the home's logs/ — where install tells the user to
     // look); an explicit LOG_OUTPUT (env or .env) still wins.
-    if std::env::var_os("LOG_OUTPUT").is_none() {
-        // SAFETY: same single-threaded process-start window as above.
-        unsafe {
-            std::env::set_var("LOG_OUTPUT", "file");
-        }
-    }
     service_dispatcher::start(SERVICE_NAME, ffi_service_main)?;
     Ok(())
 }
@@ -72,6 +67,9 @@ fn service_main(_arguments: Vec<OsString>) {
 /// report its reporter failing.
 fn log_service_error(msg: &str) {
     use std::io::Write;
+    let _ = std::process::Command::new("eventcreate.exe")
+        .args(["/T", "ERROR", "/ID", "1", "/L", "APPLICATION", "/SO", "vcms", "/D", msg])
+        .status();
     let dir = service_home().join("logs");
     let _ = std::fs::create_dir_all(&dir);
     if let Ok(mut file) = std::fs::OpenOptions::new()
