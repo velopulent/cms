@@ -1,0 +1,8 @@
+#!/bin/sh
+set -eu
+systemctl daemon-reload >/dev/null 2>&1 || true
+if [ "$1" = purge ]; then
+  echo "State remains in /var/lib/vcms. Remove it manually only when irreversible purge is intended."
+else
+  echo "vcms config and state were preserved."
+fi

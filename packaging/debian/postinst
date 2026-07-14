@@ -1,0 +1,12 @@
+#!/bin/sh
+set -eu
+getent group vcms >/dev/null || groupadd --system vcms
+id vcms >/dev/null 2>&1 || useradd --system --gid vcms --home-dir /var/lib/vcms --shell /usr/sbin/nologin vcms
+install -d -o vcms -g vcms -m 0750 /var/lib/vcms /var/lib/vcms/storage /var/lib/vcms/backups /var/lib/vcms/logs /var/lib/vcms/search
+install -d -o root -g root -m 0755 /etc/vcms
+[ -f /etc/vcms/config.toml ] || cp /etc/vcms/config.toml.sample /etc/vcms/config.toml
+systemctl daemon-reload >/dev/null 2>&1 || true
+systemctl enable vcms.service >/dev/null 2>&1 || true
+if [ -f /run/vcms-was-active ]; then rm -f /run/vcms-was-active; systemctl restart vcms.service; fi
+echo "vcms installed but not started. Run: vcms doctor && systemctl start vcms"
+echo "Security: change admin@cms.local password immediately after first start."

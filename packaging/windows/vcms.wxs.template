@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs" xmlns:ui="http://wixtoolset.org/schemas/v4/wxs/ui">
+  <Package Name="Velopulent CMS" Manufacturer="Velopulent" Version="@VERSION@" ProductCode="@PRODUCT_CODE@" UpgradeCode="2c22e086-4486-46b5-9760-cbd71cb7adf0" Scope="perMachine">
+    <MajorUpgrade DowngradeErrorMessage="A newer version of vcms is already installed." />
+    <MediaTemplate EmbedCab="yes" />
+    <Property Id="MsiLogging" Value="voicewarmupx" />
+    <SetProperty Id="ARPINSTALLLOCATION" Value="[INSTALLFOLDER]" After="CostFinalize" />
+    <WixVariable Id="WixUILicenseRtf" Value="license.rtf" />
+    <ui:WixUI Id="WixUI_InstallDir" InstallDirectory="INSTALLFOLDER" />
+    <Feature Id="Main" Title="vcms" Level="1"><ComponentGroupRef Id="VcmsComponents" /></Feature>
+    <StandardDirectory Id="ProgramFiles64Folder"><Directory Id="INSTALLFOLDER" Name="vcms" /></StandardDirectory>
+    <StandardDirectory Id="CommonAppDataFolder"><Directory Id="ProgramDataVcms" Name="vcms" /></StandardDirectory>
+    <ComponentGroup Id="VcmsComponents">
+      <Component Directory="INSTALLFOLDER">
+        <File Source="payload\vcms.exe" KeyPath="yes" />
+        <Environment Id="VcmsPath" Name="PATH" Value="[INSTALLFOLDER]" Action="set" Part="last" System="yes" Permanent="no" />
+        <ServiceInstall Id="VcmsService" Name="vcms" DisplayName="Velopulent CMS" Description="Velopulent CMS" Type="ownProcess" Start="auto" ErrorControl="normal" Account="NT AUTHORITY\LocalService" Arguments="service run" />
+        <ServiceControl Id="VcmsServiceControl" Name="vcms" Start="install" Stop="both" Remove="uninstall" Wait="yes" />
+      </Component>
+      <Component Directory="ProgramDataVcms" Guid="3be6a411-2c32-4a94-bc1b-52b9ec6029b6">
+        <CreateFolder><Permission User="LocalService" GenericRead="yes" GenericWrite="yes" DeleteChild="yes" /></CreateFolder>
+        <File Source="payload\config.sample.toml" Name="config.sample.toml" />
+      </Component>
+    </ComponentGroup>
+  </Package>
+</Wix>
