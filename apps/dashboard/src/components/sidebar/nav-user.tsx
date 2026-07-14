@@ -4,6 +4,7 @@ import { useNavigate } from "@tanstack/react-router";
 import {
   BadgeCheck,
   Bell,
+  BookOpen,
   ChevronsUpDown,
   CreditCard,
   LogOut,
@@ -77,6 +78,21 @@ export function NavUser({
                   </div>
                 </div>
               </DropdownMenuLabel>
+            </DropdownMenuGroup>
+            <DropdownMenuSeparator />
+            <DropdownMenuGroup>
+              <DropdownMenuItem
+                render={
+                  <a
+                    href="https://cms.velopulent.com/docs"
+                    target="_blank"
+                    rel="noreferrer"
+                  />
+                }
+              >
+                <BookOpen />
+                Documentation
+              </DropdownMenuItem>
             </DropdownMenuGroup>
             <DropdownMenuSeparator />
             <DropdownMenuGroup>

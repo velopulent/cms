@@ -1,8 +1,8 @@
 <p align="center">
-  <img src="assets/logo.avif" width="400" alt="CMS Logo" />
+  <img src="assets/logo.avif" width="400" alt="Velopulent CMS Logo" />
 </p>
 
-<h1 align="center">The CMS That Ships As a Single Binary</h1>
+<h1 align="center">Velopulent CMS</h1>
 
 <p align="center">
  Open-source headless CMS focused on user experience and content flexibility.
@@ -10,6 +10,7 @@
 
 <p align="center">
   <a href="https://cms.velopulent.com">Website</a> •
+  <a href="https://cms.velopulent.com/docs">Documentation</a> •
   <a href="#what-is-this">About</a> •
   <a href="#features">Features</a> •
   <a href="#getting-started">Getting Started</a> •
@@ -85,6 +86,8 @@ password after your first login.*
 | `/api/v1/docs` | Interactive API documentation |
 | `port 50051`   | gRPC endpoint |
 | `/mcp` | MCP Streamable HTTP endpoint |
+| `/health/live` | Unauthenticated process liveness probe |
+| `/health/ready` | Unauthenticated database-backed readiness probe |
 ---
 
 ### MCP over stdio
@@ -126,24 +129,40 @@ By default, runtime files go to the platform-conventional per-type directories
 | `logs/` | `~/.local/state/vcms` | `~/Library/Application Support/vcms` | `%LOCALAPPDATA%\vcms\data` |
 
 Set **`$VCMS_HOME`** to keep everything under a single root instead. When several
-locations exist, the first match wins: **`$VCMS_HOME`** → the service's system
-directory (below) → a legacy `~/.vcms` (honored automatically, so upgrades don't
-move your data) → the split per-type defaults above.
+locations exist, the first match wins: **`$VCMS_HOME`** → a legacy `~/.vcms`
+(honored automatically, so upgrades don't move your data) → the split per-type
+defaults above.
 
-The platform service installer stores the daemon's data under one system dir —
+The platform service installers store daemon data under one system dir —
 `/var/lib/vcms` (Linux), `/Library/Application Support/vcms` (macOS), or
-`C:\ProgramData\vcms` (Windows). **Once that directory exists, the CLI uses it too**:
-a plain `vcms serve`/`admin`/`backup` — even after the service is stopped or
-uninstalled — targets the *same* store rather than a separate per-user copy, so you
-never end up with two sets of data. Because that directory is owned by SYSTEM/root,
-run those commands from an elevated (Administrator/`sudo`) terminal; a non-elevated
-run fails with a clear hint instead of silently creating a second store.
+`C:\ProgramData\vcms` (Windows) — by setting `VCMS_HOME` in the service definition.
+The portable binary does **not** auto-detect or switch to those service-owned
+locations just because they exist. To operate on an installed service's data from a
+shell, run an elevated terminal and set `VCMS_HOME` to that system dir explicitly.
 
 `vcms serve` creates what it needs on first run and generates `secrets.toml` if
 absent. Environment variables (`DATABASE_URL`, `HMAC_SECRET`, `STORAGE_FS_PATH`,
 S3 settings, …) still override these defaults.
 
 
+
+### Installed service operations
+
+Native packages register `vcms` with systemd, launchd, or Windows SCM, but never
+start a fresh installation automatically. Validate configuration and inspect state
+with `vcms doctor` and `vcms service status`, then start it through the native service
+manager.
+
+`vcms doctor` checks resolved configuration, directory access, current database
+schema, listener availability, and execution identity without creating or migrating
+the database. Normal package removal preserves configuration, secrets, databases,
+uploads, backups, and search state. Delete the documented system data directory only
+when an irreversible purge is intended.
+
+Upgrades use package-manager semantics and keep paths/configuration stable. Back up
+before upgrading: database migrations are forward-only, so downgrading requires an
+explicit restore. On first start, immediately change the temporary
+`admin@cms.local` / `admin` credentials.
 
 ## Why This CMS?
 

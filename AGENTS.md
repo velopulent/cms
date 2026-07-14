@@ -1,12 +1,18 @@
 # AI Agent Instructions for CMS (Rust + React)
 
+## Product Identity
+
+- Human-facing product and service display name: **Velopulent CMS**.
+- Canonical documentation: <https://cms.velopulent.com/docs>.
+- Keep the executable, package name, native service identifier, environment prefix, and internal identifiers as `vcms` / `VCMS_*` for backward compatibility. Do not rename persisted paths or service keys when updating branding.
+
 ## Architecture
 
 - **Backend**: Rust + Axum HTTP server, `SQLx` + (SQLite | PostgreSQL | MySQL), `rust-embed` (static assets)
 - **Frontend**: React in `apps/dashboard/` with Tanstack Router, Tanstack Query, shadcn/ui
 - **gRPC**: Separate server on port 50051 (compiled from `libs/proto/*.proto` via `tonic-build`)
 - **Build**: Nx orchestrates `dashboard:build` → `backend:build`. `build.rs` compiles proto files only.
-- **Runtime**: Single binary serves REST API (`/api/*`), gRPC, GraphQL (`/api/graphql`), MCP (Streamable HTTP at `/mcp`), and static SPA fallback
+- **Runtime**: Single binary serves REST API (`/api/*`), gRPC, GraphQL (`/api/graphql`), MCP (Streamable HTTP at `/mcp`), health probes (`/health/live`, `/health/ready`), and static SPA fallback
 
 ## Key Directories
 
@@ -25,6 +31,8 @@
 - `libs/proto/` - Protocol Buffer definitions (`cms.proto`)
 - `apps/dashboard/` - React frontend app
 - `apps/web/` - Landing Page and Documentation (NextJS + Fumadocs)
+- `packaging/` - Native Linux, macOS, Windows, Debian, RPM, and Arch definitions and lifecycle scripts
+- `xtask/` - Typed release/package orchestration; platform builders live in separate modules
 
 ## Developer Commands
 
@@ -76,6 +84,8 @@ vcms backup create [--scope instance|site] [--site ID] [--out FILE] [--no-files]
 vcms backup list                       # list recorded backups
 vcms restore --file PATH [--scope instance|site] [--site ID] [--import-as-new] --yes
 vcms mcp stdio                         # thin HTTP proxy to a running server's /mcp (for MCP clients)
+vcms service status                    # normalized native-service status and manager details
+vcms doctor                            # validate config, storage, database, bind ports, and service identity
 ```
 
 `backup`/`restore` run offline (no HTTP server) against the configured database —
@@ -92,6 +102,15 @@ everything under one owned root.
 Global flags (highest precedence): `--config <PATH>`, `--bind <ADDR>`, `--database-url <URL>`, `--log-level <LEVEL>`.
 
 The server auto-migrates the database on every startup; there is no separate migrate command.
+
+## Packaging and Releases
+
+- Keep native package definitions and service files in `packaging/`; do not embed them in Rust source or workflow YAML.
+- `xtask` orchestrates deterministic staging and packaging. Keep `xtask/src/main.rs` limited to CLI parsing and dispatch, with shared and platform-specific implementation in modules.
+- Keep the release workflow thin: build the dashboard, run native build/package jobs, assemble artifacts, attest, and publish.
+- Ordinary CI validates packaging templates, `xtask` tests, and deterministic dry-runs. It must not install or mutate host services.
+- Release artifacts include portable archives, Debian, RPM, MSI, and macOS PKG packages. Arch is maintained as a package recipe consuming published Linux archives; render it with `xtask arch-render`, not as a fake release archive.
+- The stable native service identifier is `vcms`; its human-facing display name is **Velopulent CMS**. Fresh Linux and macOS package installs register/enable the service but do not auto-start it; the Windows MSI installs the service for automatic startup and starts it immediately.
 
 ## Configuration
 

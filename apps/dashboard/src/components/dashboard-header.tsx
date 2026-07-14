@@ -1,5 +1,5 @@
 import { Link, useNavigate } from "@tanstack/react-router";
-import { LogOut, Settings, User } from "lucide-react";
+import { BookOpen, LogOut, Settings, User } from "lucide-react";
 import { ModeToggle } from "@/components/theme-toggle";
 import { Button, buttonVariants } from "@/components/ui/button";
 import {
@@ -36,7 +36,7 @@ export function DashboardHeader() {
           className="size-8"
         />
 
-        <span className="text-base">CMS</span>
+        <span className="text-base">Velopulent CMS</span>
       </Link>
 
       <div className="flex items-center gap-2">
@@ -76,6 +76,21 @@ export function DashboardHeader() {
                   </div>
                 </div>
               </DropdownMenuLabel>
+            </DropdownMenuGroup>
+            <DropdownMenuSeparator />
+            <DropdownMenuGroup>
+              <DropdownMenuItem
+                render={
+                  <a
+                    href="https://cms.velopulent.com/docs"
+                    target="_blank"
+                    rel="noreferrer"
+                  />
+                }
+              >
+                <BookOpen />
+                Documentation
+              </DropdownMenuItem>
             </DropdownMenuGroup>
             <DropdownMenuSeparator />
             <DropdownMenuItem onClick={() => navigate({ to: "/account" })}>
