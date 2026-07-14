@@ -10,10 +10,10 @@
 //!   `~/.local/state/vcms`); on macOS `~/Library/Application Support/vcms` (+ Caches);
 //!   on Windows `%APPDATA%`/`%LOCALAPPDATA%` under `vcms`.
 //!
-//! * **Single** — everything nests under one root. Chosen when `$VCMS_HOME` is set
-//!   (the OS-service installer pins it to a system dir like `/var/lib/vcms` or
-//!   `C:\ProgramData\vcms`), or when a legacy `~/.vcms` already holds data (so an
-//!   existing install keeps working untouched).
+//! * **Single** — everything nests under one root. Chosen when `$VCMS_HOME` is set,
+//!   or when a legacy `~/.vcms` already holds data (so an existing install keeps
+//!   working untouched). OS packages set `$VCMS_HOME` in their service definitions;
+//!   the portable CLI never sniffs service-owned directories on its own.
 
 use std::path::PathBuf;
 
@@ -65,9 +65,8 @@ impl Layout {
     }
 }
 
-/// The fixed system directory an installed OS service owns, per platform. This is the
-/// single source of truth for that path — the `service` submodules import it instead
-/// of re-declaring their own const. `None` on platforms without a service integration.
+/// Conventional system directory an installed OS service owns, per platform. The app
+/// does not auto-select this path; service packages pass it through `$VCMS_HOME`.
 pub fn system_home() -> Option<PathBuf> {
     #[cfg(windows)]
     {
@@ -87,20 +86,14 @@ pub fn system_home() -> Option<PathBuf> {
     }
 }
 
-/// Resolve the active layout: `$VCMS_HOME` → an existing system service home → legacy
-/// `~/.vcms` → platform split. Gathers the real filesystem/env inputs and defers the
-/// precedence decision to the pure [`resolve_layout`] (kept separate so it is testable
-/// without touching real system dirs).
+/// Resolve the active layout: `$VCMS_HOME` → legacy `~/.vcms` → platform split.
+/// Gathers the real filesystem/env inputs and defers the precedence decision to the
+/// pure [`resolve_layout`] (kept separate so it is testable without touching real
+/// system dirs).
 fn layout() -> Layout {
     let env_home = std::env::var_os(CMS_HOME_ENV)
         .filter(|v| !v.is_empty())
         .map(PathBuf::from);
-
-    // A system home counts only when its dir already exists on disk: the OS-service
-    // installer creates it, and it survives uninstall (which leaves data behind). So a
-    // plain CLI invocation follows the service's data instead of forking to a second,
-    // per-user store. Absent (dev/eval boxes) → we fall through to the split layout.
-    let system = system_home().filter(|p| p.is_dir());
 
     // Back-compat: a pre-existing single `~/.vcms` keeps owning everything so an upgrade
     // never strands a user's database or secrets.
@@ -110,22 +103,14 @@ fn layout() -> Layout {
 
     let split = directories::ProjectDirs::from("", "", "vcms").map(|dirs| split_from(&dirs));
 
-    resolve_layout(env_home, system, legacy, split)
+    resolve_layout(env_home, legacy, split)
 }
 
 /// Pure precedence policy. Each `Option` is a candidate the caller has already vetted
-/// (env set & non-empty; system/legacy dirs confirmed to exist; split from `ProjectDirs`).
+/// (env set & non-empty; legacy dir confirmed to exist; split from `ProjectDirs`).
 /// Falls back to a local `.vcms` blob when no platform dirs are detectable (rare).
-fn resolve_layout(
-    env_home: Option<PathBuf>,
-    system_home: Option<PathBuf>,
-    legacy_home: Option<PathBuf>,
-    split: Option<Layout>,
-) -> Layout {
+fn resolve_layout(env_home: Option<PathBuf>, legacy_home: Option<PathBuf>, split: Option<Layout>) -> Layout {
     if let Some(root) = env_home {
-        return Layout::Single(root);
-    }
-    if let Some(root) = system_home {
         return Layout::Single(root);
     }
     if let Some(root) = legacy_home {
@@ -192,15 +177,17 @@ pub fn default_database_url() -> String {
     format!("sqlite://{}", default_db_path().to_string_lossy().replace('\\', "/"))
 }
 
-/// Fail fast when the active home is the system service home but this process can't
-/// access it (e.g. a non-elevated CLI against the ACL-locked `C:\ProgramData\vcms` or a
-/// root-owned `/var/lib/vcms`). Without this, a deep database/secrets read would blow up
-/// with an opaque IO error — and, worse, we must never silently fall back to a per-user
-/// store, which would recreate the very two-store split this resolution exists to kill.
+/// Fail fast when `$VCMS_HOME` explicitly points at the conventional system service
+/// home but this process can't access it (e.g. non-elevated CLI against the ACL-locked
+/// `C:\ProgramData\vcms` or root-owned `/var/lib/vcms`). Portable runs without
+/// `$VCMS_HOME` never auto-select this path.
 fn preflight_system_home() -> std::io::Result<()> {
     let Layout::Single(root) = layout() else {
         return Ok(());
     };
+    if std::env::var_os(CMS_HOME_ENV).is_none() {
+        return Ok(());
+    }
     if system_home().as_deref() != Some(root.as_path()) || !root.is_dir() {
         return Ok(());
     }
@@ -342,7 +329,6 @@ mod tests {
     fn resolve_env_home_outranks_everything() {
         let out = resolve_layout(
             Some(PathBuf::from("/env")),
-            Some(PathBuf::from("/sys")),
             Some(PathBuf::from("/legacy")),
             split_sample(),
         );
@@ -350,31 +336,26 @@ mod tests {
     }
 
     #[test]
-    fn resolve_system_home_outranks_legacy_and_split() {
-        let out = resolve_layout(
-            None,
-            Some(PathBuf::from("/sys")),
-            Some(PathBuf::from("/legacy")),
-            split_sample(),
-        );
-        assert_eq!(single_root_of(out), Some(PathBuf::from("/sys")));
+    fn resolve_does_not_auto_follow_system_home() {
+        let out = resolve_layout(None, None, split_sample());
+        assert!(matches!(out, Layout::Split { .. }));
     }
 
     #[test]
     fn resolve_legacy_home_when_no_env_or_system() {
-        let out = resolve_layout(None, None, Some(PathBuf::from("/legacy")), split_sample());
+        let out = resolve_layout(None, Some(PathBuf::from("/legacy")), split_sample());
         assert_eq!(single_root_of(out), Some(PathBuf::from("/legacy")));
     }
 
     #[test]
     fn resolve_falls_through_to_split() {
-        let out = resolve_layout(None, None, None, split_sample());
+        let out = resolve_layout(None, None, split_sample());
         assert!(matches!(out, Layout::Split { .. }));
     }
 
     #[test]
     fn resolve_local_blob_when_nothing_detectable() {
-        let out = resolve_layout(None, None, None, None);
+        let out = resolve_layout(None, None, None);
         assert_eq!(single_root_of(out), Some(PathBuf::from(".vcms")));
     }
 }
