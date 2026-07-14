@@ -42,6 +42,7 @@ jobs:
           filters: |
             rust:
               - 'apps/backend/**'
+              - 'xtask/**'
               - 'libs/proto/**'
               - 'Cargo.toml'
               - 'Cargo.lock'
@@ -276,6 +277,30 @@ jobs:
       - name: Build
         run: bunx nx run dashboard:build
 
+  packaging:
+    name: Packaging checks
+    needs: changes
+    if: needs.changes.outputs.rust == 'true' || needs.changes.outputs.other == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: dtolnay/rust-toolchain@67ef31d5b988238dd797d409d6f9574278e20537 # master
+        with:
+          toolchain: "1.94"
+      - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2
+        with:
+          workspaces: ". -> target"
+          shared-key: linux-packaging
+          cache-on-failure: true
+      - name: xtask tests
+        run: cargo test -p xtask --locked
+      - name: package dry-run
+        run: |
+          cargo run -p xtask --locked -- package --kind all --dry-run --skip-build --target-os linux --arch amd64
+          cargo run -p xtask --locked -- package --kind host --dry-run --skip-build --target-os macos --arch arm64
+          cargo run -p xtask --locked -- package --kind host --dry-run --skip-build --target-os windows --arch amd64
+
   web:
     name: Web (landing + docs)
     needs: changes
@@ -307,7 +332,7 @@ jobs:
   # "skipped required check stays pending forever" trap of naive path filtering.
   ci-status:
     name: CI status
-    needs: [changes, lint, security, test, test-os, frontend, web]
+    needs: [changes, lint, security, test, test-os, frontend, packaging, web]
     if: always()
     runs-on: ubuntu-latest
     timeout-minutes: 5
