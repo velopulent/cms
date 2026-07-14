@@ -1,0 +1,37 @@
+[Unit]
+Description=Velopulent CMS
+Documentation=https://cms.velopulent.com/docs
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=vcms
+Group=vcms
+Environment=VCMS_HOME=/var/lib/vcms
+Environment=VCMS_CONFIG=/etc/vcms/config.toml
+ExecStart=/usr/bin/vcms serve
+Restart=on-failure
+RestartSec=5s
+TimeoutStartSec=90s
+TimeoutStopSec=45s
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectKernelLogs=true
+ProtectControlGroups=true
+ProtectClock=true
+RestrictSUIDSGID=true
+RestrictRealtime=true
+LockPersonality=true
+MemoryDenyWriteExecute=true
+CapabilityBoundingSet=
+AmbientCapabilities=
+ReadWritePaths=/var/lib/vcms
+
+[Install]
+WantedBy=multi-user.target

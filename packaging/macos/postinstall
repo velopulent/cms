@@ -1,0 +1,21 @@
+#!/bin/sh
+set -eu
+if ! dscl . -read /Groups/_vcms >/dev/null 2>&1; then dseditgroup -o create -r "vcms service" _vcms; fi
+if ! id _vcms >/dev/null 2>&1; then
+  next_uid=$(dscl . -list /Users UniqueID | awk '$2 >= 200 && $2 < 500 {print $2}' | sort -n | awk 'BEGIN{n=200} {if($1==n)n++} END{print n}')
+  dscl . -create /Users/_vcms
+  dscl . -create /Users/_vcms UniqueID "$next_uid"
+  dscl . -create /Users/_vcms PrimaryGroupID "$(dscl . -read /Groups/_vcms PrimaryGroupID | awk '{print $2}')"
+  dscl . -create /Users/_vcms UserShell /usr/bin/false
+  dscl . -create /Users/_vcms NFSHomeDirectory /var/empty
+fi
+install -d -o _vcms -g _vcms -m 0750 "/Library/Application Support/vcms" "/Library/Application Support/vcms/storage" "/Library/Application Support/vcms/backups" "/Library/Application Support/vcms/search"
+install -d -o _vcms -g _vcms -m 0750 /Library/Logs/vcms
+chown root:wheel /Library/LaunchDaemons/com.velopulent.vcms.plist
+chmod 0644 /Library/LaunchDaemons/com.velopulent.vcms.plist
+if [ -f /var/run/vcms-was-active ]; then
+  rm -f /var/run/vcms-was-active
+  launchctl bootstrap system /Library/LaunchDaemons/com.velopulent.vcms.plist
+  launchctl kickstart -k system/com.velopulent.vcms
+fi
+echo "vcms installed but not started. Run: vcms doctor && sudo launchctl bootstrap system /Library/LaunchDaemons/com.velopulent.vcms.plist"

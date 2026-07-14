@@ -1,0 +1,6 @@
+#!/bin/sh
+set -eu
+if launchctl print system/com.velopulent.vcms >/dev/null 2>&1; then
+  touch /var/run/vcms-was-active
+  launchctl bootout system/com.velopulent.vcms >/dev/null 2>&1 || true
+fi

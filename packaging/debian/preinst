@@ -1,0 +1,3 @@
+#!/bin/sh
+set -eu
+if [ "$1" = upgrade ] && systemctl is-active --quiet vcms.service; then touch /run/vcms-was-active; fi
