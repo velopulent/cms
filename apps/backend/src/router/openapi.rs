@@ -11,7 +11,7 @@ use crate::models::site::Site;
         title = "Velopulent CMS REST API",
         version = "0.1.0",
         description = "Headless CMS unified API. Consumer access uses site-bound vcms_site_* tokens with read or write permission. Dashboard access uses revocable opaque sessions.",
-        contact(name = "Velopulent CMS", url = "https://cms.velopulent.com"),
+        contact(name = "Velopulent CMS", url = "https://cms.velopulent.com/docs"),
         license(name = "AGPL-3.0", url = "https://github.com/velopulent/cms/blob/main/LICENSE"),
     ),
     paths(
