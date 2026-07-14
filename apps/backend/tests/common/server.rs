@@ -126,6 +126,7 @@ impl TestServer {
         ));
 
         let app = create_router(
+            pool.clone(),
             repository.clone(),
             config.clone(),
             storage_registry,

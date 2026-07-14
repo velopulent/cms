@@ -112,6 +112,15 @@ impl DbPool {
             }
         }
     }
+
+    /// Cheap, read-only connectivity check used by readiness and diagnostics.
+    pub async fn ping(&self) -> Result<(), sqlx::Error> {
+        match self {
+            DbPool::Postgres(pool) => sqlx::query("SELECT 1").execute(pool).await.map(|_| ()),
+            DbPool::MySql(pool) => sqlx::query("SELECT 1").execute(pool).await.map(|_| ()),
+            DbPool::Sqlite(pool) => sqlx::query("SELECT 1").execute(pool).await.map(|_| ()),
+        }
+    }
 }
 
 async fn validate_connection_migrations<C>(conn: &mut C, migrator: &sqlx::migrate::Migrator) -> Result<(), MigrateError>
