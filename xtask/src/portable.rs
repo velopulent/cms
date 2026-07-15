@@ -12,15 +12,6 @@ pub fn build(context: &Context) -> Result<PathBuf> {
         context.target_os.as_str(),
         context.arch.as_str()
     );
-    let stage = reset_dir(&context.work_dir.join(&name))?;
-    copy_binary(context, &stage)?;
-    write_file(
-        &stage.join("README.txt"),
-        format!(
-            "Velopulent CMS portable package\n\nRun `{APP_NAME}` directly. No service is registered. Runtime files use platform user directories unless VCMS_HOME is set.\nTarget OS: {}\n",
-            context.target_os.as_str()
-        ),
-    )?;
     if context.target_os == TargetOs::Windows {
         let artifact = context.out_dir.join(format!("{name}.exe"));
         if context.dry_run {
@@ -30,6 +21,15 @@ pub fn build(context: &Context) -> Result<PathBuf> {
         }
         Ok(artifact)
     } else {
+        let stage = reset_dir(&context.work_dir.join(&name))?;
+        copy_binary(context, &stage)?;
+        write_file(
+            &stage.join("README.txt"),
+            format!(
+                "Velopulent CMS portable package\n\nRun `{APP_NAME}` directly. No service is registered. Runtime files use platform user directories unless VCMS_HOME is set.\nTarget OS: {}\n",
+                context.target_os.as_str()
+            ),
+        )?;
         let artifact = context.out_dir.join(format!("{name}.tar.gz"));
         if context.dry_run {
             fs::write(&artifact, b"dry-run portable tarball\n")?;
