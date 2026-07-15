@@ -8,9 +8,10 @@ use crate::database::connect_db_without_migrations;
 pub async fn run(cli: &Cli) -> Result<(), Box<dyn std::error::Error>> {
     let mut failed = false;
     let config_path = config::resolve_config_path(cli);
+    let loaded = Config::load(cli).map_err(|error| format!("configuration invalid: {error}"))?;
     report(
         "config",
-        config_path.as_deref().is_some_and(Path::is_file),
+        config_path.as_deref().is_none_or(Path::is_file),
         config_path
             .as_deref()
             .map(|path| path.display().to_string())
@@ -18,7 +19,6 @@ pub async fn run(cli: &Cli) -> Result<(), Box<dyn std::error::Error>> {
         &mut failed,
     );
 
-    let loaded = Config::load(cli).map_err(|error| format!("configuration invalid: {error}"))?;
     let directories = [
         (
             "config-dir",
