@@ -88,6 +88,7 @@ password after your first login.*
 | `/mcp` | MCP Streamable HTTP endpoint |
 | `/health/live` | Unauthenticated process liveness probe |
 | `/health/ready` | Unauthenticated database-backed readiness probe |
+
 ---
 
 ### MCP over stdio
@@ -135,10 +136,9 @@ defaults above.
 
 The platform service installers store daemon data under one system dir —
 `/var/lib/vcms` (Linux), `/Library/Application Support/vcms` (macOS), or
-`C:\ProgramData\vcms` (Windows) — by setting `VCMS_HOME` in the service definition.
-The portable binary does **not** auto-detect or switch to those service-owned
-locations just because they exist. To operate on an installed service's data from a
-shell, run an elevated terminal and set `VCMS_HOME` to that system dir explicitly.
+`C:\ProgramData\vcms` (Windows). When this directory exists, the binary uses it
+automatically. Data-touching commands require an elevated shell when service-owned
+permissions restrict access.
 
 `vcms serve` creates what it needs on first run and generates `secrets.toml` if
 absent. Environment variables (`DATABASE_URL`, `HMAC_SECRET`, `STORAGE_FS_PATH`,
