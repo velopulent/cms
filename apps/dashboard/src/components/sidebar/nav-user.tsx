@@ -82,13 +82,14 @@ export function NavUser({
             <DropdownMenuSeparator />
             <DropdownMenuGroup>
               <DropdownMenuItem
-                render={
+                render={(props) => (
                   <a
                     href="https://cms.velopulent.com/docs"
                     target="_blank"
                     rel="noreferrer"
+                    {...props}
                   />
-                }
+                )}
               >
                 <BookOpen />
                 Documentation
