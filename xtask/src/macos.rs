@@ -11,10 +11,6 @@ pub fn build(context: &Context) -> Result<PathBuf> {
     let payload = root.join("payload");
     copy_binary(context, &payload.join("usr/local/bin"))?;
     write_file(
-        &payload.join("Library/Application Support/vcms/config.toml"),
-        config_sample(),
-    )?;
-    write_file(
         &payload.join("Library/Application Support/vcms/config.toml.sample"),
         config_sample(),
     )?;
