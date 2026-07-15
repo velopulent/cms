@@ -6,7 +6,7 @@ use axum::{
     response::{IntoResponse, Response},
 };
 use axum_extra::extract::multipart::Multipart;
-use bytes::Bytes;
+use futures_util::StreamExt;
 use serde::Deserialize;
 use serde_json::json;
 use std::sync::Arc;
@@ -24,7 +24,8 @@ use crate::models::file::{BatchFileIds, FileWithUrl};
 use crate::repository::Repository;
 use crate::repository::traits::ListFilesParams;
 use crate::services::Services;
-use crate::services::file::UploadFileRequest;
+use crate::services::file::StreamingUploadRequest;
+use crate::signed_upload::{SignedUploadError, SignedUploadToken};
 use crate::storage::{StorageProvider, StorageRegistry};
 
 #[derive(Deserialize, utoipa::IntoParams)]
@@ -124,12 +125,11 @@ pub async fn list_files(
     security(("bearer" = []), ("access_token" = [])),
     tag = "files"
 )]
-#[instrument(skip(repository, services, config, ctx, multipart, storage_registry))]
+#[instrument(skip(repository, services, ctx, multipart, storage_registry))]
 pub async fn upload_file(
     ctx: RequestContext,
     Extension(repository): Extension<Repository>,
     Extension(services): Extension<Services>,
-    Extension(config): Extension<Config>,
     Extension(storage_registry): Extension<Arc<StorageRegistry>>,
     mut multipart: Multipart,
 ) -> Response {
@@ -144,76 +144,151 @@ pub async fn upload_file(
         .await
         .unwrap_or_else(|_| "filesystem".into());
 
-    let mut file_data: Option<Bytes> = None;
-    let mut file_name: Option<String> = None;
-    let mut file_content_type: Option<String> = None;
-
-    while let Ok(Some(mut field)) = multipart.next_field().await {
-        let name = field.name().unwrap_or("").to_string();
-
-        if name == "file" {
-            file_name = field.file_name().map(String::from);
-            file_content_type = field.content_type().map(String::from);
-
-            // Stream the field in chunks, enforcing the size cap incrementally so an
-            // oversized upload is rejected without first buffering it whole.
-            let max = config.max_upload_size_bytes;
-            let mut buf: Vec<u8> = Vec::new();
-            loop {
-                match field.chunk().await {
-                    Ok(Some(chunk)) => {
-                        if buf.len() + chunk.len() > max {
-                            return (
-                                StatusCode::PAYLOAD_TOO_LARGE,
-                                Json(json!({
-                                    "error": format!("File too large. Maximum size is {}MB", max / (1024 * 1024))
-                                })),
-                            )
-                                .into_response();
-                        }
-                        buf.extend_from_slice(&chunk);
-                    }
-                    Ok(None) => break,
-                    Err(e) => {
-                        return (
-                            StatusCode::BAD_REQUEST,
-                            Json(json!({"error": format!("Failed to read file: {}", e)})),
-                        )
-                            .into_response();
-                    }
-                }
-            }
-            file_data = Some(Bytes::from(buf));
-        }
-    }
-
-    let file_data = match file_data {
-        Some(d) => d,
-        None => {
-            return (StatusCode::BAD_REQUEST, Json(json!({"error": "No file provided"}))).into_response();
-        }
-    };
-
-    let file_name = sanitize_filename(&file_name.unwrap_or_else(|| "upload".into()));
-    let content_type = file_content_type.unwrap_or_else(|| "application/octet-stream".into());
-    let created_by = ctx.auth.actor.user_id();
-
     let storage = match get_storage_for_site(&storage_provider, &storage_registry) {
         Ok(s) => s,
         Err(status) => return (status, Json(json!({"error": "Storage not configured"}))).into_response(),
     };
+    let created_by = ctx.auth.actor.user_id().map(String::from);
+
+    // Stream the "file" field straight into storage (constant memory); size cap
+    // and content sniffing are enforced by the service while streaming.
+    let mut uploaded: Option<Result<FileWithUrl, crate::services::file::FileError>> = None;
+
+    while let Ok(Some(field)) = multipart.next_field().await {
+        let name = field.name().unwrap_or("").to_string();
+
+        if name == "file" && uploaded.is_none() {
+            let file_name = sanitize_filename(field.file_name().unwrap_or("upload"));
+            let content_type = field
+                .content_type()
+                .map(String::from)
+                .unwrap_or_else(|| "application/octet-stream".into());
+
+            let stream = Box::pin(futures_util::stream::unfold(field, |mut field| async move {
+                match field.chunk().await {
+                    Ok(Some(chunk)) => Some((Ok(chunk), field)),
+                    Ok(None) => None,
+                    Err(e) => Some((Err(Box::new(e) as Box<dyn std::error::Error + Send + Sync>), field)),
+                }
+            }));
+
+            uploaded = Some(
+                services
+                    .file
+                    .upload_file_streaming(
+                        StreamingUploadRequest {
+                            site_id: &site_id,
+                            file_id: None,
+                            filename: &file_name,
+                            content_type: &content_type,
+                            created_by: created_by.as_deref(),
+                            storage: storage.clone(),
+                            storage_provider: &storage_provider,
+                        },
+                        stream,
+                    )
+                    .await,
+            );
+        }
+    }
+
+    match uploaded {
+        Some(Ok(file)) => (StatusCode::CREATED, Json(file)).into_response(),
+        Some(Err(e)) => e.into_response(),
+        None => (StatusCode::BAD_REQUEST, Json(json!({"error": "No file provided"}))).into_response(),
+    }
+}
+
+#[utoipa::path(
+    put,
+    path = "/api/v1/files/upload/{token}",
+    request_body(content = Vec<u8>, description = "Raw file bytes", content_type = "application/octet-stream"),
+    responses(
+        (status = 201, description = "File uploaded", body = FileWithUrl),
+        (status = 400, description = "Bad request (content mismatch or unreadable body)"),
+        (status = 401, description = "Invalid token"),
+        (status = 409, description = "Upload URL already used"),
+        (status = 410, description = "Upload URL expired"),
+        (status = 413, description = "File too large"),
+    ),
+    tag = "files"
+)]
+#[instrument(skip(services, config, storage_registry, headers, body))]
+pub async fn upload_via_signed_url(
+    Path(token): Path<String>,
+    headers: HeaderMap,
+    Extension(services): Extension<Services>,
+    Extension(config): Extension<Config>,
+    Extension(storage_registry): Extension<Arc<StorageRegistry>>,
+    body: Body,
+) -> Response {
+    // The token is the auth: HMAC-signed by the server, time-limited, single-use.
+    let token = match SignedUploadToken::verify(&token, &config.hmac_secret) {
+        Ok(t) => t,
+        Err(SignedUploadError::Expired) => {
+            return (StatusCode::GONE, Json(json!({"error": "Upload URL expired"}))).into_response();
+        }
+        Err(_) => {
+            return (StatusCode::UNAUTHORIZED, Json(json!({"error": "Invalid upload token"}))).into_response();
+        }
+    };
+
+    // Fast reject when the client announces an oversized body upfront.
+    if let Some(len) = headers
+        .get(header::CONTENT_LENGTH)
+        .and_then(|v| v.to_str().ok())
+        .and_then(|v| v.parse::<u64>().ok())
+        && len > config.max_upload_size_bytes as u64
+    {
+        return (
+            StatusCode::PAYLOAD_TOO_LARGE,
+            Json(json!({
+                "error": format!("File too large. Maximum size is {}MB", config.max_upload_size_bytes / (1024 * 1024))
+            })),
+        )
+            .into_response();
+    }
+
+    // The upload's content type was fixed when the URL was minted; a
+    // contradicting header is a client bug worth failing loudly on.
+    if let Some(ct) = headers.get(header::CONTENT_TYPE).and_then(|v| v.to_str().ok()) {
+        let declared = ct.split(';').next().unwrap_or(ct).trim();
+        if !declared.eq_ignore_ascii_case(&token.content_type) {
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(json!({
+                    "error": format!("Content-Type '{}' does not match the upload URL's '{}'", declared, token.content_type)
+                })),
+            )
+                .into_response();
+        }
+    }
+
+    let storage = match get_storage_for_site(&token.storage_provider, &storage_registry) {
+        Ok(s) => s,
+        Err(status) => return (status, Json(json!({"error": "Storage not configured"}))).into_response(),
+    };
+
+    let file_name = sanitize_filename(&token.filename);
+    let stream = Box::pin(
+        body.into_data_stream()
+            .map(|r| r.map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>)),
+    );
 
     match services
         .file
-        .upload_file(UploadFileRequest {
-            site_id: &site_id,
-            data: file_data,
-            filename: &file_name,
-            content_type: &content_type,
-            created_by,
-            storage,
-            storage_provider: &storage_provider,
-        })
+        .upload_file_streaming(
+            StreamingUploadRequest {
+                site_id: &token.site_id,
+                file_id: Some(&token.file_id),
+                filename: &file_name,
+                content_type: &token.content_type,
+                created_by: None,
+                storage,
+                storage_provider: &token.storage_provider,
+            },
+            stream,
+        )
         .await
     {
         Ok(file) => (StatusCode::CREATED, Json(file)).into_response(),

@@ -11,7 +11,7 @@ use crate::models::site::Site;
         title = "Velopulent CMS REST API",
         version = "0.1.0",
         description = "Headless CMS unified API. Consumer access uses site-bound vcms_site_* tokens with read or write permission. Dashboard access uses revocable opaque sessions.",
-        contact(name = "Velopulent CMS", url = "https://cms.velopulent.com"),
+        contact(name = "Velopulent CMS", url = "https://cms.velopulent.com/docs"),
         license(name = "AGPL-3.0", url = "https://github.com/velopulent/cms/blob/main/LICENSE"),
     ),
     paths(
@@ -41,6 +41,7 @@ use crate::models::site::Site;
         // Public API: Files
         crate::handlers::file_handler::list_files,
         crate::handlers::file_handler::upload_file,
+        crate::handlers::file_handler::upload_via_signed_url,
         crate::handlers::file_handler::get_file,
         crate::handlers::file_handler::delete_file_handler,
         crate::handlers::file_handler::get_file_references,

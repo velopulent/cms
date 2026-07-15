@@ -7,21 +7,23 @@ use clap::{Parser, Subcommand};
 #[command(
     name = "vcms",
     version,
-    about = "Headless CMS server",
-    long_about = "Headless CMS server.\n\n\
-        All runtime files live under one home directory ($VCMS_HOME, default ~/.vcms): \
-        config.toml, secrets.toml, the SQLite database, logs/, and storage/. \
-        `vcms serve` creates it on first run and generates secrets if absent.",
-    after_help = "DATA DIRECTORY ($VCMS_HOME, default ~/.vcms):\n  \
-        config.toml   non-secret config (written by `vcms config init`)\n  \
-        secrets.toml  auto-generated HMAC + backup secrets (0600 on unix)\n  \
-        vcms.db       default SQLite database (+ -wal / -shm)\n  \
-        logs/         rolling logs when [log] output = \"file\"\n  \
-        storage/      default filesystem storage for uploads\n\n\
+    about = "Velopulent CMS",
+    long_about = "Velopulent CMS — self-hosted headless content management system.\n\n\
+        Runtime files default to the platform's per-type directories (config, data, \
+        cache, state) via the `directories` crate. Set $VCMS_HOME to keep everything \
+        under one root instead. OS packages set it from their service definitions. \
+        `vcms serve` creates what it needs on first run and generates secrets if absent.",
+    after_help = "DATA DIRECTORIES (defaults; set $VCMS_HOME for a single root):\n  \
+        config dir   config.toml, secrets.toml (0600 on unix), .env\n  \
+        data dir     vcms.db (+ -wal / -shm), storage/, backups/\n  \
+        cache dir    search/ (derived Tantivy index, rebuildable)\n  \
+        state dir    logs/ (when [log] output = \"file\")\n\n\
         KEY ENVIRONMENT (env overrides config; CLI flags override env):\n  \
-        VCMS_HOME     home directory                   [default: ~/.vcms]\n  \
-        DATABASE_URL  sqlite/postgres/mysql URL        [default: sqlite://~/.vcms/vcms.db]\n  \
-        HMAC_SECRET   token-lookup HMAC key            [auto-generated to secrets.toml]"
+        VCMS_HOME     force single-root layout         [default: platform split dirs]\n  \
+        DATABASE_URL  sqlite/postgres/mysql URL        [default: sqlite://<data dir>/vcms.db]\n  \
+        HMAC_SECRET   token-lookup HMAC key            [auto-generated to secrets.toml]\n\n\
+        DOCUMENTATION:\n  \
+        https://cms.velopulent.com/docs"
 )]
 pub struct Cli {
     /// Path to a config file (overrides the search path).
@@ -33,7 +35,7 @@ pub struct Cli {
     pub bind: Option<String>,
 
     /// Database URL, e.g. sqlite:path / postgres://… (overrides config + env)
-    /// [default: sqlite://~/.vcms/vcms.db].
+    /// [default: sqlite://<data dir>/vcms.db].
     #[arg(long, global = true, value_name = "URL")]
     pub database_url: Option<String>,
 
@@ -69,6 +71,13 @@ pub enum Command {
         #[command(subcommand)]
         action: BackupAction,
     },
+    /// Inspect the native vcms service.
+    Service {
+        #[command(subcommand)]
+        action: ServiceAction,
+    },
+    /// Validate configuration, storage, database, ports, and service context.
+    Doctor,
     /// Restore a backup artifact (runs offline; destructive — replaces data in scope).
     Restore {
         /// Path to the backup artifact (`.cmsbak`).
@@ -115,6 +124,19 @@ pub enum BackupAction {
 }
 
 #[derive(Subcommand, Debug)]
+pub enum ServiceAction {
+    /// Print normalized native service state and manager details.
+    Status,
+    /// Internal entry point invoked by the Windows Service Control Manager.
+    ///
+    /// Not for direct use — the SCM launches this to host the server inside a
+    /// Windows service. Hidden from `--help`.
+    #[command(hide = true)]
+    #[cfg(windows)]
+    Run,
+}
+
+#[derive(Subcommand, Debug)]
 pub enum McpTransport {
     /// Run MCP over stdin/stdout.
     Stdio,
@@ -150,7 +172,7 @@ pub enum AdminAction {
 
 #[cfg(test)]
 mod tests {
-    use super::{Cli, Command, McpTransport};
+    use super::{Cli, Command, McpTransport, ServiceAction};
     use clap::Parser;
 
     #[test]
@@ -160,6 +182,20 @@ mod tests {
             cli.command,
             Some(Command::Mcp {
                 transport: McpTransport::Stdio
+            })
+        ));
+    }
+
+    #[test]
+    fn parses_operational_commands() {
+        let doctor = Cli::try_parse_from(["vcms", "doctor"]).unwrap();
+        assert!(matches!(doctor.command, Some(Command::Doctor)));
+
+        let status = Cli::try_parse_from(["vcms", "service", "status"]).unwrap();
+        assert!(matches!(
+            status.command,
+            Some(Command::Service {
+                action: ServiceAction::Status
             })
         ));
     }

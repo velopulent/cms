@@ -44,6 +44,8 @@ pub struct Config {
 
     // Upload limits
     pub max_upload_size_bytes: usize,
+    /// Lifetime of signed upload URLs (seconds).
+    pub upload_token_expiry_secs: i64,
 
     // Cookie security
     pub cookie_secure: bool,
@@ -129,6 +131,7 @@ struct RawConfig {
     backup_encryption_key: Option<String>,
 
     max_upload_size_mb: Option<usize>,
+    upload_token_expiry_secs: Option<i64>,
 
     #[serde(default, deserialize_with = "de_opt_lenient_bool")]
     cookie_secure: Option<bool>,
@@ -185,8 +188,8 @@ impl Config {
     pub fn load(cli: &Cli) -> Result<Self, Box<figment::Error>> {
         let mut figment = Figment::new();
 
-        // Lowest-precedence secret layer: persisted HMAC secret from
-        // `~/.vcms/secrets.toml`. Read-only here (generation happens in
+        // Lowest-precedence secret layer: persisted HMAC secret from the config dir's
+        // `secrets.toml`. Read-only here (generation happens in
         // `secrets::ensure()` during serve/admin). Best-effort: a missing or
         // unreadable file just leaves the built-in defaults in play. Env vars
         // and CLI flags still override these.
@@ -285,7 +288,8 @@ impl Config {
              s3_endpoint = {}\n\
              s3_public_url = {}\n\n\
              # Uploads\n\
-             max_upload_size_mb = {}\n\n\
+             max_upload_size_mb = {}\n\
+             upload_token_expiry_secs = {}\n\n\
              # Security / sessions\n\
              cookie_secure = {}\n\
              session_lifetime_hours = {}\n\
@@ -326,6 +330,7 @@ impl Config {
             opt_str(&self.s3_endpoint),
             opt_str(&self.s3_public_url),
             self.max_upload_size_bytes / (1024 * 1024),
+            self.upload_token_expiry_secs,
             self.cookie_secure,
             self.session_lifetime_hours,
             self.public_registration_enabled,
@@ -357,14 +362,22 @@ impl RawConfig {
         // `secrets::ensure()` and `mcp stdio` guards on its presence, so this only
         // fires on a genuinely uninitialized instance.
         let hmac_secret = self.hmac_secret.ok_or_else(|| {
-            Box::new(figment::Error::from(
-                "No HMAC secret resolved; run `vcms serve` once to generate ~/.vcms/secrets.toml, \
-                 or set HMAC_SECRET"
-                    .to_string(),
-            ))
+            Box::new(figment::Error::from(format!(
+                "No HMAC secret resolved; run `vcms serve` once to generate {}, or set HMAC_SECRET",
+                paths::secrets_file().display(),
+            )))
         })?;
 
         let log = self.log.unwrap_or_default();
+
+        let upload_token_expiry_secs = self
+            .upload_token_expiry_secs
+            .unwrap_or(crate::signed_upload::DEFAULT_UPLOAD_TOKEN_EXPIRY_SECS);
+        if upload_token_expiry_secs <= 0 {
+            return Err(Box::new(figment::Error::from(format!(
+                "upload_token_expiry_secs must be positive (got {upload_token_expiry_secs})"
+            ))));
+        }
 
         Ok(Config {
             database_url: self.database_url.unwrap_or_else(paths::default_database_url),
@@ -391,6 +404,7 @@ impl RawConfig {
             backup_s3_public_url: self.backup_s3_public_url,
             backup_encryption_key: self.backup_encryption_key,
             max_upload_size_bytes: self.max_upload_size_mb.unwrap_or(50) * 1024 * 1024,
+            upload_token_expiry_secs,
             cookie_secure: self.cookie_secure.unwrap_or(false),
             session_lifetime_hours: self.session_lifetime_hours.unwrap_or(24),
             public_registration_enabled: self.public_registration_enabled.unwrap_or(false),
@@ -441,8 +455,8 @@ pub fn config_search_paths() -> Vec<PathBuf> {
     paths
 }
 
-/// The user-config location for the config file: `~/.vcms/config.toml`
-/// (or `$VCMS_HOME/config.toml`).
+/// The user-config location for the config file: the platform config dir
+/// (`config.toml`), or `$VCMS_HOME/config.toml` in single-dir mode.
 pub fn user_config_path() -> Option<PathBuf> {
     Some(paths::config_file())
 }
@@ -474,7 +488,9 @@ pub fn default_config_toml() -> String {
          # s3_endpoint = \"https://s3.example.com\"\n\
          # s3_public_url = \"https://cdn.example.com\"\n\n\
          # --- Uploads ---\n\
-         max_upload_size_mb = 50\n\n\
+         max_upload_size_mb = 50\n\
+         # Signed upload URL lifetime (seconds)\n\
+         upload_token_expiry_secs = {default_upload_expiry}\n\n\
          # --- Security / sessions ---\n\
          cookie_secure = false\n\
          session_lifetime_hours = 24\n\
@@ -498,7 +514,7 @@ pub fn default_config_toml() -> String {
          # --- Backups ---\n\
          # Run the scheduled-backup poller and allow on-demand backups.\n\
          backup_enabled = true\n\
-         # Destination for backup artifacts: \"filesystem\" (default, under ~/.vcms/backups)\n\
+         # Destination for backup artifacts: \"filesystem\" (default, the data dir's backups/)\n\
          # or \"s3\". S3 credentials are secrets — set them via env (see below).\n\
          backup_destination = \"filesystem\"\n\
          # backup_local_path = \"./backups\"\n\
@@ -515,7 +531,7 @@ pub fn default_config_toml() -> String {
          # Build a local inverted index so entry search is ranked + tokenized.\n\
          # When false, search falls back to a basic SQL LIKE match.\n\
          search_enabled = true\n\
-         # search_index_path = \"./search\"   # defaults to ~/.vcms/search\n\n\
+         # search_index_path = \"./search\"   # defaults to the cache dir's search/\n\n\
          # --- MCP ---\n\
          mcp_enabled = true\n\
          mcp_allowed_hosts = [{hosts}]\n\
@@ -527,6 +543,7 @@ pub fn default_config_toml() -> String {
          format = \"pretty\"   # pretty | json\n\
          annotations = false  # include file + line numbers\n\
          dir = \"logs\"        # used when output = \"file\"\n",
+        default_upload_expiry = crate::signed_upload::DEFAULT_UPLOAD_TOKEN_EXPIRY_SECS,
     )
 }
 

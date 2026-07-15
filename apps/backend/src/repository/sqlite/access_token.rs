@@ -71,7 +71,7 @@ impl AccessTokenRepository for SqliteAccessTokenRepository {
 
     async fn find_by_prefix(&self, prefix: &str) -> Result<Vec<AccessTokenLookupRow>, RepositoryError> {
         let rows = sqlx::query_as::<_, AccessTokenLookupRow>(
-            "SELECT id, site_id, token_hash, token_hmac, expires_at, revoked_at, permission
+            "SELECT id, site_id, token_hash, token_hmac, expires_at, revoked_at, permission, last_used_at
              FROM access_tokens WHERE token_prefix = ?",
         )
         .bind(prefix)

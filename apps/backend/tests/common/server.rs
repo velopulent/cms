@@ -74,6 +74,8 @@ impl TestServer {
             db_acquire_timeout_secs: 30,
             db_idle_timeout_secs: 5,
             max_upload_size_bytes: 50 * 1024 * 1024,
+            // `Config::default()` leaves this 0 => tokens minted already expired.
+            upload_token_expiry_secs: 900,
             public_registration_enabled: true,
             bcrypt_cost: bcrypt::DEFAULT_COST,
             webhook_allow_private_targets: true,
@@ -124,6 +126,7 @@ impl TestServer {
         ));
 
         let app = create_router(
+            pool.clone(),
             repository.clone(),
             config.clone(),
             storage_registry,

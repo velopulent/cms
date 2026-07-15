@@ -1,0 +1,42 @@
+Name: vcms
+Version: @VERSION@
+Release: 1%{?dist}
+Summary: Velopulent CMS
+License: AGPL-3.0-or-later
+URL: https://cms.velopulent.com/docs
+Source0: %{name}-%{version}.tar.gz
+
+%description
+Velopulent CMS serves the dashboard, REST, GraphQL, gRPC, and MCP APIs.
+
+%prep
+%setup -q
+%build
+%install
+mkdir -p %{buildroot}
+cp -a . %{buildroot}/
+
+%pre
+getent group vcms >/dev/null || groupadd -r vcms
+getent passwd vcms >/dev/null || useradd -r -g vcms -d /var/lib/vcms -s /sbin/nologin vcms
+
+%post
+[ -f /var/lib/vcms/config.toml ] || cp /var/lib/vcms/config.toml.sample /var/lib/vcms/config.toml
+chown vcms:vcms /var/lib/vcms/config.toml
+systemctl daemon-reload >/dev/null 2>&1 || true
+systemctl enable vcms.service >/dev/null 2>&1 || true
+if [ "$1" -gt 1 ]; then systemctl try-restart vcms.service >/dev/null 2>&1 || true; fi
+echo "vcms installed but not started. Run: vcms doctor && systemctl start vcms"
+
+%preun
+if [ "$1" = 0 ]; then systemctl stop vcms.service >/dev/null 2>&1 || true; systemctl disable vcms.service >/dev/null 2>&1 || true; fi
+%postun
+systemctl daemon-reload >/dev/null 2>&1 || true
+echo "vcms config and state were preserved."
+
+%files
+/usr/bin/vcms
+/usr/lib/systemd/system/vcms.service
+%config(noreplace) /var/lib/vcms/config.toml.sample
+%config(noreplace) /var/lib/vcms/config.toml
+%dir %attr(0750,vcms,vcms) /var/lib/vcms

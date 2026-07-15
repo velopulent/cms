@@ -1,0 +1,22 @@
+pkgname=vcms
+pkgver=@VERSION@
+pkgrel=1
+pkgdesc="Velopulent CMS"
+arch=('x86_64' 'aarch64')
+url="https://cms.velopulent.com/docs"
+license=('AGPL-3.0-or-later')
+depends=('glibc')
+source=('vcms.service')
+source_x86_64=("vcms-${pkgver}-x86_64.tar.gz::https://github.com/velopulent/cms/releases/download/v${pkgver}/vcms-${pkgver}-linux-amd64.tar.gz")
+source_aarch64=("vcms-${pkgver}-aarch64.tar.gz::https://github.com/velopulent/cms/releases/download/v${pkgver}/vcms-${pkgver}-linux-arm64.tar.gz")
+sha256sums=('@SHA256_SERVICE@')
+sha256sums_x86_64=('@SHA256_AMD64@')
+sha256sums_aarch64=('@SHA256_ARM64@')
+
+package() {
+  local release_arch=amd64
+  [[ $CARCH == aarch64 ]] && release_arch=arm64
+  install -Dm755 "$srcdir/vcms-${pkgver}-linux-${release_arch}/vcms" "$pkgdir/usr/bin/vcms"
+  install -Dm644 "$srcdir/vcms.service" "$pkgdir/usr/lib/systemd/system/vcms.service"
+  install -dm750 "$pkgdir/var/lib/vcms"
+}

@@ -49,6 +49,14 @@ impl DbPool {
                     .min_connections(config.db_min_connections)
                     .acquire_timeout(Duration::from_secs(config.db_acquire_timeout_secs))
                     .idle_timeout(Duration::from_secs(config.db_idle_timeout_secs))
+                    // Pin the session to UTC so NOW()/CURRENT_TIMESTAMP agree with the
+                    // chrono::Utc timestamps the app writes and compares against.
+                    .after_connect(|conn, _meta| {
+                        Box::pin(async move {
+                            sqlx::query("SET time_zone = '+00:00'").execute(&mut *conn).await?;
+                            Ok(())
+                        })
+                    })
                     .connect(&config.database_url)
                     .await?;
                 Ok(DbPool::MySql(pool))
@@ -102,6 +110,15 @@ impl DbPool {
                 let mut conn = pool.acquire().await?;
                 validate_connection_migrations(&mut *conn, &SQLITE_MIGRATOR).await
             }
+        }
+    }
+
+    /// Cheap, read-only connectivity check used by readiness and diagnostics.
+    pub async fn ping(&self) -> Result<(), sqlx::Error> {
+        match self {
+            DbPool::Postgres(pool) => sqlx::query("SELECT 1").execute(pool).await.map(|_| ()),
+            DbPool::MySql(pool) => sqlx::query("SELECT 1").execute(pool).await.map(|_| ()),
+            DbPool::Sqlite(pool) => sqlx::query("SELECT 1").execute(pool).await.map(|_| ()),
         }
     }
 }

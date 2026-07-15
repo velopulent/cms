@@ -1,22 +1,33 @@
 use clap::Parser;
 use cms::cli::{AdminAction, BackupAction, Cli, Command, ConfigAction, McpTransport};
 use cms::config::{self, Config};
-use cms::database::{connect_db_without_migrations, init_db_with_config};
-use cms::grpc::server::spawn_grpc_server;
-use cms::middleware::auth::Actor;
+use cms::database::init_db_with_config;
 use cms::repository::Repository;
-use cms::router::create_router;
-use cms::services::Services;
-use cms::storage::{self, STORAGE_KIND_FILESYSTEM, STORAGE_KIND_S3, StorageRegistry};
 
 use std::error::Error;
-use std::net::SocketAddr;
-use std::sync::Arc;
-use tracing::{debug, info, warn};
+use tracing::info;
 
 #[tokio::main]
 async fn main() {
+    // Load env from the cwd `.env` (dev) first, then `$VCMS_HOME/.env`. dotenvy is
+    // first-wins, so real env vars and the cwd file keep precedence over the home file.
+    // VCMS_HOME must be a real env var — resolved here before the `.env` loads — never
+    // set inside that file (chicken-and-egg).
     dotenvy::dotenv().ok();
+    let env_file = cms::paths::env_file();
+    match dotenvy::from_path(&env_file) {
+        Ok(()) => {}
+        Err(e) if e.not_found() => {} // missing file is fine
+        // The home `.env` is optional. If VCMS_HOME points at a service-owned directory,
+        // a non-elevated CLI may not read it — most notably `vcms mcp stdio`, a proxy
+        // that needs no home file. Treat "permission denied" like "absent" and move on:
+        // data-touching commands still hit `paths::ensure`'s preflight.
+        Err(dotenvy::Error::Io(io)) if io.kind() == std::io::ErrorKind::PermissionDenied => {}
+        Err(e) => {
+            eprintln!("Error: cannot load {}: {e}", env_file.display());
+            std::process::exit(1);
+        }
+    }
 
     let cli = Cli::parse();
 
@@ -31,10 +42,12 @@ async fn main() {
             import_as_new,
             yes,
         }) => run_restore(file, scope, site, *import_as_new, *yes, &cli).await,
+        Some(Command::Service { action }) => cms::service::run_service(action, &cli).await,
+        Some(Command::Doctor) => cms::diagnostics::run(&cli).await,
         Some(Command::Mcp {
             transport: McpTransport::Stdio,
-        }) => run_mcp_stdio(&cli).await,
-        Some(Command::Serve) | None => run_serve(&cli).await,
+        }) => run_mcp_stdio().await,
+        Some(Command::Serve) | None => cms::server::run(&cli, cms::server::shutdown_signal(), || {}).await,
     };
 
     if let Err(e) = result {
@@ -43,231 +56,24 @@ async fn main() {
     }
 }
 
-async fn run_serve(cli: &Cli) -> Result<(), Box<dyn Error>> {
-    cms::paths::ensure()?;
-    cms::secrets::ensure()?;
-    let config = Config::load(cli)?;
-
-    let _guard = cms::tracing::init_tracing(&config);
-
-    if let Err(e) = config.validate_security() {
-        return Err(format!("Invalid production security configuration: {e}").into());
-    }
-
-    let pool = init_db_with_config(&config).await?;
-
-    let repository = Repository::new(&pool);
-
-    seed_admin(&repository).await;
-
-    let storage_registry = initialize_storage(&config);
-    // Build these once and share them: the REST router and the gRPC server use the
-    // same `Services` so the single-writer search index is opened only once.
-    let repository_arc = Arc::new(repository.clone());
-    let config_arc = Arc::new(config.clone());
-    let services = Services::new(repository_arc.clone(), &pool, &config);
-
-    let backup_destination = cms::services::backup::build_backup_destination(&config)
-        .map_err(|e| format!("Failed to initialize backup destination: {e}"))?;
-    let backup_service = Arc::new(cms::services::backup::BackupService::new(
-        pool.clone(),
-        storage_registry.clone(),
-        backup_destination,
-        &config,
-    ));
-
-    let app = create_router(
-        repository.clone(),
-        config.clone(),
-        storage_registry.clone(),
-        services.clone(),
-        backup_service.clone(),
-    );
-
-    // Reconcile backups/restore jobs left mid-flight by a previous process: any
-    // running/pending row at startup is orphaned (backups only run in-process).
-    match cms::services::backup::meta::fail_orphaned(&pool, &cms::services::backup::now_iso()).await {
-        Ok(n) if n > 0 => info!("Reconciled {n} interrupted backup job(s) to failed"),
-        Ok(_) => {}
-        Err(e) => tracing::error!("Failed to reconcile interrupted backups: {e}"),
-    }
-
-    if config.backup_enabled {
-        let scheduler_service = backup_service.clone();
-        tokio::spawn(async move {
-            cms::services::backup::scheduler::run(scheduler_service).await;
-        });
-        info!("Backup scheduler started");
-    }
-
-    // The search indexer is the single writer/consumer: it rebuilds the index when
-    // empty (first run / wiped), then drains the cross-process queue forever.
-    if let (Some(search), Some(queue)) = (services.search.clone(), services.search_queue.clone()) {
-        let repo = repository_arc.clone();
-        tokio::spawn(async move {
-            if search.is_empty() {
-                info!("Search index is empty; building from database...");
-                match search.rebuild_all(&repo).await {
-                    Ok(n) => info!("Search index built: {} entries", n),
-                    Err(e) => tracing::error!("Search index build failed: {}", e),
-                }
-            }
-            cms::services::search::indexer::run(search, queue, repo).await;
-        });
-    }
-
-    let addr: SocketAddr = config.bind_address.parse().expect("Invalid BIND_ADDRESS");
-    info!("Dashboard UI available at http://{}/dashboard", addr);
-    info!("REST API server running on http://{}", addr);
-    info!("GraphQL endpoint at http://{}/api/graphql", addr);
-    if config.mcp_enabled {
-        info!("MCP HTTP endpoint at http://{}/mcp", addr);
-    }
-
-    let grpc_addr: SocketAddr = config.grpc_bind_address.parse().expect("Invalid GRPC_BIND_ADDRESS");
-    info!("gRPC server running on {}", grpc_addr);
-
-    let rest_handle = tokio::spawn(async move {
-        let listener = tokio::net::TcpListener::bind(addr)
-            .await
-            .expect("Failed to bind address");
-
-        axum::serve(
-            listener,
-            app.into_make_service_with_connect_info::<std::net::SocketAddr>(),
-        )
-        .with_graceful_shutdown(shutdown_signal())
-        .await
-        .expect("Server error");
-    });
-
-    let grpc_handle = tokio::spawn(spawn_grpc_server(
-        services.clone(),
-        repository_arc.clone(),
-        config_arc.clone(),
-        storage_registry.clone(),
-        grpc_addr,
-    ));
-
-    tokio::select! {
-        result = rest_handle => {
-            if let Err(e) = result {
-                tracing::error!("REST server error: {}", e);
-            }
-        }
-        result = grpc_handle => {
-            if let Err(e) = result {
-                tracing::error!("gRPC server error: {}", e);
-            }
-        }
-    }
-
-    Ok(())
-}
-
-async fn run_mcp_stdio(cli: &Cli) -> Result<(), Box<dyn Error>> {
-    // Read-only: never create the home dir, database, or secrets file here. The
-    // persisted secrets written by `vcms serve` are what make this process verify
-    // the site token with the same HMAC secret the server signed it with.
-    if cms::secrets::load()?.is_none() && std::env::var("HMAC_SECRET").is_err() {
-        return Err("No instance secrets found. Run `vcms serve` once to initialize \
-                    ~/.vcms (or set HMAC_SECRET) before `vcms mcp stdio`."
-            .into());
-    }
-
-    let config = Config::load(cli)?;
-    cms::tracing::init_stdio_tracing(&config);
-
-    info!("Starting standalone MCP stdio process");
-    debug!(
-        database_backend = ?cms::database::backend::DatabaseBackend::from_url(&config.database_url),
-        "MCP stdio configuration loaded"
-    );
-
-    if let Err(error) = config.validate_security() {
-        return Err(format!("Invalid production security configuration: {error}").into());
-    }
+async fn run_mcp_stdio() -> Result<(), Box<dyn Error>> {
+    // A thin proxy to the running server's `/mcp` endpoint — it touches no disk
+    // (no home dir, database, secrets, or search index), so it works even when those
+    // belong to the privileged service account. It needs only a server URL and a
+    // `vcms_site_*` access token, forwarded as the bearer credential.
+    cms::tracing::init_proxy_tracing();
 
     let token = std::env::var("VCMS_MCP_TOKEN").map_err(|_| "VCMS_MCP_TOKEN is required for `vcms mcp stdio`")?;
-    if token.trim().is_empty() {
+    let token = token.trim().to_string();
+    if token.is_empty() {
         return Err("VCMS_MCP_TOKEN must not be empty".into());
     }
 
-    let pool = connect_db_without_migrations(&config).await?;
-    info!("Existing CMS database schema is compatible; no migrations were run");
+    let base = std::env::var("VCMS_MCP_URL").unwrap_or_else(|_| "http://127.0.0.1:3000".to_string());
+    let endpoint = format!("{}/mcp", base.trim_end_matches('/'));
 
-    let repository = Repository::new(&pool);
-    let actor = cms::mcp::auth::verify_stdio_token(&token, &repository, &config.hmac_secret)
-        .await
-        .map_err(|error| format!("MCP stdio authentication failed: {}", error.message))?;
-    match &actor {
-        Actor::ApiKey(api_key) => info!(
-            site_id = %api_key.site_id,
-            permission = %api_key.permission,
-            "MCP stdio site token authenticated"
-        ),
-        Actor::User(_) => return Err("MCP stdio requires a CMS site access token".into()),
-    }
-
-    let storage_registry = initialize_storage(&config);
-    let repository = Arc::new(repository);
-    let config = Arc::new(config);
-    // Read-only search: stdio can run alongside the server without contending for
-    // the writer lock; its content writes enqueue for the server to index.
-    let services = Arc::new(Services::new_read_only(repository.clone(), &pool, &config));
-    let server = cms::mcp::server::CmsServer::new_stdio(services, repository, storage_registry, config, token);
-
-    let result = cms::mcp::transports::stdio::serve(server).await;
-    match &result {
-        Ok(()) => info!("Standalone MCP stdio process exited cleanly"),
-        Err(error) => tracing::error!(error = %error, "Standalone MCP stdio process exiting after failure"),
-    }
-    result
-}
-
-fn initialize_storage(config: &Config) -> Arc<StorageRegistry> {
-    let mut storage_registry = StorageRegistry::new();
-
-    // Use an explicit filesystem path if set; otherwise default to ~/.vcms/storage
-    // so uploads work out of the box — unless S3 is configured and takes over.
-    let fs_path = match (&config.storage_fs_path, config.has_s3()) {
-        (Some(path), _) => Some(path.clone()),
-        (None, false) => Some(cms::paths::storage_dir().to_string_lossy().into_owned()),
-        (None, true) => None,
-    };
-
-    if let Some(fs_path) = fs_path {
-        match storage::FileSystemStorage::new(&fs_path) {
-            Ok(fs) => {
-                storage_registry.register(STORAGE_KIND_FILESYSTEM, Arc::new(fs));
-                info!("Filesystem storage initialized at {}", fs_path);
-            }
-            Err(error) => warn!("Failed to initialize filesystem storage: {}", error),
-        }
-    }
-
-    if config.has_s3() {
-        match storage::S3Storage::new(
-            config.s3_access_key_id.as_deref().unwrap(),
-            config.s3_secret_access_key.as_deref().unwrap(),
-            config.s3_bucket.as_deref().unwrap(),
-            config.s3_region.as_deref().unwrap_or("us-east-1"),
-            config.s3_endpoint.as_deref(),
-            config.s3_public_url.as_deref(),
-        ) {
-            Ok(s3) => {
-                storage_registry.register(STORAGE_KIND_S3, Arc::new(s3));
-                info!("S3 storage initialized");
-            }
-            Err(error) => warn!("Failed to initialize S3 storage: {}", error),
-        }
-    }
-
-    if storage_registry.get(STORAGE_KIND_FILESYSTEM).is_none() && storage_registry.get(STORAGE_KIND_S3).is_none() {
-        warn!("No storage providers configured. Set STORAGE_FS_PATH or S3_* env vars.");
-    }
-
-    Arc::new(storage_registry)
+    info!(%endpoint, "Starting MCP stdio proxy");
+    cms::mcp::transports::stdio::serve(endpoint, token).await
 }
 
 fn run_config(action: &ConfigAction, cli: &Cli) -> Result<(), Box<dyn Error>> {
@@ -337,7 +143,7 @@ async fn run_backup(action: &BackupAction, cli: &Cli) -> Result<(), Box<dyn Erro
     cms::secrets::ensure()?;
     let config = Config::load(cli)?;
     let pool = init_db_with_config(&config).await?;
-    let storage_registry = initialize_storage(&config);
+    let storage_registry = cms::server::initialize_storage(&config);
     let destination = build_backup_destination(&config)?;
     let service = BackupService::new(pool.clone(), storage_registry, destination, &config);
 
@@ -423,7 +229,7 @@ async fn run_restore(
     cms::secrets::ensure()?;
     let config = Config::load(cli)?;
     let pool = init_db_with_config(&config).await?;
-    let storage_registry = initialize_storage(&config);
+    let storage_registry = cms::server::initialize_storage(&config);
     let destination = build_backup_destination(&config)?;
     let service = BackupService::new(pool.clone(), storage_registry, destination, &config);
 
@@ -467,69 +273,5 @@ fn parse_scope(scope: &str, site: Option<&str>) -> Result<cms::services::backup:
             .map(|s| Scope::Site(s.to_string()))
             .ok_or_else(|| "--site <SITE_ID> is required for --scope site".into()),
         other => Err(format!("unknown scope '{other}' (use instance|site)").into()),
-    }
-}
-
-/// Email identity of the default admin account. Login is by email, so the seed
-/// gate keys on this (non-unique display name "admin" would be the wrong column).
-const ADMIN_EMAIL: &str = "admin@cms.local";
-
-async fn seed_admin(repository: &Repository) {
-    debug!("Checking if admin user needs to be seeded");
-    if !repository.user.exists(ADMIN_EMAIL).await.unwrap_or(false) {
-        info!("Seeding default admin user");
-        let id = uuid::Uuid::now_v7().to_string();
-        let password_hash = bcrypt::hash("admin", bcrypt::DEFAULT_COST).expect("Failed to hash password");
-        repository
-            .user
-            .create(&id, "admin", ADMIN_EMAIL, &password_hash)
-            .await
-            .expect("Failed to seed admin user");
-        repository
-            .user
-            .set_instance_role(&id, Some("instance_owner"))
-            .await
-            .expect("Failed to assign instance owner");
-        repository
-            .user
-            .update_password(&id, &password_hash, true)
-            .await
-            .expect("Failed to require password change");
-
-        warn!("Seeded default admin user (admin@cms.local / admin) — CHANGE THE PASSWORD IMMEDIATELY!");
-        eprintln!(
-            "\n\
-             ============================ SECURITY WARNING ============================\n\
-             A default admin account was created:  email 'admin@cms.local'  password 'admin'\n\
-             Sign in with the email and password. Anyone who can reach this server can log\n\
-             in until you change it. Run:\n\
-             \n    vcms admin reset-password --email admin@cms.local --password <new-strong-password>\n\n\
-             or change it from the dashboard now. Do NOT expose this server until done.\n\
-             =========================================================================\n"
-        );
-    } else {
-        debug!("Admin user already exists, skipping seeding");
-    }
-}
-
-async fn shutdown_signal() {
-    let ctrl_c = async {
-        tokio::signal::ctrl_c().await.expect("failed to install Ctrl+C handler");
-    };
-
-    #[cfg(unix)]
-    let terminate = async {
-        tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())
-            .expect("failed to install signal handler")
-            .recv()
-            .await;
-    };
-
-    #[cfg(not(unix))]
-    let terminate = std::future::pending::<()>();
-
-    tokio::select! {
-        _ = ctrl_c => info!("Received Ctrl+C, shutting down..."),
-        _ = terminate => info!("Received SIGTERM, shutting down..."),
     }
 }

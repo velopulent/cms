@@ -1,12 +1,18 @@
 # AI Agent Instructions for CMS (Rust + React)
 
+## Product Identity
+
+- Human-facing product and service display name: **Velopulent CMS**.
+- Canonical documentation: <https://cms.velopulent.com/docs>.
+- Keep the executable, package name, native service identifier, environment prefix, and internal identifiers as `vcms` / `VCMS_*` for backward compatibility. Do not rename persisted paths or service keys when updating branding.
+
 ## Architecture
 
 - **Backend**: Rust + Axum HTTP server, `SQLx` + (SQLite | PostgreSQL | MySQL), `rust-embed` (static assets)
 - **Frontend**: React in `apps/dashboard/` with Tanstack Router, Tanstack Query, shadcn/ui
 - **gRPC**: Separate server on port 50051 (compiled from `libs/proto/*.proto` via `tonic-build`)
 - **Build**: Nx orchestrates `dashboard:build` → `backend:build`. `build.rs` compiles proto files only.
-- **Runtime**: Single binary serves REST API (`/api/*`), gRPC, GraphQL (`/api/graphql`), MCP (Streamable HTTP at `/mcp`), and static SPA fallback
+- **Runtime**: Single binary serves REST API (`/api/*`), gRPC, GraphQL (`/api/graphql`), MCP (Streamable HTTP at `/mcp`), health probes (`/health/live`, `/health/ready`), and static SPA fallback
 
 ## Key Directories
 
@@ -25,6 +31,8 @@
 - `libs/proto/` - Protocol Buffer definitions (`cms.proto`)
 - `apps/dashboard/` - React frontend app
 - `apps/web/` - Landing Page and Documentation (NextJS + Fumadocs)
+- `packaging/` - Native Linux, macOS, Windows, Debian, RPM, and Arch definitions and lifecycle scripts
+- `xtask/` - Typed release/package orchestration; platform builders live in separate modules
 
 ## Developer Commands
 
@@ -75,15 +83,34 @@ vcms admin reset-password --email U --password P
 vcms backup create [--scope instance|site] [--site ID] [--out FILE] [--no-files] [--encrypt]
 vcms backup list                       # list recorded backups
 vcms restore --file PATH [--scope instance|site] [--site ID] [--import-as-new] --yes
+vcms mcp stdio                         # thin HTTP proxy to a running server's /mcp (for MCP clients)
+vcms service status                    # normalized native-service status and manager details
+vcms doctor                            # validate config, storage, database, bind ports, and service identity
 ```
 
 `backup`/`restore` run offline (no HTTP server) against the configured database —
 the disaster-recovery path when the instance won't boot. `restore` is destructive
 and requires `--yes`.
 
+`mcp stdio` opens no database, secrets, or search index of its own: it forwards
+JSON-RPC between stdin/stdout and the server's `/mcp` Streamable-HTTP endpoint,
+reading only `VCMS_MCP_TOKEN` (bearer) and `VCMS_MCP_URL` (default
+`http://127.0.0.1:3000`). So it works even when the data is owned by the OS-service
+account. The installed service pins `VCMS_HOME` to a system dir so the daemon stores
+everything under one owned root.
+
 Global flags (highest precedence): `--config <PATH>`, `--bind <ADDR>`, `--database-url <URL>`, `--log-level <LEVEL>`.
 
 The server auto-migrates the database on every startup; there is no separate migrate command.
+
+## Packaging and Releases
+
+- Keep native package definitions and service files in `packaging/`; do not embed them in Rust source or workflow YAML.
+- `xtask` orchestrates deterministic staging and packaging. Keep `xtask/src/main.rs` limited to CLI parsing and dispatch, with shared and platform-specific implementation in modules.
+- Keep the release workflow thin: build the dashboard, run native build/package jobs, assemble artifacts, attest, and publish.
+- Ordinary CI validates packaging templates, `xtask` tests, and deterministic dry-runs. It must not install or mutate host services.
+- Release artifacts include portable archives, Debian, RPM, MSI, and macOS PKG packages. Arch is maintained as a package recipe consuming published Linux archives; render it with `xtask arch-render`, not as a fake release archive.
+- The stable native service identifier is `vcms`; its human-facing display name is **Velopulent CMS**. Fresh Linux and macOS package installs register/enable the service but do not auto-start it; the Windows MSI installs the service for automatic startup and starts it immediately.
 
 ## Configuration
 
@@ -93,29 +120,53 @@ Layers merge with precedence: **CLI flag > env var > config file > built-in defa
 Config file search order (first existing wins; missing is fine):
 1. `--config` flag / `VCMS_CONFIG` env
 2. `./vcms.toml` (current dir)
-3. `~/.vcms/config.toml` (CMS home; `$VCMS_HOME/config.toml` if set) — where `vcms config init` writes
+3. the platform config dir (`config.toml`; `$VCMS_HOME/config.toml` in single-dir mode) — where `vcms config init` writes
 4. `/etc/vcms/config.toml`
 
-## Data directory (CMS home)
+## Data directory
 
-All runtime files live under one home directory: `$VCMS_HOME` if set, else `~/.vcms`
-(same layout on Windows, macOS, Linux via the `directories` crate). `vcms serve`
-creates it on first run. Resolution lives in `apps/backend/src/paths.rs`.
+Resolution lives in `apps/backend/src/paths.rs` and has two layouts:
+
+**Split (default, interactive installs)** — files land in the platform-conventional
+per-type directories via the `directories` crate (`ProjectDirs`):
+
+| File(s) | Dir | Linux | macOS | Windows |
+|---------|-----|-------|-------|---------|
+| `config.toml`, `secrets.toml`, `.env` | config | `~/.config/vcms` | `~/Library/Application Support/vcms` | `%APPDATA%\vcms\config` |
+| `vcms.db`, `storage/`, `backups/` | data | `~/.local/share/vcms` | `~/Library/Application Support/vcms` | `%APPDATA%\vcms\data` |
+| `search/` (derived, rebuildable) | cache | `~/.cache/vcms` | `~/Library/Caches/vcms` | `%LOCALAPPDATA%\vcms\cache` |
+| `logs/` | state | `~/.local/state/vcms` | `~/Library/Application Support/vcms` | `%LOCALAPPDATA%\vcms\data` |
+
+(`logs/` uses the state dir where the platform has one — Linux — else the local data dir.)
+
+**Single** — everything nests under one root. Chosen (in precedence order) when:
+1. **`$VCMS_HOME` is set** — forces the root explicitly.
+2. **the system service home dir exists** — Linux `/var/lib/vcms`, macOS
+   `/Library/Application Support/vcms`, Windows `C:\ProgramData\vcms`. The
+   platform installer creates it (and leaves it behind on uninstall), so a plain
+   `vcms serve`/`admin`/`backup` **follows the service's data instead of forking to a
+   per-user split store**. This path is defined once in `paths::system_home()` and
+   imported by the Windows SCM host.
+3. **a legacy `~/.vcms` exists** — an existing install keeps working untouched.
+
+Otherwise (dev/eval boxes with no service) files use the platform split dirs.
 
 ```text
-~/.vcms/
-  config.toml     # non-secret config (vcms config init target)
-  secrets.toml    # auto-generated HMAC_SECRET + backup key (0600 on unix)
-  vcms.db          # default SQLite database (+ -wal / -shm)
-  logs/           # rolling logs when [log] output = "file"
-  storage/        # default filesystem storage for uploads
+$VCMS_HOME/                # or system home, or ~/.vcms (legacy)
+  config.toml secrets.toml .env
+  vcms.db (+ -wal / -shm)  logs/  storage/  backups/  search/
 ```
 
-Secrets: on first `serve`/`admin`, a random `HMAC_SECRET` is generated
-and persisted to `secrets.toml` (`apps/backend/src/secrets.rs`), then loaded by
-every process — including `vcms mcp stdio`, which is launched from an arbitrary cwd
-and so cannot rely on a cwd `.env`. Env vars still override the file. `mcp stdio`
-is read-only: it never creates the home dir, database, or secrets file.
+When the active home is the system service home (owned by SYSTEM/root), the
+data-touching commands (`serve`/`admin`/`backup`/`restore`) require elevation — a
+non-elevated invocation **fails fast** with an "Administrator/root" hint (in
+`paths::ensure`'s preflight) rather than silently forking to a second store.
+
+Secrets: on first `serve`/`admin`, a random `HMAC_SECRET` is generated and persisted to
+`secrets.toml` (`apps/backend/src/secrets.rs`), then loaded by the server processes.
+`vcms mcp stdio` does **not** load secrets, the database, or any data-dir file: it is a
+thin HTTP proxy to the running server's `/mcp` (see CLI), forwarding `VCMS_MCP_TOKEN` as
+the bearer; the server owns all disk I/O.
 
 Env-only secrets (never read from `config.toml` by convention, omitted from
 `config init`): `DATABASE_URL`, `HMAC_SECRET`, `S3_ACCESS_KEY_ID`,
@@ -153,8 +204,10 @@ Logging keys map to the `[log]` table: `RUST_LOG`→`log.level`, `LOG_OUTPUT`→
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `VCMS_CONFIG` | - | Explicit config file path (same as `--config`) |
-| `VCMS_HOME` | `~/.vcms` | CMS home directory (db, config, secrets, logs, storage) |
-| `DATABASE_URL` | `sqlite://~/.vcms/vcms.db` | Database URL: `sqlite:path`, `postgres://...`, `mysql://...` |
+| `VCMS_HOME` | - | If set, forces single-dir mode: db/config/secrets/logs/storage all nest under this root (else files use the platform split dirs) |
+| `VCMS_MCP_TOKEN` | - | `vcms_site_*` access token forwarded by `vcms mcp stdio` as the bearer credential (required for stdio) |
+| `VCMS_MCP_URL` | `http://127.0.0.1:3000` | Running server's base URL that `vcms mcp stdio` proxies to (`{url}/mcp`) |
+| `DATABASE_URL` | `sqlite://<data dir>/vcms.db` | Database URL: `sqlite:path`, `postgres://...`, `mysql://...` |
 | `HMAC_SECRET` | auto | HMAC key for token lookup (required; auto-generated to `secrets.toml`, env overrides) |
 | `BIND_ADDRESS` | `0.0.0.0:3000` | REST API listen address |
 | `GRPC_BIND_ADDRESS` | `0.0.0.0:50051` | gRPC server listen address |
@@ -167,7 +220,7 @@ Logging keys map to the `[log]` table: `RUST_LOG`→`log.level`, `LOG_OUTPUT`→
 | `S3_PUBLIC_URL` | - | Public URL for S3 assets |
 | `BACKUP_ENABLED` | `true` | Run the scheduled-backup poller / allow backups |
 | `BACKUP_DESTINATION` | `filesystem` | Backup destination: `filesystem` or `s3` |
-| `BACKUP_LOCAL_PATH` | `~/.vcms/backups` | Local backup dir (when destination is filesystem) |
+| `BACKUP_LOCAL_PATH` | `<data dir>/backups` | Local backup dir (when destination is filesystem) |
 | `BACKUP_ZSTD_LEVEL` | `12` | zstd compression level for backups |
 | `BACKUP_DEFAULT_RETENTION` | `7` | Default "keep last N" for new schedules |
 | `BACKUP_S3_BUCKET` / `_REGION` / `_ENDPOINT` / `_PUBLIC_URL` | - | S3 backup destination (non-secret parts) |
@@ -175,6 +228,7 @@ Logging keys map to the `[log]` table: `RUST_LOG`→`log.level`, `LOG_OUTPUT`→
 | `BACKUP_S3_SECRET_ACCESS_KEY` | - | S3 backup secret key (secret, env-only) |
 | `BACKUP_ENCRYPTION_KEY` | auto | AES-256 backup key (hex); auto-generated to `secrets.toml` |
 | `MAX_UPLOAD_SIZE_MB` | `50` | Max upload size in MB |
+| `UPLOAD_TOKEN_EXPIRY_SECS` | `900` | Signed upload URL lifetime (seconds) |
 | `COOKIE_SECURE` | `false` | Require HTTPS cookies |
 | `DB_MAX_CONNECTIONS` | `10` | Max DB connections |
 | `DB_MIN_CONNECTIONS` | `2` | Min DB connections |
@@ -185,10 +239,10 @@ Logging keys map to the `[log]` table: `RUST_LOG`→`log.level`, `LOG_OUTPUT`→
 | `LOG_OUTPUT` | `stdout` | `stdout` or `file` (`[log] output`) |
 | `LOG_FORMAT` | `pretty` | `pretty` or `json` (`[log] format`) |
 | `LOG_ANNOTATIONS` | `false` | Include file + line numbers (`[log] annotations`) |
-| `LOG_DIR` | `~/.vcms/logs` | Log directory when `output = file` (`[log] dir`) |
+| `LOG_DIR` | `<state dir>/logs` | Log directory when `output = file` (`[log] dir`) |
 
-**Note**: `HMAC_SECRET` is auto-generated and persisted to
-`~/.vcms/secrets.toml` on first run. Set it explicitly via env to override.
+**Note**: `HMAC_SECRET` is auto-generated and persisted to the config dir's
+`secrets.toml` on first run. Set it explicitly via env to override.
 
 ## Proto Compilation
 

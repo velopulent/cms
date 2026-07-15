@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key><string>com.velopulent.vcms</string>
+  <key>ProgramArguments</key>
+  <array><string>/usr/local/bin/vcms</string><string>serve</string><string>--config</string><string>/Library/Application Support/vcms/config.toml</string></array>
+  <key>EnvironmentVariables</key>
+  <dict><key>VCMS_HOME</key><string>/Library/Application Support/vcms</string></dict>
+  <key>UserName</key><string>_vcms</string>
+  <key>GroupName</key><string>_vcms</string>
+  <key>RunAtLoad</key><false/>
+  <key>KeepAlive</key><dict><key>SuccessfulExit</key><false/></dict>
+  <key>ProcessType</key><string>Background</string>
+  <key>StandardOutPath</key><string>/Library/Logs/vcms/vcms.log</string>
+  <key>StandardErrorPath</key><string>/Library/Logs/vcms/vcms-error.log</string>
+</dict>
+</plist>

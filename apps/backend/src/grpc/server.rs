@@ -1,8 +1,8 @@
 use std::future::Future;
-use std::net::SocketAddr;
 use std::pin::Pin;
 use std::sync::Arc;
 
+use tokio_stream::wrappers::TcpListenerStream;
 use tonic::transport::Server;
 
 use crate::config::Config;
@@ -25,7 +25,8 @@ pub async fn start_grpc_server(
     repository: Arc<Repository>,
     config: Arc<Config>,
     storage_registry: Arc<StorageRegistry>,
-    grpc_addr: SocketAddr,
+    listener: tokio::net::TcpListener,
+    shutdown: impl Future<Output = ()> + Send + 'static,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let collection_svc = CollectionServiceImpl::new(services.collection.clone(), repository.clone());
     let entry_svc = EntryServiceImpl::new(services.entry.clone(), repository.clone());
@@ -90,7 +91,7 @@ pub async fn start_grpc_server(
         .add_service(file_svc)
         .add_service(site_svc)
         .add_service(webhook_svc)
-        .serve(grpc_addr)
+        .serve_with_incoming_shutdown(TcpListenerStream::new(listener), shutdown)
         .await?;
 
     Ok(())
@@ -101,13 +102,15 @@ pub fn spawn_grpc_server(
     repository: Arc<Repository>,
     config: Arc<Config>,
     storage_registry: Arc<StorageRegistry>,
-    grpc_addr: SocketAddr,
+    listener: tokio::net::TcpListener,
+    shutdown: Pin<Box<dyn Future<Output = ()> + Send>>,
 ) -> GrpcServerFuture {
     Box::pin(start_grpc_server(
         services,
         repository,
         config,
         storage_registry,
-        grpc_addr,
+        listener,
+        shutdown,
     ))
 }

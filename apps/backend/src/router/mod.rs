@@ -7,6 +7,7 @@ mod docs;
 mod entry;
 mod files;
 mod graphql;
+mod health;
 mod instance;
 mod mcp;
 mod openapi;
@@ -24,6 +25,7 @@ use tower_http::cors::{AllowOrigin, CorsLayer};
 use tower_http::trace::TraceLayer;
 
 use crate::config::Config;
+use crate::database::pool::DbPool;
 use crate::handlers::site_handler::get_current_site;
 use crate::middleware::api_auth::api_auth_middleware;
 use crate::middleware::authz::authz_middleware;
@@ -76,6 +78,7 @@ fn dashboard_site_v1_routes(max_upload_bytes: usize) -> Router {
 }
 
 pub fn create_router(
+    pool: DbPool,
     repository: Repository,
     config: Config,
     storage_registry: Arc<StorageRegistry>,
@@ -130,6 +133,8 @@ pub fn create_router(
     };
 
     let mut router = Router::new()
+        // Public, minimal operational probes. Detailed failures remain in logs/doctor.
+        .merge(health::routes(pool))
         // ── Auth (no middleware) ──
         .merge(auth::auth_routes())
         // ── Public API (/api/v1/*) ──
@@ -142,6 +147,8 @@ pub fn create_router(
         )
         // ── File serving (no auth — file IDs are effectively opaque) ──
         .merge(files::file_serve_routes())
+        // ── Signed-URL upload (no auth — the HMAC token is the credential) ──
+        .merge(files::signed_upload_routes(max_upload_bytes))
         // ── Dashboard API (/api/dashboard/*) ──
         .nest(
             "/api/dashboard",

@@ -71,7 +71,7 @@ impl AccessTokenRepository for MysqlAccessTokenRepository {
 
     async fn find_by_prefix(&self, prefix: &str) -> Result<Vec<AccessTokenLookupRow>, RepositoryError> {
         let rows = sqlx::query_as::<_, AccessTokenLookupRow>(
-            "SELECT id, site_id, token_hash, token_hmac, CAST(expires_at AS CHAR) AS expires_at, CAST(revoked_at AS CHAR) AS revoked_at, permission
+            "SELECT id, site_id, token_hash, token_hmac, CAST(expires_at AS CHAR) AS expires_at, CAST(revoked_at AS CHAR) AS revoked_at, permission, CAST(last_used_at AS CHAR) AS last_used_at
              FROM access_tokens WHERE token_prefix = ?",
         )
         .bind(prefix)

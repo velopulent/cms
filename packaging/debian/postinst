@@ -1,0 +1,30 @@
+#!/bin/sh
+set -eu
+getent group vcms >/dev/null || groupadd --system vcms
+id vcms >/dev/null 2>&1 || useradd --system --gid vcms --home-dir /var/lib/vcms --shell /usr/sbin/nologin vcms
+install -d -o vcms -g vcms -m 0750 /var/lib/vcms /var/lib/vcms/storage /var/lib/vcms/backups /var/lib/vcms/logs /var/lib/vcms/search
+if systemctl is-active --quiet vcms.service; then systemctl stop vcms.service; fi
+config=/var/lib/vcms/config.toml
+sample=/var/lib/vcms/config.toml.sample
+if [ -L "$config" ] || [ -L "$sample" ]; then
+  echo "Refusing to install Velopulent CMS configuration through a symlink." >&2
+  exit 1
+fi
+if [ ! -e "$config" ]; then
+  tmp=$(mktemp /var/lib/vcms/.config.toml.XXXXXX)
+  trap 'rm -f "$tmp"' EXIT HUP INT TERM
+  install -o vcms -g vcms -m 0640 "$sample" "$tmp"
+  mv -T "$tmp" "$config"
+  trap - EXIT HUP INT TERM
+fi
+chown --no-dereference vcms:vcms "$config"
+systemctl daemon-reload >/dev/null 2>&1 || true
+systemctl enable vcms.service >/dev/null 2>&1 || true
+if [ -f /run/vcms-was-active ]; then
+  systemctl restart vcms.service
+  rm -f /run/vcms-was-active
+  echo "Velopulent CMS upgraded and restarted."
+else
+  echo "Velopulent CMS installed but not started. Run: vcms doctor && systemctl start vcms"
+fi
+echo "Velopulent CMS security: change admin@cms.local password immediately after first start."

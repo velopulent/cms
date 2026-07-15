@@ -12,9 +12,6 @@ on:
     tags:
       - "v*"
 
-permissions:
-  contents: write
-
 jobs:
   # Build the static dashboard once. Every build job consumes this same dist.
   dashboard:
@@ -45,7 +42,7 @@ jobs:
           if-no-files-found: error
 
   build:
-    name: Build (${{ matrix.os }}-${{ matrix.arch }})
+    name: Build/package (${{ matrix.os }}-${{ matrix.arch }})
     needs: dashboard
     runs-on: ${{ matrix.runner }}
     strategy:
@@ -55,33 +52,21 @@ jobs:
           - os: linux
             arch: amd64
             runner: ubuntu-latest
-            bin: vcms
-            asset: vcms-${{ github.ref_name }}-linux-amd64
           - os: linux
             arch: arm64
             runner: ubuntu-24.04-arm
-            bin: vcms
-            asset: vcms-${{ github.ref_name }}-linux-arm64
           - os: macos
             arch: amd64
             runner: macos-26-intel
-            bin: vcms
-            asset: vcms-${{ github.ref_name }}-macos-amd64
           - os: macos
             arch: arm64
             runner: macos-26
-            bin: vcms
-            asset: vcms-${{ github.ref_name }}-macos-arm64
           - os: windows
             arch: amd64
             runner: windows-latest
-            bin: vcms.exe
-            asset: vcms-${{ github.ref_name }}-windows-amd64.exe
           - os: windows
             arch: arm64
             runner: windows-11-arm
-            bin: vcms.exe
-            asset: vcms-${{ github.ref_name }}-windows-arm64.exe
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
@@ -107,20 +92,54 @@ jobs:
           workspaces: ". -> target"
           key: release-${{ matrix.os }}-${{ matrix.arch }}
 
+      - name: Install Linux packaging tools
+        if: matrix.os == 'linux'
+        run: sudo apt-get update && sudo apt-get install -y rpm
+
+      - name: Install WiX
+        if: matrix.os == 'windows'
+        shell: pwsh
+        run: |
+          dotnet tool install --global wix --version 7.*
+          wix eula accept wix7
+          wix extension add --global WixToolset.UI.wixext/7.0.0
+
       # Build cargo directly (dist is already present from the artifact); keep the
       # default `embed-dashboard` feature so rust-embed bakes in apps/dashboard/dist.
       - name: Build release binary
         working-directory: apps/backend
         run: cargo build --release --locked
 
-      - name: Stage artifact
-        shell: bash
-        run: |
-          mkdir -p dist
-          cp "target/release/${{ matrix.bin }}" "dist/${{ matrix.asset }}"
+      - name: Package artifacts
+        run: cargo run -p xtask -- package --kind host --skip-build --target-os ${{ matrix.os }} --arch ${{ matrix.arch }}
 
-      - name: Attach to release
+      - name: Upload release artifacts
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0 # v7.0.1
+        with:
+          name: release-${{ matrix.os }}-${{ matrix.arch }}
+          path: dist/packages/*
+          if-no-files-found: error
+
+  publish:
+    name: Attest and publish release
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
+    steps:
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          pattern: release-*
+          path: dist/packages
+          merge-multiple: true
+      - name: Attest build provenance
+        uses: actions/attest-build-provenance@v3
+        with:
+          subject-path: dist/packages/*
+      - name: Attach all artifacts after matrix passes
         uses: softprops/action-gh-release@718ea10b132b3b2eba29c1007bb80653f286566b # v3.0.1
         with:
-          files: dist/${{ matrix.asset }}
+          files: dist/packages/*
           generate_release_notes: true

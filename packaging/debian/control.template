@@ -1,0 +1,9 @@
+Package: vcms
+Version: @VERSION@
+Section: web
+Priority: optional
+Architecture: @ARCH@
+Maintainer: vcms maintainers
+Homepage: https://cms.velopulent.com/docs
+Description: Velopulent CMS
+ Velopulent CMS serves the dashboard, REST, GraphQL, gRPC, and MCP APIs.
