@@ -297,9 +297,9 @@ jobs:
         run: cargo test -p xtask --locked
       - name: package dry-run
         run: |
-          cargo run -p xtask --locked -- package --kind all --dry-run --skip-build --target-os linux --arch amd64
-          cargo run -p xtask --locked -- package --kind host --dry-run --skip-build --target-os macos --arch arm64
-          cargo run -p xtask --locked -- package --kind host --dry-run --skip-build --target-os windows --arch amd64
+          cargo run -p xtask --locked -- package --kind all --version 0.0.0-ci --dry-run --skip-build --target-os linux --arch amd64
+          cargo run -p xtask --locked -- package --kind host --version 0.0.0-ci --dry-run --skip-build --target-os macos --arch arm64
+          cargo run -p xtask --locked -- package --kind host --version 0.0.0-ci --dry-run --skip-build --target-os windows --arch amd64
 
   web:
     name: Web (landing + docs)
