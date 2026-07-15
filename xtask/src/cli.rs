@@ -76,10 +76,10 @@ impl Args {
         let mut output = Self {
             command,
             kind: PackageKind::Host,
-            version: env::var("GITHUB_REF_NAME")
-                .ok()
-                .map(|value| value.strip_prefix('v').unwrap_or(&value).to_owned())
-                .unwrap_or(backend_version()?),
+            version: match env::var("GITHUB_REF_NAME").ok() {
+                Some(value) => value.strip_prefix('v').unwrap_or(&value).to_owned(),
+                None => backend_version()?,
+            },
             target_os: TargetOs::parse(env::consts::OS)?,
             arch: Architecture::parse(env::consts::ARCH)?,
             dry_run: false,

@@ -86,6 +86,7 @@ fn product_code(context: &Context) -> String {
     Uuid::new_v5(&PRODUCT_NAMESPACE, identity.as_bytes())
         .hyphenated()
         .to_string()
+        .to_uppercase()
 }
 
 fn license_rtf() -> String {
