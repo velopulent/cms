@@ -98,18 +98,18 @@ fn run_service_session() -> Result<(), Box<dyn std::error::Error>> {
 
     let status_handle = service_control_handler::register(SERVICE_NAME, move |control| match control {
         ServiceControl::Stop | ServiceControl::Shutdown => {
-            if let Ok(guard) = handle_cell.lock()
-                && let Some(h) = guard.as_ref()
-            {
-                let _ = h.set_service_status(ServiceStatus {
-                    service_type: ServiceType::OWN_PROCESS,
-                    current_state: ServiceState::StopPending,
-                    controls_accepted: ServiceControlAccept::empty(),
-                    exit_code: ServiceExitCode::Win32(0),
-                    checkpoint: 1,
-                    wait_hint: Duration::from_secs(30),
-                    process_id: None,
-                });
+            if let Ok(guard) = handle_cell.lock() {
+                if let Some(h) = guard.as_ref() {
+                    let _ = h.set_service_status(ServiceStatus {
+                        service_type: ServiceType::OWN_PROCESS,
+                        current_state: ServiceState::StopPending,
+                        controls_accepted: ServiceControlAccept::empty(),
+                        exit_code: ServiceExitCode::Win32(0),
+                        checkpoint: 1,
+                        wait_hint: Duration::from_secs(30),
+                        process_id: None,
+                    });
+                }
             }
             handler_notify.notify_one();
             ServiceControlHandlerResult::NoError
