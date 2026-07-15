@@ -10,6 +10,10 @@ if ! id _vcms >/dev/null 2>&1; then
   dscl . -create /Users/_vcms NFSHomeDirectory /var/empty
 fi
 install -d -o _vcms -g _vcms -m 0750 "/Library/Application Support/vcms" "/Library/Application Support/vcms/storage" "/Library/Application Support/vcms/backups" "/Library/Application Support/vcms/search"
+if [ ! -f "/Library/Application Support/vcms/config.toml" ]; then
+  cp "/Library/Application Support/vcms/config.toml.sample" "/Library/Application Support/vcms/config.toml"
+fi
+chown _vcms:_vcms "/Library/Application Support/vcms/config.toml"
 install -d -o _vcms -g _vcms -m 0750 /Library/Logs/vcms
 chown root:wheel /Library/LaunchDaemons/com.velopulent.vcms.plist
 chmod 0644 /Library/LaunchDaemons/com.velopulent.vcms.plist

@@ -85,9 +85,8 @@ pub fn build_rpm(context: &Context) -> Result<PathBuf> {
 
 fn stage_payload(context: &Context, root: &Path, service_path: &str) -> Result<()> {
     copy_binary(context, &root.join("usr/bin"))?;
-    write_file(&root.join("etc/vcms/config.toml"), config_sample())?;
-    write_file(&root.join("etc/vcms/config.toml.sample"), config_sample())?;
     fs::create_dir_all(root.join("var/lib/vcms"))?;
+    write_file(&root.join("var/lib/vcms/config.toml.sample"), config_sample())?;
     write_file(&root.join(service_path), systemd_service())
 }
 

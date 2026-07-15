@@ -9,7 +9,6 @@ Type=simple
 User=vcms
 Group=vcms
 Environment=VCMS_HOME=/var/lib/vcms
-Environment=VCMS_CONFIG=/etc/vcms/config.toml
 ExecStart=/usr/bin/vcms serve
 Restart=on-failure
 RestartSec=5s
