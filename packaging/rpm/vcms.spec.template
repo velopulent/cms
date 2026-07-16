@@ -38,5 +38,4 @@ echo "vcms config and state were preserved."
 /usr/bin/vcms
 /usr/lib/systemd/system/vcms.service
 %config(noreplace) /var/lib/vcms/config.toml.sample
-%config(noreplace) /var/lib/vcms/config.toml
 %dir %attr(0750,vcms,vcms) /var/lib/vcms
