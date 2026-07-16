@@ -21,11 +21,11 @@ jobs:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           persist-credentials: false
-      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
       # Persist the Nx local cache across runs. Ephemeral runners wipe .nx/cache, so
       # without this Nx caching is a no-op. This lets dashboard:build (8-10s) replay
       # from cache instead of rebuilding.
-      - uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: .nx/cache
           key: nx-${{ runner.os }}-${{ hashFiles('apps/dashboard/**', 'bun.lock', 'package.json', 'nx.json') }}
@@ -77,15 +77,15 @@ jobs:
         with:
           name: dashboard-dist
           path: apps/dashboard/dist
-      - uses: arduino/setup-protoc@c65c819552d16ad3c9b72d9dfd5ba5237b9c906b # v3
+      - uses: arduino/setup-protoc@f4d5893b897028ff5739576ea0409746887fa536 # v3.0.0
         with:
           repo-token: ${{ secrets.GITHUB_TOKEN }}
       # Installs the host toolchain, which on each runner is already the target arch
       # (native build, no --target needed).
-      - uses: dtolnay/rust-toolchain@67ef31d5b988238dd797d409d6f9574278e20537 # master
+      - uses: dtolnay/rust-toolchain@fa04a1451ff1842e2626ccb99004d0195b455a88 # master
         with:
           toolchain: "1.94"
-      - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2
+      - uses: Swatinem/rust-cache@23869a5bd66c73db3c0ac40331f3206eb23791dc # v2.9.1
         with:
           # Workspace root is the REPO root (Cargo.lock + target/ live there);
           # cargo runs from apps/backend but artifacts land in <root>/target.
@@ -114,7 +114,7 @@ jobs:
         run: cargo run -p xtask -- package --kind host --skip-build --target-os ${{ matrix.os }} --arch ${{ matrix.arch }}
 
       - name: Upload release artifacts
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0 # v7.0.1
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: release-${{ matrix.os }}-${{ matrix.arch }}
           path: dist/packages/*
@@ -135,11 +135,11 @@ jobs:
           path: dist/packages
           merge-multiple: true
       - name: Attest build provenance
-        uses: actions/attest-build-provenance@v3
+        uses: actions/attest-build-provenance@0f67c3f4856b2e3261c31976d6725780e5e4c373 # v4.1.1
         with:
           subject-path: dist/packages/*
       - name: Attach all artifacts after matrix passes
-        uses: softprops/action-gh-release@718ea10b132b3b2eba29c1007bb80653f286566b # v3.0.1
+        uses: softprops/action-gh-release@fe965f7af51af5f2602596916f38a38df2e33de0 # v3.0.2
         with:
           files: dist/packages/*
           generate_release_notes: true
