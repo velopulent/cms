@@ -155,4 +155,13 @@ mod tests {
         );
         assert!(deb_postinst().contains("try-restart") || deb_preinst().contains("was-active"));
     }
+
+    #[test]
+    fn rpm_packages_sample_config_only() {
+        let spec = include_str!("../../packaging/rpm/vcms.spec.template");
+
+        assert!(spec.contains("%config(noreplace) /var/lib/vcms/config.toml.sample"));
+        assert!(!spec.lines().any(|line| line == "%config(noreplace) /var/lib/vcms/config.toml"));
+        assert!(spec.contains("cp /var/lib/vcms/config.toml.sample /var/lib/vcms/config.toml"));
+    }
 }
