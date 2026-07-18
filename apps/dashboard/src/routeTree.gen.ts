@@ -24,6 +24,8 @@ import { Route as AdminSitesSiteIdSettingsRouteImport } from './routes/_admin/si
 import { Route as AdminSitesSiteIdFilesRouteImport } from './routes/_admin/sites.$siteId/files'
 import { Route as AdminSitesSiteIdCollectionsRouteImport } from './routes/_admin/sites.$siteId/collections'
 import { Route as AdminShellSettingsUsersRouteImport } from './routes/_admin/_shell/settings/users'
+import { Route as AdminShellSettingsStorageRouteImport } from './routes/_admin/_shell/settings/storage'
+import { Route as AdminShellSettingsSecurityRouteImport } from './routes/_admin/_shell/settings/security'
 import { Route as AdminShellSettingsBackupsRouteImport } from './routes/_admin/_shell/settings/backups'
 import { Route as AdminSitesSiteIdSettingsIndexRouteImport } from './routes/_admin/sites.$siteId/settings/index'
 import { Route as AdminSitesSiteIdSingletonsSlugRouteImport } from './routes/_admin/sites.$siteId/singletons.$slug'
@@ -111,6 +113,18 @@ const AdminShellSettingsUsersRoute = AdminShellSettingsUsersRouteImport.update({
   path: '/users',
   getParentRoute: () => AdminShellSettingsRoute,
 } as any)
+const AdminShellSettingsStorageRoute =
+  AdminShellSettingsStorageRouteImport.update({
+    id: '/storage',
+    path: '/storage',
+    getParentRoute: () => AdminShellSettingsRoute,
+  } as any)
+const AdminShellSettingsSecurityRoute =
+  AdminShellSettingsSecurityRouteImport.update({
+    id: '/security',
+    path: '/security',
+    getParentRoute: () => AdminShellSettingsRoute,
+  } as any)
 const AdminShellSettingsBackupsRoute =
   AdminShellSettingsBackupsRouteImport.update({
     id: '/backups',
@@ -187,6 +201,8 @@ export interface FileRoutesByFullPath {
   '/settings': typeof AdminShellSettingsRouteWithChildren
   '/sites/$siteId': typeof AdminSitesSiteIdRouteWithChildren
   '/settings/backups': typeof AdminShellSettingsBackupsRoute
+  '/settings/security': typeof AdminShellSettingsSecurityRoute
+  '/settings/storage': typeof AdminShellSettingsStorageRoute
   '/settings/users': typeof AdminShellSettingsUsersRoute
   '/sites/$siteId/collections': typeof AdminSitesSiteIdCollectionsRoute
   '/sites/$siteId/files': typeof AdminSitesSiteIdFilesRoute
@@ -211,6 +227,8 @@ export interface FileRoutesByTo {
   '/sites': typeof AdminSitesRouteWithChildren
   '/account': typeof AdminShellAccountRoute
   '/settings/backups': typeof AdminShellSettingsBackupsRoute
+  '/settings/security': typeof AdminShellSettingsSecurityRoute
+  '/settings/storage': typeof AdminShellSettingsStorageRoute
   '/settings/users': typeof AdminShellSettingsUsersRoute
   '/sites/$siteId/collections': typeof AdminSitesSiteIdCollectionsRoute
   '/sites/$siteId/files': typeof AdminSitesSiteIdFilesRoute
@@ -238,6 +256,8 @@ export interface FileRoutesById {
   '/_admin/sites/$siteId': typeof AdminSitesSiteIdRouteWithChildren
   '/_admin/_shell/': typeof AdminShellIndexRoute
   '/_admin/_shell/settings/backups': typeof AdminShellSettingsBackupsRoute
+  '/_admin/_shell/settings/security': typeof AdminShellSettingsSecurityRoute
+  '/_admin/_shell/settings/storage': typeof AdminShellSettingsStorageRoute
   '/_admin/_shell/settings/users': typeof AdminShellSettingsUsersRoute
   '/_admin/sites/$siteId/collections': typeof AdminSitesSiteIdCollectionsRoute
   '/_admin/sites/$siteId/files': typeof AdminSitesSiteIdFilesRoute
@@ -266,6 +286,8 @@ export interface FileRouteTypes {
     | '/settings'
     | '/sites/$siteId'
     | '/settings/backups'
+    | '/settings/security'
+    | '/settings/storage'
     | '/settings/users'
     | '/sites/$siteId/collections'
     | '/sites/$siteId/files'
@@ -290,6 +312,8 @@ export interface FileRouteTypes {
     | '/sites'
     | '/account'
     | '/settings/backups'
+    | '/settings/security'
+    | '/settings/storage'
     | '/settings/users'
     | '/sites/$siteId/collections'
     | '/sites/$siteId/files'
@@ -316,6 +340,8 @@ export interface FileRouteTypes {
     | '/_admin/sites/$siteId'
     | '/_admin/_shell/'
     | '/_admin/_shell/settings/backups'
+    | '/_admin/_shell/settings/security'
+    | '/_admin/_shell/settings/storage'
     | '/_admin/_shell/settings/users'
     | '/_admin/sites/$siteId/collections'
     | '/_admin/sites/$siteId/files'
@@ -447,6 +473,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AdminShellSettingsUsersRouteImport
       parentRoute: typeof AdminShellSettingsRoute
     }
+    '/_admin/_shell/settings/storage': {
+      id: '/_admin/_shell/settings/storage'
+      path: '/storage'
+      fullPath: '/settings/storage'
+      preLoaderRoute: typeof AdminShellSettingsStorageRouteImport
+      parentRoute: typeof AdminShellSettingsRoute
+    }
+    '/_admin/_shell/settings/security': {
+      id: '/_admin/_shell/settings/security'
+      path: '/security'
+      fullPath: '/settings/security'
+      preLoaderRoute: typeof AdminShellSettingsSecurityRouteImport
+      parentRoute: typeof AdminShellSettingsRoute
+    }
     '/_admin/_shell/settings/backups': {
       id: '/_admin/_shell/settings/backups'
       path: '/backups'
@@ -529,12 +569,16 @@ declare module '@tanstack/react-router' {
 
 interface AdminShellSettingsRouteChildren {
   AdminShellSettingsBackupsRoute: typeof AdminShellSettingsBackupsRoute
+  AdminShellSettingsSecurityRoute: typeof AdminShellSettingsSecurityRoute
+  AdminShellSettingsStorageRoute: typeof AdminShellSettingsStorageRoute
   AdminShellSettingsUsersRoute: typeof AdminShellSettingsUsersRoute
   AdminShellSettingsIndexRoute: typeof AdminShellSettingsIndexRoute
 }
 
 const AdminShellSettingsRouteChildren: AdminShellSettingsRouteChildren = {
   AdminShellSettingsBackupsRoute: AdminShellSettingsBackupsRoute,
+  AdminShellSettingsSecurityRoute: AdminShellSettingsSecurityRoute,
+  AdminShellSettingsStorageRoute: AdminShellSettingsStorageRoute,
   AdminShellSettingsUsersRoute: AdminShellSettingsUsersRoute,
   AdminShellSettingsIndexRoute: AdminShellSettingsIndexRoute,
 }
