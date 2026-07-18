@@ -10,23 +10,15 @@ pub fn init_tracing(config: &crate::config::Config) -> Option<tracing_appender::
     let env_filter = EnvFilter::new(&config.log_level);
 
     let log_output = config.log_output.as_str();
-    let log_format = config.log_format.as_str();
-    let log_annotations = config.log_annotations;
-
     let env_filter_str = env_filter.to_string();
 
-    match (log_output, log_format) {
-        ("file", "json") | ("file", _) => {
+    match log_output {
+        "file" => {
             let log_dir = config.log_dir.as_str();
             let file_appender = RollingFileAppender::new(Rotation::DAILY, log_dir, "cms.log");
             let (file_writer, guard) = tracing_appender::non_blocking(file_appender);
 
-            let file_layer = fmt::layer()
-                .with_writer(file_writer)
-                .with_target(true)
-                .with_file(log_annotations)
-                .with_line_number(log_annotations)
-                .json();
+            let file_layer = fmt::layer().with_writer(file_writer).with_target(true).json();
 
             tracing_subscriber::registry().with(env_filter).with(file_layer).init();
 
@@ -40,33 +32,8 @@ pub fn init_tracing(config: &crate::config::Config) -> Option<tracing_appender::
 
             Some(guard)
         }
-        ("stdout", "json") => {
-            let stdout_layer = fmt::layer()
-                .with_target(true)
-                .with_file(log_annotations)
-                .with_line_number(log_annotations)
-                .json();
-
-            tracing_subscriber::registry()
-                .with(env_filter)
-                .with(stdout_layer)
-                .init();
-
-            tracing::info!(
-                log_output = %log_output,
-                log_format = "json",
-                rust_log = %env_filter_str,
-                "Tracing initialized"
-            );
-
-            None
-        }
         _ => {
-            let stdout_layer = fmt::layer()
-                .with_target(true)
-                .with_file(log_annotations)
-                .with_line_number(log_annotations)
-                .pretty();
+            let stdout_layer = fmt::layer().with_target(true).pretty();
 
             tracing_subscriber::registry()
                 .with(env_filter)
@@ -86,10 +53,9 @@ pub fn init_tracing(config: &crate::config::Config) -> Option<tracing_appender::
 }
 
 /// Minimal stderr tracing for `vcms mcp stdio`, which is a thin proxy that loads no
-/// `Config` (it touches no disk). The filter comes straight from `RUST_LOG`, falling
-/// back to a quiet default. stdout is the MCP protocol channel, so logs go to stderr.
+/// `Config` (it touches no disk). stdout is the MCP protocol channel, so logs go to stderr.
 pub fn init_proxy_tracing() {
-    let env_filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("vcms=info,cms=info"));
+    let env_filter = EnvFilter::new("vcms=info,cms=info");
     let layer = fmt::layer().with_writer(std::io::stderr).with_target(true);
     tracing_subscriber::registry().with(env_filter).with(layer).init();
 }
