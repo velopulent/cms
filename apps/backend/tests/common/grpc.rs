@@ -43,7 +43,9 @@ impl GrpcTestContext {
 
         let config = Config {
             database_url: "sqlite::memory:".to_string(),
-            hmac_secret: "test-hmac-secret-integration".to_string(),
+            token_index_key: "test-token-index-key".to_string(),
+            session_auth_key: "test-session-auth-key".to_string(),
+            signed_upload_key: "test-signed-upload-key".to_string(),
             storage_fs_path: Some(storage_path.clone()),
             cookie_secure: false,
             mcp_enabled: false,
@@ -69,7 +71,7 @@ impl GrpcTestContext {
 
         seed_admin(&repository).await;
 
-        let mut storage_registry = StorageRegistry::new();
+        let storage_registry = StorageRegistry::new();
         let fs_storage =
             cms::storage::FileSystemStorage::new(&storage_path).expect("Failed to init filesystem storage");
         storage_registry.register(STORAGE_KIND_FILESYSTEM, Arc::new(fs_storage));
@@ -94,6 +96,9 @@ impl GrpcTestContext {
             backup_destination,
             &config,
         ));
+        let settings = cms::services::settings::SettingsService::load(pool.clone(), &"11".repeat(32))
+            .await
+            .expect("Failed to init instance settings");
 
         let app = create_router(
             pool.clone(),
@@ -102,6 +107,7 @@ impl GrpcTestContext {
             storage_registry.clone(),
             services.clone(),
             backup_service,
+            settings,
         );
 
         let (axum_shutdown_tx, axum_shutdown_rx) = tokio::sync::oneshot::channel::<()>();

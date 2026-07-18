@@ -9,6 +9,7 @@ mod entries_tests;
 mod files_tests;
 mod health_tests;
 mod roles_tests;
+mod settings_tests;
 mod singletons_tests;
 mod sites_tests;
 mod webhooks_tests;

@@ -20,13 +20,10 @@ struct StdioClient {
 
 impl StdioClient {
     /// Spawn the proxy the way an MCP client does: it knows only the server URL and a
-    /// site token — no `DATABASE_URL`, `HMAC_SECRET`, or `VCMS_HOME`.
+    /// site token and no server configuration.
     async fn start(url: &str, token: &str) -> Self {
         let mut child = Command::new(env!("CARGO_BIN_EXE_vcms"))
             .args(["mcp", "stdio"])
-            .env_remove("DATABASE_URL")
-            .env_remove("HMAC_SECRET")
-            .env_remove("VCMS_HOME")
             .env("VCMS_MCP_URL", url)
             .env("VCMS_MCP_TOKEN", token)
             .env("RUST_LOG", "warn")
