@@ -57,6 +57,16 @@ use ColType::{Bool, Int, Json, Text, Timestamp};
 /// All dumped tables, in FK parent→child order (the order restore inserts in).
 pub static TABLES: &[TableSpec] = &[
     TableSpec {
+        name: "instance_settings",
+        site_where: SiteWhere::InstanceOnly,
+        columns: &[
+            col("id", Int),
+            col("version", Int),
+            col("settings_json", Text),
+            col("updated_at", Timestamp),
+        ],
+    },
+    TableSpec {
         name: "users",
         site_where: SiteWhere::InstanceOnly,
         columns: &[
@@ -162,24 +172,6 @@ pub static TABLES: &[TableSpec] = &[
         ],
     },
     TableSpec {
-        name: "access_tokens",
-        site_where: SiteWhere::SiteId,
-        columns: &[
-            col("id", Text),
-            col("site_id", Text),
-            col("name", Text),
-            col("token_hash", Text),
-            col("token_prefix", Text),
-            col("token_hmac", Text),
-            col("permission", Text),
-            col("created_by_user_id", Text),
-            col("last_used_at", Timestamp),
-            col("created_at", Timestamp),
-            col("expires_at", Timestamp),
-            col("revoked_at", Timestamp),
-        ],
-    },
-    TableSpec {
         name: "site_webhooks",
         site_where: SiteWhere::SiteId,
         columns: &[
@@ -209,6 +201,25 @@ pub static TABLES: &[TableSpec] = &[
         ],
     },
 ];
+
+#[cfg(test)]
+mod registry_tests {
+    use super::*;
+
+    #[test]
+    fn backup_registry_excludes_tokens_and_encrypted_credentials() {
+        assert!(table_spec("access_tokens").is_none());
+        let settings = table_spec("instance_settings").unwrap();
+        assert!(
+            !settings
+                .columns
+                .iter()
+                .any(|column| column.name == "credentials_encrypted")
+        );
+        let webhooks = table_spec("site_webhooks").unwrap();
+        assert!(webhooks.columns.iter().any(|column| column.name == "enabled"));
+    }
+}
 
 pub fn table_spec(name: &str) -> Option<&'static TableSpec> {
     TABLES.iter().find(|t| t.name == name)

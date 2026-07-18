@@ -14,6 +14,7 @@ pub mod schema;
 use std::collections::{HashMap, HashSet};
 use std::io::Read;
 use std::sync::Arc;
+use std::sync::RwLock;
 
 use aes_gcm::aead::{Aead, KeyInit};
 use aes_gcm::{Aes256Gcm, Key, Nonce};
@@ -105,6 +106,13 @@ pub struct Manifest {
     pub compression: String,
     pub tables: Vec<TableManifest>,
     pub files: Vec<FileManifest>,
+    #[serde(default)]
+    pub recovery_required: Vec<String>,
+}
+
+#[derive(Serialize)]
+pub struct RecoveryReport {
+    pub recovery_required: Vec<String>,
 }
 
 // --- Request/options types --------------------------------------------------
@@ -155,9 +163,11 @@ pub struct RestoreRequest {
 pub struct BackupService {
     pool: DbPool,
     storage: Arc<StorageRegistry>,
-    destination: Arc<dyn StorageProvider>,
+    destination: Arc<RwLock<Arc<dyn StorageProvider>>>,
+    filesystem_destination: Option<Arc<dyn StorageProvider>>,
     encryption_key: Option<[u8; 32]>,
     zstd_level: i32,
+    settings: Option<crate::services::settings::SettingsService>,
 }
 
 impl BackupService {
@@ -168,13 +178,40 @@ impl BackupService {
         config: &Config,
     ) -> Self {
         let encryption_key = config.backup_encryption_key.as_deref().and_then(parse_key_hex);
+        let filesystem_destination = config
+            .backup_local_path
+            .as_deref()
+            .and_then(|path| FileSystemStorage::new(path).ok())
+            .map(|provider| Arc::new(provider) as Arc<dyn StorageProvider>);
         Self {
             pool,
             storage,
-            destination,
+            destination: Arc::new(RwLock::new(destination)),
+            filesystem_destination,
             encryption_key,
             zstd_level: config.backup_zstd_level,
+            settings: None,
         }
+    }
+
+    pub fn with_settings(mut self, settings: crate::services::settings::SettingsService) -> Self {
+        self.settings = Some(settings);
+        self
+    }
+
+    pub fn scheduler_enabled(&self) -> bool {
+        self.settings
+            .as_ref()
+            .map(|service| service.current().backups.enabled)
+            .unwrap_or(true)
+    }
+
+    pub fn set_destination(&self, destination: Arc<dyn StorageProvider>) {
+        *self.destination.write().expect("backup destination poisoned") = destination;
+    }
+
+    fn destination_snapshot(&self) -> Arc<dyn StorageProvider> {
+        self.destination.read().expect("backup destination poisoned").clone()
     }
 
     pub fn pool(&self) -> &DbPool {
@@ -228,6 +265,11 @@ impl BackupService {
             compression: "zstd".to_string(),
             tables: table_manifest,
             files: file_manifest,
+            recovery_required: vec![
+                "Recreate API access tokens".into(),
+                "Review disabled webhooks and restore secret headers".into(),
+                "Reconfigure storage and backup credentials when using S3".into(),
+            ],
         };
 
         // tar + zstd + AES-GCM are CPU-bound; keep them off the async runtime
@@ -306,7 +348,8 @@ impl BackupService {
             Scope::Instance => format!("instance/{id}.cmsbak"),
             Scope::Site(sid) => format!("site/{sid}/{id}.cmsbak"),
         };
-        self.destination
+        let destination = self.destination_snapshot();
+        destination
             .put(&key, bytes::Bytes::from(bytes.clone()), "application/octet-stream")
             .await
             .map_err(|e| BackupError::Storage(e.to_string()))?;
@@ -318,7 +361,7 @@ impl BackupService {
         if let Some(row) = meta::get_backup(&self.pool, id).await?
             && let Some(key) = &row.destination_key
         {
-            let _ = self.destination.delete(key).await;
+            let _ = self.destination_snapshot().delete(key).await;
         }
         meta::delete_backup_row(&self.pool, id).await
     }
@@ -420,7 +463,7 @@ impl BackupService {
     /// [`delete_destination`](Self::delete_destination) after the restore.
     pub async fn stage_upload(&self, bytes: Vec<u8>) -> Result<String, BackupError> {
         let key = format!("{TEMP_RESTORE_PREFIX}{}.cmsbak", new_id());
-        self.destination
+        self.destination_snapshot()
             .put(&key, bytes::Bytes::from(bytes), "application/octet-stream")
             .await
             .map_err(|e| BackupError::Storage(e.to_string()))?;
@@ -429,13 +472,13 @@ impl BackupService {
 
     /// Best-effort delete of a destination object (used to clean up staged uploads).
     pub async fn delete_destination(&self, key: &str) {
-        let _ = self.destination.delete(key).await;
+        let _ = self.destination_snapshot().delete(key).await;
     }
 
     /// Read a backup artifact from the configured destination.
     pub async fn read_destination(&self, key: &str) -> Result<Vec<u8>, BackupError> {
         let bytes = self
-            .destination
+            .destination_snapshot()
             .get(key)
             .await
             .map_err(|e| BackupError::Storage(e.to_string()))?;
@@ -444,7 +487,7 @@ impl BackupService {
 
     /// Restore from a backup artifact, replacing all data within the chosen scope
     /// in a single transaction.
-    pub async fn restore(&self, req: RestoreRequest) -> Result<(), BackupError> {
+    pub async fn restore(&self, req: RestoreRequest) -> Result<RecoveryReport, BackupError> {
         let bytes = match &req.source {
             RestoreSource::Bytes(b) => b.clone(),
             RestoreSource::Destination(key) => self.read_destination(key).await?,
@@ -495,9 +538,21 @@ impl BackupService {
 
         schema::apply_restore(&self.pool, &plan).await?;
 
+        // Credential blobs are intentionally absent from backups. Drop any old
+        // process-held providers before publishing restored non-secret settings.
+        self.storage.remove("s3");
+        if let Some(destination) = &self.filesystem_destination {
+            self.set_destination(destination.clone());
+        }
+        if let Some(settings) = &self.settings {
+            settings.reload().await.map_err(BackupError::Invalid)?;
+        }
+
         // Restore file blobs (best-effort: a missing blob is non-fatal).
         self.restore_files(&manifest, &file_blobs).await;
-        Ok(())
+        Ok(RecoveryReport {
+            recovery_required: manifest.recovery_required,
+        })
     }
 
     /// Build a merged, atomic restore plan for one or more sites extracted from the
@@ -689,7 +744,7 @@ pub fn build_backup_destination(config: &Config) -> Result<Arc<dyn StorageProvid
     let path = config
         .backup_local_path
         .clone()
-        .unwrap_or_else(|| crate::paths::backups_dir().to_string_lossy().into_owned());
+        .unwrap_or_else(|| "vcms_data/backups".to_owned());
     let fs = FileSystemStorage::new(&path).map_err(|e| BackupError::Storage(e.to_string()))?;
     Ok(Arc::new(fs))
 }
@@ -698,6 +753,10 @@ pub fn build_backup_destination(config: &Config) -> Result<Arc<dyn StorageProvid
 
 fn build_instance_plan(backend: crate::database::backend::DatabaseBackend, tables: &Tables) -> schema::RestorePlan {
     let deletes = vec![
+        schema::Statement {
+            sql: "DELETE FROM instance_settings".into(),
+            rows: vec![],
+        },
         schema::Statement {
             sql: "DELETE FROM sites".into(),
             rows: vec![],
