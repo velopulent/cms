@@ -19,7 +19,7 @@ impl SqliteWebhookRepository {
 impl WebhookRepository for SqliteWebhookRepository {
     async fn list_for_site(&self, site_id: &str) -> Result<Vec<SiteWebhook>, RepositoryError> {
         let result = sqlx::query_as::<_, SiteWebhook>(
-            "SELECT id, site_id, label, url, headers_encrypted, created_by, created_at, updated_at FROM site_webhooks WHERE site_id = ? ORDER BY created_at",
+            "SELECT id, site_id, label, url, headers_encrypted, enabled, created_by, created_at, updated_at FROM site_webhooks WHERE site_id = ? ORDER BY created_at",
         )
         .bind(site_id)
         .fetch_all(&self.pool)
@@ -30,7 +30,7 @@ impl WebhookRepository for SqliteWebhookRepository {
 
     async fn get_by_id(&self, id: &str, site_id: &str) -> Result<Option<SiteWebhook>, RepositoryError> {
         let result = sqlx::query_as::<_, SiteWebhook>(
-            "SELECT id, site_id, label, url, headers_encrypted, created_by, created_at, updated_at FROM site_webhooks WHERE id = ? AND site_id = ?",
+            "SELECT id, site_id, label, url, headers_encrypted, enabled, created_by, created_at, updated_at FROM site_webhooks WHERE id = ? AND site_id = ?",
         )
         .bind(id)
         .bind(site_id)
@@ -158,7 +158,7 @@ impl WebhookRepository for SqliteWebhookRepository {
 impl SqliteWebhookRepository {
     async fn get_by_id_unscoped(&self, id: &str) -> Result<Option<SiteWebhook>, RepositoryError> {
         sqlx::query_as::<_, SiteWebhook>(
-            "SELECT id, site_id, label, url, headers_encrypted, created_by, created_at, updated_at FROM site_webhooks WHERE id = ?",
+            "SELECT id, site_id, label, url, headers_encrypted, enabled, created_by, created_at, updated_at FROM site_webhooks WHERE id = ?",
         )
         .bind(id)
         .fetch_optional(&self.pool)

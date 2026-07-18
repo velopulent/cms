@@ -39,6 +39,7 @@ pub struct WebhookService {
     webhook_repo: Arc<dyn WebhookRepository>,
     encryption_key: Arc<[u8; 32]>,
     allow_private_targets: bool,
+    settings: Option<crate::services::settings::SettingsService>,
 }
 
 #[derive(Error, Debug)]
@@ -91,7 +92,20 @@ impl WebhookService {
             webhook_repo,
             encryption_key: Arc::new(key),
             allow_private_targets,
+            settings: None,
         }
+    }
+
+    pub fn with_settings(mut self, settings: crate::services::settings::SettingsService) -> Self {
+        self.settings = Some(settings);
+        self
+    }
+
+    fn allow_private_targets(&self) -> bool {
+        self.settings
+            .as_ref()
+            .map(|service| service.current().security.private_webhook_targets)
+            .unwrap_or(self.allow_private_targets)
     }
 
     pub async fn list_webhooks(&self, site_id: &str) -> Result<Vec<SiteWebhook>, WebhookError> {
@@ -130,7 +144,7 @@ impl WebhookService {
             return Err(WebhookError::InvalidLabel("Label is required".into()));
         }
 
-        if let Err(e) = validate_url(url, self.allow_private_targets) {
+        if let Err(e) = validate_url(url, self.allow_private_targets()) {
             warn!(
                 "Webhook creation failed: invalid url_pattern={}, error={}",
                 sanitize_url_for_logging(url),
@@ -181,7 +195,7 @@ impl WebhookService {
         );
 
         if let Some(url_val) = url
-            && let Err(e) = validate_url(url_val, self.allow_private_targets)
+            && let Err(e) = validate_url(url_val, self.allow_private_targets())
         {
             warn!(
                 "Webhook update failed: invalid url_pattern={}, error={}",
@@ -267,16 +281,23 @@ impl WebhookService {
             sanitize_url_for_logging(&webhook.url)
         );
 
-        let headers = decrypt_headers(&webhook.headers_encrypted, &self.encryption_key);
+        let headers = decrypt_headers_checked(&webhook.headers_encrypted, &self.encryption_key).ok_or_else(|| {
+            WebhookError::DeliveryFailed("Webhook credentials cannot be decrypted; reconfigure this webhook".into())
+        })?;
         debug!("Decrypted headers for webhook: header_count={}", headers.len());
 
         // Re-validate and resolve right before sending: the stored host may now
         // resolve to a private address (DNS rebinding). Pin the connection to a
         // vetted IP and refuse redirects so it can't be bounced internally.
-        validate_url(&webhook.url, self.allow_private_targets)?;
+        if !webhook.enabled {
+            return Err(WebhookError::DeliveryFailed(
+                "Webhook is disabled and needs reconfiguration".into(),
+            ));
+        }
+        validate_url(&webhook.url, self.allow_private_targets())?;
         let parsed_url =
             url::Url::parse(&webhook.url).map_err(|_| WebhookError::InvalidUrl("Invalid URL format".into()))?;
-        let safe_addr = resolve_safe_addr(&parsed_url, self.allow_private_targets).await?;
+        let safe_addr = resolve_safe_addr(&parsed_url, self.allow_private_targets()).await?;
         let host = parsed_url.host_str().unwrap_or_default().to_string();
 
         let client = reqwest::Client::builder()
@@ -509,7 +530,7 @@ fn derive_encryption_key(secret: &str) -> [u8; 32] {
 }
 
 /// Encrypt webhook headers with AES-256-GCM. Output is
-/// `base64(nonce[12] || ciphertext||tag)`. A fresh random nonce is used per call.
+/// `v1:base64(nonce[12] || ciphertext||tag)`. A fresh random nonce is used per call.
 fn encrypt_headers(headers: &HashMap<String, String>, key: &[u8; 32]) -> String {
     let json = serde_json::to_string(headers).unwrap_or_default();
     let cipher = Aes256Gcm::new(&Key::<Aes256Gcm>::from(*key));
@@ -521,7 +542,7 @@ fn encrypt_headers(headers: &HashMap<String, String>, key: &[u8; 32]) -> String 
             let mut out = Vec::with_capacity(nonce_bytes.len() + ciphertext.len());
             out.extend_from_slice(&nonce_bytes);
             out.extend_from_slice(&ciphertext);
-            BASE64_STANDARD.encode(out)
+            format!("v1:{}", BASE64_STANDARD.encode(out))
         }
         Err(_) => String::new(),
     }
@@ -531,26 +552,35 @@ fn encrypt_headers(headers: &HashMap<String, String>, key: &[u8; 32]) -> String 
 /// (bad base64, wrong key, truncated data, or legacy/incompatible ciphertext)
 /// yields an empty map rather than an error.
 fn decrypt_headers(encrypted: &str, key: &[u8; 32]) -> HashMap<String, String> {
-    let raw = match BASE64_STANDARD.decode(encrypted) {
+    decrypt_headers_checked(encrypted, key).unwrap_or_default()
+}
+
+fn decrypt_headers_checked(encrypted: &str, key: &[u8; 32]) -> Option<HashMap<String, String>> {
+    if encrypted.is_empty() {
+        return Some(HashMap::new());
+    }
+    let Some(encoded) = encrypted.strip_prefix("v1:") else {
+        return None;
+    };
+    let raw = match BASE64_STANDARD.decode(encoded) {
         Ok(b) => b,
-        Err(_) => return HashMap::new(),
+        Err(_) => return None,
     };
     if raw.len() < 12 {
-        return HashMap::new();
+        return None;
     }
     let (nonce_bytes, ciphertext) = raw.split_at(12);
     let cipher = Aes256Gcm::new(&Key::<Aes256Gcm>::from(*key));
     let nonce_arr: [u8; 12] = match nonce_bytes.try_into() {
         Ok(n) => n,
-        Err(_) => return HashMap::new(),
+        Err(_) => return None,
     };
     let nonce = Nonce::from(nonce_arr);
     match cipher.decrypt(&nonce, ciphertext) {
-        Ok(plaintext) => match String::from_utf8(plaintext) {
-            Ok(s) => serde_json::from_str(&s).unwrap_or_default(),
-            Err(_) => HashMap::new(),
-        },
-        Err(_) => HashMap::new(),
+        Ok(plaintext) => String::from_utf8(plaintext)
+            .ok()
+            .and_then(|value| serde_json::from_str(&value).ok()),
+        Err(_) => None,
     }
 }
 
@@ -585,6 +615,7 @@ mod tests {
             label: "Test Hook".to_string(),
             url: "https://example.com/hook".to_string(),
             headers_encrypted: String::new(),
+            enabled: true,
             created_by: None,
             created_at: "2024-01-01 00:00:00".to_string(),
             updated_at: "2024-01-01 00:00:00".to_string(),
@@ -958,6 +989,7 @@ mod tests {
             label: "Hook".to_string(),
             url: "https://example.com".to_string(),
             headers_encrypted: encrypted,
+            enabled: true,
             created_by: None,
             created_at: "2024-01-01 00:00:00".to_string(),
             updated_at: "2024-01-01 00:00:00".to_string(),

@@ -188,6 +188,7 @@ pub static TABLES: &[TableSpec] = &[
             col("label", Text),
             col("url", Text),
             col("headers_encrypted", Text),
+            col("enabled", Bool),
             col("created_by", Text),
             col("created_at", Timestamp),
             col("updated_at", Timestamp),
@@ -285,7 +286,13 @@ pub async fn dump_tables(pool: &DbPool, scope: &Scope) -> Result<Vec<DumpedTable
         let Some((sql, param)) = select_sql(backend, spec, scope) else {
             continue;
         };
-        let rows = fetch_rows(pool, &sql, param.as_deref(), spec.columns.len()).await?;
+        let mut rows = fetch_rows(pool, &sql, param.as_deref(), spec.columns.len()).await?;
+        if spec.name == "site_webhooks" {
+            for row in &mut rows {
+                row[4] = Some(String::new());
+                row[5] = Some("0".into());
+            }
+        }
         out.push(DumpedTable {
             name: spec.name,
             columns: spec.columns.iter().map(|c| c.name).collect(),

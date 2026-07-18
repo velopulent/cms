@@ -9,6 +9,7 @@ pub struct SiteWebhook {
     pub label: String,
     pub url: String,
     pub headers_encrypted: String,
+    pub enabled: bool,
     pub created_by: Option<String>,
     pub created_at: String,
     pub updated_at: String,
