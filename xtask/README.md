@@ -104,11 +104,12 @@ Native package tools are also required:
 
 MSI automation uses WiX v7's direct `-acceptEula wix7` build switch. Running an
 MSI build therefore accepts the WiX v7 OSMF EULA for that invocation.
-Install the matching UI extension once before local MSI builds:
+Install the matching UI and Util extensions once before local MSI builds:
 
 ```console
 wix eula accept wix7
 wix extension add --global WixToolset.UI.wixext/7.0.0
+wix extension add --global WixToolset.Util.wixext/7.0.0
 ```
 
 Real native packages must be built on their matching OS. `--target-os` selects and

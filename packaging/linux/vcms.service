@@ -8,8 +8,7 @@ Wants=network-online.target
 Type=simple
 User=vcms
 Group=vcms
-Environment=VCMS_HOME=/var/lib/vcms
-ExecStart=/usr/bin/vcms serve
+ExecStart=/usr/bin/vcms service run
 Restart=on-failure
 RestartSec=5s
 TimeoutStartSec=90s

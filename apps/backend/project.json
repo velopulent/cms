@@ -28,7 +28,7 @@
       "executor": "nx:run-commands",
       "dependsOn": ["build-dev"],
       "options": {
-        "command": "cargo run --locked",
+        "command": "cargo run --locked -- serve",
         "env": { "SKIP_DASHBOARD_BUILD": "1" }
       },
       "cache": false
@@ -37,8 +37,7 @@
       "executor": "nx:run-commands",
       "dependsOn": [],
       "options": {
-        "command": "cargo run --locked --no-default-features",
-        "env": { "DEV_MODE": "1" }
+        "command": "cargo run --locked --no-default-features -- serve"
       },
       "cache": false
     },
