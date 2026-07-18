@@ -14,7 +14,6 @@ use std::sync::Arc;
 
 use tracing::{debug, info, warn};
 
-use crate::cli::Cli;
 use crate::config::Config;
 use crate::database::init_db_with_config;
 use crate::grpc::server::spawn_grpc_server;
@@ -35,16 +34,11 @@ const ADMIN_EMAIL: &str = "admin@cms.local";
 /// database open + migrated and both listeners bound — so a service host (the
 /// Windows SCM runner) can report `Running` truthfully instead of optimistically.
 pub async fn run(
-    cli: &Cli,
+    runtime: crate::runtime::RuntimeContext,
     shutdown: impl Future<Output = ()> + Send + 'static,
     on_ready: impl FnOnce(),
 ) -> Result<(), Box<dyn Error>> {
-    // Each early step gets a context prefix: a bare io error ("Access is denied.
-    // (os error 5)") from a service host is undebuggable without knowing which
-    // file/step produced it.
-    crate::paths::ensure().map_err(|e| format!("preparing data directories: {e}"))?;
-    crate::secrets::ensure().map_err(|e| format!("initializing secrets.toml: {e}"))?;
-    let config = Config::load(cli).map_err(|e| format!("loading configuration: {e}"))?;
+    let mut config = runtime.bootstrap.clone();
 
     let _guard = crate::tracing::init_tracing(&config);
 
@@ -129,7 +123,7 @@ pub async fn run(
     let addr: SocketAddr = config
         .bind_address
         .parse()
-        .map_err(|e| format!("Invalid BIND_ADDRESS '{}': {e}", config.bind_address))?;
+        .map_err(|e| format!("Invalid server.http_address '{}': {e}", config.bind_address))?;
     info!("Dashboard UI available at http://{}/dashboard", addr);
     info!("REST API server running on http://{}", addr);
     info!("GraphQL endpoint at http://{}/api/graphql", addr);
@@ -272,13 +266,13 @@ pub async fn shutdown_signal() {
 
 /// Register the configured storage backends (filesystem and/or S3).
 pub fn initialize_storage(config: &Config) -> Arc<StorageRegistry> {
-    let mut storage_registry = StorageRegistry::new();
+    let storage_registry = StorageRegistry::new();
 
     // Use an explicit filesystem path if set; otherwise default to the data dir's
     // storage/ so uploads work out of the box — unless S3 is configured and takes over.
     let fs_path = match (&config.storage_fs_path, config.has_s3()) {
         (Some(path), _) => Some(path.clone()),
-        (None, false) => Some(crate::paths::storage_dir().to_string_lossy().into_owned()),
+        (None, false) => None,
         (None, true) => None,
     };
 
@@ -310,7 +304,7 @@ pub fn initialize_storage(config: &Config) -> Arc<StorageRegistry> {
     }
 
     if storage_registry.get(STORAGE_KIND_FILESYSTEM).is_none() && storage_registry.get(STORAGE_KIND_S3).is_none() {
-        warn!("No storage providers configured. Set STORAGE_FS_PATH or S3_* env vars.");
+        warn!("No storage providers configured");
     }
 
     Arc::new(storage_registry)
