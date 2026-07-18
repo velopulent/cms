@@ -1,133 +1,229 @@
-use clap::Parser;
-use cms::cli::{AdminAction, BackupAction, Cli, Command, ConfigAction, McpTransport};
-use cms::config::{self, Config};
+use std::error::Error;
+
+use clap::{CommandFactory, Parser};
+use cms::cli::{AdminAction, BackupAction, Cli, Command, ConfigAction, McpTransport, SecretsAction};
 use cms::database::init_db_with_config;
 use cms::repository::Repository;
-
-use std::error::Error;
 use tracing::info;
 
-#[tokio::main]
-async fn main() {
-    // Load env from the cwd `.env` (dev) first, then `$VCMS_HOME/.env`. dotenvy is
-    // first-wins, so real env vars and the cwd file keep precedence over the home file.
-    // VCMS_HOME must be a real env var — resolved here before the `.env` loads — never
-    // set inside that file (chicken-and-egg).
-    dotenvy::dotenv().ok();
-    let env_file = cms::paths::env_file();
-    match dotenvy::from_path(&env_file) {
-        Ok(()) => {}
-        Err(e) if e.not_found() => {} // missing file is fine
-        // The home `.env` is optional. If VCMS_HOME points at a service-owned directory,
-        // a non-elevated CLI may not read it — most notably `vcms mcp stdio`, a proxy
-        // that needs no home file. Treat "permission denied" like "absent" and move on:
-        // data-touching commands still hit `paths::ensure`'s preflight.
-        Err(dotenvy::Error::Io(io)) if io.kind() == std::io::ErrorKind::PermissionDenied => {}
-        Err(e) => {
-            eprintln!("Error: cannot load {}: {e}", env_file.display());
-            std::process::exit(1);
-        }
+fn main() {
+    let cli = Cli::parse();
+    if cli.command.is_none() {
+        let _ = Cli::command().print_help();
+        println!();
+        return;
     }
 
-    let cli = Cli::parse();
+    #[cfg(windows)]
+    if let Some(Command::Service {
+        action: cms::cli::ServiceAction::Run,
+    }) = &cli.command
+    {
+        if let Err(error) = cms::service::run_service_sync(
+            match &cli.command {
+                Some(Command::Service { action }) => action,
+                _ => unreachable!(),
+            },
+            &cli,
+        ) {
+            eprintln!("Error: {error}");
+            std::process::exit(1);
+        }
+        return;
+    }
 
-    let result = match &cli.command {
-        Some(Command::Config { action }) => run_config(action, &cli),
-        Some(Command::Admin { action }) => run_admin(action, &cli).await,
-        Some(Command::Backup { action }) => run_backup(action, &cli).await,
+    let result = tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .build()
+        .map_err(|error| -> Box<dyn Error> { Box::new(error) })
+        .and_then(|runtime| runtime.block_on(dispatch(cli)));
+    if let Err(error) = result {
+        eprintln!("Error: {error}");
+        std::process::exit(1);
+    }
+}
+
+async fn dispatch(cli: Cli) -> Result<(), Box<dyn Error>> {
+    match &cli.command {
+        Some(Command::Config { action }) => run_config(action).await,
+        Some(Command::Secrets { action }) => run_secrets(action).await,
+        Some(Command::Admin { action }) => run_admin(action).await,
+        Some(Command::Backup { action }) => run_backup(action).await,
         Some(Command::Restore {
             file,
             scope,
             site,
             import_as_new,
             yes,
-        }) => run_restore(file, scope, site, *import_as_new, *yes, &cli).await,
+        }) => run_restore(file, scope, site, *import_as_new, *yes).await,
         Some(Command::Service { action }) => cms::service::run_service(action, &cli).await,
-        Some(Command::Doctor) => cms::diagnostics::run(&cli).await,
+        Some(Command::Doctor) => cms::diagnostics::run().await,
         Some(Command::Mcp {
             transport: McpTransport::Stdio,
         }) => run_mcp_stdio().await,
-        Some(Command::Serve) | None => cms::server::run(&cli, cms::server::shutdown_signal(), || {}).await,
-    };
-
-    if let Err(e) = result {
-        eprintln!("Error: {e}");
-        std::process::exit(1);
+        Some(Command::Serve) => {
+            if cms::service::is_installed()? {
+                return Err("native vcms service is installed; portable `vcms serve` is disabled".into());
+            }
+            let context = cms::runtime::RuntimeContext::initialize(cms::paths::RuntimeMode::Portable)?;
+            cms::server::run(context, cms::server::shutdown_signal(), || {}).await
+        }
+        None => Ok(()),
     }
 }
 
 async fn run_mcp_stdio() -> Result<(), Box<dyn Error>> {
-    // A thin proxy to the running server's `/mcp` endpoint — it touches no disk
-    // (no home dir, database, secrets, or search index), so it works even when those
-    // belong to the privileged service account. It needs only a server URL and a
-    // `vcms_site_*` access token, forwarded as the bearer credential.
     cms::tracing::init_proxy_tracing();
-
     let token = std::env::var("VCMS_MCP_TOKEN").map_err(|_| "VCMS_MCP_TOKEN is required for `vcms mcp stdio`")?;
-    let token = token.trim().to_string();
+    let token = token.trim().to_owned();
     if token.is_empty() {
         return Err("VCMS_MCP_TOKEN must not be empty".into());
     }
-
-    let base = std::env::var("VCMS_MCP_URL").unwrap_or_else(|_| "http://127.0.0.1:3000".to_string());
+    let base = std::env::var("VCMS_MCP_URL").unwrap_or_else(|_| "http://127.0.0.1:3000".to_owned());
     let endpoint = format!("{}/mcp", base.trim_end_matches('/'));
-
     info!(%endpoint, "Starting MCP stdio proxy");
     cms::mcp::transports::stdio::serve(endpoint, token).await
 }
 
-fn run_config(action: &ConfigAction, cli: &Cli) -> Result<(), Box<dyn Error>> {
+async fn run_config(action: &ConfigAction) -> Result<(), Box<dyn Error>> {
     match action {
-        ConfigAction::Init { force, path } => {
-            let target = match path {
-                Some(p) => p.clone(),
-                None => config::user_config_path().ok_or("Could not determine user config directory")?,
-            };
-            if target.exists() && !force {
-                return Err(format!("{} already exists (use --force to overwrite)", target.display()).into());
-            }
-            if let Some(parent) = target.parent() {
-                std::fs::create_dir_all(parent)?;
-            }
-            std::fs::write(&target, config::default_config_toml())?;
-            println!("Wrote default config to {}", target.display());
-        }
         ConfigAction::Show => {
-            let config = Config::load(cli)?;
-            print!("{}", config.redacted_toml());
-        }
-        ConfigAction::Path => {
-            match config::resolve_config_path(cli) {
-                Some(p) => println!("Active config file: {}", p.display()),
-                None => println!("Active config file: <none found; using built-in defaults>"),
-            }
-            println!("\nSearch order (first existing wins):");
-            match &cli.config {
-                Some(explicit) => println!("  1. --config / VCMS_CONFIG: {}", explicit.display()),
-                None => println!("  1. --config / VCMS_CONFIG: <not set>"),
-            }
-            for (i, p) in config::config_search_paths().iter().enumerate() {
-                let marker = if p.exists() { " (exists)" } else { "" };
-                println!("  {}. {}{}", i + 2, p.display(), marker);
+            let context = cms::runtime::RuntimeContext::initialize_default()?;
+            print!("{}", context.bootstrap.redacted_toml(&context.paths));
+            match cms::database::connect_db_without_migrations(&context.bootstrap).await {
+                Ok(pool) => {
+                    match cms::services::settings::SettingsService::load(pool, &context.secrets.master_key).await {
+                        Ok(settings) => println!(
+                            "\n[instance_settings]\n{}",
+                            serde_json::to_string_pretty(settings.current().as_ref())?
+                        ),
+                        Err(error) => println!("\ninstance_settings = \"unavailable: {error}\""),
+                    }
+                }
+                Err(_) => println!("\ninstance_settings = \"unavailable until database initialization\""),
             }
         }
     }
     Ok(())
 }
 
-async fn run_admin(action: &AdminAction, cli: &Cli) -> Result<(), Box<dyn Error>> {
-    cms::paths::ensure()?;
-    cms::secrets::ensure()?;
-    let config = Config::load(cli)?;
-    let pool = init_db_with_config(&config).await?;
-    let repository = Repository::new(&pool);
+async fn run_secrets(action: &SecretsAction) -> Result<(), Box<dyn Error>> {
+    match action {
+        SecretsAction::Reset { yes } => {
+            if !yes {
+                return Err(
+                    "Secret reset invalidates API tokens and integration credentials. Re-run with --yes.".into(),
+                );
+            }
+            let mode = if cms::service::is_installed()? {
+                cms::paths::RuntimeMode::Installed
+            } else {
+                cms::paths::RuntimeMode::Portable
+            };
+            let paths = cms::paths::RuntimePaths::for_mode(mode)?;
+            paths.ensure()?;
+            cms::config::ensure_bootstrap(&paths)?;
+            let existing = cms::secrets::load(&paths)?.ok_or("No existing instance secrets were found to reset")?;
+            if existing.database_url.is_none() && !paths.database_file().exists() {
+                return Err("No existing instance database was found to reset".into());
+            }
+            let old_database_url = existing.database_url;
+            let fresh = cms::secrets::fresh(old_database_url);
+            cms::secrets::replace(&paths, &fresh)?;
+            let config = cms::config::Config::load(&paths)?;
+            let pool = init_db_with_config(&config).await?;
+            let (tokens, webhooks, s3_sites) = invalidate_credentials(&pool).await?;
+            println!("Trust root replaced. Recovery report:");
+            println!("- {tokens} API access token(s) invalidated");
+            println!("- Active dashboard sessions invalidated");
+            println!("- {webhooks} webhook(s) disabled; secret headers cleared");
+            println!("- Encrypted storage and backup credentials cleared");
+            if s3_sites > 0 {
+                println!("- {s3_sites} S3-backed site(s) require new storage credentials");
+            }
+        }
+    }
+    Ok(())
+}
 
+async fn invalidate_credentials(pool: &cms::database::pool::DbPool) -> Result<(i64, i64, i64), Box<dyn Error>> {
+    use cms::database::pool::DbPool;
+    match pool {
+        DbPool::Postgres(pool) => {
+            let tokens = sqlx::query_scalar("SELECT COUNT(*) FROM access_tokens")
+                .fetch_one(pool)
+                .await?;
+            let webhooks = sqlx::query_scalar("SELECT COUNT(*) FROM site_webhooks WHERE headers_encrypted <> ''")
+                .fetch_one(pool)
+                .await?;
+            let sites = sqlx::query_scalar("SELECT COUNT(*) FROM sites WHERE storage_provider = 's3'")
+                .fetch_one(pool)
+                .await?;
+            sqlx::query("DELETE FROM access_tokens").execute(pool).await?;
+            sqlx::query("DELETE FROM sessions").execute(pool).await?;
+            sqlx::query("UPDATE site_webhooks SET headers_encrypted = '', enabled = FALSE")
+                .execute(pool)
+                .await?;
+            sqlx::query("UPDATE instance_settings SET credentials_encrypted = NULL")
+                .execute(pool)
+                .await?;
+            return Ok((tokens, webhooks, sites));
+        }
+        DbPool::MySql(pool) => {
+            let tokens = sqlx::query_scalar("SELECT COUNT(*) FROM access_tokens")
+                .fetch_one(pool)
+                .await?;
+            let webhooks = sqlx::query_scalar("SELECT COUNT(*) FROM site_webhooks WHERE headers_encrypted <> ''")
+                .fetch_one(pool)
+                .await?;
+            let sites = sqlx::query_scalar("SELECT COUNT(*) FROM sites WHERE storage_provider = 's3'")
+                .fetch_one(pool)
+                .await?;
+            sqlx::query("DELETE FROM access_tokens").execute(pool).await?;
+            sqlx::query("DELETE FROM sessions").execute(pool).await?;
+            sqlx::query("UPDATE site_webhooks SET headers_encrypted = '', enabled = FALSE")
+                .execute(pool)
+                .await?;
+            sqlx::query("UPDATE instance_settings SET credentials_encrypted = NULL")
+                .execute(pool)
+                .await?;
+            return Ok((tokens, webhooks, sites));
+        }
+        DbPool::Sqlite(pool) => {
+            let tokens = sqlx::query_scalar("SELECT COUNT(*) FROM access_tokens")
+                .fetch_one(pool)
+                .await?;
+            let webhooks = sqlx::query_scalar("SELECT COUNT(*) FROM site_webhooks WHERE headers_encrypted <> ''")
+                .fetch_one(pool)
+                .await?;
+            let sites = sqlx::query_scalar("SELECT COUNT(*) FROM sites WHERE storage_provider = 's3'")
+                .fetch_one(pool)
+                .await?;
+            sqlx::query("DELETE FROM access_tokens").execute(pool).await?;
+            sqlx::query("DELETE FROM sessions").execute(pool).await?;
+            sqlx::query("UPDATE site_webhooks SET headers_encrypted = '', enabled = 0")
+                .execute(pool)
+                .await?;
+            sqlx::query("UPDATE instance_settings SET credentials_encrypted = NULL")
+                .execute(pool)
+                .await?;
+            return Ok((tokens, webhooks, sites));
+        }
+    }
+}
+
+async fn run_admin(action: &AdminAction) -> Result<(), Box<dyn Error>> {
+    let context = cms::runtime::RuntimeContext::initialize_default()?;
+    let pool = init_db_with_config(&context.bootstrap).await?;
+    let repository = Repository::new(&pool);
     match action {
         AdminAction::ResetPassword { email, password } => {
-            let id = match repository.user.find_by_email(email).await? {
-                Some(user) => user.id,
-                None => return Err(format!("User with email '{email}' not found").into()),
-            };
+            let id = repository
+                .user
+                .find_by_email(email)
+                .await?
+                .ok_or_else(|| format!("User with email '{email}' not found"))?
+                .id;
             let password_hash = bcrypt::hash(password, bcrypt::DEFAULT_COST)?;
             repository.user.update_password(&id, &password_hash, false).await?;
             println!("Password updated for user with email '{email}'.");
@@ -136,12 +232,11 @@ async fn run_admin(action: &AdminAction, cli: &Cli) -> Result<(), Box<dyn Error>
     Ok(())
 }
 
-async fn run_backup(action: &BackupAction, cli: &Cli) -> Result<(), Box<dyn Error>> {
+async fn run_backup(action: &BackupAction) -> Result<(), Box<dyn Error>> {
     use cms::services::backup::{BackupService, CreateBackupOptions, build_backup_destination, meta};
 
-    cms::paths::ensure()?;
-    cms::secrets::ensure()?;
-    let config = Config::load(cli)?;
+    let context = cms::runtime::RuntimeContext::initialize_default()?;
+    let config = context.bootstrap;
     let pool = init_db_with_config(&config).await?;
     let storage_registry = cms::server::initialize_storage(&config);
     let destination = build_backup_destination(&config)?;
@@ -190,16 +285,16 @@ async fn run_backup(action: &BackupAction, cli: &Cli) -> Result<(), Box<dyn Erro
             if rows.is_empty() {
                 println!("No backups recorded.");
             }
-            for r in rows {
+            for row in rows {
                 println!(
                     "{}  {:8}  scope={:8} site={:36}  {}  {} bytes  {}",
-                    r.id,
-                    r.status,
-                    r.scope,
-                    r.site_id.unwrap_or_else(|| "-".into()),
-                    if r.encrypted != 0 { "encrypted" } else { "plaintext" },
-                    r.size_bytes,
-                    r.created_at
+                    row.id,
+                    row.status,
+                    row.scope,
+                    row.site_id.unwrap_or_else(|| "-".into()),
+                    if row.encrypted != 0 { "encrypted" } else { "plaintext" },
+                    row.size_bytes,
+                    row.created_at
                 );
             }
         }
@@ -213,55 +308,39 @@ async fn run_restore(
     site: &Option<String>,
     import_as_new: bool,
     yes: bool,
-    cli: &Cli,
 ) -> Result<(), Box<dyn Error>> {
     use cms::services::backup::{
         BackupService, RestoreRequest, RestoreSource, RestoreTarget, build_backup_destination,
     };
-
     if !yes {
-        return Err("Restore is destructive and replaces data within the chosen scope. \
-                    Re-run with --yes to proceed."
-            .into());
+        return Err("Restore replaces data within the chosen scope. Re-run with --yes.".into());
     }
 
-    cms::paths::ensure()?;
-    cms::secrets::ensure()?;
-    let config = Config::load(cli)?;
+    let context = cms::runtime::RuntimeContext::initialize_default()?;
+    let config = context.bootstrap;
     let pool = init_db_with_config(&config).await?;
     let storage_registry = cms::server::initialize_storage(&config);
     let destination = build_backup_destination(&config)?;
-    let service = BackupService::new(pool.clone(), storage_registry, destination, &config);
-
-    let bytes = std::fs::read(file)?;
+    let service = BackupService::new(pool, storage_registry, destination, &config);
     let target = match scope {
         "instance" => RestoreTarget::WholeInstance,
-        "site" => {
-            let sid = site.clone().ok_or("--site <SITE_ID> is required for --scope site")?;
-            RestoreTarget::Site {
-                site_id: sid,
-                import_as_new,
-            }
-        }
+        "site" => RestoreTarget::Site {
+            site_id: site.clone().ok_or("--site <SITE_ID> is required for --scope site")?,
+            import_as_new,
+        },
         other => return Err(format!("unknown scope '{other}' (use instance|site)").into()),
     };
-
-    service
+    let report = service
         .restore(RestoreRequest {
-            source: RestoreSource::Bytes(bytes),
+            source: RestoreSource::Bytes(std::fs::read(file)?),
             target,
             created_by: None,
         })
         .await?;
-    println!("Restore complete.");
-    let reindex_path = match (scope, site) {
-        ("site", Some(sid)) => format!("/api/dashboard/sites/{sid}/search/reindex"),
-        _ => "/api/dashboard/instance/search/reindex".to_string(),
-    };
-    println!(
-        "Note: the full-text search index may now be stale. Rebuild it from the dashboard \
-         (Settings → Backups → Rebuild search index) or POST {reindex_path} once the server is running."
-    );
+    println!("Restore complete. Recovery required:");
+    for item in report.recovery_required {
+        println!("- {item}");
+    }
     Ok(())
 }
 
@@ -270,7 +349,7 @@ fn parse_scope(scope: &str, site: Option<&str>) -> Result<cms::services::backup:
     match scope {
         "instance" => Ok(Scope::Instance),
         "site" => site
-            .map(|s| Scope::Site(s.to_string()))
+            .map(|value| Scope::Site(value.to_owned()))
             .ok_or_else(|| "--site <SITE_ID> is required for --scope site".into()),
         other => Err(format!("unknown scope '{other}' (use instance|site)").into()),
     }
