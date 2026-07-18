@@ -56,6 +56,11 @@ pub async fn run(
         .await
         .map_err(|e| format!("opening database: {e}"))?;
 
+    let settings = crate::services::settings::SettingsService::load(pool.clone(), &runtime.secrets.master_key)
+        .await
+        .map_err(|error| format!("loading instance settings: {error}"))?;
+    settings.apply_to_config(&mut config).await;
+
     let repository = Repository::new(&pool);
 
     seed_admin(&repository).await;
@@ -65,16 +70,21 @@ pub async fn run(
     // same `Services` so the single-writer search index is opened only once.
     let repository_arc = Arc::new(repository.clone());
     let config_arc = Arc::new(config.clone());
-    let services = Services::new(repository_arc.clone(), &pool, &config);
+    let mut services = Services::new(repository_arc.clone(), &pool, &config);
+    services.auth = Arc::new((*services.auth).clone().with_settings(settings.clone()));
+    services.webhook = Arc::new((*services.webhook).clone().with_settings(settings.clone()));
 
     let backup_destination = crate::services::backup::build_backup_destination(&config)
         .map_err(|e| format!("Failed to initialize backup destination: {e}"))?;
-    let backup_service = Arc::new(crate::services::backup::BackupService::new(
-        pool.clone(),
-        storage_registry.clone(),
-        backup_destination,
-        &config,
-    ));
+    let backup_service = Arc::new(
+        crate::services::backup::BackupService::new(
+            pool.clone(),
+            storage_registry.clone(),
+            backup_destination,
+            &config,
+        )
+        .with_settings(settings.clone()),
+    );
 
     let app = create_router(
         pool.clone(),
@@ -83,6 +93,7 @@ pub async fn run(
         storage_registry.clone(),
         services.clone(),
         backup_service.clone(),
+        settings,
     );
 
     // Reconcile backups/restore jobs left mid-flight by a previous process: any
@@ -93,13 +104,11 @@ pub async fn run(
         Err(e) => tracing::error!("Failed to reconcile interrupted backups: {e}"),
     }
 
-    if config.backup_enabled {
-        let scheduler_service = backup_service.clone();
-        tokio::spawn(async move {
-            crate::services::backup::scheduler::run(scheduler_service).await;
-        });
-        info!("Backup scheduler started");
-    }
+    let scheduler_service = backup_service.clone();
+    tokio::spawn(async move {
+        crate::services::backup::scheduler::run(scheduler_service).await;
+    });
+    info!("Backup scheduler started");
 
     // The search indexer is the single writer/consumer: it rebuilds the index when
     // empty (first run / wiped), then drains the cross-process queue forever.

@@ -17,11 +17,17 @@ mod webhooks;
 
 use std::sync::Arc;
 
+use axum::body::Body;
 use axum::extract::DefaultBodyLimit;
-use axum::http::{HeaderName, Method, header};
-use axum::{Extension, Router, middleware::from_fn, routing::get};
+use axum::extract::{Request, State};
+use axum::http::{HeaderValue, Method, StatusCode, header};
+use axum::response::{IntoResponse, Response};
+use axum::{
+    Extension, Router,
+    middleware::{Next, from_fn, from_fn_with_state},
+    routing::get,
+};
 use tokio_util::sync::CancellationToken;
-use tower_http::cors::{AllowOrigin, CorsLayer};
 use tower_http::trace::TraceLayer;
 
 use crate::config::Config;
@@ -35,6 +41,7 @@ use crate::middleware::site_resolver::{api_site_resolver, dashboard_site_resolve
 use crate::repository::Repository;
 use crate::services::Services;
 use crate::services::backup::BackupService;
+use crate::services::settings::SettingsService;
 use crate::storage::StorageRegistry;
 use crate::tracing::trace_request;
 
@@ -84,6 +91,7 @@ pub fn create_router(
     storage_registry: Arc<StorageRegistry>,
     services: Services,
     backup: Arc<BackupService>,
+    settings: SettingsService,
 ) -> Router {
     let rate_limiter = RateLimiter::new(
         config.rate_limit_max_requests,
@@ -92,49 +100,13 @@ pub fn create_router(
     );
     let max_upload_bytes = config.max_upload_size_bytes;
 
-    let cors = if config.allowed_origins.is_empty() {
-        // No cross-origin access configured: same-origin only. Emitting no
-        // Access-Control-Allow-Origin header makes browsers block cross-site reads.
-        CorsLayer::new()
-    } else {
-        let origins = config
-            .allowed_origins
-            .iter()
-            .filter_map(|origin| origin.parse().ok())
-            .collect::<Vec<_>>();
-        // Explicit method + header allow-lists are required for credentialed CORS;
-        // `Any` is silently ignored by browsers when credentials are allowed.
-        CorsLayer::new()
-            .allow_origin(AllowOrigin::list(origins))
-            .allow_methods([
-                Method::GET,
-                Method::POST,
-                Method::PUT,
-                Method::PATCH,
-                Method::DELETE,
-                Method::OPTIONS,
-            ])
-            .allow_headers([
-                header::AUTHORIZATION,
-                header::CONTENT_TYPE,
-                header::ACCEPT,
-                HeaderName::from_static("x-csrf-token"),
-            ])
-            .allow_credentials(true)
-    };
-
-    let mcp_enabled = config.mcp_enabled;
     // Share the single `Services` (and its single-writer search index) with the
     // MCP HTTP server instead of constructing a second one.
-    let mcp_services = if mcp_enabled {
-        Some(Arc::new(services.clone()))
-    } else {
-        None
-    };
+    let mcp_services = Arc::new(services.clone());
 
     let mut router = Router::new()
         // Public, minimal operational probes. Detailed failures remain in logs/doctor.
-        .merge(health::routes(pool))
+        .merge(health::routes(pool.clone()))
         // ── Auth (no middleware) ──
         .merge(auth::auth_routes())
         // ── Public API (/api/v1/*) ──
@@ -168,28 +140,91 @@ pub fn create_router(
         // ── Global layers ──
         .layer(from_fn(trace_request))
         .layer(TraceLayer::new_for_http())
-        .layer(cors)
-        .layer(DefaultBodyLimit::max(10 * 1024 * 1024))
+        .layer(from_fn_with_state(settings.clone(), dynamic_runtime_policy))
+        .layer(DefaultBodyLimit::max(1024 * 1024 * 1024))
         .layer(Extension(repository.clone()))
         .layer(Extension(config.clone()))
         .layer(Extension(storage_registry.clone()))
         .layer(Extension(services))
         .layer(Extension(backup))
+        .layer(Extension(settings))
+        .layer(Extension(pool))
         .layer(Extension(rate_limiter));
 
-    if mcp_enabled {
-        let mcp_ct = CancellationToken::new();
-        let mcp_router = mcp::mcp_routes(
-            mcp_services.expect("mcp services present when mcp enabled"),
-            Arc::new(repository),
-            Arc::new(config),
-            storage_registry,
-            mcp_ct,
-        );
-        router = router.merge(mcp_router);
-    } else {
-        drop(repository);
-    }
+    let mcp_ct = CancellationToken::new();
+    let mcp_router = mcp::mcp_routes(
+        mcp_services,
+        Arc::new(repository),
+        Arc::new(config),
+        storage_registry,
+        mcp_ct,
+    );
+    router = router.merge(mcp_router);
 
     router
+}
+
+async fn dynamic_runtime_policy(State(service): State<SettingsService>, request: Request, next: Next) -> Response {
+    let settings = service.current();
+    let path = request.uri().path();
+    if path.starts_with("/mcp") && !settings.general.mcp_enabled {
+        return StatusCode::NOT_FOUND.into_response();
+    }
+    if path.contains("upload")
+        && request
+            .headers()
+            .get(header::CONTENT_LENGTH)
+            .and_then(|value| value.to_str().ok())
+            .and_then(|value| value.parse::<usize>().ok())
+            .is_some_and(|size| size > settings.general.upload_limit_mb * 1024 * 1024)
+    {
+        return (
+            StatusCode::PAYLOAD_TOO_LARGE,
+            "upload exceeds the configured instance limit",
+        )
+            .into_response();
+    }
+
+    let origin = request.headers().get(header::ORIGIN).cloned();
+    let allowed = origin.as_ref().is_some_and(|origin| {
+        origin
+            .to_str()
+            .is_ok_and(|value| settings.security.allowed_origins.iter().any(|item| item == value))
+    });
+    if request.method() == Method::OPTIONS && origin.is_some() {
+        if !allowed {
+            return StatusCode::FORBIDDEN.into_response();
+        }
+        return cors_response(StatusCode::NO_CONTENT.into_response(), origin);
+    }
+    let response = next.run(request).await;
+    if allowed {
+        cors_response(response, origin)
+    } else {
+        response
+    }
+}
+
+fn cors_response(mut response: Response<Body>, origin: Option<HeaderValue>) -> Response<Body> {
+    if let Some(origin) = origin {
+        response
+            .headers_mut()
+            .insert(header::ACCESS_CONTROL_ALLOW_ORIGIN, origin);
+        response.headers_mut().insert(
+            header::ACCESS_CONTROL_ALLOW_CREDENTIALS,
+            HeaderValue::from_static("true"),
+        );
+        response.headers_mut().insert(
+            header::ACCESS_CONTROL_ALLOW_METHODS,
+            HeaderValue::from_static("GET, POST, PUT, PATCH, DELETE, OPTIONS"),
+        );
+        response.headers_mut().insert(
+            header::ACCESS_CONTROL_ALLOW_HEADERS,
+            HeaderValue::from_static("authorization, content-type, accept, x-csrf-token"),
+        );
+        response
+            .headers_mut()
+            .append(header::VARY, HeaderValue::from_static("Origin"));
+    }
+    response
 }
