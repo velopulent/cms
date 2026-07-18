@@ -21,11 +21,9 @@ use windows_service::{define_windows_service, service_dispatcher};
 use super::SERVICE_NAME;
 use crate::cli::{Cli, ServiceAction};
 
-/// Fixed home for the LocalSystem service (Windows convention is ProgramData).
-/// The service host sets this before runtime startup so direct SCM launches always
-/// use the machine-wide data directory.
+/// Fixed home for the native service (Windows convention is ProgramData).
 fn service_home() -> std::path::PathBuf {
-    crate::paths::system_home().expect("system_home is always set on Windows")
+    crate::paths::system_root().expect("system_root is always set on Windows")
 }
 
 pub fn dispatch(action: &ServiceAction, _cli: &Cli) -> Result<(), Box<dyn std::error::Error>> {
@@ -39,17 +37,6 @@ define_windows_service!(ffi_service_main, service_main);
 
 /// Entry point for `vcms service run`: hand the thread to the SCM dispatcher.
 fn run_dispatcher() -> Result<(), Box<dyn std::error::Error>> {
-    // Pin the service to the ProgramData home so it doesn't fall back to the
-    // LocalSystem profile. Set before any thread/runtime reads the environment.
-    if std::env::var_os(crate::paths::CMS_HOME_ENV).is_none() {
-        // SAFETY: called once at process start, before tokio/threads spin up.
-        unsafe {
-            std::env::set_var(crate::paths::CMS_HOME_ENV, service_home());
-        }
-    }
-    // A service has no console, so the default stdout logging goes nowhere. Default
-    // to file output (lands in the home's logs/ — where install tells the user to
-    // look); an explicit LOG_OUTPUT (env or .env) still wins.
     service_dispatcher::start(SERVICE_NAME, ffi_service_main)?;
     Ok(())
 }
@@ -150,7 +137,8 @@ fn run_service_session() -> Result<(), Box<dyn std::error::Error>> {
     // a fresh runtime here is safe — no nested-runtime panic.
     let runtime = tokio::runtime::Builder::new_multi_thread().enable_all().build()?;
     let shutdown = async move { notify.notified().await };
-    let result = runtime.block_on(crate::server::run(&Cli::default(), shutdown, on_ready));
+    let context = crate::runtime::RuntimeContext::initialize(crate::paths::RuntimeMode::Installed)?;
+    let result = runtime.block_on(crate::server::run(context, shutdown, on_ready));
 
     if let Err(e) = &result {
         log_service_error(&format!("server startup/run failed: {e}"));

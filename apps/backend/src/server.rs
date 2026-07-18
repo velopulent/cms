@@ -140,8 +140,29 @@ pub async fn run(
     let grpc_addr: SocketAddr = config
         .grpc_bind_address
         .parse()
-        .map_err(|e| format!("Invalid GRPC_BIND_ADDRESS '{}': {e}", config.grpc_bind_address))?;
+        .map_err(|e| format!("Invalid server.grpc_address '{}': {e}", config.grpc_bind_address))?;
     info!("gRPC server running on {}", grpc_addr);
+
+    if runtime.mode == crate::paths::RuntimeMode::Portable {
+        println!(
+            "\nVelopulent CMS\n\
+             Mode       portable\n\
+             Data       {}\n\
+             Dashboard  http://{}/dashboard\n\
+             REST       http://{}/api/v1\n\
+             GraphQL    http://{}/api/graphql\n\
+             gRPC       {}\n\
+             MCP        http://{}/mcp\n\
+             Logs       {}\n",
+            runtime.paths.root().display(),
+            addr,
+            addr,
+            addr,
+            grpc_addr,
+            addr,
+            runtime.paths.logs_dir().display(),
+        );
+    }
 
     // Bind both listeners *before* declaring readiness (and before the serve loops
     // spawn): a bind failure — the classic "port already taken" — must surface as a
