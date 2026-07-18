@@ -71,14 +71,13 @@ bun run format               # Format all projects
 
 ## CLI
 
-The backend binary (`vcms`) is a clap CLI. With no subcommand it runs the server (back-compat with `cargo run`).
+The backend binary (`vcms`) is a clap CLI. With no subcommand it prints help.
 
 ```bash
-vcms                                   # run the server (alias for `vcms serve`)
-vcms serve                             # run the server
-vcms config init [--force] [--path P]  # write a default config.toml (non-secrets only)
-vcms config show                       # print effective merged config (secrets redacted)
-vcms config path                       # print resolved config file + search order
+vcms                                   # print help
+vcms serve                             # run portable mode from ./vcms_data
+vcms config show                       # print mode, root, bootstrap, and redacted secrets
+vcms secrets reset --yes               # replace trust root and invalidate credentials
 vcms admin reset-password --email U --password P
 vcms backup create [--scope instance|site] [--site ID] [--out FILE] [--no-files] [--encrypt]
 vcms backup list                       # list recorded backups
@@ -96,10 +95,7 @@ and requires `--yes`.
 JSON-RPC between stdin/stdout and the server's `/mcp` Streamable-HTTP endpoint,
 reading only `VCMS_MCP_TOKEN` (bearer) and `VCMS_MCP_URL` (default
 `http://127.0.0.1:3000`). So it works even when the data is owned by the OS-service
-account. The installed service pins `VCMS_HOME` to a system dir so the daemon stores
-everything under one owned root.
-
-Global flags (highest precedence): `--config <PATH>`, `--bind <ADDR>`, `--database-url <URL>`, `--log-level <LEVEL>`.
+account. The installed service always uses its fixed system root.
 
 The server auto-migrates the database on every startup; there is no separate migrate command.
 
@@ -114,135 +110,54 @@ The server auto-migrates the database on every startup; there is no separate mig
 
 ## Configuration
 
-Non-secret settings live in a TOML config file; secrets stay in the environment (or `.env`).
-Layers merge with precedence: **CLI flag > env var > config file > built-in default**.
-
-Config file search order (first existing wins; missing is fine):
-1. `--config` flag / `VCMS_CONFIG` env
-2. `./vcms.toml` (current dir)
-3. the platform config dir (`config.toml`; `$VCMS_HOME/config.toml` in single-dir mode) — where `vcms config init` writes
-4. `/etc/vcms/config.toml`
+Bootstrap addresses and logging live in strict `config.toml`. The master key,
+backup key, and optional database URL live in strict `secrets.toml`. There are no
+server env overrides, CLI config overrides, search paths, or `.env` loading.
 
 ## Data directory
 
-Resolution lives in `apps/backend/src/paths.rs` and has two layouts:
+Mode is selected only by native service registration. Installed mode uses
+`/var/lib/vcms`, `/Library/Application Support/vcms`, or `C:\ProgramData\vcms`.
+Without a registered service, portable mode uses `<cwd>/vcms_data`. Detection
+errors fail closed; directory existence and legacy paths never select a mode.
 
-**Split (default, interactive installs)** — files land in the platform-conventional
-per-type directories via the `directories` crate (`ProjectDirs`):
-
-| File(s) | Dir | Linux | macOS | Windows |
-|---------|-----|-------|-------|---------|
-| `config.toml`, `secrets.toml`, `.env` | config | `~/.config/vcms` | `~/Library/Application Support/vcms` | `%APPDATA%\vcms\config` |
-| `vcms.db`, `storage/`, `backups/` | data | `~/.local/share/vcms` | `~/Library/Application Support/vcms` | `%APPDATA%\vcms\data` |
-| `search/` (derived, rebuildable) | cache | `~/.cache/vcms` | `~/Library/Caches/vcms` | `%LOCALAPPDATA%\vcms\cache` |
-| `logs/` | state | `~/.local/state/vcms` | `~/Library/Application Support/vcms` | `%LOCALAPPDATA%\vcms\data` |
-
-(`logs/` uses the state dir where the platform has one — Linux — else the local data dir.)
-
-**Single** — everything nests under one root. Chosen (in precedence order) when:
-1. **`$VCMS_HOME` is set** — forces the root explicitly.
-2. **the system service home dir exists** — Linux `/var/lib/vcms`, macOS
-   `/Library/Application Support/vcms`, Windows `C:\ProgramData\vcms`. The
-   platform installer creates it (and leaves it behind on uninstall), so a plain
-   `vcms serve`/`admin`/`backup` **follows the service's data instead of forking to a
-   per-user split store**. This path is defined once in `paths::system_home()` and
-   imported by the Windows SCM host.
-3. **a legacy `~/.vcms` exists** — an existing install keeps working untouched.
-
-Otherwise (dev/eval boxes with no service) files use the platform split dirs.
+Both modes share one root layout:
 
 ```text
-$VCMS_HOME/                # or system home, or ~/.vcms (legacy)
-  config.toml secrets.toml .env
-  vcms.db (+ -wal / -shm)  logs/  storage/  backups/  search/
+<root>/
+  config.toml secrets.toml vcms.db
+  storage/ backups/ logs/ search/
 ```
 
-When the active home is the system service home (owned by SYSTEM/root), the
-data-touching commands (`serve`/`admin`/`backup`/`restore`) require elevation — a
-non-elevated invocation **fails fast** with an "Administrator/root" hint (in
-`paths::ensure`'s preflight) rather than silently forking to a second store.
+Fresh roots and strict files are auto-created. Existing malformed files are never
+overwritten or silently repaired. A missing `secrets.toml` beside an existing
+database is fatal.
 
-Secrets: on first `serve`/`admin`, a random `HMAC_SECRET` is generated and persisted to
-`secrets.toml` (`apps/backend/src/secrets.rs`), then loaded by the server processes.
-`vcms mcp stdio` does **not** load secrets, the database, or any data-dir file: it is a
-thin HTTP proxy to the running server's `/mcp` (see CLI), forwarding `VCMS_MCP_TOKEN` as
-the bearer; the server owns all disk I/O.
-
-Env-only secrets (never read from `config.toml` by convention, omitted from
-`config init`): `DATABASE_URL`, `HMAC_SECRET`, `S3_ACCESS_KEY_ID`,
-`S3_SECRET_ACCESS_KEY`, `BACKUP_S3_ACCESS_KEY_ID`, `BACKUP_S3_SECRET_ACCESS_KEY`,
-`BACKUP_ENCRYPTION_KEY`. (`HMAC_SECRET` and a random backup encryption
-key are auto-persisted to `secrets.toml`; the others remain env-only.)
-
-Sample `config.toml` (generate with `vcms config init`):
+Sample `config.toml`:
 
 ```toml
-bind_address = "0.0.0.0:3000"
-grpc_bind_address = "0.0.0.0:50051"
-max_upload_size_mb = 50
-cookie_secure = false
-session_lifetime_hours = 24
-db_max_connections = 10
-rate_limit_max_requests = 100
-mcp_enabled = true
-mcp_allowed_hosts = ["localhost", "127.0.0.1"]
+[server]
+http_address = "127.0.0.1:3000"
+grpc_address = "127.0.0.1:50051"
 
 [log]
-level = "cms=debug,vcms=debug,tower_http=debug,axum=debug"
-output = "stdout"   # stdout | file
-format = "pretty"   # pretty | json
-annotations = false
-dir = "logs"
+level = "cms=info,vcms=info"
+output = "file"
 ```
+
+`secrets.toml` contains `master_key`, `backup_encryption_key`, and optional
+`database_url`. Owner settings and encrypted integration credentials live in the
+database. Fixed filesystem paths and internal tuning constants are not configurable.
 
 ## Environment Variables
 
-Every non-secret key below can also be set in `config.toml` (env still overrides the file).
-Logging keys map to the `[log]` table: `RUST_LOG`→`log.level`, `LOG_OUTPUT`→`log.output`,
-`LOG_FORMAT`→`log.format`, `LOG_ANNOTATIONS`→`log.annotations`, `LOG_DIR`→`log.dir`.
+The server ignores environment configuration. Only the diskless MCP stdio client
+reads environment variables:
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `VCMS_CONFIG` | - | Explicit config file path (same as `--config`) |
-| `VCMS_HOME` | - | If set, forces single-dir mode: db/config/secrets/logs/storage all nest under this root (else files use the platform split dirs) |
-| `VCMS_MCP_TOKEN` | - | `vcms_site_*` access token forwarded by `vcms mcp stdio` as the bearer credential (required for stdio) |
-| `VCMS_MCP_URL` | `http://127.0.0.1:3000` | Running server's base URL that `vcms mcp stdio` proxies to (`{url}/mcp`) |
-| `DATABASE_URL` | `sqlite://<data dir>/vcms.db` | Database URL: `sqlite:path`, `postgres://...`, `mysql://...` |
-| `HMAC_SECRET` | auto | HMAC key for token lookup (required; auto-generated to `secrets.toml`, env overrides) |
-| `BIND_ADDRESS` | `0.0.0.0:3000` | REST API listen address |
-| `GRPC_BIND_ADDRESS` | `0.0.0.0:50051` | gRPC server listen address |
-| `STORAGE_FS_PATH` | - | Filesystem storage path |
-| `S3_ACCESS_KEY_ID` | - | S3 access key |
-| `S3_SECRET_ACCESS_KEY` | - | S3 secret key |
-| `S3_BUCKET` | - | S3 bucket name |
-| `S3_REGION` | `us-east-1` | S3 region |
-| `S3_ENDPOINT` | - | S3 endpoint (for S3-compatible services) |
-| `S3_PUBLIC_URL` | - | Public URL for S3 assets |
-| `BACKUP_ENABLED` | `true` | Run the scheduled-backup poller / allow backups |
-| `BACKUP_DESTINATION` | `filesystem` | Backup destination: `filesystem` or `s3` |
-| `BACKUP_LOCAL_PATH` | `<data dir>/backups` | Local backup dir (when destination is filesystem) |
-| `BACKUP_ZSTD_LEVEL` | `12` | zstd compression level for backups |
-| `BACKUP_DEFAULT_RETENTION` | `7` | Default "keep last N" for new schedules |
-| `BACKUP_S3_BUCKET` / `_REGION` / `_ENDPOINT` / `_PUBLIC_URL` | - | S3 backup destination (non-secret parts) |
-| `BACKUP_S3_ACCESS_KEY_ID` | - | S3 backup access key (secret, env-only) |
-| `BACKUP_S3_SECRET_ACCESS_KEY` | - | S3 backup secret key (secret, env-only) |
-| `BACKUP_ENCRYPTION_KEY` | auto | AES-256 backup key (hex); auto-generated to `secrets.toml` |
-| `MAX_UPLOAD_SIZE_MB` | `50` | Max upload size in MB |
-| `UPLOAD_TOKEN_EXPIRY_SECS` | `900` | Signed upload URL lifetime (seconds) |
-| `COOKIE_SECURE` | `false` | Require HTTPS cookies |
-| `DB_MAX_CONNECTIONS` | `10` | Max DB connections |
-| `DB_MIN_CONNECTIONS` | `2` | Min DB connections |
-| `RATE_LIMIT_MAX_REQUESTS` | `100` | Rate limit per window |
-| `RATE_LIMIT_WINDOW_SECS` | `60` | Rate limit window |
-| `VCMS_ENV` | - | `production` enables production security checks |
-| `RUST_LOG` | `cms=debug,vcms=debug,tower_http=debug,axum=debug` | Log filter (`[log] level`) |
-| `LOG_OUTPUT` | `stdout` | `stdout` or `file` (`[log] output`) |
-| `LOG_FORMAT` | `pretty` | `pretty` or `json` (`[log] format`) |
-| `LOG_ANNOTATIONS` | `false` | Include file + line numbers (`[log] annotations`) |
-| `LOG_DIR` | `<state dir>/logs` | Log directory when `output = file` (`[log] dir`) |
-
-**Note**: `HMAC_SECRET` is auto-generated and persisted to the config dir's
-`secrets.toml` on first run. Set it explicitly via env to override.
+| `VCMS_MCP_TOKEN` | required | Site access token forwarded as bearer auth |
+| `VCMS_MCP_URL` | `http://127.0.0.1:3000` | Running server base URL |
 
 ## Proto Compilation
 
