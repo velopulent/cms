@@ -53,7 +53,7 @@ pub async fn dashboard_auth_middleware(mut request: Request, next: Next) -> Resp
                 .into_response();
         }
     };
-    let user = match verify_session(&token, &repository, &config.hmac_secret).await {
+    let user = match verify_session(&token, &repository, &config.session_auth_key).await {
         Ok(user) => user,
         Err((status, error)) => return (status, error).into_response(),
     };
@@ -61,7 +61,7 @@ pub async fn dashboard_auth_middleware(mut request: Request, next: Next) -> Resp
     if matches!(request.method().as_str(), "POST" | "PUT" | "PATCH" | "DELETE") {
         let session = match repository
             .session
-            .find_active_by_hash(&compute_key_hmac(&token, &config.hmac_secret))
+            .find_active_by_hash(&compute_key_hmac(&token, &config.session_auth_key))
             .await
         {
             Ok(Some(session)) => session,
@@ -74,7 +74,7 @@ pub async fn dashboard_auth_middleware(mut request: Request, next: Next) -> Resp
             }
         };
         let (parts, body) = request.into_parts();
-        if let Err((status, msg)) = verify_csrf(&parts, &config.hmac_secret, &session.csrf_token_hash) {
+        if let Err((status, msg)) = verify_csrf(&parts, &config.session_auth_key, &session.csrf_token_hash) {
             return (status, Json(serde_json::json!({"error": "csrf_error", "message": msg}))).into_response();
         }
         request = Request::from_parts(parts, body);

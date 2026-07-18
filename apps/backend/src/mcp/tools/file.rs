@@ -147,7 +147,7 @@ pub async fn create_upload_url(
         &params.0.filename,
         &params.0.content_type,
         &storage_provider,
-        &config.hmac_secret,
+        &config.signed_upload_key,
         config.upload_token_expiry_secs,
     );
 

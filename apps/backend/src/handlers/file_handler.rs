@@ -223,7 +223,7 @@ pub async fn upload_via_signed_url(
     body: Body,
 ) -> Response {
     // The token is the auth: HMAC-signed by the server, time-limited, single-use.
-    let token = match SignedUploadToken::verify(&token, &config.hmac_secret) {
+    let token = match SignedUploadToken::verify(&token, &config.signed_upload_key) {
         Ok(t) => t,
         Err(SignedUploadError::Expired) => {
             return (StatusCode::GONE, Json(json!({"error": "Upload URL expired"}))).into_response();

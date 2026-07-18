@@ -80,7 +80,7 @@ pub async fn authenticate_mcp_request(mut request: Request<Body>, next: Next) ->
         None => return auth_response(StatusCode::UNAUTHORIZED, "Missing Authorization bearer token"),
     };
 
-    match verify_access_token(&token, &repository, &config.hmac_secret).await {
+    match verify_access_token(&token, &repository, &config.token_index_key).await {
         Ok(actor) => {
             request.extensions_mut().insert(actor);
             next.run(request).await

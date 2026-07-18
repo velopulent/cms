@@ -23,7 +23,7 @@ pub fn parse_token(token: &str, config: &Config) -> Result<AuthContext, InvalidT
     }
 
     let prefix = token.get(..24).ok_or(InvalidToken)?.to_string();
-    let hmac = compute_key_hmac(token, &config.hmac_secret);
+    let hmac = compute_key_hmac(token, &config.token_index_key);
 
     Ok(AuthContext {
         token: token.to_string(),
@@ -39,7 +39,7 @@ mod tests {
     #[test]
     fn test_parse_token_valid() {
         let config = Config {
-            hmac_secret: "secret".to_string(),
+            token_index_key: "secret".to_string(),
             ..Default::default()
         };
         let token = "vcms_site_abc1234567890123456";
@@ -52,7 +52,7 @@ mod tests {
     #[test]
     fn test_parse_token_invalid_prefix() {
         let config = Config {
-            hmac_secret: "secret".to_string(),
+            token_index_key: "secret".to_string(),
             ..Default::default()
         };
         assert!(parse_token("not_cms_", &config).is_err());
@@ -61,7 +61,7 @@ mod tests {
     #[test]
     fn test_parse_token_too_short() {
         let config = Config {
-            hmac_secret: "secret".to_string(),
+            token_index_key: "secret".to_string(),
             ..Default::default()
         };
         assert!(parse_token("cms_", &config).is_err());

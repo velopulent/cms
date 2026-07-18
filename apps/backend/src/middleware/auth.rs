@@ -117,7 +117,7 @@ where
                 .get::<Config>()
                 .cloned()
                 .ok_or_else(|| AuthError::unauthorized("Server configuration error"))?;
-            let actor = verify_access_token(&token, &repository, &config.hmac_secret).await?;
+            let actor = verify_access_token(&token, &repository, &config.token_index_key).await?;
             return Ok(AuthContext {
                 actor,
                 auth_method: AuthMethod::ApiKey,
@@ -135,7 +135,7 @@ where
                 .get::<Config>()
                 .cloned()
                 .ok_or_else(|| AuthError::unauthorized("Server configuration error"))?;
-            let user = verify_session(&token, &repository, &config.hmac_secret).await?;
+            let user = verify_session(&token, &repository, &config.session_auth_key).await?;
             return Ok(AuthContext {
                 actor: Actor::User(user),
                 auth_method: AuthMethod::Session,
