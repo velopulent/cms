@@ -79,6 +79,8 @@ impl fmt::Display for SiteRole {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Action {
     InstanceManage,
+    /// Change installation-wide runtime settings (owner-only).
+    InstanceSettings,
     SiteCreate,
     SiteRead,
     SiteManage,
@@ -116,6 +118,7 @@ impl Authorizer {
             Some(InstanceRole::InstanceOwner) => matches!(
                 action,
                 Action::InstanceManage
+                    | Action::InstanceSettings
                     | Action::SiteCreate
                     | Action::SiteDelete
                     | Action::InstanceRolesGrant
