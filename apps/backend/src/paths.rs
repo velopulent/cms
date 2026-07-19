@@ -92,12 +92,7 @@ impl RuntimePaths {
     }
 
     pub fn ensure(&self) -> std::io::Result<()> {
-        let root_existed = self.root.exists();
         create_private_dir(&self.root)?;
-        #[cfg(windows)]
-        if !root_existed {
-            harden_windows_acl(&self.root, true)?;
-        }
         for path in [
             self.storage_dir(),
             self.backups_dir(),
@@ -113,18 +108,14 @@ impl RuntimePaths {
 #[cfg(unix)]
 fn create_private_dir(path: &Path) -> std::io::Result<()> {
     use std::os::unix::fs::PermissionsExt;
-    let existed = path.exists();
     std::fs::create_dir_all(path)?;
-    if existed {
-        Ok(())
-    } else {
-        std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o700))
-    }
+    std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o700))
 }
 
 #[cfg(windows)]
 fn create_private_dir(path: &Path) -> std::io::Result<()> {
-    std::fs::create_dir_all(path)
+    std::fs::create_dir_all(path)?;
+    harden_windows_acl(path, true)
 }
 
 #[cfg(windows)]

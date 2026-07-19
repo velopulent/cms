@@ -41,7 +41,12 @@ pub fn is_installed() -> Result<bool, Box<dyn std::error::Error>> {
     }
     #[cfg(target_os = "macos")]
     {
-        return Ok(std::path::Path::new("/Library/LaunchDaemons/com.velopulent.vcms.plist").is_file());
+        let path = std::path::Path::new("/Library/LaunchDaemons/com.velopulent.vcms.plist");
+        return match std::fs::metadata(path) {
+            Ok(metadata) => Ok(metadata.is_file()),
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(false),
+            Err(error) => Err(error.into()),
+        };
     }
 
     let (manager, mut command) = native_command();

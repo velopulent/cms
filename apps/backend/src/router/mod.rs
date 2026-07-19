@@ -147,7 +147,7 @@ pub fn create_router(
         .layer(Extension(storage_registry.clone()))
         .layer(Extension(services))
         .layer(Extension(backup))
-        .layer(Extension(settings))
+        .layer(Extension(settings.clone()))
         .layer(Extension(pool))
         .layer(Extension(rate_limiter));
 
@@ -159,7 +159,7 @@ pub fn create_router(
         storage_registry,
         mcp_ct,
     );
-    router = router.merge(mcp_router);
+    router = router.merge(mcp_router.layer(from_fn_with_state(settings, dynamic_runtime_policy)));
 
     router
 }

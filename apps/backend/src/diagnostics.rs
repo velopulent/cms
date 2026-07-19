@@ -93,7 +93,8 @@ fn report(name: &str, ok: bool, detail: String, failed: &mut bool) {
 
 fn sanitize(message: &str) -> String {
     if message.len() > 240 {
-        format!("{}â€¦", &message[..240])
+        let end = message.floor_char_boundary(240);
+        format!("{}…", &message[..end])
     } else {
         message.to_owned()
     }

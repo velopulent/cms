@@ -54,6 +54,9 @@ pub async fn run(
         .await
         .map_err(|error| format!("loading instance settings: {error}"))?;
     settings.apply_to_config(&mut config).await;
+    config
+        .validate_security()
+        .map_err(|error| format!("Invalid persisted security configuration: {error}"))?;
 
     let repository = Repository::new(&pool);
 
@@ -138,6 +141,11 @@ pub async fn run(
     info!("gRPC server running on {}", grpc_addr);
 
     if runtime.mode == crate::paths::RuntimeMode::Portable {
+        let mcp_line = if config.mcp_enabled {
+            format!("             MCP        http://{addr}/mcp\n")
+        } else {
+            String::new()
+        };
         println!(
             "\nVelopulent CMS\n\
              Mode       portable\n\
@@ -146,14 +154,14 @@ pub async fn run(
              REST       http://{}/api/v1\n\
              GraphQL    http://{}/api/graphql\n\
              gRPC       {}\n\
-             MCP        http://{}/mcp\n\
+             {}\
              Logs       {}\n",
             runtime.paths.root().display(),
             addr,
             addr,
             addr,
             grpc_addr,
-            addr,
+            mcp_line,
             runtime.paths.logs_dir().display(),
         );
     }

@@ -135,7 +135,9 @@ impl SettingsService {
                 if version != SETTINGS_VERSION as i64 {
                     return Err(format!("unsupported instance settings version {version}"));
                 }
-                let settings = serde_json::from_str(&settings_json).map_err(|error| error.to_string())?;
+                let settings: InstanceSettings =
+                    serde_json::from_str(&settings_json).map_err(|error| error.to_string())?;
+                validate(&settings)?;
                 let credentials = match encrypted.as_deref() {
                     Some(value) => decrypt_credentials(&key, value).unwrap_or_else(|error| {
                         tracing::error!(
