@@ -146,7 +146,8 @@ async fn site_backup_and_restore_round_trip() {
         .send()
         .await
         .unwrap();
-    assert_eq!(resp.status(), 204, "restore site");
+    assert_eq!(resp.status(), 200, "restore site");
+    assert!(resp.json::<Value>().await.unwrap()["recovery_required"].is_array());
 
     // The entry is back.
     assert_eq!(get_entry_status(&server, &token, &csrf, &site_id, &entry_id).await, 200);
@@ -215,7 +216,8 @@ async fn encrypted_backup_round_trips() {
         .send()
         .await
         .unwrap();
-    assert_eq!(resp.status(), 204);
+    assert_eq!(resp.status(), 200);
+    assert!(resp.json::<Value>().await.unwrap()["recovery_required"].is_array());
     assert_eq!(get_entry_status(&server, &token, &csrf, &site_id, &entry_id).await, 200);
 }
 
@@ -439,7 +441,8 @@ async fn inspect_lists_sites_and_multi_site_restore_round_trips() {
         .send()
         .await
         .unwrap();
-    assert_eq!(resp.status(), 204, "multi-site restore");
+    assert_eq!(resp.status(), 200, "multi-site restore");
+    assert!(resp.json::<Value>().await.unwrap()["recovery_required"].is_array());
 
     assert_eq!(get_entry_status(&server, &token, &csrf, &site_a, &entry_a).await, 200);
     assert_eq!(get_entry_status(&server, &token, &csrf, &site_b, &entry_b).await, 200);
@@ -518,7 +521,8 @@ async fn instance_backup_and_restore_round_trip() {
         .send()
         .await
         .unwrap();
-    assert_eq!(resp.status(), 204, "restore instance");
+    assert_eq!(resp.status(), 200, "restore instance");
+    assert!(resp.json::<Value>().await.unwrap()["recovery_required"].is_array());
 
     // Instance restore wipes sessions; re-login, then verify the data is back.
     let (token2, csrf2) = login(&server, "admin", "admin").await;

@@ -540,9 +540,11 @@ impl BackupService {
 
         // Credential blobs are intentionally absent from backups. Drop any old
         // process-held providers before publishing restored non-secret settings.
-        self.storage.remove("s3");
-        if let Some(destination) = &self.filesystem_destination {
-            self.set_destination(destination.clone());
+        if matches!(&req.target, RestoreTarget::WholeInstance) {
+            self.storage.remove("s3");
+            if let Some(destination) = &self.filesystem_destination {
+                self.set_destination(destination.clone());
+            }
         }
         if let Some(settings) = &self.settings {
             settings.reload().await.map_err(BackupError::Invalid)?;
