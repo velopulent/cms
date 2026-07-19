@@ -441,17 +441,26 @@ function StorageForm({ settings }: { settings: InstanceSettings }) {
   const [confirming, setConfirming] = useState(false);
   const save = useSave("storage");
   const targetChanged =
-    settings.storage.provider === "s3" &&
-    form.provider === "s3" &&
-    (settings.storage.bucket !== form.bucket ||
+    (settings.storage.provider === "s3" || form.provider === "s3") &&
+    (settings.storage.provider !== form.provider ||
+      settings.storage.bucket !== form.bucket ||
+      settings.storage.region !== form.region ||
       settings.storage.endpoint !== form.endpoint);
   const submit = (confirmed = false) =>
-    save.mutate({
-      ...form,
-      access_key_id: accessKey || null,
-      secret_access_key: secretKey || null,
-      confirm_target_change: confirmed,
-    });
+    save.mutate(
+      {
+        ...form,
+        access_key_id: accessKey || null,
+        secret_access_key: secretKey || null,
+        confirm_target_change: confirmed,
+      },
+      {
+        onSuccess: () => {
+          setAccessKey("");
+          setSecretKey("");
+        },
+      },
+    );
   return (
     <>
       <Card>
@@ -548,17 +557,26 @@ function BackupForm({ settings }: { settings: InstanceSettings }) {
   const [confirming, setConfirming] = useState(false);
   const save = useSave("backups");
   const targetChanged =
-    settings.backups.destination === "s3" &&
-    form.destination === "s3" &&
-    (settings.backups.bucket !== form.bucket ||
+    (settings.backups.destination === "s3" || form.destination === "s3") &&
+    (settings.backups.destination !== form.destination ||
+      settings.backups.bucket !== form.bucket ||
+      settings.backups.region !== form.region ||
       settings.backups.endpoint !== form.endpoint);
   const submit = (confirmed = false) =>
-    save.mutate({
-      ...form,
-      access_key_id: accessKey || null,
-      secret_access_key: secretKey || null,
-      confirm_target_change: confirmed,
-    });
+    save.mutate(
+      {
+        ...form,
+        access_key_id: accessKey || null,
+        secret_access_key: secretKey || null,
+        confirm_target_change: confirmed,
+      },
+      {
+        onSuccess: () => {
+          setAccessKey("");
+          setSecretKey("");
+        },
+      },
+    );
   return (
     <>
       <Card>

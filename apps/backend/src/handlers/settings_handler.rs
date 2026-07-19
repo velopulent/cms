@@ -296,8 +296,10 @@ async fn probe_s3(settings: &StorageSettings, credentials: &CredentialPair) -> R
         .put(&key, Bytes::from_static(b"vcms"), "application/octet-stream")
         .await
         .map_err(|error| error.to_string())?;
-    let read = storage.get(&key).await.map_err(|error| error.to_string())?;
-    storage.delete(&key).await.map_err(|error| error.to_string())?;
+    let read = storage.get(&key).await.map_err(|error| error.to_string());
+    let cleanup = storage.delete(&key).await.map_err(|error| error.to_string());
+    let read = read?;
+    cleanup?;
     if read.as_ref() != b"vcms" {
         return Err("probe read returned unexpected content".into());
     }
@@ -305,11 +307,19 @@ async fn probe_s3(settings: &StorageSettings, credentials: &CredentialPair) -> R
 }
 
 fn target_changed(old: &StorageSettings, new: &StorageSettings) -> bool {
-    old.provider == "s3" && new.provider == "s3" && (old.bucket != new.bucket || old.endpoint != new.endpoint)
+    (old.provider == "s3" || new.provider == "s3")
+        && (old.provider != new.provider
+            || old.bucket != new.bucket
+            || old.region != new.region
+            || old.endpoint != new.endpoint)
 }
 
 fn backup_target_changed(old: &BackupSettings, new: &BackupSettings) -> bool {
-    old.destination == "s3" && new.destination == "s3" && (old.bucket != new.bucket || old.endpoint != new.endpoint)
+    (old.destination == "s3" || new.destination == "s3")
+        && (old.destination != new.destination
+            || old.bucket != new.bucket
+            || old.region != new.region
+            || old.endpoint != new.endpoint)
 }
 
 async fn s3_site_count(pool: &DbPool) -> Result<i64, sqlx::Error> {

@@ -755,8 +755,10 @@ export function backupDownloadUrl(
   return `${BASE_URL}${backupScopePrefix(scope)}/backups/${backupId}/download`;
 }
 
+export type RestoreReport = { recovery_required: string[] };
+
 export async function restoreBackup(scope: BackupScope, input: RestoreInput) {
-  return api<void>(`${backupScopePrefix(scope)}/restore`, {
+  return api<RestoreReport>(`${backupScopePrefix(scope)}/restore`, {
     method: "POST",
     body: JSON.stringify(input),
   });
@@ -796,6 +798,7 @@ export async function restoreBackupUpload(
       body,
     );
   }
+  return (await res.json()) as RestoreReport;
 }
 
 /** Inspect a stored backup (by id or key) to list the sites it contains. */
