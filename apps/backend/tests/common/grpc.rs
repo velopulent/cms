@@ -60,6 +60,7 @@ impl GrpcTestContext {
             bcrypt_cost: bcrypt::DEFAULT_COST,
             webhook_allow_private_targets: true,
             backup_local_path: Some(format!("{storage_path}/backups")),
+            search_index_path: Some(format!("{storage_path}/search")),
             ..Default::default()
         };
 
@@ -80,6 +81,18 @@ impl GrpcTestContext {
         let config = Arc::new(config);
         let repository_arc = Arc::new(repository.clone());
         let services = Services::new(repository_arc.clone(), &pool, &config);
+
+        // Mirror server startup: gRPC writes enqueue search updates, so tests need
+        // the single index consumer running against an isolated per-test index.
+        if let (Some(search), Some(queue)) = (services.search.clone(), services.search_queue.clone()) {
+            let repo = repository_arc.clone();
+            tokio::spawn(async move {
+                if search.is_empty() {
+                    let _ = search.rebuild_all(&repo).await;
+                }
+                cms::services::search::indexer::run(search, queue, repo).await;
+            });
+        }
 
         // Start Axum server for REST-based seeding
         let axum_listener = TcpListener::bind("127.0.0.1:0")
