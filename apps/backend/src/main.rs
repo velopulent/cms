@@ -129,10 +129,10 @@ async fn run_secrets(action: &SecretsAction) -> Result<(), Box<dyn Error>> {
             }
             let old_database_url = existing.database_url;
             let fresh = cms::secrets::fresh(old_database_url);
-            cms::secrets::replace(&paths, &fresh)?;
-            let config = cms::config::Config::load(&paths)?;
+            let config = cms::config::Config::load(&paths, &fresh)?;
             let pool = init_db_with_config(&config).await?;
             let (tokens, webhooks, s3_sites) = invalidate_credentials(&pool).await?;
+            cms::secrets::replace(&paths, &fresh)?;
             println!("Trust root replaced. Recovery report:");
             println!("- {tokens} API access token(s) invalidated");
             println!("- Active dashboard sessions invalidated");

@@ -119,18 +119,15 @@ pub struct Config {
 }
 
 impl Config {
-    pub fn load(paths: &RuntimePaths) -> Result<Self, Box<dyn std::error::Error>> {
+    pub fn load(
+        paths: &RuntimePaths,
+        persisted: &secrets::PersistedSecrets,
+    ) -> Result<Self, Box<dyn std::error::Error>> {
         let bootstrap = load_bootstrap(paths)?;
-        let persisted = secrets::load(paths)?.ok_or_else(|| {
-            format!(
-                "{} is missing; run `vcms serve` for a fresh instance",
-                paths.secrets_file().display()
-            )
-        })?;
         validate_bootstrap(&bootstrap)?;
 
         Ok(Self {
-            database_url: persisted.database_url.unwrap_or_else(|| paths.database_url()),
+            database_url: persisted.database_url.clone().unwrap_or_else(|| paths.database_url()),
             bind_address: bootstrap.server.http_address,
             grpc_bind_address: bootstrap.server.grpc_address,
             storage_fs_path: Some(paths.storage_dir().to_string_lossy().into_owned()),
@@ -151,7 +148,7 @@ impl Config {
             backup_s3_region: None,
             backup_s3_endpoint: None,
             backup_s3_public_url: None,
-            backup_encryption_key: Some(persisted.backup_encryption_key),
+            backup_encryption_key: Some(persisted.backup_encryption_key.clone()),
             max_upload_size_bytes: DEFAULT_MAX_UPLOAD_BYTES,
             upload_token_expiry_secs: crate::signed_upload::DEFAULT_UPLOAD_TOKEN_EXPIRY_SECS,
             cookie_secure: false,

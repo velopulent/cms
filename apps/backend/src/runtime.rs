@@ -18,7 +18,7 @@ impl RuntimeContext {
             .map_err(|error| format!("preparing {}: {error}", paths.root().display()))?;
         crate::config::ensure_bootstrap(&paths)?;
         let secrets = crate::secrets::ensure(&paths)?;
-        let bootstrap = Config::load(&paths)?;
+        let bootstrap = Config::load(&paths, &secrets)?;
         Ok(Self {
             mode,
             paths,
