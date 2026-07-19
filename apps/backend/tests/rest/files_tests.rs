@@ -348,7 +348,7 @@ async fn test_upload_file_invalid_mime_type() {
 // Tokens are minted directly with the lib (same HMAC secret as TestServer), so
 // these tests cover the PUT endpoint without an MCP round-trip.
 
-const TEST_HMAC_SECRET: &str = "test-hmac-secret-integration";
+const TEST_HMAC_SECRET: &str = "test-signed-upload-key";
 
 fn mint_upload_url(server: &TestServer, site_id: &str, filename: &str, mime: &str, expiry_secs: i64) -> String {
     let (_, encoded) = cms::signed_upload::SignedUploadToken::generate_with_storage_provider(
