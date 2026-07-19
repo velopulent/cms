@@ -7,7 +7,7 @@ use clap::{Parser, Subcommand};
     name = "vcms",
     version,
     about = "Velopulent CMS",
-    long_about = "Velopulent CMS â€” self-hosted headless content management system.\n\n`vcms serve` runs a portable instance from ./vcms_data. When the native service is installed, operational commands use its fixed system data root.",
+    long_about = "Velopulent CMS — self-hosted headless content management system.\n\n`vcms serve` runs a portable instance from ./vcms_data. When the native service is installed, operational commands use its fixed system data root.",
     after_help = "DOCUMENTATION:\n  https://cms.velopulent.com/docs"
 )]
 pub struct Cli {

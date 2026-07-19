@@ -112,7 +112,7 @@ async fn run_secrets(action: &SecretsAction) -> Result<(), Box<dyn Error>> {
         SecretsAction::Reset { yes } => {
             if !yes {
                 return Err(
-                    "Secret reset invalidates API tokens and integration credentials. Re-run with --yes.".into(),
+                    "Secret reset invalidates API tokens and integration credentials, generates a new backup encryption key, and makes existing encrypted backups unreadable. Re-run with --yes.".into(),
                 );
             }
             let mode = if cms::service::is_installed()? {
@@ -148,67 +148,32 @@ async fn run_secrets(action: &SecretsAction) -> Result<(), Box<dyn Error>> {
 
 async fn invalidate_credentials(pool: &cms::database::pool::DbPool) -> Result<(i64, i64, i64), Box<dyn Error>> {
     use cms::database::pool::DbPool;
+    macro_rules! invalidate {
+        ($pool:expr, $disabled:expr) => {{
+            let mut tx = $pool.begin().await?;
+            let tokens = sqlx::query_scalar("SELECT COUNT(*) FROM access_tokens")
+                .fetch_one(&mut *tx)
+                .await?;
+            let webhooks = sqlx::query_scalar("SELECT COUNT(*) FROM site_webhooks WHERE headers_encrypted <> ''")
+                .fetch_one(&mut *tx)
+                .await?;
+            let sites = sqlx::query_scalar("SELECT COUNT(*) FROM sites WHERE storage_provider = 's3'")
+                .fetch_one(&mut *tx)
+                .await?;
+            sqlx::query("DELETE FROM access_tokens").execute(&mut *tx).await?;
+            sqlx::query("DELETE FROM sessions").execute(&mut *tx).await?;
+            sqlx::query($disabled).execute(&mut *tx).await?;
+            sqlx::query("UPDATE instance_settings SET credentials_encrypted = NULL")
+                .execute(&mut *tx)
+                .await?;
+            tx.commit().await?;
+            Ok((tokens, webhooks, sites))
+        }};
+    }
     match pool {
-        DbPool::Postgres(pool) => {
-            let tokens = sqlx::query_scalar("SELECT COUNT(*) FROM access_tokens")
-                .fetch_one(pool)
-                .await?;
-            let webhooks = sqlx::query_scalar("SELECT COUNT(*) FROM site_webhooks WHERE headers_encrypted <> ''")
-                .fetch_one(pool)
-                .await?;
-            let sites = sqlx::query_scalar("SELECT COUNT(*) FROM sites WHERE storage_provider = 's3'")
-                .fetch_one(pool)
-                .await?;
-            sqlx::query("DELETE FROM access_tokens").execute(pool).await?;
-            sqlx::query("DELETE FROM sessions").execute(pool).await?;
-            sqlx::query("UPDATE site_webhooks SET headers_encrypted = '', enabled = FALSE")
-                .execute(pool)
-                .await?;
-            sqlx::query("UPDATE instance_settings SET credentials_encrypted = NULL")
-                .execute(pool)
-                .await?;
-            return Ok((tokens, webhooks, sites));
-        }
-        DbPool::MySql(pool) => {
-            let tokens = sqlx::query_scalar("SELECT COUNT(*) FROM access_tokens")
-                .fetch_one(pool)
-                .await?;
-            let webhooks = sqlx::query_scalar("SELECT COUNT(*) FROM site_webhooks WHERE headers_encrypted <> ''")
-                .fetch_one(pool)
-                .await?;
-            let sites = sqlx::query_scalar("SELECT COUNT(*) FROM sites WHERE storage_provider = 's3'")
-                .fetch_one(pool)
-                .await?;
-            sqlx::query("DELETE FROM access_tokens").execute(pool).await?;
-            sqlx::query("DELETE FROM sessions").execute(pool).await?;
-            sqlx::query("UPDATE site_webhooks SET headers_encrypted = '', enabled = FALSE")
-                .execute(pool)
-                .await?;
-            sqlx::query("UPDATE instance_settings SET credentials_encrypted = NULL")
-                .execute(pool)
-                .await?;
-            return Ok((tokens, webhooks, sites));
-        }
-        DbPool::Sqlite(pool) => {
-            let tokens = sqlx::query_scalar("SELECT COUNT(*) FROM access_tokens")
-                .fetch_one(pool)
-                .await?;
-            let webhooks = sqlx::query_scalar("SELECT COUNT(*) FROM site_webhooks WHERE headers_encrypted <> ''")
-                .fetch_one(pool)
-                .await?;
-            let sites = sqlx::query_scalar("SELECT COUNT(*) FROM sites WHERE storage_provider = 's3'")
-                .fetch_one(pool)
-                .await?;
-            sqlx::query("DELETE FROM access_tokens").execute(pool).await?;
-            sqlx::query("DELETE FROM sessions").execute(pool).await?;
-            sqlx::query("UPDATE site_webhooks SET headers_encrypted = '', enabled = 0")
-                .execute(pool)
-                .await?;
-            sqlx::query("UPDATE instance_settings SET credentials_encrypted = NULL")
-                .execute(pool)
-                .await?;
-            return Ok((tokens, webhooks, sites));
-        }
+        DbPool::Postgres(pool) => invalidate!(pool, "UPDATE site_webhooks SET headers_encrypted = '', enabled = FALSE"),
+        DbPool::MySql(pool) => invalidate!(pool, "UPDATE site_webhooks SET headers_encrypted = '', enabled = FALSE"),
+        DbPool::Sqlite(pool) => invalidate!(pool, "UPDATE site_webhooks SET headers_encrypted = '', enabled = 0"),
     }
 }
 
@@ -236,11 +201,13 @@ async fn run_backup(action: &BackupAction) -> Result<(), Box<dyn Error>> {
     use cms::services::backup::{BackupService, CreateBackupOptions, build_backup_destination, meta};
 
     let context = cms::runtime::RuntimeContext::initialize_default()?;
-    let config = context.bootstrap;
+    let mut config = context.bootstrap;
     let pool = init_db_with_config(&config).await?;
+    let settings = cms::services::settings::SettingsService::load(pool.clone(), &context.secrets.master_key).await?;
+    settings.apply_to_config(&mut config).await;
     let storage_registry = cms::server::initialize_storage(&config);
     let destination = build_backup_destination(&config)?;
-    let service = BackupService::new(pool.clone(), storage_registry, destination, &config);
+    let service = BackupService::new(pool.clone(), storage_registry, destination, &config).with_settings(settings);
 
     match action {
         BackupAction::Create {
@@ -317,11 +284,13 @@ async fn run_restore(
     }
 
     let context = cms::runtime::RuntimeContext::initialize_default()?;
-    let config = context.bootstrap;
+    let mut config = context.bootstrap;
     let pool = init_db_with_config(&config).await?;
+    let settings = cms::services::settings::SettingsService::load(pool.clone(), &context.secrets.master_key).await?;
+    settings.apply_to_config(&mut config).await;
     let storage_registry = cms::server::initialize_storage(&config);
     let destination = build_backup_destination(&config)?;
-    let service = BackupService::new(pool, storage_registry, destination, &config);
+    let service = BackupService::new(pool, storage_registry, destination, &config).with_settings(settings);
     let target = match scope {
         "instance" => RestoreTarget::WholeInstance,
         "site" => RestoreTarget::Site {
