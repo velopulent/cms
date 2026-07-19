@@ -202,25 +202,6 @@ pub static TABLES: &[TableSpec] = &[
     },
 ];
 
-#[cfg(test)]
-mod registry_tests {
-    use super::*;
-
-    #[test]
-    fn backup_registry_excludes_tokens_and_encrypted_credentials() {
-        assert!(table_spec("access_tokens").is_none());
-        let settings = table_spec("instance_settings").unwrap();
-        assert!(
-            !settings
-                .columns
-                .iter()
-                .any(|column| column.name == "credentials_encrypted")
-        );
-        let webhooks = table_spec("site_webhooks").unwrap();
-        assert!(webhooks.columns.iter().any(|column| column.name == "enabled"));
-    }
-}
-
 pub fn table_spec(name: &str) -> Option<&'static TableSpec> {
     TABLES.iter().find(|t| t.name == name)
 }
@@ -452,4 +433,23 @@ pub async fn site_exists(pool: &DbPool, site_id: &str) -> Result<bool, BackupErr
     let sql = format!("SELECT id FROM sites WHERE id = {ph}");
     let rows = fetch_rows(pool, &sql, Some(site_id), 1).await?;
     Ok(!rows.is_empty())
+}
+
+#[cfg(test)]
+mod registry_tests {
+    use super::*;
+
+    #[test]
+    fn backup_registry_excludes_tokens_and_encrypted_credentials() {
+        assert!(table_spec("access_tokens").is_none());
+        let settings = table_spec("instance_settings").unwrap();
+        assert!(
+            !settings
+                .columns
+                .iter()
+                .any(|column| column.name == "credentials_encrypted")
+        );
+        let webhooks = table_spec("site_webhooks").unwrap();
+        assert!(webhooks.columns.iter().any(|column| column.name == "enabled"));
+    }
 }
