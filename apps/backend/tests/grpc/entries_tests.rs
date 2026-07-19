@@ -131,17 +131,28 @@ async fn test_list_entries_with_search() {
         .await
         .unwrap();
 
-    let resp = client
-        .list_entries(tonic::Request::new(ListEntriesRequest {
-            collection_id: Some(collection_id),
-            status: None,
-            search: Some("Unique".into()),
-            page: 1,
-            per_page: 10,
-        }))
-        .await
-        .unwrap()
-        .into_inner();
+    // Search indexing is asynchronous in production. Poll briefly until the
+    // queue consumer publishes the committed document to the reader.
+    let mut resp = None;
+    for _ in 0..50 {
+        let current = client
+            .list_entries(tonic::Request::new(ListEntriesRequest {
+                collection_id: Some(collection_id.clone()),
+                status: None,
+                search: Some("Unique".into()),
+                page: 1,
+                per_page: 10,
+            }))
+            .await
+            .unwrap()
+            .into_inner();
+        if current.items.iter().any(|item| item.slug == "searchable") {
+            resp = Some(current);
+            break;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+    }
+    let resp = resp.unwrap_or_default();
 
     let slugs: Vec<&str> = resp.items.iter().map(|i| i.slug.as_str()).collect();
     assert!(
@@ -149,6 +160,70 @@ async fn test_list_entries_with_search() {
         "expected slug 'searchable' in search results, got: {:?}",
         slugs
     );
+}
+
+#[tokio::test]
+async fn test_search_indexes_are_isolated_across_concurrent_contexts() {
+    let ((ctx_a, _site_a, token_a, collection_a), (ctx_b, _site_b, token_b, collection_b)) =
+        tokio::join!(setup(), setup());
+
+    let channel_a = ctx_a.connect().await;
+    let channel_b = ctx_b.connect().await;
+    let mut client_a = EntryServiceClient::with_interceptor(channel_a, auth_interceptor(&token_a));
+    let mut client_b = EntryServiceClient::with_interceptor(channel_b, auth_interceptor(&token_b));
+
+    for (client, collection_id, slug) in [
+        (&mut client_a, collection_a.clone(), "context-a"),
+        (&mut client_b, collection_b.clone(), "context-b"),
+    ] {
+        let created = client
+            .create_entry(tonic::Request::new(CreateEntryRequest {
+                collection_id,
+                data: r#"{"title":"Running"}"#.into(),
+                slug: slug.into(),
+            }))
+            .await
+            .unwrap()
+            .into_inner();
+        client
+            .publish_entry(tonic::Request::new(PublishEntryRequest { id: created.id }))
+            .await
+            .unwrap();
+    }
+
+    for (client, collection_id, expected_slug, other_slug) in [
+        (&mut client_a, collection_a, "context-a", "context-b"),
+        (&mut client_b, collection_b, "context-b", "context-a"),
+    ] {
+        let mut found = None;
+        for _ in 0..50 {
+            let response = client
+                .list_entries(tonic::Request::new(ListEntriesRequest {
+                    collection_id: Some(collection_id.clone()),
+                    status: None,
+                    // Stemmed match proves Tantivy served this result: SQL LIKE
+                    // cannot match "run" against the stored word "Running".
+                    search: Some("run".into()),
+                    page: 1,
+                    per_page: 10,
+                }))
+                .await
+                .unwrap()
+                .into_inner();
+            if response.items.iter().any(|item| item.slug == expected_slug) {
+                found = Some(response);
+                break;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+        }
+
+        let response = found.unwrap_or_else(|| panic!("{expected_slug} never became searchable"));
+        let slugs: Vec<&str> = response.items.iter().map(|item| item.slug.as_str()).collect();
+        assert!(
+            !slugs.contains(&other_slug),
+            "search index leaked across contexts: {slugs:?}"
+        );
+    }
 }
 
 #[tokio::test]
