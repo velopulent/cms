@@ -559,9 +559,7 @@ fn decrypt_headers_checked(encrypted: &str, key: &[u8; 32]) -> Option<HashMap<St
     if encrypted.is_empty() {
         return Some(HashMap::new());
     }
-    let Some(encoded) = encrypted.strip_prefix("v1:") else {
-        return None;
-    };
+    let encoded = encrypted.strip_prefix("v1:")?;
     let raw = match BASE64_STANDARD.decode(encoded) {
         Ok(b) => b,
         Err(_) => return None,
