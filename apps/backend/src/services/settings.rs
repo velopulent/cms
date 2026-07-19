@@ -304,7 +304,7 @@ pub fn validate(settings: &InstanceSettings) -> Result<(), String> {
     Ok(())
 }
 
-fn validate_http_url<'a>(value: &'a str, name: &str) -> Result<url::Url, String> {
+fn validate_http_url(value: &str, name: &str) -> Result<url::Url, String> {
     let parsed = url::Url::parse(value).map_err(|error| format!("{name} is invalid: {error}"))?;
     if !matches!(parsed.scheme(), "http" | "https") || parsed.host_str().is_none() {
         return Err(format!("{name} must be an absolute HTTP(S) URL"));
