@@ -93,6 +93,10 @@ pub enum Action {
     FilesWrite,
     WebhooksRead,
     WebhooksWrite,
+    WebhooksTrigger,
+    DeploymentsRead,
+    DeploymentsWrite,
+    DeploymentsTrigger,
     ApiKeysManage,
     MembersRead,
     MembersManage,
@@ -142,18 +146,35 @@ impl Authorizer {
     /// Anything beyond that (site/schema/webhook/key/member management) is operator-only.
     pub const fn allows_site(role: SiteRole, action: Action) -> bool {
         match action {
-            Action::SiteRead
-            | Action::ContentRead
-            | Action::SchemaRead
-            | Action::FilesRead
-            | Action::WebhooksRead
-            | Action::MembersRead => true,
-            Action::ContentWrite | Action::FilesWrite => matches!(role, SiteRole::Editor),
+            Action::SiteRead | Action::ContentRead | Action::SchemaRead | Action::FilesRead | Action::WebhooksRead => {
+                true
+            }
+            Action::ContentWrite | Action::FilesWrite | Action::DeploymentsRead | Action::DeploymentsTrigger => {
+                matches!(role, SiteRole::Editor)
+            }
             _ => false,
         }
     }
 
+    pub const fn token_hard_denied(action: Action) -> bool {
+        matches!(
+            action,
+            Action::SiteDelete
+                | Action::ApiKeysManage
+                | Action::MembersRead
+                | Action::MembersManage
+                | Action::InstanceSettings
+                | Action::InstanceBackup
+                | Action::InstanceRestore
+                | Action::SiteBackup
+                | Action::SiteRestore
+                | Action::InstanceRolesGrant
+        )
+    }
     pub const fn allows_api_key(can_write: bool, action: Action) -> bool {
+        if Self::token_hard_denied(action) {
+            return false;
+        }
         match action {
             Action::SiteRead | Action::ContentRead | Action::SchemaRead | Action::FilesRead | Action::WebhooksRead => {
                 true

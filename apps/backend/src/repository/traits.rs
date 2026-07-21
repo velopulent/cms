@@ -2,7 +2,7 @@ use async_trait::async_trait;
 use serde_json::Value;
 
 use crate::models::{
-    access_token::AccessToken,
+    access_token::{AccessToken, PersonalAccessToken},
     collection::Collection,
     entry::{Entry, EntryRevision},
     file::{File, FileReference},
@@ -289,6 +289,27 @@ pub type AccessTokenLookupRow = (
     Option<String>, // last_used_at (for the touch debounce)
 );
 
+pub type PersonalTokenLookupRow = (
+    String,
+    String,
+    String,
+    Option<String>,
+    Option<String>,
+    String,
+    Option<String>,
+);
+
+pub struct NewPersonalToken<'a> {
+    pub id: &'a str,
+    pub user_id: &'a str,
+    pub name: &'a str,
+    pub token_hash: &'a str,
+    pub token_hmac: &'a str,
+    pub token_prefix: &'a str,
+    pub scopes_json: &'a str,
+    pub expires_at: Option<&'a str>,
+}
+
 /// A new access token to persist (see [`AccessTokenRepository::create`]).
 pub struct NewAccessToken<'a> {
     pub id: &'a str,
@@ -308,6 +329,11 @@ pub trait AccessTokenRepository: Send + Sync {
     async fn delete(&self, id: &str, site_id: &str) -> Result<u64, RepositoryError>;
     async fn find_by_prefix(&self, prefix: &str) -> Result<Vec<AccessTokenLookupRow>, RepositoryError>;
     async fn update_last_used(&self, id: &str) -> Result<(), RepositoryError>;
+    async fn list_personal(&self, user_id: &str) -> Result<Vec<PersonalAccessToken>, RepositoryError>;
+    async fn create_personal(&self, token: NewPersonalToken<'_>) -> Result<(), RepositoryError>;
+    async fn revoke_personal(&self, id: &str, user_id: &str) -> Result<u64, RepositoryError>;
+    async fn find_personal_by_prefix(&self, prefix: &str) -> Result<Vec<PersonalTokenLookupRow>, RepositoryError>;
+    async fn touch_personal(&self, id: &str) -> Result<(), RepositoryError>;
 }
 
 /// A webhook delivery record to insert (see [`WebhookRepository::create_delivery`]).
