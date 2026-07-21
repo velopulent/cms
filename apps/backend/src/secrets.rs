@@ -68,11 +68,37 @@ pub fn replace(paths: &RuntimePaths, secrets: &PersistedSecrets) -> Result<(), B
     std::fs::rename(&temp, &target)?;
     #[cfg(windows)]
     {
-        std::fs::copy(&temp, &target)?;
+        replace_file_windows(&target, &temp)?;
         restrict_permissions(&target)?;
-        std::fs::remove_file(&temp)?;
     }
     Ok(())
+}
+
+#[cfg(windows)]
+fn replace_file_windows(target: &std::path::Path, replacement: &std::path::Path) -> std::io::Result<()> {
+    use std::os::windows::ffi::OsStrExt;
+
+    let target: Vec<u16> = target.as_os_str().encode_wide().chain(std::iter::once(0)).collect();
+    let replacement: Vec<u16> = replacement
+        .as_os_str()
+        .encode_wide()
+        .chain(std::iter::once(0))
+        .collect();
+    let replaced = unsafe {
+        windows_sys::Win32::Storage::FileSystem::ReplaceFileW(
+            target.as_ptr(),
+            replacement.as_ptr(),
+            std::ptr::null(),
+            0,
+            std::ptr::null(),
+            std::ptr::null(),
+        )
+    };
+    if replaced == 0 {
+        Err(std::io::Error::last_os_error())
+    } else {
+        Ok(())
+    }
 }
 
 fn persist_new(paths: &RuntimePaths, secrets: &PersistedSecrets) -> Result<(), Box<dyn std::error::Error>> {

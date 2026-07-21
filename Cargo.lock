@@ -840,6 +840,7 @@ dependencies = [
  "utoipa-scalar",
  "uuid",
  "windows-service",
+ "windows-sys 0.61.2",
  "wiremock",
  "zstd",
 ]
