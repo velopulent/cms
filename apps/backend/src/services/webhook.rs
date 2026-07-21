@@ -101,6 +101,32 @@ impl WebhookService {
         self
     }
 
+    pub(crate) fn protect_deployment_config(
+        &self,
+        url: &str,
+        headers: &HashMap<String, String>,
+    ) -> Result<(String, String), WebhookError> {
+        validate_url(url, self.allow_private_targets())?;
+        Ok((
+            encrypt_headers(&HashMap::from([("url".into(), url.into())]), &self.encryption_key),
+            encrypt_headers(headers, &self.encryption_key),
+        ))
+    }
+
+    pub(crate) fn reveal_deployment_config(
+        &self,
+        url: &str,
+        headers: &str,
+    ) -> Result<(String, HashMap<String, String>), WebhookError> {
+        let url = decrypt_headers_checked(url, &self.encryption_key)
+            .and_then(|mut values| values.remove("url"))
+            .ok_or_else(|| WebhookError::DatabaseError("Deployment URL cannot be decrypted".into()))?;
+        let headers = decrypt_headers_checked(headers, &self.encryption_key)
+            .ok_or_else(|| WebhookError::DatabaseError("Deployment headers cannot be decrypted".into()))?;
+        validate_url(&url, self.allow_private_targets())?;
+        Ok((url, headers))
+    }
+
     fn allow_private_targets(&self) -> bool {
         self.settings
             .as_ref()
