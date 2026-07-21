@@ -493,6 +493,41 @@ async fn test_signed_upload_oversize_rejected() {
     }
 }
 
+#[tokio::test]
+async fn test_signed_chunked_upload_uses_live_instance_limit() {
+    let server = TestServer::start().await;
+    let (token, csrf, site_id) = setup(&server).await;
+    let client = reqwest::Client::new();
+    let update = client
+        .put(format!("{}/api/dashboard/instance/settings/general", server.base_url))
+        .headers(auth_header(&token, &csrf))
+        .json(&json!({
+            "public_url": null,
+            "public_registration": false,
+            "session_lifetime_hours": 24,
+            "upload_limit_mb": 1,
+            "mcp_enabled": true
+        }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(update.status(), 200);
+
+    let url = mint_upload_url(&server, &site_id, "chunked.txt", "text/plain", 900);
+    let chunks = futures_util::stream::iter([
+        Ok::<_, std::io::Error>(bytes::Bytes::from(vec![b'a'; 700_000])),
+        Ok(bytes::Bytes::from(vec![b'b'; 700_000])),
+    ]);
+    let response = client
+        .put(url)
+        .header("Content-Type", "text/plain")
+        .body(reqwest::Body::wrap_stream(chunks))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(response.status(), 413);
+}
+
 /// Multipart path enforces the same sniffing as the signed path.
 #[tokio::test]
 async fn test_multipart_upload_magic_byte_mismatch() {
