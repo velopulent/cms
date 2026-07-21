@@ -232,6 +232,7 @@ async fn run_backup(action: &BackupAction) -> Result<(), Box<dyn Error>> {
             } else {
                 let row = service
                     .create_backup(CreateBackupOptions {
+                        storage_profile_id: None,
                         scope,
                         include_files,
                         encrypt: *encrypt,
