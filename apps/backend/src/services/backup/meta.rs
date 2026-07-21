@@ -90,6 +90,7 @@ pub struct BackupRow {
     pub started_at: Option<String>,
     pub completed_at: Option<String>,
     pub created_at: String,
+    pub storage_profile_id: Option<String>,
 }
 
 /// Frontend-friendly view with proper booleans.
@@ -110,6 +111,7 @@ pub struct BackupInfo {
     pub created_by: Option<String>,
     pub completed_at: Option<String>,
     pub created_at: String,
+    pub storage_profile_id: Option<String>,
 }
 
 impl From<BackupRow> for BackupInfo {
@@ -130,13 +132,14 @@ impl From<BackupRow> for BackupInfo {
             created_by: r.created_by,
             completed_at: r.completed_at,
             created_at: r.created_at,
+            storage_profile_id: r.storage_profile_id,
         }
     }
 }
 
 const BACKUP_COLS: &str = "id, schedule_id, scope, site_id, status, format_version, schema_version, \
     size_bytes, file_count, includes_files, encrypted, destination_key, checksum, error, created_by, \
-    started_at, completed_at, created_at";
+    started_at, completed_at, created_at, storage_profile_id";
 
 /// Insert a `running` backup row at the start of a run.
 #[allow(clippy::too_many_arguments)]
@@ -149,12 +152,13 @@ pub async fn insert_running(
     includes_files: bool,
     encrypt: bool,
     created_by: Option<&str>,
+    storage_profile_id: Option<&str>,
     now: &str,
 ) -> Result<(), BackupError> {
     exec!(
         pool,
-        "INSERT INTO backups (id, schedule_id, scope, site_id, status, format_version, includes_files, encrypted, created_by, started_at, created_at) \
-         VALUES (?, ?, ?, ?, 'running', ?, ?, ?, ?, ?, ?)",
+        "INSERT INTO backups (id, schedule_id, scope, site_id, status, format_version, includes_files, encrypted, created_by, started_at, created_at, storage_profile_id) \
+         VALUES (?, ?, ?, ?, 'running', ?, ?, ?, ?, ?, ?, ?)",
         id.to_string(),
         schedule_id.map(|s| s.to_string()),
         scope.to_string(),
@@ -164,6 +168,7 @@ pub async fn insert_running(
         i64::from(encrypt),
         created_by.map(|s| s.to_string()),
         now.to_string(),
+        storage_profile_id.map(|value| value.to_string()),
         now.to_string(),
     );
     Ok(())
@@ -307,6 +312,7 @@ pub struct BackupScheduleRow {
     pub created_by: Option<String>,
     pub created_at: String,
     pub updated_at: String,
+    pub storage_profile_id: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -322,6 +328,7 @@ pub struct ScheduleInfo {
     pub last_run_at: Option<String>,
     pub next_run_at: Option<String>,
     pub created_at: String,
+    pub storage_profile_id: Option<String>,
 }
 
 impl From<BackupScheduleRow> for ScheduleInfo {
@@ -338,12 +345,13 @@ impl From<BackupScheduleRow> for ScheduleInfo {
             last_run_at: r.last_run_at,
             next_run_at: r.next_run_at,
             created_at: r.created_at,
+            storage_profile_id: r.storage_profile_id,
         }
     }
 }
 
 const SCHEDULE_COLS: &str = "id, scope, site_id, cron, retention_n, include_files, encrypt, enabled, \
-    last_run_at, next_run_at, created_by, created_at, updated_at";
+    last_run_at, next_run_at, created_by, created_at, updated_at, storage_profile_id";
 
 #[allow(clippy::too_many_arguments)]
 pub async fn create_schedule(
@@ -358,12 +366,13 @@ pub async fn create_schedule(
     enabled: bool,
     next_run_at: Option<&str>,
     created_by: Option<&str>,
+    storage_profile_id: Option<&str>,
     now: &str,
 ) -> Result<(), BackupError> {
     exec!(
         pool,
-        "INSERT INTO backup_schedules (id, scope, site_id, cron, retention_n, include_files, encrypt, enabled, next_run_at, created_by, created_at, updated_at) \
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        "INSERT INTO backup_schedules (id, scope, site_id, cron, retention_n, include_files, encrypt, enabled, next_run_at, created_by, created_at, updated_at, storage_profile_id) \
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         id.to_string(),
         scope.to_string(),
         site_id.map(|s| s.to_string()),
@@ -375,6 +384,7 @@ pub async fn create_schedule(
         next_run_at.map(|s| s.to_string()),
         created_by.map(|s| s.to_string()),
         now.to_string(),
+        storage_profile_id.map(|value| value.to_string()),
         now.to_string(),
     );
     Ok(())
@@ -390,17 +400,19 @@ pub async fn update_schedule(
     encrypt: bool,
     enabled: bool,
     next_run_at: Option<&str>,
+    storage_profile_id: Option<&str>,
     now: &str,
 ) -> Result<(), BackupError> {
     exec!(
         pool,
-        "UPDATE backup_schedules SET cron = ?, retention_n = ?, include_files = ?, encrypt = ?, enabled = ?, next_run_at = ?, updated_at = ? WHERE id = ?",
+        "UPDATE backup_schedules SET cron = ?, retention_n = ?, include_files = ?, encrypt = ?, enabled = ?, next_run_at = ?, storage_profile_id = ?, updated_at = ? WHERE id = ?",
         cron.to_string(),
         retention_n,
         i64::from(include_files),
         i64::from(encrypt),
         i64::from(enabled),
         next_run_at.map(|s| s.to_string()),
+        storage_profile_id.map(|value| value.to_string()),
         now.to_string(),
         id.to_string(),
     );

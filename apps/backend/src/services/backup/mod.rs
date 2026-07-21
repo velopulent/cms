@@ -124,6 +124,7 @@ pub struct CreateBackupOptions {
     pub encrypt: bool,
     pub schedule_id: Option<String>,
     pub created_by: Option<String>,
+    pub storage_profile_id: Option<String>,
 }
 
 /// Where a restore reads its artifact from.
@@ -174,6 +175,9 @@ pub struct BackupService {
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(tag = "provider", rename_all = "lowercase")]
 enum DestinationSpec {
+    Profile {
+        id: String,
+    },
     Filesystem {
         path: String,
     },
@@ -351,6 +355,7 @@ impl BackupService {
             opts.include_files,
             opts.encrypt,
             opts.created_by.as_deref(),
+            opts.storage_profile_id.as_deref(),
             &now,
         )
         .await?;
@@ -398,7 +403,17 @@ impl BackupService {
             Scope::Instance => format!("instance/{id}.cmsbak"),
             Scope::Site(sid) => format!("site/{sid}/{id}.cmsbak"),
         };
-        let destination = self.destination_snapshot();
+        let destination = if let Some(profile_id) = &opts.storage_profile_id {
+            BackupDestination {
+                provider: self
+                    .storage
+                    .get(profile_id)
+                    .ok_or_else(|| BackupError::Invalid("storage profile is unavailable".into()))?,
+                spec: DestinationSpec::Profile { id: profile_id.clone() },
+            }
+        } else {
+            self.destination_snapshot()
+        };
         destination
             .provider
             .put(&key, bytes::Bytes::from(bytes.clone()), "application/octet-stream")
@@ -577,6 +592,10 @@ impl BackupService {
         let (spec, key): (DestinationSpec, String) =
             serde_json::from_slice(&plaintext).map_err(|error| BackupError::Invalid(error.to_string()))?;
         let provider: Arc<dyn StorageProvider> = match spec {
+            DestinationSpec::Profile { id } => self
+                .storage
+                .get(&id)
+                .ok_or_else(|| BackupError::Invalid("storage profile is unavailable".into()))?,
             DestinationSpec::Filesystem { path } => {
                 Arc::new(FileSystemStorage::new(&path).map_err(|error| BackupError::Storage(error.to_string()))?)
             }
