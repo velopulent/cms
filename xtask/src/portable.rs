@@ -26,7 +26,7 @@ pub fn build(context: &Context) -> Result<PathBuf> {
         write_file(
             &stage.join("README.txt"),
             format!(
-                "Velopulent CMS portable package\n\nRun `{APP_NAME}` directly. No service is registered. Runtime files use platform user directories unless VCMS_HOME is set.\nTarget OS: {}\n",
+                "Velopulent CMS portable package\n\nRun `{APP_NAME} serve`. No service is registered. Runtime files are created in ./vcms_data under your working directory.\nTarget OS: {}\n",
                 context.target_os.as_str()
             ),
         )?;

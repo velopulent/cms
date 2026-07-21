@@ -1,97 +1,171 @@
-//! Persisted instance secrets (`secrets.toml` in the config dir).
-//!
-//! On first `serve`/`admin`, a random `HMAC_SECRET` value is
-//! generated and written to `secrets.toml` (perms `0600` on unix). Every later
-//! process — including a `vcms mcp stdio` child launched from an unknown working
-//! directory — reads the *same* values, so site-token verification matches the
-//! server that signed the token. Environment variables still override the file.
-//!
-//! These secrets intentionally live in a dedicated, restricted file rather than
-//! `config.toml`: the TOML config is for non-secret settings, while this file is
-//! machine-managed and never scaffolded by `vcms config init`.
+//! Restricted instance trust root.
+
+use std::io::Write;
 
 use rand::Rng;
 use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
 
-use crate::paths;
+use crate::paths::RuntimePaths;
 
-/// Auto-generated secrets persisted to disk.
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct PersistedSecrets {
-    pub hmac_secret: String,
-    /// AES-256 key (hex, 64 chars) used to encrypt backup artifacts. Added in a
-    /// later release, so existing `secrets.toml` files may lack it; [`ensure`]
-    /// backfills and persists it on next run. Overridable via `BACKUP_ENCRYPTION_KEY`.
-    #[serde(default)]
-    pub backup_encryption_key: Option<String>,
+    /// Root key used only to derive purpose-specific runtime keys.
+    pub master_key: String,
+    /// Independent key for encrypted backup artifacts.
+    pub backup_encryption_key: String,
+    /// External database URLs may contain credentials and therefore live here.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub database_url: Option<String>,
 }
 
-/// Read the persisted secrets file if it exists.
-///
-/// Returns `None` when the file is absent (a fresh, uninitialized instance) and
-/// an error only when the file exists but cannot be read or parsed.
-pub fn load() -> Result<Option<PersistedSecrets>, Box<dyn std::error::Error>> {
-    let path = paths::secrets_file();
+pub fn load(paths: &RuntimePaths) -> Result<Option<PersistedSecrets>, Box<dyn std::error::Error>> {
+    let path = paths.secrets_file();
     if !path.exists() {
         return Ok(None);
     }
     let contents = std::fs::read_to_string(&path)?;
     let secrets: PersistedSecrets = toml::from_str(&contents)?;
+    validate(&secrets)?;
     Ok(Some(secrets))
 }
 
-/// Load existing secrets, or generate and persist new ones if absent.
-///
-/// Called by instance-owning commands (`serve`, `admin`) before loading config.
-/// Read-only commands (`mcp stdio`) must use [`load`] instead and never create
-/// the file.
-pub fn ensure() -> Result<PersistedSecrets, Box<dyn std::error::Error>> {
-    if let Some(mut existing) = load()? {
-        // Backfill the backup key for instances created before it existed.
-        if existing.backup_encryption_key.is_none() {
-            existing.backup_encryption_key = Some(random_hex(32));
-            persist(&existing)?;
-        }
+/// Create secrets only for a genuinely fresh instance. Existing data without its
+/// trust root must stop for explicit recovery instead of silently changing keys.
+pub fn ensure(paths: &RuntimePaths) -> Result<PersistedSecrets, Box<dyn std::error::Error>> {
+    if let Some(existing) = load(paths)? {
         return Ok(existing);
     }
+    if paths.database_file().exists() {
+        return Err(format!(
+            "{} is missing but {} already exists; restore secrets.toml or run `vcms secrets reset --yes`",
+            paths.secrets_file().display(),
+            paths.database_file().display()
+        )
+        .into());
+    }
 
-    let secrets = PersistedSecrets {
-        hmac_secret: random_hex(32),
-        backup_encryption_key: Some(random_hex(32)),
-    };
-
-    persist(&secrets)?;
+    let secrets = fresh(None);
+    persist_new(paths, &secrets)?;
     Ok(secrets)
 }
 
-/// Write the secrets file with owner-only permissions.
-fn persist(secrets: &PersistedSecrets) -> Result<(), Box<dyn std::error::Error>> {
-    let path = paths::secrets_file();
-    if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent)?;
+pub fn fresh(database_url: Option<String>) -> PersistedSecrets {
+    PersistedSecrets {
+        master_key: random_hex(32),
+        backup_encryption_key: random_hex(32),
+        database_url,
     }
-    let body = toml::to_string_pretty(secrets)?;
-    std::fs::write(&path, body)?;
-    restrict_permissions(&path)?;
+}
+
+pub fn replace(paths: &RuntimePaths, secrets: &PersistedSecrets) -> Result<(), Box<dyn std::error::Error>> {
+    validate(secrets)?;
+    let target = paths.secrets_file();
+    let temp = target.with_extension("toml.tmp");
+    write_restricted(&temp, &toml::to_string_pretty(secrets)?, false)?;
+    #[cfg(not(windows))]
+    std::fs::rename(&temp, &target)?;
+    #[cfg(windows)]
+    {
+        replace_file_windows(&target, &temp)?;
+        restrict_permissions(&target)?;
+    }
     Ok(())
 }
 
-/// Generate `n` random bytes, hex-encoded (so a 32-byte secret is 64 chars).
+#[cfg(windows)]
+fn replace_file_windows(target: &std::path::Path, replacement: &std::path::Path) -> std::io::Result<()> {
+    use std::os::windows::ffi::OsStrExt;
+
+    let target: Vec<u16> = target.as_os_str().encode_wide().chain(std::iter::once(0)).collect();
+    let replacement: Vec<u16> = replacement
+        .as_os_str()
+        .encode_wide()
+        .chain(std::iter::once(0))
+        .collect();
+    let replaced = unsafe {
+        windows_sys::Win32::Storage::FileSystem::ReplaceFileW(
+            target.as_ptr(),
+            replacement.as_ptr(),
+            std::ptr::null(),
+            0,
+            std::ptr::null(),
+            std::ptr::null(),
+        )
+    };
+    if replaced == 0 {
+        Err(std::io::Error::last_os_error())
+    } else {
+        Ok(())
+    }
+}
+
+fn persist_new(paths: &RuntimePaths, secrets: &PersistedSecrets) -> Result<(), Box<dyn std::error::Error>> {
+    write_restricted(&paths.secrets_file(), &toml::to_string_pretty(secrets)?, true)
+}
+
+fn write_restricted(path: &std::path::Path, body: &str, create_new: bool) -> Result<(), Box<dyn std::error::Error>> {
+    let mut options = std::fs::OpenOptions::new();
+    options
+        .write(true)
+        .create(true)
+        .truncate(!create_new)
+        .create_new(create_new);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        options.mode(0o600);
+    }
+    let mut file = options.open(path)?;
+    file.write_all(body.as_bytes())?;
+    file.sync_all()?;
+    restrict_permissions(path)?;
+    Ok(())
+}
+
+fn validate(secrets: &PersistedSecrets) -> Result<(), Box<dyn std::error::Error>> {
+    for (name, value) in [
+        ("master_key", secrets.master_key.as_str()),
+        ("backup_encryption_key", secrets.backup_encryption_key.as_str()),
+    ] {
+        if value.len() != 64 || hex::decode(value).is_err() {
+            return Err(format!("{name} must be exactly 32 bytes encoded as 64 hexadecimal characters").into());
+        }
+    }
+    Ok(())
+}
+
+/// Derive a stable, domain-separated 32-byte key without exposing the root key to
+/// consumers. The hexadecimal result preserves existing service interfaces.
+pub fn derive_key_hex(master_key: &str, purpose: &str) -> String {
+    let root = hex::decode(master_key).expect("validated master key");
+    let mut digest = Sha256::new();
+    digest.update(b"vcms-key-v1\0");
+    digest.update(purpose.as_bytes());
+    digest.update(b"\0");
+    digest.update(root);
+    hex::encode(digest.finalize())
+}
+
 fn random_hex(n: usize) -> String {
     let mut bytes = vec![0u8; n];
     rand::rng().fill_bytes(&mut bytes);
     hex::encode(bytes)
 }
 
-/// Tighten the secrets file to owner-only read/write where the platform supports
-/// it. Best-effort on Windows (filesystem ACLs already restrict to the user).
 #[cfg(unix)]
 fn restrict_permissions(path: &std::path::Path) -> std::io::Result<()> {
     use std::os::unix::fs::PermissionsExt;
     std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o600))
 }
 
-#[cfg(not(unix))]
+#[cfg(windows)]
+fn restrict_permissions(path: &std::path::Path) -> std::io::Result<()> {
+    crate::paths::harden_windows_acl(path, false)
+}
+
+#[cfg(not(any(unix, windows)))]
 fn restrict_permissions(_path: &std::path::Path) -> std::io::Result<()> {
     Ok(())
 }
@@ -99,27 +173,23 @@ fn restrict_permissions(_path: &std::path::Path) -> std::io::Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::test_helpers::with_home;
 
     #[test]
-    fn load_returns_none_when_absent() {
-        let dir = tempfile::tempdir().expect("temp dir");
-        with_home(dir.path(), || {
-            assert!(load().expect("load ok").is_none());
-        });
+    fn fresh_secrets_are_valid_and_domain_separated() {
+        let secrets = fresh(None);
+        validate(&secrets).unwrap();
+        assert_ne!(
+            derive_key_hex(&secrets.master_key, "access-token-index"),
+            derive_key_hex(&secrets.master_key, "webhook-encryption")
+        );
     }
 
     #[test]
-    fn ensure_generates_then_reuses_secrets() {
-        let dir = tempfile::tempdir().expect("temp dir");
-        with_home(dir.path(), || {
-            let first = ensure().expect("generate");
-            assert_eq!(first.hmac_secret.len(), 64);
-            assert!(paths::secrets_file().exists());
-
-            // A second call must return the persisted values, not regenerate.
-            let second = ensure().expect("reuse");
-            assert_eq!(first.hmac_secret, second.hmac_secret);
-        });
+    fn missing_secrets_are_not_recreated_over_existing_database() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = RuntimePaths::portable(dir.path());
+        paths.ensure().unwrap();
+        std::fs::write(paths.database_file(), b"db").unwrap();
+        assert!(ensure(&paths).unwrap_err().to_string().contains("secrets reset"));
     }
 }

@@ -17,6 +17,9 @@ pub async fn run(service: Arc<BackupService>) {
     let mut ticker = tokio::time::interval(POLL_INTERVAL);
     loop {
         ticker.tick().await;
+        if !service.scheduler_enabled() {
+            continue;
+        }
         if let Err(e) = tick(&service).await {
             tracing::error!(error = %e, "backup scheduler tick failed");
         }

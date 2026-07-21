@@ -24,7 +24,8 @@ pub fn build(context: &Context) -> Result<PathBuf> {
         fs::write(&artifact, b"dry-run msi\n")?;
     } else {
         let package = root.join("vcms.msi");
-        let ui_extension = wix_ui_extension()?;
+        let ui_extension = wix_extension("WixToolset.UI.wixext")?;
+        let util_extension = wix_extension("WixToolset.Util.wixext")?;
         run_cmd(
             Command::new("wix")
                 .arg("build")
@@ -33,6 +34,8 @@ pub fn build(context: &Context) -> Result<PathBuf> {
                 .args(["-pdbtype", "none"])
                 .arg("-ext")
                 .arg(ui_extension)
+                .arg("-ext")
+                .arg(util_extension)
                 .arg(root.join("vcms.wxs"))
                 .arg("-out")
                 .arg(&package)
@@ -45,14 +48,17 @@ pub fn build(context: &Context) -> Result<PathBuf> {
     Ok(artifact)
 }
 
-fn wix_ui_extension() -> Result<PathBuf> {
+fn wix_extension(name: &str) -> Result<PathBuf> {
     let profile = env::var_os("USERPROFILE").ok_or("USERPROFILE is not set")?;
-    let extension =
-        PathBuf::from(profile).join(".wix/extensions/WixToolset.UI.wixext/7.0.0/wixext7/WixToolset.UI.wixext.dll");
+    let extension = PathBuf::from(profile)
+        .join(".wix/extensions")
+        .join(name)
+        .join("7.0.0/wixext7")
+        .join(format!("{name}.dll"));
     if extension.is_file() {
         Ok(extension)
     } else {
-        Err("WiX UI extension missing; run `wix extension add --global WixToolset.UI.wixext/7.0.0`".into())
+        Err(format!("WiX extension missing; run `wix extension add --global {name}/7.0.0`").into())
     }
 }
 
@@ -132,10 +138,26 @@ mod tests {
             r#"<Environment Id="VcmsPath" Name="PATH" Value="[INSTALLFOLDER]" Action="set" Part="last" System="yes" Permanent="no" />"#
         ));
         assert!(source.contains("ProgramDataVcms"));
+        assert!(source.contains(r#"xmlns:util="http://wixtoolset.org/schemas/v4/wxs/util""#));
+        assert!(source.contains(r#"<util:PermissionEx User="LocalService" Inheritable="yes""#));
+        assert!(source.contains(r#"GenericRead="yes""#));
+        assert!(source.contains(r#"GenericWrite="yes""#));
+        assert!(source.contains(r#"GenericExecute="yes""#));
+        assert!(source.contains(r#"CreateFile="yes""#));
+        assert!(source.contains(r#"CreateChild="yes""#));
+        assert!(source.contains(r#"Delete="yes""#));
+        assert!(source.contains(r#"DeleteChild="yes""#));
+        assert!(source.contains(r#"Traverse="yes""#));
+        assert!(source.contains(r#"<util:PermissionEx User="SYSTEM" Inheritable="yes" GenericAll="yes" />"#));
+        assert!(source.contains(
+            r#"<util:PermissionEx Domain="BUILTIN" User="Administrators" Inheritable="yes" GenericAll="yes" />"#
+        ));
+        assert!(!source.contains("<Permission "));
         assert!(source.contains(r#"<MediaTemplate EmbedCab="yes" />"#));
         assert!(source.contains(r#"ProductCode=""#));
         assert!(!source.contains("@PRODUCT_CODE@"));
         assert!(source.contains(r#"<ui:WixUI Id="WixUI_InstallDir""#));
+        assert!(source.contains(r#"<Show Dialog="override PrepareDlg" Condition="0" Before="AppSearch" />"#));
         assert!(source.contains(r#"<Property Id="MsiLogging""#));
         assert!(license_rtf().starts_with(r#"{\rtf1"#));
         assert!(license_rtf().contains("GNU AFFERO GENERAL PUBLIC LICENSE"));

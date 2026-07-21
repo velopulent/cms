@@ -4,7 +4,7 @@ pub mod s3;
 use async_trait::async_trait;
 use bytes::Bytes;
 use std::collections::HashMap;
-use std::sync::Arc;
+use std::sync::{Arc, RwLock};
 
 pub use filesystem::FileSystemStorage;
 pub use s3::S3Storage;
@@ -36,24 +36,34 @@ impl StorageKind {
     }
 }
 
-#[derive(Clone)]
 pub struct StorageRegistry {
-    providers: HashMap<String, Arc<dyn StorageProvider>>,
+    providers: RwLock<HashMap<String, Arc<dyn StorageProvider>>>,
 }
 
 impl StorageRegistry {
     pub fn new() -> Self {
         Self {
-            providers: HashMap::new(),
+            providers: RwLock::new(HashMap::new()),
         }
     }
 
-    pub fn register(&mut self, name: &str, provider: Arc<dyn StorageProvider>) {
-        self.providers.insert(name.to_string(), provider);
+    pub fn register(&self, name: &str, provider: Arc<dyn StorageProvider>) {
+        self.providers
+            .write()
+            .expect("storage registry poisoned")
+            .insert(name.to_string(), provider);
+    }
+
+    pub fn remove(&self, name: &str) {
+        self.providers.write().expect("storage registry poisoned").remove(name);
     }
 
     pub fn get(&self, name: &str) -> Option<Arc<dyn StorageProvider>> {
-        self.providers.get(name).cloned()
+        self.providers
+            .read()
+            .expect("storage registry poisoned")
+            .get(name)
+            .cloned()
     }
 
     pub fn get_by_kind(&self, kind: StorageKind) -> Option<Arc<dyn StorageProvider>> {
@@ -214,7 +224,7 @@ mod tests {
 
     #[test]
     fn test_storage_registry_register_and_get() {
-        let mut registry = StorageRegistry::new();
+        let registry = StorageRegistry::new();
         let storage: Arc<dyn StorageProvider> = Arc::new(MockStorage::default());
 
         registry.register("filesystem", storage.clone());
@@ -224,7 +234,7 @@ mod tests {
 
     #[test]
     fn test_storage_registry_get_by_kind() {
-        let mut registry = StorageRegistry::new();
+        let registry = StorageRegistry::new();
         let storage: Arc<dyn StorageProvider> = Arc::new(MockStorage::default());
 
         registry.register("filesystem", storage);

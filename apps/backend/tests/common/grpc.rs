@@ -33,7 +33,16 @@ pub struct GrpcTestContext {
     pub rest_base_url: String,
     _shutdown: tokio::sync::oneshot::Sender<()>,
     _grpc_shutdown: tokio::sync::oneshot::Sender<()>,
+    indexer: Option<tokio::task::JoinHandle<()>>,
     _storage_dir: tempfile::TempDir,
+}
+
+impl Drop for GrpcTestContext {
+    fn drop(&mut self) {
+        if let Some(indexer) = self.indexer.take() {
+            indexer.abort();
+        }
+    }
 }
 
 impl GrpcTestContext {
@@ -43,7 +52,9 @@ impl GrpcTestContext {
 
         let config = Config {
             database_url: "sqlite::memory:".to_string(),
-            hmac_secret: "test-hmac-secret-integration".to_string(),
+            token_index_key: "test-token-index-key".to_string(),
+            session_auth_key: "test-session-auth-key".to_string(),
+            signed_upload_key: "test-signed-upload-key".to_string(),
             storage_fs_path: Some(storage_path.clone()),
             cookie_secure: false,
             mcp_enabled: false,
@@ -58,6 +69,7 @@ impl GrpcTestContext {
             bcrypt_cost: bcrypt::DEFAULT_COST,
             webhook_allow_private_targets: true,
             backup_local_path: Some(format!("{storage_path}/backups")),
+            search_index_path: Some(format!("{storage_path}/search")),
             ..Default::default()
         };
 
@@ -69,7 +81,7 @@ impl GrpcTestContext {
 
         seed_admin(&repository).await;
 
-        let mut storage_registry = StorageRegistry::new();
+        let storage_registry = StorageRegistry::new();
         let fs_storage =
             cms::storage::FileSystemStorage::new(&storage_path).expect("Failed to init filesystem storage");
         storage_registry.register(STORAGE_KIND_FILESYSTEM, Arc::new(fs_storage));
@@ -78,6 +90,20 @@ impl GrpcTestContext {
         let config = Arc::new(config);
         let repository_arc = Arc::new(repository.clone());
         let services = Services::new(repository_arc.clone(), &pool, &config);
+
+        // Mirror server startup: gRPC writes enqueue search updates, so tests need
+        // the single index consumer running against an isolated per-test index.
+        let indexer = if let (Some(search), Some(queue)) = (services.search.clone(), services.search_queue.clone()) {
+            let repo = repository_arc.clone();
+            Some(tokio::spawn(async move {
+                if search.is_empty() {
+                    let _ = search.rebuild_all(&repo).await;
+                }
+                cms::services::search::indexer::run(search, queue, repo).await;
+            }))
+        } else {
+            None
+        };
 
         // Start Axum server for REST-based seeding
         let axum_listener = TcpListener::bind("127.0.0.1:0")
@@ -94,6 +120,9 @@ impl GrpcTestContext {
             backup_destination,
             &config,
         ));
+        let settings = cms::services::settings::SettingsService::load(pool.clone(), &"11".repeat(32))
+            .await
+            .expect("Failed to init instance settings");
 
         let app = create_router(
             pool.clone(),
@@ -102,6 +131,7 @@ impl GrpcTestContext {
             storage_registry.clone(),
             services.clone(),
             backup_service,
+            settings,
         );
 
         let (axum_shutdown_tx, axum_shutdown_rx) = tokio::sync::oneshot::channel::<()>();
@@ -180,6 +210,7 @@ impl GrpcTestContext {
             rest_base_url,
             _shutdown: axum_shutdown_tx,
             _grpc_shutdown: grpc_shutdown_tx,
+            indexer,
             _storage_dir: storage_dir,
         }
     }

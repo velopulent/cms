@@ -119,39 +119,29 @@ serve` instance must be running. MCP protocol messages use stdout; logs use stde
 
 ### Data directory
 
-By default, runtime files go to the platform-conventional per-type directories
-(resolved cross-platform via the `directories` crate):
+Runtime mode is deterministic. If the native service is registered, commands use
+the installed root. Otherwise `vcms serve` is portable and uses
+`<current directory>/vcms_data`. Directory existence never selects a mode.
 
-| File(s) | Linux | macOS | Windows |
-|---------|-------|-------|---------|
-| `config.toml`, `secrets.toml`, `.env` | `~/.config/vcms` | `~/Library/Application Support/vcms` | `%APPDATA%\vcms\config` |
-| `vcms.db`, `storage/`, `backups/` | `~/.local/share/vcms` | `~/Library/Application Support/vcms` | `%APPDATA%\vcms\data` |
-| `search/` (rebuildable index) | `~/.cache/vcms` | `~/Library/Caches/vcms` | `%LOCALAPPDATA%\vcms\cache` |
-| `logs/` | `~/.local/state/vcms` | `~/Library/Application Support/vcms` | `%LOCALAPPDATA%\vcms\data` |
+| Mode | Root |
+|------|------|
+| Portable | `<current directory>/vcms_data` |
+| Installed Linux | `/var/lib/vcms` |
+| Installed macOS | `/Library/Application Support/vcms` |
+| Installed Windows | `C:\ProgramData\vcms` |
 
-Set **`$VCMS_HOME`** to keep everything under a single root instead. When several
-locations exist, the first match wins: **`$VCMS_HOME`** → a legacy `~/.vcms`
-(honored automatically, so upgrades don't move your data) → the split per-type
-defaults above.
-
-The platform service installers store daemon data under one system dir —
-`/var/lib/vcms` (Linux), `/Library/Application Support/vcms` (macOS), or
-`C:\ProgramData\vcms` (Windows). When this directory exists, the binary uses it
-automatically. Data-touching commands require an elevated shell when service-owned
-permissions restrict access.
-
-`vcms serve` creates what it needs on first run and generates `secrets.toml` if
-absent. Environment variables (`DATABASE_URL`, `HMAC_SECRET`, `STORAGE_FS_PATH`,
-S3 settings, …) still override these defaults.
+Both modes use one layout: `config.toml`, `secrets.toml`, `vcms.db`, `storage/`,
+`backups/`, `logs/`, and `search/` beneath the root. Fresh roots are created
+automatically. Existing malformed files are rejected, not repaired. Server env
+overrides, config search paths, and legacy layouts are unsupported.
 
 
 
 ### Installed service operations
 
-Native packages register `vcms` with systemd, launchd, or Windows SCM, but never
-start a fresh installation automatically. Validate configuration and inspect state
-with `vcms doctor` and `vcms service status`, then start it through the native service
-manager.
+Native packages register the hidden `vcms service run` entrypoint with systemd,
+launchd, or Windows SCM. Inspect it with `vcms doctor`, `vcms config show`, and
+`vcms service status`, then control it through the native service manager.
 
 `vcms doctor` checks resolved configuration, directory access, current database
 schema, listener availability, and execution identity without creating or migrating

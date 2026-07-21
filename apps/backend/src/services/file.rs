@@ -55,6 +55,7 @@ pub struct StreamingUploadRequest<'a> {
     pub created_by: Option<&'a str>,
     pub storage: Arc<dyn StorageProvider>,
     pub storage_provider: &'a str,
+    pub max_bytes: usize,
 }
 
 /// RAII claim on an in-flight pre-generated file id; released on drop.
@@ -204,6 +205,7 @@ impl FileService {
                 created_by,
                 storage,
                 storage_provider,
+                max_bytes: self.config.max_upload_size_bytes,
             },
             stream,
         )
@@ -231,6 +233,7 @@ impl FileService {
             created_by,
             storage,
             storage_provider,
+            max_bytes,
         } = req;
 
         info!(
@@ -279,7 +282,7 @@ impl FileService {
         };
         let storage_key = format!("s_{}/f_{}/{}", site_id, file_id, generated_filename);
         let mime_type = content_type.to_string();
-        let max = self.config.max_upload_size_bytes;
+        let max = max_bytes;
 
         let upload = storage.start_multipart(&storage_key).await.map_err(|e| {
             error!("Failed to start multipart upload: key={}, error={}", storage_key, e);
@@ -877,6 +880,7 @@ mod tests {
             created_by: None,
             storage,
             storage_provider: "filesystem",
+            max_bytes: 1024,
         };
 
         let first = service

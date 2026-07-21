@@ -43,6 +43,7 @@ pub mod handlers {
     pub mod entry_handler;
     pub mod file_handler;
     pub mod instance_handler;
+    pub mod settings_handler;
     pub mod singleton_handler;
     pub mod site_handler;
     pub mod webhook_handler;
@@ -50,6 +51,7 @@ pub mod handlers {
 pub mod grpc;
 pub mod repository;
 pub mod router;
+pub mod runtime;
 pub mod services;
 pub mod storage;
 pub mod utils;

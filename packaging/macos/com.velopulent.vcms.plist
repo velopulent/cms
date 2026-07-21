@@ -4,9 +4,7 @@
 <dict>
   <key>Label</key><string>com.velopulent.vcms</string>
   <key>ProgramArguments</key>
-  <array><string>/usr/local/bin/vcms</string><string>serve</string><string>--config</string><string>/Library/Application Support/vcms/config.toml</string></array>
-  <key>EnvironmentVariables</key>
-  <dict><key>VCMS_HOME</key><string>/Library/Application Support/vcms</string></dict>
+  <array><string>/usr/local/bin/vcms</string><string>service</string><string>run</string></array>
   <key>UserName</key><string>_vcms</string>
   <key>GroupName</key><string>_vcms</string>
   <key>RunAtLoad</key><false/>

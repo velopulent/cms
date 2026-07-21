@@ -40,6 +40,7 @@ pub struct AuthService {
     session_lifetime_hours: i64,
     public_registration_enabled: bool,
     bcrypt_cost: u32,
+    settings: Option<crate::services::settings::SettingsService>,
 }
 
 #[derive(Error, Debug)]
@@ -108,7 +109,31 @@ impl AuthService {
             session_lifetime_hours,
             public_registration_enabled,
             bcrypt_cost,
+            settings: None,
         }
+    }
+
+    pub fn with_settings(mut self, settings: crate::services::settings::SettingsService) -> Self {
+        self.settings = Some(settings);
+        self
+    }
+
+    fn runtime_values(&self) -> (bool, i64, bool) {
+        self.settings.as_ref().map_or(
+            (
+                self.cookie_secure,
+                self.session_lifetime_hours,
+                self.public_registration_enabled,
+            ),
+            |service| {
+                let settings = service.current();
+                (
+                    settings.security.secure_cookies,
+                    settings.general.session_lifetime_hours as i64,
+                    settings.general.public_registration,
+                )
+            },
+        )
     }
 
     pub async fn register(&self, name: &str, email: &str, password: &str) -> Result<UserPublic, AuthError> {
@@ -117,7 +142,7 @@ impl AuthService {
             .count()
             .await
             .map_err(|e| AuthError::DatabaseError(e.to_string()))?;
-        if user_count > 0 && !self.public_registration_enabled {
+        if user_count > 0 && !self.runtime_values().2 {
             return Err(AuthError::RegistrationDisabled);
         }
         let name = name.trim();
@@ -204,8 +229,7 @@ impl AuthService {
                 info!("Login successful for user: id={}, name={}", user.id, user.name);
                 let token = format!("{}{}", Uuid::new_v4().simple(), Uuid::new_v4().simple());
                 let csrf_token = Uuid::new_v4().to_string();
-                let expires_at =
-                    (chrono::Utc::now() + chrono::Duration::hours(self.session_lifetime_hours)).to_rfc3339();
+                let expires_at = (chrono::Utc::now() + chrono::Duration::hours(self.runtime_values().1)).to_rfc3339();
                 self.session_repo
                     .create(
                         &Uuid::now_v7().to_string(),
@@ -451,24 +475,25 @@ impl AuthService {
     }
 
     pub fn cookie_secure(&self) -> bool {
-        self.cookie_secure
+        self.runtime_values().0
     }
 
     pub fn build_auth_cookies_response(&self, user: UserPublic, token: &str, csrf_token: &str) -> Response {
+        let (cookie_secure, session_lifetime_hours, _) = self.runtime_values();
         let token_cookie = Cookie::build(("token", token.to_string()))
             .http_only(true)
-            .secure(self.cookie_secure)
+            .secure(cookie_secure)
             .same_site(axum_extra::extract::cookie::SameSite::Strict)
             .path("/")
-            .max_age(Duration::hours(self.session_lifetime_hours))
+            .max_age(Duration::hours(session_lifetime_hours))
             .build();
 
         let csrf_cookie = Cookie::build(("csrf", csrf_token.to_string()))
             .http_only(false)
-            .secure(self.cookie_secure)
+            .secure(cookie_secure)
             .same_site(axum_extra::extract::cookie::SameSite::Strict)
             .path("/")
-            .max_age(Duration::hours(self.session_lifetime_hours))
+            .max_age(Duration::hours(session_lifetime_hours))
             .build();
 
         let mut response = (StatusCode::OK, Json(AuthResponse { user })).into_response();

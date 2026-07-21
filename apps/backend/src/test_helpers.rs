@@ -1,4 +1,3 @@
-use std::path::Path;
 use std::sync::{Arc, Mutex};
 
 use async_trait::async_trait;
@@ -19,23 +18,6 @@ use crate::repository::traits::{
 
 pub fn now_timestamp() -> String {
     chrono::Utc::now().format("%Y-%m-%d %H:%M:%S").to_string()
-}
-
-/// Synchronize tests that mutate `VCMS_HOME` (process-global env var).
-/// The single static `Mutex` here is shared by all callers across modules,
-/// preventing races between `paths::tests` and `secrets::tests` etc.
-pub fn with_home<T>(value: &Path, f: impl FnOnce() -> T) -> T {
-    static LOCK: Mutex<()> = Mutex::new(());
-    let _guard = LOCK.lock().unwrap_or_else(|e| e.into_inner());
-    let previous = std::env::var_os(crate::paths::CMS_HOME_ENV);
-    // SAFETY: guarded by LOCK so no other test reads/writes the env concurrently.
-    unsafe { std::env::set_var(crate::paths::CMS_HOME_ENV, value) };
-    let result = f();
-    match previous {
-        Some(v) => unsafe { std::env::set_var(crate::paths::CMS_HOME_ENV, v) },
-        None => unsafe { std::env::remove_var(crate::paths::CMS_HOME_ENV) },
-    }
-    result
 }
 
 #[derive(Clone)]
@@ -1271,6 +1253,7 @@ impl crate::repository::traits::WebhookRepository for InMemoryWebhookRepository 
             label: label.to_string(),
             url: url.to_string(),
             headers_encrypted: headers_encrypted.to_string(),
+            enabled: true,
             created_by: created_by.map(|s| s.to_string()),
             created_at: now_timestamp(),
             updated_at: now_timestamp(),

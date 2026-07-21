@@ -1,8 +1,8 @@
 import { createFileRoute, redirect } from "@tanstack/react-router";
-import { GeneralSettingsPanel } from "@/components/instance/settings-forms";
+import { StorageSettingsPanel } from "@/components/instance/settings-forms";
 import { getMe } from "@/lib/api";
 
-export const Route = createFileRoute("/_admin/_shell/settings/")({
+export const Route = createFileRoute("/_admin/_shell/settings/storage")({
   beforeLoad: async ({ context }) => {
     const me = await context.queryClient.ensureQueryData({
       queryKey: ["me"],
@@ -11,5 +11,5 @@ export const Route = createFileRoute("/_admin/_shell/settings/")({
     if (me.instance_role !== "instance_owner")
       throw redirect({ to: "/settings/users" });
   },
-  component: GeneralSettingsPanel,
+  component: StorageSettingsPanel,
 });

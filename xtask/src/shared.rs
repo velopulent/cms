@@ -56,21 +56,12 @@ pub fn find_file(root: &Path, extension: &str) -> Result<PathBuf> {
 }
 
 pub fn config_sample() -> &'static str {
-    r#"bind_address = "0.0.0.0:3000"
-grpc_bind_address = "0.0.0.0:50051"
-max_upload_size_mb = 50
-cookie_secure = false
-session_lifetime_hours = 24
-db_max_connections = 10
-rate_limit_max_requests = 100
-mcp_enabled = true
-mcp_allowed_hosts = ["localhost", "127.0.0.1"]
+    r#"[server]
+http_address = "127.0.0.1:3000"
+grpc_address = "127.0.0.1:50051"
 
 [log]
-level = "cms=info,vcms=info,tower_http=info,axum=info"
-output = "stdout"
-format = "json"
-annotations = false
-dir = "logs"
+level = "cms=info,vcms=info"
+output = "file"
 "#
 }

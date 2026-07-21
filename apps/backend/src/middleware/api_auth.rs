@@ -51,7 +51,7 @@ pub async fn api_auth_middleware(mut request: Request, next: Next) -> Response {
         }
     };
 
-    let actor = match verify_access_token(&token, &repository, &config.hmac_secret).await {
+    let actor = match verify_access_token(&token, &repository, &config.token_index_key).await {
         Ok(actor) => actor,
         Err((status, err)) => return (status, err).into_response(),
     };

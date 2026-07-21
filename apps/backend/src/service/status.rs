@@ -24,6 +24,56 @@ pub fn print() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
+/// Detect registration, not runtime state. Data-directory existence is never used.
+pub fn is_installed() -> Result<bool, Box<dyn std::error::Error>> {
+    #[cfg(target_os = "linux")]
+    {
+        if [
+            "/etc/systemd/system/vcms.service",
+            "/lib/systemd/system/vcms.service",
+            "/usr/lib/systemd/system/vcms.service",
+        ]
+        .iter()
+        .any(|path| std::path::Path::new(path).is_file())
+        {
+            return Ok(true);
+        }
+    }
+    #[cfg(target_os = "macos")]
+    {
+        let path = std::path::Path::new("/Library/LaunchDaemons/com.velopulent.vcms.plist");
+        return match std::fs::metadata(path) {
+            Ok(metadata) => Ok(metadata.is_file()),
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(false),
+            Err(error) => Err(error.into()),
+        };
+    }
+
+    let (manager, mut command) = native_command();
+    let output = command
+        .output()
+        .map_err(|error| format!("cannot query {manager} service registration: {error}"))?;
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    let text = format!("{stdout} {stderr}").to_ascii_lowercase();
+    if text.contains("could not be found")
+        || text.contains("not-found")
+        || text.contains("no such process")
+        || text.contains("failed to get unit file state")
+        || text.contains("1060")
+    {
+        return Ok(false);
+    }
+    if output.status.success() || text.contains("loaded") || text.contains("running") || text.contains("stopped") {
+        return Ok(true);
+    }
+    Err(format!(
+        "{manager} could not determine whether vcms is installed: {}",
+        stderr.trim()
+    )
+    .into())
+}
+
 fn normalized_state(success: bool, stdout: &str, stderr: &str) -> &'static str {
     let text = format!("{stdout} {stderr}").to_ascii_lowercase();
     if text.contains("running") || text.trim() == "active" {

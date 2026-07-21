@@ -103,6 +103,7 @@ jobs:
           dotnet tool install --global wix --version 7.*
           wix eula accept wix7
           wix extension add --global WixToolset.UI.wixext/7.0.0
+          wix extension add --global WixToolset.Util.wixext/7.0.0
 
       # Build cargo directly (dist is already present from the artifact); keep the
       # default `embed-dashboard` feature so rust-embed bakes in apps/dashboard/dist.

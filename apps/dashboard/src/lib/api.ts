@@ -106,6 +106,61 @@ export function isOperator(role: InstanceRole | null | undefined): boolean {
   return role === "instance_owner" || role === "instance_admin";
 }
 
+export interface InstanceSettings {
+  version: number;
+  general: {
+    public_url: string | null;
+    public_registration: boolean;
+    session_lifetime_hours: number;
+    upload_limit_mb: number;
+    mcp_enabled: boolean;
+  };
+  security: {
+    secure_cookies: boolean;
+    allowed_origins: string[];
+    trusted_proxy_headers: boolean;
+    private_webhook_targets: boolean;
+    mcp_allowed_hosts: string[];
+    mcp_allowed_origins: string[];
+  };
+  storage: {
+    provider: "filesystem" | "s3";
+    bucket: string | null;
+    region: string | null;
+    endpoint: string | null;
+    public_url: string | null;
+  };
+  backups: {
+    enabled: boolean;
+    destination: "filesystem" | "s3";
+    retention: number;
+    bucket: string | null;
+    region: string | null;
+    endpoint: string | null;
+  };
+  storage_credentials: CredentialState;
+  backup_credentials: CredentialState;
+}
+
+export interface CredentialState {
+  configured: boolean;
+  masked_access_key_id: string | null;
+}
+
+export function getInstanceSettings() {
+  return api<InstanceSettings>("/instance/settings");
+}
+
+export function updateInstanceSettingsSection(
+  section: "general" | "security" | "storage" | "backups",
+  data: unknown,
+) {
+  return api<InstanceSettings>(`/instance/settings/${section}`, {
+    method: "PUT",
+    body: JSON.stringify(data),
+  });
+}
+
 /** Human label for an instance role, used in settings/user lists. */
 export function instanceRoleLabel(
   role: InstanceRole | null | undefined,
@@ -700,8 +755,10 @@ export function backupDownloadUrl(
   return `${BASE_URL}${backupScopePrefix(scope)}/backups/${backupId}/download`;
 }
 
+export type RestoreReport = { recovery_required: string[] };
+
 export async function restoreBackup(scope: BackupScope, input: RestoreInput) {
-  return api<void>(`${backupScopePrefix(scope)}/restore`, {
+  return api<RestoreReport>(`${backupScopePrefix(scope)}/restore`, {
     method: "POST",
     body: JSON.stringify(input),
   });
@@ -741,6 +798,7 @@ export async function restoreBackupUpload(
       body,
     );
   }
+  return (await res.json()) as RestoreReport;
 }
 
 /** Inspect a stored backup (by id or key) to list the sites it contains. */

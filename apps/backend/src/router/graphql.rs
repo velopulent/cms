@@ -30,7 +30,7 @@ async fn graphql_handler(
         tokio::spawn,
     );
 
-    let gql_ctx = GqlContext::from_request(repository, services, auth_header, &config.hmac_secret).await;
+    let gql_ctx = GqlContext::from_request(repository, services, auth_header, &config.token_index_key).await;
 
     let response = schema.execute(req.into_inner().data(gql_ctx).data(entry_loader)).await;
     async_graphql_axum::GraphQLResponse::from(response)

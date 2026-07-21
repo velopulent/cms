@@ -14,9 +14,11 @@ pub mod schema;
 use std::collections::{HashMap, HashSet};
 use std::io::Read;
 use std::sync::Arc;
+use std::sync::RwLock;
 
 use aes_gcm::aead::{Aead, KeyInit};
 use aes_gcm::{Aes256Gcm, Key, Nonce};
+use base64::Engine;
 use chrono::Utc;
 use rand::Rng;
 use serde::{Deserialize, Serialize};
@@ -105,6 +107,13 @@ pub struct Manifest {
     pub compression: String,
     pub tables: Vec<TableManifest>,
     pub files: Vec<FileManifest>,
+    #[serde(default)]
+    pub recovery_required: Vec<String>,
+}
+
+#[derive(Serialize)]
+pub struct RecoveryReport {
+    pub recovery_required: Vec<String>,
 }
 
 // --- Request/options types --------------------------------------------------
@@ -155,26 +164,104 @@ pub struct RestoreRequest {
 pub struct BackupService {
     pool: DbPool,
     storage: Arc<StorageRegistry>,
-    destination: Arc<dyn StorageProvider>,
+    destination: Arc<RwLock<BackupDestination>>,
+    filesystem_destination: Option<BackupDestination>,
     encryption_key: Option<[u8; 32]>,
     zstd_level: i32,
+    settings: Option<crate::services::settings::SettingsService>,
+}
+
+#[derive(Clone, Serialize, Deserialize)]
+#[serde(tag = "provider", rename_all = "lowercase")]
+enum DestinationSpec {
+    Filesystem {
+        path: String,
+    },
+    S3 {
+        access_key: String,
+        secret_key: String,
+        bucket: String,
+        region: String,
+        endpoint: Option<String>,
+        public_url: Option<String>,
+    },
+}
+
+#[derive(Clone)]
+pub struct BackupDestination {
+    provider: Arc<dyn StorageProvider>,
+    spec: DestinationSpec,
+}
+
+impl BackupDestination {
+    pub fn filesystem(path: String) -> Result<Self, BackupError> {
+        let provider = FileSystemStorage::new(&path).map_err(|error| BackupError::Storage(error.to_string()))?;
+        Ok(Self {
+            provider: Arc::new(provider),
+            spec: DestinationSpec::Filesystem { path },
+        })
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub fn s3(
+        provider: Arc<dyn StorageProvider>,
+        access_key: String,
+        secret_key: String,
+        bucket: String,
+        region: String,
+        endpoint: Option<String>,
+        public_url: Option<String>,
+    ) -> Self {
+        Self {
+            provider,
+            spec: DestinationSpec::S3 {
+                access_key,
+                secret_key,
+                bucket,
+                region,
+                endpoint,
+                public_url,
+            },
+        }
+    }
 }
 
 impl BackupService {
-    pub fn new(
-        pool: DbPool,
-        storage: Arc<StorageRegistry>,
-        destination: Arc<dyn StorageProvider>,
-        config: &Config,
-    ) -> Self {
+    pub fn new(pool: DbPool, storage: Arc<StorageRegistry>, destination: BackupDestination, config: &Config) -> Self {
         let encryption_key = config.backup_encryption_key.as_deref().and_then(parse_key_hex);
+        let filesystem_destination = config
+            .backup_local_path
+            .clone()
+            .and_then(|path| BackupDestination::filesystem(path).ok());
         Self {
             pool,
             storage,
-            destination,
+            destination: Arc::new(RwLock::new(destination)),
+            filesystem_destination,
             encryption_key,
             zstd_level: config.backup_zstd_level,
+            settings: None,
         }
+    }
+
+    pub fn with_settings(mut self, settings: crate::services::settings::SettingsService) -> Self {
+        self.settings = Some(settings);
+        self
+    }
+
+    pub fn scheduler_enabled(&self) -> bool {
+        self.settings
+            .as_ref()
+            .map(|service| service.current().backups.enabled)
+            .unwrap_or(true)
+    }
+
+    pub fn set_destination(&self, destination: BackupDestination) {
+        *self.destination.write().expect("backup destination poisoned") = destination;
+    }
+
+    fn destination_snapshot(&self) -> BackupDestination {
+        self.destination.read().expect("backup destination poisoned").clone()
     }
 
     pub fn pool(&self) -> &DbPool {
@@ -228,6 +315,11 @@ impl BackupService {
             compression: "zstd".to_string(),
             tables: table_manifest,
             files: file_manifest,
+            recovery_required: vec![
+                "Recreate API access tokens".into(),
+                "Review disabled webhooks and restore secret headers".into(),
+                "Reconfigure storage and backup credentials when using S3".into(),
+            ],
         };
 
         // tar + zstd + AES-GCM are CPU-bound; keep them off the async runtime
@@ -306,11 +398,13 @@ impl BackupService {
             Scope::Instance => format!("instance/{id}.cmsbak"),
             Scope::Site(sid) => format!("site/{sid}/{id}.cmsbak"),
         };
-        self.destination
+        let destination = self.destination_snapshot();
+        destination
+            .provider
             .put(&key, bytes::Bytes::from(bytes.clone()), "application/octet-stream")
             .await
             .map_err(|e| BackupError::Storage(e.to_string()))?;
-        Ok((bytes, manifest, key))
+        Ok((bytes, manifest, self.encode_destination(&destination.spec, &key)?))
     }
 
     /// Delete a backup artifact and its row.
@@ -318,7 +412,7 @@ impl BackupService {
         if let Some(row) = meta::get_backup(&self.pool, id).await?
             && let Some(key) = &row.destination_key
         {
-            let _ = self.destination.delete(key).await;
+            let _ = self.delete_destination_object(key).await;
         }
         meta::delete_backup_row(&self.pool, id).await
     }
@@ -420,31 +514,105 @@ impl BackupService {
     /// [`delete_destination`](Self::delete_destination) after the restore.
     pub async fn stage_upload(&self, bytes: Vec<u8>) -> Result<String, BackupError> {
         let key = format!("{TEMP_RESTORE_PREFIX}{}.cmsbak", new_id());
-        self.destination
+        let destination = self.destination_snapshot();
+        destination
+            .provider
             .put(&key, bytes::Bytes::from(bytes), "application/octet-stream")
             .await
             .map_err(|e| BackupError::Storage(e.to_string()))?;
-        Ok(key)
+        self.encode_destination(&destination.spec, &key)
     }
 
     /// Best-effort delete of a destination object (used to clean up staged uploads).
     pub async fn delete_destination(&self, key: &str) {
-        let _ = self.destination.delete(key).await;
+        let _ = self.delete_destination_object(key).await;
     }
 
     /// Read a backup artifact from the configured destination.
     pub async fn read_destination(&self, key: &str) -> Result<Vec<u8>, BackupError> {
-        let bytes = self
-            .destination
-            .get(key)
+        let (provider, object_key) = self.resolve_destination(key)?;
+        let bytes = provider
+            .get(&object_key)
             .await
             .map_err(|e| BackupError::Storage(e.to_string()))?;
         Ok(bytes.to_vec())
     }
 
+    fn encode_destination(&self, spec: &DestinationSpec, key: &str) -> Result<String, BackupError> {
+        let encryption_key = self.encryption_key.ok_or(BackupError::MissingKey)?;
+        let plaintext = serde_json::to_vec(&(spec, key)).map_err(|error| BackupError::Io(error.to_string()))?;
+        let cipher = Aes256Gcm::new(&Key::<Aes256Gcm>::from(encryption_key));
+        let mut nonce_bytes = [0_u8; 12];
+        rand::rng().fill_bytes(&mut nonce_bytes);
+        let nonce = Nonce::from(nonce_bytes);
+        let ciphertext = cipher
+            .encrypt(&nonce, plaintext.as_ref())
+            .map_err(|_| BackupError::Crypto("destination encryption failed".into()))?;
+        let mut encoded = nonce_bytes.to_vec();
+        encoded.extend(ciphertext);
+        Ok(format!(
+            "dest:v1:{}",
+            base64::engine::general_purpose::STANDARD.encode(encoded)
+        ))
+    }
+
+    fn resolve_destination(&self, locator: &str) -> Result<(Arc<dyn StorageProvider>, String), BackupError> {
+        let encoded = locator
+            .strip_prefix("dest:v1:")
+            .ok_or_else(|| BackupError::Invalid("invalid backup destination locator".into()))?;
+        let bytes = base64::engine::general_purpose::STANDARD
+            .decode(encoded)
+            .map_err(|error| BackupError::Invalid(error.to_string()))?;
+        if bytes.len() < 13 {
+            return Err(BackupError::Invalid("backup destination locator is truncated".into()));
+        }
+        let encryption_key = self.encryption_key.ok_or(BackupError::MissingKey)?;
+        let cipher = Aes256Gcm::new(&Key::<Aes256Gcm>::from(encryption_key));
+        let nonce_bytes: [u8; 12] = bytes[..12]
+            .try_into()
+            .map_err(|_| BackupError::Invalid("backup destination nonce is invalid".into()))?;
+        let plaintext = cipher
+            .decrypt(&Nonce::from(nonce_bytes), &bytes[12..])
+            .map_err(|_| BackupError::Crypto("backup destination locator cannot be decrypted".into()))?;
+        let (spec, key): (DestinationSpec, String) =
+            serde_json::from_slice(&plaintext).map_err(|error| BackupError::Invalid(error.to_string()))?;
+        let provider: Arc<dyn StorageProvider> = match spec {
+            DestinationSpec::Filesystem { path } => {
+                Arc::new(FileSystemStorage::new(&path).map_err(|error| BackupError::Storage(error.to_string()))?)
+            }
+            DestinationSpec::S3 {
+                access_key,
+                secret_key,
+                bucket,
+                region,
+                endpoint,
+                public_url,
+            } => Arc::new(
+                S3Storage::new(
+                    &access_key,
+                    &secret_key,
+                    &bucket,
+                    &region,
+                    endpoint.as_deref(),
+                    public_url.as_deref(),
+                )
+                .map_err(|error| BackupError::Storage(error.to_string()))?,
+            ),
+        };
+        Ok((provider, key))
+    }
+
+    async fn delete_destination_object(&self, locator: &str) -> Result<(), BackupError> {
+        let (provider, key) = self.resolve_destination(locator)?;
+        provider
+            .delete(&key)
+            .await
+            .map_err(|error| BackupError::Storage(error.to_string()))
+    }
+
     /// Restore from a backup artifact, replacing all data within the chosen scope
     /// in a single transaction.
-    pub async fn restore(&self, req: RestoreRequest) -> Result<(), BackupError> {
+    pub async fn restore(&self, req: RestoreRequest) -> Result<RecoveryReport, BackupError> {
         let bytes = match &req.source {
             RestoreSource::Bytes(b) => b.clone(),
             RestoreSource::Destination(key) => self.read_destination(key).await?,
@@ -467,6 +635,9 @@ impl BackupService {
         }
 
         let tables = parse_all_tables(&tables_ndjson)?;
+        if matches!(&req.target, RestoreTarget::WholeInstance) {
+            validate_restored_settings(&tables)?;
+        }
 
         let plan = match &req.target {
             RestoreTarget::WholeInstance => {
@@ -495,9 +666,28 @@ impl BackupService {
 
         schema::apply_restore(&self.pool, &plan).await?;
 
+        // Credential blobs are intentionally absent from backups. Drop any old
+        // process-held providers before publishing restored non-secret settings.
+        if matches!(&req.target, RestoreTarget::WholeInstance) {
+            self.storage.remove("s3");
+            if let Some(destination) = &self.filesystem_destination {
+                self.set_destination(destination.clone());
+            }
+        }
+        let mut recovery_required = manifest.recovery_required.clone();
+        if matches!(&req.target, RestoreTarget::WholeInstance)
+            && let Some(settings) = &self.settings
+            && let Err(error) = settings.reload().await
+        {
+            tracing::error!(%error, "restore committed but runtime settings reload failed");
+            recovery_required.push(format!(
+                "Restore committed, but runtime settings could not be reloaded: {error}. Restart the service."
+            ));
+        }
+
         // Restore file blobs (best-effort: a missing blob is non-fatal).
         self.restore_files(&manifest, &file_blobs).await;
-        Ok(())
+        Ok(RecoveryReport { recovery_required })
     }
 
     /// Build a merged, atomic restore plan for one or more sites extracted from the
@@ -661,7 +851,7 @@ impl BackupService {
 
 /// Build the backup destination storage provider from config (independent of the
 /// site-files storage). Falls back to a local `backups/` directory.
-pub fn build_backup_destination(config: &Config) -> Result<Arc<dyn StorageProvider>, BackupError> {
+pub fn build_backup_destination(config: &Config) -> Result<BackupDestination, BackupError> {
     if config.backup_destination == "s3" && config.has_backup_s3() {
         let access_key = config
             .backup_s3_access_key_id
@@ -684,20 +874,31 @@ pub fn build_backup_destination(config: &Config) -> Result<Arc<dyn StorageProvid
             config.backup_s3_public_url.as_deref(),
         )
         .map_err(|e| BackupError::Storage(e.to_string()))?;
-        return Ok(Arc::new(s3));
+        return Ok(BackupDestination::s3(
+            Arc::new(s3),
+            access_key.to_owned(),
+            secret_key.to_owned(),
+            bucket.to_owned(),
+            config.backup_s3_region.clone().unwrap_or_else(|| "us-east-1".into()),
+            config.backup_s3_endpoint.clone(),
+            config.backup_s3_public_url.clone(),
+        ));
     }
     let path = config
         .backup_local_path
         .clone()
-        .unwrap_or_else(|| crate::paths::backups_dir().to_string_lossy().into_owned());
-    let fs = FileSystemStorage::new(&path).map_err(|e| BackupError::Storage(e.to_string()))?;
-    Ok(Arc::new(fs))
+        .unwrap_or_else(|| "vcms_data/backups".to_owned());
+    BackupDestination::filesystem(path)
 }
 
 // --- Plan building ----------------------------------------------------------
 
 fn build_instance_plan(backend: crate::database::backend::DatabaseBackend, tables: &Tables) -> schema::RestorePlan {
     let deletes = vec![
+        schema::Statement {
+            sql: "DELETE FROM instance_settings".into(),
+            rows: vec![],
+        },
         schema::Statement {
             sql: "DELETE FROM sites".into(),
             rows: vec![],
@@ -768,6 +969,19 @@ fn inserts_for(backend: crate::database::backend::DatabaseBackend, tables: &Tabl
 
 type Row = serde_json::Map<String, serde_json::Value>;
 type Tables = HashMap<String, Vec<Row>>;
+
+fn validate_restored_settings(tables: &Tables) -> Result<(), BackupError> {
+    let row = tables
+        .get("instance_settings")
+        .and_then(|rows| rows.first())
+        .ok_or_else(|| BackupError::Invalid("instance backup is missing instance settings".into()))?;
+    let json = str_field(row, "settings_json")
+        .ok_or_else(|| BackupError::Invalid("restored instance settings are missing settings_json".into()))?;
+    let settings: crate::services::settings::InstanceSettings = serde_json::from_str(json)
+        .map_err(|error| BackupError::Invalid(format!("invalid restored settings: {error}")))?;
+    crate::services::settings::validate(&settings)
+        .map_err(|error| BackupError::Invalid(format!("invalid restored settings: {error}")))
+}
 
 /// A decoded backup artifact: the manifest, the per-table NDJSON bytes (keyed by
 /// table name), and the uploaded file blobs (keyed by storage key).
@@ -1091,4 +1305,43 @@ fn parse_key_hex(hex_str: &str) -> Option<[u8; 32]> {
     let mut key = [0u8; 32];
     key.copy_from_slice(&bytes);
     Some(key)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn staged_artifact_remains_bound_to_original_destination() {
+        let pool = crate::database::init_db("sqlite::memory:").await.unwrap();
+        let first = tempfile::tempdir().unwrap();
+        let second = tempfile::tempdir().unwrap();
+        let mut config = Config {
+            backup_local_path: Some(first.path().to_string_lossy().into_owned()),
+            ..Config::default()
+        };
+        let service = BackupService::new(
+            pool,
+            Arc::new(StorageRegistry::new()),
+            build_backup_destination(&config).unwrap(),
+            &config,
+        );
+
+        let locator = service.stage_upload(b"bound-to-first".to_vec()).await.unwrap();
+        config.backup_local_path = Some(second.path().to_string_lossy().into_owned());
+        service.set_destination(build_backup_destination(&config).unwrap());
+
+        assert_eq!(service.read_destination(&locator).await.unwrap(), b"bound-to-first");
+        service.delete_destination(&locator).await;
+        assert!(service.read_destination(&locator).await.is_err());
+    }
+
+    #[test]
+    fn whole_instance_restore_rejects_invalid_settings_before_commit() {
+        let mut row = Row::new();
+        row.insert("settings_json".into(), serde_json::Value::String("{}".into()));
+        let mut tables = Tables::new();
+        tables.insert("instance_settings".into(), vec![row]);
+        assert!(validate_restored_settings(&tables).is_err());
+    }
 }

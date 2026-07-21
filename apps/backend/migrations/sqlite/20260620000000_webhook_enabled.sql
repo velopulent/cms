@@ -1,0 +1,1 @@
+ALTER TABLE site_webhooks ADD COLUMN enabled INTEGER NOT NULL DEFAULT 1;

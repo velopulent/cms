@@ -72,10 +72,11 @@ mod tests {
     use super::*;
 
     #[test]
-    fn plist_uses_dedicated_identity_and_paths() {
+    fn plist_uses_dedicated_identity_and_installed_entrypoint() {
         let plist = launchd_plist();
         assert!(plist.contains("<key>UserName</key><string>_vcms</string>"));
-        assert!(plist.contains("/Library/Application Support/vcms"));
+        assert!(plist.contains("<string>service</string><string>run</string>"));
+        assert!(!plist.contains("VCMS_HOME"));
         assert!(plist.contains("StandardErrorPath"));
     }
 

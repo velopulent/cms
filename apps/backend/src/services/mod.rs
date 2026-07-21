@@ -8,6 +8,7 @@ pub mod entry;
 pub mod error;
 pub mod file;
 pub mod search;
+pub mod settings;
 pub mod singleton;
 pub mod site;
 pub mod webhook;
@@ -76,7 +77,7 @@ impl Services {
             auth: Arc::new(auth::AuthService::new(
                 repository.user.clone(),
                 repository.session.clone(),
-                config.hmac_secret.clone(),
+                config.session_auth_key.clone(),
                 config.cookie_secure,
                 config.session_lifetime_hours,
                 config.public_registration_enabled,
@@ -85,7 +86,7 @@ impl Services {
             site: Arc::new(site::SiteService::new(repository.site.clone(), repository.user.clone())),
             access_token: Arc::new(access_token::AccessTokenService::new(
                 repository.access_token.clone(),
-                config.hmac_secret.clone(),
+                config.token_index_key.clone(),
                 config.bcrypt_cost,
             )),
             collection: Arc::new(collection::CollectionService::new(
@@ -112,7 +113,7 @@ impl Services {
             ),
             webhook: Arc::new(webhook::WebhookService::new(
                 repository.webhook.clone(),
-                &config.hmac_secret,
+                &config.webhook_encryption_key,
                 config.webhook_allow_private_targets,
             )),
             search,
@@ -126,12 +127,8 @@ enum IndexAccess {
     ReadOnly,
 }
 
-fn search_index_path(config: &Config) -> PathBuf {
-    config
-        .search_index_path
-        .clone()
-        .map(PathBuf::from)
-        .unwrap_or_else(crate::paths::search_dir)
+fn search_index_path(config: &Config) -> Option<PathBuf> {
+    config.search_index_path.clone().map(PathBuf::from)
 }
 
 /// Open the search index for queries. Returns `None` when search is disabled or the
@@ -142,7 +139,10 @@ fn build_search(config: &Config, access: IndexAccess) -> Option<Arc<SearchServic
     if !config.search_enabled {
         return None;
     }
-    let path = search_index_path(config);
+    let Some(path) = search_index_path(config) else {
+        tracing::error!("Full-text search disabled: runtime search path is missing");
+        return None;
+    };
     let opened = match access {
         IndexAccess::ReadWrite => SearchService::open(&path),
         IndexAccess::ReadOnly => SearchService::open_read_only(&path),

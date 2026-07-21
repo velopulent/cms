@@ -25,6 +25,7 @@ use crate::repository::Repository;
 use crate::repository::traits::ListFilesParams;
 use crate::services::Services;
 use crate::services::file::StreamingUploadRequest;
+use crate::services::settings::SettingsService;
 use crate::signed_upload::{SignedUploadError, SignedUploadToken};
 use crate::storage::{StorageProvider, StorageRegistry};
 
@@ -125,12 +126,13 @@ pub async fn list_files(
     security(("bearer" = []), ("access_token" = [])),
     tag = "files"
 )]
-#[instrument(skip(repository, services, ctx, multipart, storage_registry))]
+#[instrument(skip(repository, services, settings, ctx, multipart, storage_registry))]
 pub async fn upload_file(
     ctx: RequestContext,
     Extension(repository): Extension<Repository>,
     Extension(services): Extension<Services>,
     Extension(storage_registry): Extension<Arc<StorageRegistry>>,
+    Extension(settings): Extension<SettingsService>,
     mut multipart: Multipart,
 ) -> Response {
     if let Err((status, err)) = require_site_action(&ctx, &repository, Action::FilesWrite).await {
@@ -149,6 +151,7 @@ pub async fn upload_file(
         Err(status) => return (status, Json(json!({"error": "Storage not configured"}))).into_response(),
     };
     let created_by = ctx.auth.actor.user_id().map(String::from);
+    let max_bytes = settings.current().general.upload_limit_mb * 1024 * 1024;
 
     // Stream the "file" field straight into storage (constant memory); size cap
     // and content sniffing are enforced by the service while streaming.
@@ -184,6 +187,7 @@ pub async fn upload_file(
                             created_by: created_by.as_deref(),
                             storage: storage.clone(),
                             storage_provider: &storage_provider,
+                            max_bytes,
                         },
                         stream,
                     )
@@ -213,17 +217,18 @@ pub async fn upload_file(
     ),
     tag = "files"
 )]
-#[instrument(skip(services, config, storage_registry, headers, body))]
+#[instrument(skip(services, config, settings, storage_registry, headers, body))]
 pub async fn upload_via_signed_url(
     Path(token): Path<String>,
     headers: HeaderMap,
     Extension(services): Extension<Services>,
     Extension(config): Extension<Config>,
     Extension(storage_registry): Extension<Arc<StorageRegistry>>,
+    Extension(settings): Extension<SettingsService>,
     body: Body,
 ) -> Response {
     // The token is the auth: HMAC-signed by the server, time-limited, single-use.
-    let token = match SignedUploadToken::verify(&token, &config.hmac_secret) {
+    let token = match SignedUploadToken::verify(&token, &config.signed_upload_key) {
         Ok(t) => t,
         Err(SignedUploadError::Expired) => {
             return (StatusCode::GONE, Json(json!({"error": "Upload URL expired"}))).into_response();
@@ -234,16 +239,17 @@ pub async fn upload_via_signed_url(
     };
 
     // Fast reject when the client announces an oversized body upfront.
+    let max_bytes = settings.current().general.upload_limit_mb * 1024 * 1024;
     if let Some(len) = headers
         .get(header::CONTENT_LENGTH)
         .and_then(|v| v.to_str().ok())
         .and_then(|v| v.parse::<u64>().ok())
-        && len > config.max_upload_size_bytes as u64
+        && len > max_bytes as u64
     {
         return (
             StatusCode::PAYLOAD_TOO_LARGE,
             Json(json!({
-                "error": format!("File too large. Maximum size is {}MB", config.max_upload_size_bytes / (1024 * 1024))
+                "error": format!("File too large. Maximum size is {}MB", max_bytes / (1024 * 1024))
             })),
         )
             .into_response();
@@ -286,6 +292,7 @@ pub async fn upload_via_signed_url(
                 created_by: None,
                 storage,
                 storage_provider: &token.storage_provider,
+                max_bytes,
             },
             stream,
         )

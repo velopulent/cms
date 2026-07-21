@@ -19,7 +19,7 @@ impl PostgresWebhookRepository {
 impl WebhookRepository for PostgresWebhookRepository {
     async fn list_for_site(&self, site_id: &str) -> Result<Vec<SiteWebhook>, RepositoryError> {
         let result = sqlx::query_as::<_, SiteWebhook>(
-            "SELECT id, site_id, label, url, headers_encrypted, created_by, created_at::text as created_at, updated_at::text as updated_at FROM site_webhooks WHERE site_id = $1 ORDER BY created_at",
+            "SELECT id, site_id, label, url, headers_encrypted, enabled, created_by, created_at::text as created_at, updated_at::text as updated_at FROM site_webhooks WHERE site_id = $1 ORDER BY created_at",
         )
         .bind(site_id)
         .fetch_all(&self.pool)
@@ -30,7 +30,7 @@ impl WebhookRepository for PostgresWebhookRepository {
 
     async fn get_by_id(&self, id: &str, site_id: &str) -> Result<Option<SiteWebhook>, RepositoryError> {
         let result = sqlx::query_as::<_, SiteWebhook>(
-            "SELECT id, site_id, label, url, headers_encrypted, created_by, created_at::text as created_at, updated_at::text as updated_at FROM site_webhooks WHERE id = $1 AND site_id = $2",
+            "SELECT id, site_id, label, url, headers_encrypted, enabled, created_by, created_at::text as created_at, updated_at::text as updated_at FROM site_webhooks WHERE id = $1 AND site_id = $2",
         )
         .bind(id)
         .bind(site_id)
@@ -160,7 +160,7 @@ impl WebhookRepository for PostgresWebhookRepository {
 impl PostgresWebhookRepository {
     async fn get_by_id_unscoped(&self, id: &str) -> Result<Option<SiteWebhook>, RepositoryError> {
         sqlx::query_as::<_, SiteWebhook>(
-            "SELECT id, site_id, label, url, headers_encrypted, created_by, created_at::text as created_at, updated_at::text as updated_at FROM site_webhooks WHERE id = $1",
+            "SELECT id, site_id, label, url, headers_encrypted, enabled, created_by, created_at::text as created_at, updated_at::text as updated_at FROM site_webhooks WHERE id = $1",
         )
         .bind(id)
         .fetch_optional(&self.pool)

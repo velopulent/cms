@@ -139,11 +139,12 @@ mod tests {
     use super::*;
 
     #[test]
-    fn service_is_hardened_and_uses_journal() {
+    fn service_is_hardened_and_uses_installed_entrypoint() {
         let unit = systemd_service();
         assert!(unit.contains("ProtectSystem=strict"));
         assert!(unit.contains("CapabilityBoundingSet="));
-        assert!(!unit.contains("LOG_OUTPUT=file"));
+        assert!(unit.contains("ExecStart=/usr/bin/vcms service run"));
+        assert!(!unit.contains("VCMS_HOME"));
     }
 
     #[test]
@@ -161,7 +162,11 @@ mod tests {
         let spec = include_str!("../../packaging/rpm/vcms.spec.template");
 
         assert!(spec.contains("%config(noreplace) /var/lib/vcms/config.toml.sample"));
-        assert!(!spec.lines().any(|line| line == "%config(noreplace) /var/lib/vcms/config.toml"));
+        assert!(
+            !spec
+                .lines()
+                .any(|line| line == "%config(noreplace) /var/lib/vcms/config.toml")
+        );
         assert!(spec.contains("cp /var/lib/vcms/config.toml.sample /var/lib/vcms/config.toml"));
     }
 }

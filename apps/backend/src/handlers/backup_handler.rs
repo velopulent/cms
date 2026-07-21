@@ -220,7 +220,7 @@ async fn run_restore(
         })
         .await
     {
-        Ok(()) => {
+        Ok(report) => {
             // The search index is derived data excluded from backups, so rebuild
             // the affected scope after a restore to reflect the restored content.
             if let Some(search) = search {
@@ -241,7 +241,7 @@ async fn run_restore(
                     tracing::warn!("Post-restore search reindex failed: {}", e);
                 }
             }
-            StatusCode::NO_CONTENT.into_response()
+            (StatusCode::OK, Json(report)).into_response()
         }
         Err(e) => err_response(e),
     }
