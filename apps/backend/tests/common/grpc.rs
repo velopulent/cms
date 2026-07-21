@@ -33,7 +33,16 @@ pub struct GrpcTestContext {
     pub rest_base_url: String,
     _shutdown: tokio::sync::oneshot::Sender<()>,
     _grpc_shutdown: tokio::sync::oneshot::Sender<()>,
+    indexer: Option<tokio::task::JoinHandle<()>>,
     _storage_dir: tempfile::TempDir,
+}
+
+impl Drop for GrpcTestContext {
+    fn drop(&mut self) {
+        if let Some(indexer) = self.indexer.take() {
+            indexer.abort();
+        }
+    }
 }
 
 impl GrpcTestContext {
@@ -84,15 +93,17 @@ impl GrpcTestContext {
 
         // Mirror server startup: gRPC writes enqueue search updates, so tests need
         // the single index consumer running against an isolated per-test index.
-        if let (Some(search), Some(queue)) = (services.search.clone(), services.search_queue.clone()) {
+        let indexer = if let (Some(search), Some(queue)) = (services.search.clone(), services.search_queue.clone()) {
             let repo = repository_arc.clone();
-            tokio::spawn(async move {
+            Some(tokio::spawn(async move {
                 if search.is_empty() {
                     let _ = search.rebuild_all(&repo).await;
                 }
                 cms::services::search::indexer::run(search, queue, repo).await;
-            });
-        }
+            }))
+        } else {
+            None
+        };
 
         // Start Axum server for REST-based seeding
         let axum_listener = TcpListener::bind("127.0.0.1:0")
@@ -199,6 +210,7 @@ impl GrpcTestContext {
             rest_base_url,
             _shutdown: axum_shutdown_tx,
             _grpc_shutdown: grpc_shutdown_tx,
+            indexer,
             _storage_dir: storage_dir,
         }
     }

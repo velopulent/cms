@@ -2,8 +2,8 @@ use cms::grpc::cms::v1::collection_service_client::CollectionServiceClient;
 use cms::grpc::cms::v1::entry_service_client::EntryServiceClient;
 use cms::grpc::cms::v1::{
     CreateCollectionRequest, CreateEntryRequest, DeleteEntryRequest, GetEntryRequest, GetEntryRevisionRequest,
-    ListEntriesRequest, ListEntryRevisionsRequest, PublishEntryRequest, RestoreEntryRevisionRequest,
-    UnpublishEntryRequest, UpdateEntryRequest,
+    ListEntriesRequest, ListEntriesResponse, ListEntryRevisionsRequest, PublishEntryRequest,
+    RestoreEntryRevisionRequest, UnpublishEntryRequest, UpdateEntryRequest,
 };
 
 use crate::common::{GrpcTestContext, grpc::auth_interceptor};
@@ -27,6 +27,36 @@ async fn setup() -> (GrpcTestContext, String, String, String) {
         .into_inner();
 
     (ctx, site_id, token, collection.id)
+}
+
+async fn wait_for_search<I>(
+    client: &mut EntryServiceClient<tonic::service::interceptor::InterceptedService<tonic::transport::Channel, I>>,
+    collection_id: &str,
+    search: &str,
+    expected_slug: &str,
+) -> ListEntriesResponse
+where
+    I: tonic::service::Interceptor + Clone,
+{
+    for _ in 0..50 {
+        let response = client
+            .list_entries(tonic::Request::new(ListEntriesRequest {
+                collection_id: Some(collection_id.to_owned()),
+                status: None,
+                search: Some(search.to_owned()),
+                page: 1,
+                per_page: 10,
+            }))
+            .await
+            .unwrap()
+            .into_inner();
+        if response.items.iter().any(|item| item.slug == expected_slug) {
+            return response;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+    }
+
+    panic!("{expected_slug} never became searchable");
 }
 
 #[tokio::test]
@@ -133,26 +163,7 @@ async fn test_list_entries_with_search() {
 
     // Search indexing is asynchronous in production. Poll briefly until the
     // queue consumer publishes the committed document to the reader.
-    let mut resp = None;
-    for _ in 0..50 {
-        let current = client
-            .list_entries(tonic::Request::new(ListEntriesRequest {
-                collection_id: Some(collection_id.clone()),
-                status: None,
-                search: Some("Unique".into()),
-                page: 1,
-                per_page: 10,
-            }))
-            .await
-            .unwrap()
-            .into_inner();
-        if current.items.iter().any(|item| item.slug == "searchable") {
-            resp = Some(current);
-            break;
-        }
-        tokio::time::sleep(std::time::Duration::from_millis(20)).await;
-    }
-    let resp = resp.unwrap_or_default();
+    let resp = wait_for_search(&mut client, &collection_id, "Unique", "searchable").await;
 
     let slugs: Vec<&str> = resp.items.iter().map(|i| i.slug.as_str()).collect();
     assert!(
@@ -195,29 +206,8 @@ async fn test_search_indexes_are_isolated_across_concurrent_contexts() {
         (&mut client_a, collection_a, "context-a", "context-b"),
         (&mut client_b, collection_b, "context-b", "context-a"),
     ] {
-        let mut found = None;
-        for _ in 0..50 {
-            let response = client
-                .list_entries(tonic::Request::new(ListEntriesRequest {
-                    collection_id: Some(collection_id.clone()),
-                    status: None,
-                    // Stemmed match proves Tantivy served this result: SQL LIKE
-                    // cannot match "run" against the stored word "Running".
-                    search: Some("run".into()),
-                    page: 1,
-                    per_page: 10,
-                }))
-                .await
-                .unwrap()
-                .into_inner();
-            if response.items.iter().any(|item| item.slug == expected_slug) {
-                found = Some(response);
-                break;
-            }
-            tokio::time::sleep(std::time::Duration::from_millis(20)).await;
-        }
-
-        let response = found.unwrap_or_else(|| panic!("{expected_slug} never became searchable"));
+        // Exercise Tantivy's stemming rather than an exact stored-value match.
+        let response = wait_for_search(client, &collection_id, "run", expected_slug).await;
         let slugs: Vec<&str> = response.items.iter().map(|item| item.slug.as_str()).collect();
         assert!(
             !slugs.contains(&other_slug),
