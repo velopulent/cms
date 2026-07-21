@@ -8,6 +8,7 @@ import {
   GalleryVerticalEnd,
   Home,
   Layers,
+  Rocket,
   Settings,
 } from "lucide-react";
 import { type ComponentProps, useMemo } from "react";
@@ -16,6 +17,7 @@ import { NavMain } from "@/components/sidebar/nav-main";
 import { NavSingletons } from "@/components/sidebar/nav-singletons";
 import { NavUser } from "@/components/sidebar/nav-user";
 import { SiteSwitcher } from "@/components/sidebar/site-switcher";
+import { useSiteRole } from "@/components/site-settings/use-site-role";
 import {
   Sidebar,
   SidebarContent,
@@ -32,6 +34,7 @@ import { getCollections, getSites, siteRoleLabel } from "@/lib/api";
 export function AppSidebar({ ...props }: ComponentProps<typeof Sidebar>) {
   const { siteId } = useParams({ from: "/_admin/sites/$siteId" });
   const auth = useAuth();
+  const { canManage, role } = useSiteRole(siteId);
   const pathname = useRouterState({ select: (s) => s.location.pathname });
 
   const { data: sites, isLoading: sitesLoading } = useQuery({
@@ -63,18 +66,22 @@ export function AppSidebar({ ...props }: ComponentProps<typeof Sidebar>) {
         url: `/sites/${siteId}`,
         icon: <Home />,
       },
-      {
-        title: "Collections",
-        url: `/sites/${siteId}/collections`,
-        icon: <Layers />,
-      },
+      ...(canManage
+        ? [
+            {
+              title: "Collections",
+              url: `/sites/${siteId}/collections`,
+              icon: <Layers />,
+            },
+          ]
+        : []),
       {
         title: "Files",
         url: `/sites/${siteId}/files`,
         icon: <Files />,
       },
     ],
-    [siteId],
+    [canManage, siteId],
   );
 
   const contentNavItems = useMemo(
@@ -127,6 +134,20 @@ export function AppSidebar({ ...props }: ComponentProps<typeof Sidebar>) {
       </SidebarContent>
       <SidebarFooter>
         <SidebarMenu>
+          {(canManage || role === "editor") && (
+            <SidebarMenuItem>
+              <SidebarMenuButton
+                tooltip="Deploy"
+                isActive={pathname.startsWith(`/sites/${siteId}/deployments`)}
+                render={
+                  <Link to="/sites/$siteId/deployments" params={{ siteId }} />
+                }
+              >
+                <Rocket />
+                <span>Deploy</span>
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+          )}
           <SidebarMenuItem>
             <SidebarMenuButton
               tooltip="Settings"
