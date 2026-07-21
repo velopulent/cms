@@ -5,7 +5,7 @@ use aes_gcm::{Aes256Gcm, Key, Nonce};
 use base64::{Engine, engine::general_purpose::STANDARD as BASE64_STANDARD};
 use rand::Rng;
 use serde::{Deserialize, Serialize};
-use tokio::sync::{RwLock, watch};
+use tokio::sync::{Mutex, RwLock, watch};
 
 use crate::database::pool::DbPool;
 
@@ -63,14 +63,14 @@ pub struct BackupSettings {
     pub endpoint: Option<String>,
 }
 
-#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct CredentialPair {
     pub access_key_id: String,
     pub secret_access_key: String,
 }
 
-#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct EncryptedCredentials {
     pub storage: Option<CredentialPair>,
@@ -121,6 +121,7 @@ pub struct SettingsService {
     key: Arc<[u8; 32]>,
     snapshot: watch::Sender<Arc<InstanceSettings>>,
     credentials: Arc<RwLock<EncryptedCredentials>>,
+    write_lock: Arc<Mutex<()>>,
 }
 
 impl SettingsService {
@@ -163,6 +164,7 @@ impl SettingsService {
             key: Arc::new(key),
             snapshot,
             credentials: Arc::new(RwLock::new(credentials)),
+            write_lock: Arc::new(Mutex::new(())),
         })
     }
 
@@ -178,8 +180,31 @@ impl SettingsService {
         self.credentials.read().await.clone()
     }
 
-    pub async fn publish(&self, settings: InstanceSettings, credentials: EncryptedCredentials) -> Result<(), String> {
+    pub async fn publish(
+        &self,
+        expected: &InstanceSettings,
+        expected_credentials: &EncryptedCredentials,
+        settings: InstanceSettings,
+        credentials: EncryptedCredentials,
+    ) -> Result<(), String> {
+        let _guard = self.write_lock.lock().await;
         validate(&settings)?;
+        let Some((version, settings_json, encrypted)) =
+            load_row(&self.pool).await.map_err(|error| error.to_string())?
+        else {
+            return Err("instance settings row is missing".into());
+        };
+        if version != SETTINGS_VERSION as i64 {
+            return Err(format!("unsupported instance settings version {version}"));
+        }
+        let persisted: InstanceSettings = serde_json::from_str(&settings_json).map_err(|error| error.to_string())?;
+        let persisted_credentials = match encrypted.as_deref() {
+            Some(value) => decrypt_credentials(&self.key, value)?,
+            None => EncryptedCredentials::default(),
+        };
+        if &persisted != expected || &persisted_credentials != expected_credentials {
+            return Err("instance settings changed; reload and retry".into());
+        }
         let encrypted = if credentials.storage.is_some() || credentials.backups.is_some() {
             Some(encrypt_credentials(&self.key, &credentials)?)
         } else {
@@ -194,6 +219,7 @@ impl SettingsService {
     }
 
     pub async fn reload(&self) -> Result<(), String> {
+        let _guard = self.write_lock.lock().await;
         let Some((version, settings_json, encrypted)) =
             load_row(&self.pool).await.map_err(|error| error.to_string())?
         else {
@@ -418,5 +444,51 @@ mod tests {
             "AKIA_TEST"
         );
         assert!(decrypt_credentials(&[8_u8; 32], &encrypted).is_err());
+    }
+
+    #[tokio::test]
+    async fn concurrent_publish_rejects_stale_snapshot() {
+        let pool = crate::database::init_db("sqlite::memory:").await.unwrap();
+        let service = SettingsService::load(pool, &"11".repeat(32)).await.unwrap();
+        let expected = service.current();
+        let expected_credentials = service.credentials().await;
+
+        let mut general_update = (*expected).clone();
+        general_update.general.public_registration = true;
+        let mut security_update = (*expected).clone();
+        security_update.security.private_webhook_targets = true;
+
+        let first = service.clone();
+        let first_expected = expected.clone();
+        let first_credentials = expected_credentials.clone();
+        let second = service.clone();
+        let second_expected = expected.clone();
+        let second_credentials = expected_credentials.clone();
+        let (general_result, security_result) = tokio::join!(
+            async move {
+                first
+                    .publish(
+                        &first_expected,
+                        &first_credentials,
+                        general_update,
+                        first_credentials.clone(),
+                    )
+                    .await
+            },
+            async move {
+                second
+                    .publish(
+                        &second_expected,
+                        &second_credentials,
+                        security_update,
+                        second_credentials.clone(),
+                    )
+                    .await
+            }
+        );
+
+        assert_ne!(general_result.is_ok(), security_result.is_ok());
+        let stale = general_result.err().or_else(|| security_result.err()).unwrap();
+        assert!(stale.contains("changed"));
     }
 }
