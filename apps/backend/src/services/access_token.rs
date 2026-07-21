@@ -8,8 +8,11 @@ use tracing::{debug, error, info};
 use uuid::Uuid;
 
 use crate::middleware::auth::compute_key_hmac;
-use crate::models::access_token::{AccessToken, AccessTokenPermission, AccessTokenResponse};
-use crate::repository::traits::{AccessTokenRepository, NewAccessToken};
+use crate::models::access_token::{
+    AccessToken, AccessTokenResponse, CreatePersonalAccessToken, PersonalAccessTokenResponse, PersonalAccessTokenView,
+    TokenScopes, decode_scopes, encode_scopes,
+};
+use crate::repository::traits::{AccessTokenRepository, NewAccessToken, NewPersonalToken};
 
 const SITE_TOKEN_PREFIX: &str = "vcms_site_";
 
@@ -62,6 +65,10 @@ impl AccessTokenService {
         format!("{}{}", SITE_TOKEN_PREFIX, random_chars)
     }
 
+    fn build_personal_token() -> String {
+        format!("vcms_pat_{}", Uuid::new_v4().simple())
+    }
+
     pub async fn list_site_tokens(&self, site_id: &str) -> Result<Vec<AccessToken>, TokenError> {
         self.access_token_repo
             .list(site_id)
@@ -73,10 +80,11 @@ impl AccessTokenService {
         &self,
         site_id: &str,
         name: String,
-        permission: AccessTokenPermission,
+        scopes: impl Into<TokenScopes>,
         created_by: Option<&str>,
     ) -> Result<AccessTokenResponse, TokenError> {
-        debug!("Creating site token: site_id={}, permission={}", site_id, permission);
+        debug!("Creating scoped site token: site_id={}", site_id);
+        let scopes = scopes.into();
 
         let name = name.trim();
         if name.is_empty() {
@@ -88,7 +96,7 @@ impl AccessTokenService {
         let token_hash = hash(&raw_token, self.bcrypt_cost).map_err(|e| TokenError::HashError(e.to_string()))?;
         let token_hmac = compute_key_hmac(&raw_token, &self.hmac_secret);
         let id = Uuid::now_v7().to_string();
-        let permission_str = permission.as_str();
+        let permission_str = encode_scopes(&scopes).map_err(|e| TokenError::DatabaseError(e.to_string()))?;
 
         self.access_token_repo
             .create(NewAccessToken {
@@ -98,7 +106,7 @@ impl AccessTokenService {
                 token_hash: &token_hash,
                 token_prefix: &prefix,
                 token_hmac: &token_hmac,
-                permission: permission_str,
+                permission: &permission_str,
                 created_by_user_id: created_by,
             })
             .await
@@ -113,9 +121,81 @@ impl AccessTokenService {
             name: name.to_string(),
             token: raw_token,
             token_prefix: prefix,
-            permission: permission_str.to_string(),
+            permission: permission_str,
+            scopes,
             created_at: chrono::Utc::now().format("%Y-%m-%d %H:%M:%S").to_string(),
         })
+    }
+
+    pub async fn list_personal_tokens(&self, user_id: &str) -> Result<Vec<PersonalAccessTokenView>, TokenError> {
+        self.access_token_repo
+            .list_personal(user_id)
+            .await
+            .map_err(|e| TokenError::DatabaseError(e.to_string()))?
+            .into_iter()
+            .map(|t| {
+                Ok(PersonalAccessTokenView {
+                    id: t.id,
+                    name: t.name,
+                    token_prefix: t.token_prefix,
+                    scopes: decode_scopes(&t.scopes_json).map_err(|e| TokenError::DatabaseError(e.to_string()))?,
+                    last_used_at: t.last_used_at,
+                    created_at: t.created_at,
+                    expires_at: t.expires_at,
+                    revoked_at: t.revoked_at,
+                })
+            })
+            .collect()
+    }
+
+    pub async fn create_personal_token(
+        &self,
+        user_id: &str,
+        payload: CreatePersonalAccessToken,
+    ) -> Result<PersonalAccessTokenResponse, TokenError> {
+        let name = payload.name.trim();
+        if name.is_empty() {
+            return Err(TokenError::NameRequired);
+        }
+        let raw = Self::build_personal_token();
+        let prefix: String = raw.chars().take(24).collect();
+        let id = Uuid::now_v7().to_string();
+        let token_hash = hash(&raw, self.bcrypt_cost).map_err(|e| TokenError::HashError(e.to_string()))?;
+        let token_hmac = compute_key_hmac(&raw, &self.hmac_secret);
+        let scopes_json = encode_scopes(&payload.scopes).map_err(|e| TokenError::DatabaseError(e.to_string()))?;
+        self.access_token_repo
+            .create_personal(NewPersonalToken {
+                id: &id,
+                user_id,
+                name,
+                token_hash: &token_hash,
+                token_hmac: &token_hmac,
+                token_prefix: &prefix,
+                scopes_json: &scopes_json,
+                expires_at: payload.expires_at.as_deref(),
+            })
+            .await
+            .map_err(|e| TokenError::DatabaseError(e.to_string()))?;
+        Ok(PersonalAccessTokenResponse {
+            token_info: PersonalAccessTokenView {
+                id,
+                name: name.into(),
+                token_prefix: prefix,
+                scopes: payload.scopes,
+                last_used_at: None,
+                created_at: chrono::Utc::now().to_rfc3339(),
+                expires_at: payload.expires_at,
+                revoked_at: None,
+            },
+            token: raw,
+        })
+    }
+
+    pub async fn revoke_personal_token(&self, id: &str, user_id: &str) -> Result<u64, TokenError> {
+        self.access_token_repo
+            .revoke_personal(id, user_id)
+            .await
+            .map_err(|e| TokenError::DatabaseError(e.to_string()))
     }
 
     pub async fn delete_site_token(&self, token_id: &str, site_id: &str) -> Result<u64, TokenError> {
@@ -143,6 +223,7 @@ impl AccessTokenService {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::models::access_token::AccessTokenPermission;
     use crate::test_helpers::InMemoryAccessTokenRepository;
 
     fn test_repo() -> Arc<InMemoryAccessTokenRepository> {
@@ -165,7 +246,11 @@ mod tests {
         let response = result.unwrap();
         assert_eq!(response.name, "Test Token");
         assert_eq!(response.site_id, "site-123");
-        assert_eq!(response.permission, "read");
+        assert!(
+            response
+                .scopes
+                .contains(&crate::models::access_token::TokenScope::ContentRead)
+        );
         assert!(response.token.starts_with(SITE_TOKEN_PREFIX));
     }
 

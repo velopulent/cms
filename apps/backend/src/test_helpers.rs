@@ -333,6 +333,7 @@ impl SiteRepository for InMemorySiteRepository {
             id: id.to_string(),
             name: name.to_string(),
             storage_provider: storage_provider.to_string(),
+            storage_profile_id: None,
             created_by: created_by.to_string(),
             created_at: now_timestamp(),
             updated_at: now_timestamp(),
@@ -1191,6 +1192,30 @@ impl AccessTokenRepository for InMemoryAccessTokenRepository {
     }
 
     async fn update_last_used(&self, _id: &str) -> Result<(), RepositoryError> {
+        Ok(())
+    }
+    async fn list_personal(
+        &self,
+        _user_id: &str,
+    ) -> Result<Vec<crate::models::access_token::PersonalAccessToken>, RepositoryError> {
+        Ok(vec![])
+    }
+    async fn create_personal(
+        &self,
+        _token: crate::repository::traits::NewPersonalToken<'_>,
+    ) -> Result<(), RepositoryError> {
+        Ok(())
+    }
+    async fn revoke_personal(&self, _id: &str, _user_id: &str) -> Result<u64, RepositoryError> {
+        Ok(0)
+    }
+    async fn find_personal_by_prefix(
+        &self,
+        _prefix: &str,
+    ) -> Result<Vec<crate::repository::traits::PersonalTokenLookupRow>, RepositoryError> {
+        Ok(vec![])
+    }
+    async fn touch_personal(&self, _id: &str) -> Result<(), RepositoryError> {
         Ok(())
     }
 }

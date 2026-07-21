@@ -31,6 +31,7 @@ pub async fn api_site_resolver(mut request: Request, next: Next) -> Response {
 
     let site_id = match &actor {
         Actor::ApiKey(k) => k.site_id.clone(),
+        Actor::PersonalToken(_) => match request.headers().get("x-vcms-site").and_then(|v|v.to_str().ok()) { Some(v) if !v.is_empty()=>v.to_string(), _=>return (StatusCode::BAD_REQUEST,Json(serde_json::json!({"error":"missing_site_context","message":"X-VCMS-Site is required for personal tokens"}))).into_response() },
         _ => {
             return (
                 StatusCode::FORBIDDEN,
@@ -43,10 +44,31 @@ pub async fn api_site_resolver(mut request: Request, next: Next) -> Response {
         }
     };
 
-    let auth = AuthContext {
-        actor,
-        auth_method: AuthMethod::ApiKey,
+    if let Actor::PersonalToken(token) = &actor {
+        let repository = match request.extensions().get::<Repository>() {
+            Some(value) => value.clone(),
+            None => {
+                return (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    Json(serde_json::json!({"error":"internal_error"})),
+                )
+                    .into_response();
+            }
+        };
+        if let Err((status, error)) =
+            crate::middleware::auth::check_site_action_repo(&repository, &token.user_id, &site_id, Action::SiteRead)
+                .await
+        {
+            return (status, error).into_response();
+        }
+    }
+
+    let auth_method = if matches!(actor, Actor::PersonalToken(_)) {
+        AuthMethod::PersonalToken
+    } else {
+        AuthMethod::ApiKey
     };
+    let auth = AuthContext { actor, auth_method };
 
     let ctx = RequestContext { site_id, auth };
     request.extensions_mut().insert(ctx);

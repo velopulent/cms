@@ -1,5 +1,5 @@
 use crate::middleware::auth::{Actor, verify_access_token};
-use crate::models::access_token::AccessTokenPermission;
+use crate::models::access_token::{TokenScope, TokenScopes};
 use crate::repository::Repository;
 use crate::services::Services;
 
@@ -8,7 +8,7 @@ pub struct GqlContext {
     pub services: Services,
     pub actor: Option<Actor>,
     pub site_id: Option<String>,
-    pub permission: Option<AccessTokenPermission>,
+    pub permission: Option<TokenScopes>,
 }
 
 impl GqlContext {
@@ -16,6 +16,7 @@ impl GqlContext {
         repository: Repository,
         services: Services,
         auth_header: Option<&str>,
+        requested_site: Option<&str>,
         hmac_secret: &str,
     ) -> Self {
         let mut actor = None;
@@ -24,12 +25,15 @@ impl GqlContext {
 
         if let Some(header) = auth_header
             && let Some(token) = header.strip_prefix("Bearer ")
-            && token.starts_with("vcms_site_")
+            && (token.starts_with("vcms_site_") || token.starts_with("vcms_pat_"))
             && let Ok(auth_actor) = verify_access_token(token, &repository, hmac_secret).await
         {
             if let Actor::ApiKey(k) = &auth_actor {
                 site_id = Some(k.site_id.clone());
-                permission = Some(k.permission.clone());
+                permission = Some(k.scopes.clone());
+            } else if let Actor::PersonalToken(k) = &auth_actor {
+                site_id = requested_site.map(str::to_owned);
+                permission = Some(k.scopes.clone());
             }
             actor = Some(auth_actor);
         }
@@ -51,8 +55,12 @@ impl GqlContext {
 
     pub fn require_read(&self) -> async_graphql::Result<()> {
         match (&self.actor, &self.permission) {
-            (Some(Actor::ApiKey(_)), Some(_)) => Ok(()),
-            (Some(Actor::ApiKey(_)), None) => Err(async_graphql::Error::new(
+            (Some(Actor::ApiKey(_) | Actor::PersonalToken(_)), Some(scopes))
+                if scopes.contains(&TokenScope::ContentRead) =>
+            {
+                Ok(())
+            }
+            (Some(Actor::ApiKey(_) | Actor::PersonalToken(_)), None) => Err(async_graphql::Error::new(
                 "Access token does not have required permission",
             )),
             _ => Err(async_graphql::Error::new("Site token authentication required")),
@@ -61,10 +69,8 @@ impl GqlContext {
 
     pub fn require_write(&self) -> async_graphql::Result<()> {
         match &self.permission {
-            Some(AccessTokenPermission::Write) => Ok(()),
-            Some(AccessTokenPermission::Read) => {
-                Err(async_graphql::Error::new("Access token does not have write permission"))
-            }
+            Some(scopes) if scopes.contains(&TokenScope::ContentWrite) => Ok(()),
+            Some(_) => Err(async_graphql::Error::new("Access token does not have write permission")),
             None => Err(async_graphql::Error::new("Site token authentication required")),
         }
     }
