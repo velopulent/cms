@@ -127,12 +127,8 @@ enum IndexAccess {
     ReadOnly,
 }
 
-fn search_index_path(config: &Config) -> PathBuf {
-    config
-        .search_index_path
-        .clone()
-        .map(PathBuf::from)
-        .unwrap_or_else(|| PathBuf::from("vcms_data/search"))
+fn search_index_path(config: &Config) -> Option<PathBuf> {
+    config.search_index_path.clone().map(PathBuf::from)
 }
 
 /// Open the search index for queries. Returns `None` when search is disabled or the
@@ -143,7 +139,10 @@ fn build_search(config: &Config, access: IndexAccess) -> Option<Arc<SearchServic
     if !config.search_enabled {
         return None;
     }
-    let path = search_index_path(config);
+    let Some(path) = search_index_path(config) else {
+        tracing::error!("Full-text search disabled: runtime search path is missing");
+        return None;
+    };
     let opened = match access {
         IndexAccess::ReadWrite => SearchService::open(&path),
         IndexAccess::ReadOnly => SearchService::open_read_only(&path),
