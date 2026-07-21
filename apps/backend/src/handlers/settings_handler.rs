@@ -15,12 +15,12 @@ use crate::error::AppError;
 use crate::middleware::auth::{AuthContext, require_instance_action};
 use crate::models::authorization::Action;
 use crate::repository::Repository;
-use crate::services::backup::BackupService;
+use crate::services::backup::{BackupDestination, BackupService};
 use crate::services::settings::{
     BackupSettings, CredentialPair, EncryptedCredentials, GeneralSettings, InstanceSettings, SecuritySettings,
     SettingsService, StorageSettings,
 };
-use crate::storage::{FileSystemStorage, S3Storage, StorageProvider, StorageRegistry};
+use crate::storage::{S3Storage, StorageRegistry};
 
 #[derive(Serialize)]
 pub struct SettingsResponse {
@@ -85,9 +85,11 @@ pub async fn update_general(
     if let Err(response) = owner(&auth, &repository).await {
         return response;
     }
-    let mut next = (*settings.current()).clone();
+    let current = settings.current();
+    let credentials = settings.credentials().await;
+    let mut next = (*current).clone();
     next.general = section;
-    publish(&settings, next, settings.credentials().await).await
+    publish(&settings, &current, &credentials, next, credentials.clone()).await
 }
 
 pub async fn update_security(
@@ -99,9 +101,11 @@ pub async fn update_security(
     if let Err(response) = owner(&auth, &repository).await {
         return response;
     }
-    let mut next = (*settings.current()).clone();
+    let current = settings.current();
+    let credentials = settings.credentials().await;
+    let mut next = (*current).clone();
     next.security = section;
-    publish(&settings, next, settings.credentials().await).await
+    publish(&settings, &current, &credentials, next, credentials.clone()).await
 }
 
 pub async fn update_storage(
@@ -129,7 +133,8 @@ pub async fn update_storage(
             _ => {}
         }
     }
-    let mut credentials = settings.credentials().await;
+    let current_credentials = settings.credentials().await;
+    let mut credentials = current_credentials.clone();
     let provider: Option<S3Storage> = if update.settings.provider == "filesystem" {
         credentials.storage = None;
         None
@@ -156,7 +161,10 @@ pub async fn update_storage(
         return AppError::Conflict("Storage settings changed while the S3 probe was running; review and retry".into())
             .into_response();
     }
-    if let Err(error) = settings.publish(next, credentials).await {
+    if let Err(error) = settings
+        .publish(&current, &current_credentials, next, credentials)
+        .await
+    {
         return AppError::BadRequest(error).into_response();
     }
     match provider {
@@ -184,11 +192,17 @@ pub async fn update_backups(
         )
         .into_response();
     }
-    let mut credentials = settings.credentials().await;
-    let destination: Arc<dyn StorageProvider> = if update.settings.destination == "filesystem" {
+    let current_credentials = settings.credentials().await;
+    let mut credentials = current_credentials.clone();
+    let destination = if update.settings.destination == "filesystem" {
         credentials.backups = None;
-        match FileSystemStorage::new(config.backup_local_path.as_deref().unwrap_or("vcms_data/backups")) {
-            Ok(provider) => Arc::new(provider),
+        match BackupDestination::filesystem(
+            config
+                .backup_local_path
+                .clone()
+                .unwrap_or_else(|| "vcms_data/backups".into()),
+        ) {
+            Ok(destination) => destination,
             Err(error) => return AppError::Internal(error.to_string()).into_response(),
         }
     } else {
@@ -209,8 +223,17 @@ pub async fn update_backups(
                     Ok(provider) => provider,
                     Err(error) => return AppError::BadRequest(format!("S3 probe failed: {error}")).into_response(),
                 };
+                let destination = BackupDestination::s3(
+                    Arc::new(provider),
+                    pair.access_key_id.clone(),
+                    pair.secret_access_key.clone(),
+                    storage.bucket.clone().unwrap_or_default(),
+                    storage.region.clone().unwrap_or_else(|| "us-east-1".into()),
+                    storage.endpoint.clone(),
+                    storage.public_url.clone(),
+                );
                 credentials.backups = Some(pair);
-                Arc::new(provider)
+                destination
             }
             Err(error) => return AppError::BadRequest(error).into_response(),
         }
@@ -221,15 +244,27 @@ pub async fn update_backups(
         return AppError::Conflict("Backup settings changed while the S3 probe was running; review and retry".into())
             .into_response();
     }
-    if let Err(error) = settings.publish(next, credentials).await {
+    if let Err(error) = settings
+        .publish(&current, &current_credentials, next, credentials)
+        .await
+    {
         return AppError::BadRequest(error).into_response();
     }
     backup.set_destination(destination);
     response(&settings).await.into_response()
 }
 
-async fn publish(settings: &SettingsService, next: InstanceSettings, credentials: EncryptedCredentials) -> Response {
-    match settings.publish(next, credentials).await {
+async fn publish(
+    settings: &SettingsService,
+    expected: &InstanceSettings,
+    expected_credentials: &EncryptedCredentials,
+    next: InstanceSettings,
+    credentials: EncryptedCredentials,
+) -> Response {
+    match settings
+        .publish(expected, expected_credentials, next, credentials)
+        .await
+    {
         Ok(()) => response(settings).await.into_response(),
         Err(error) => AppError::BadRequest(error).into_response(),
     }
