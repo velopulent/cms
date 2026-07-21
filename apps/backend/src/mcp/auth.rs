@@ -75,13 +75,21 @@ pub async fn authenticate_mcp_request(mut request: Request<Body>, next: Next) ->
     };
 
     let token = match bearer_token(&request) {
-        Some(token) if token.starts_with("vcms_site_") => token,
-        Some(_) => return auth_response(StatusCode::UNAUTHORIZED, "MCP requires a vcms_site_* access token"),
+        Some(token) if token.starts_with("vcms_site_") || token.starts_with("vcms_pat_") => token,
+        Some(_) => return auth_response(StatusCode::UNAUTHORIZED, "MCP requires a VCMS access token"),
         None => return auth_response(StatusCode::UNAUTHORIZED, "Missing Authorization bearer token"),
     };
 
     match verify_access_token(&token, &repository, &config.token_index_key).await {
         Ok(actor) => {
+            let has_mcp = match &actor {
+                Actor::ApiKey(k) => k.scopes.contains(&crate::models::access_token::TokenScope::McpUse),
+                Actor::PersonalToken(k) => k.scopes.contains(&crate::models::access_token::TokenScope::McpUse),
+                Actor::User(_) => false,
+            };
+            if !has_mcp {
+                return auth_response(StatusCode::FORBIDDEN, "Token is missing mcp.use scope");
+            }
             request.extensions_mut().insert(actor);
             next.run(request).await
         }

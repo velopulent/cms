@@ -13,23 +13,18 @@ use crate::middleware::auth::Actor;
 use crate::models::authorization::Action;
 use crate::services::{Services, authorization::AuthorizationService};
 
-fn require_site_id(actor: &Actor) -> Result<String, McpError> {
-    actor
-        .bound_site_id()
-        .map(String::from)
-        .ok_or_else(|| McpError::invalid_request("No site context", None))
-}
-
 #[derive(Debug, Deserialize, JsonSchema)]
-pub struct ListWebhooksParams {}
+pub struct ListWebhooksParams {
+    pub site_id: String,
+}
 
 pub async fn list_webhooks(
     authorization: &Arc<AuthorizationService>,
     services: &Arc<Services>,
     actor: &Actor,
-    _params: Parameters<ListWebhooksParams>,
+    params: Parameters<ListWebhooksParams>,
 ) -> Result<CallToolResult, McpError> {
-    let site_id = require_site_id(actor)?;
+    let site_id = params.0.site_id;
     if let Err(e) = authorization
         .require_site_action(actor, &site_id, Action::WebhooksRead)
         .await
@@ -44,6 +39,7 @@ pub async fn list_webhooks(
 
 #[derive(Debug, Deserialize, JsonSchema)]
 pub struct GetWebhookParams {
+    pub site_id: String,
     pub webhook_id: String,
 }
 
@@ -53,7 +49,7 @@ pub async fn get_webhook(
     actor: &Actor,
     params: Parameters<GetWebhookParams>,
 ) -> Result<CallToolResult, McpError> {
-    let site_id = require_site_id(actor)?;
+    let site_id = params.0.site_id.clone();
     if let Err(e) = authorization
         .require_site_action(actor, &site_id, Action::WebhooksRead)
         .await
@@ -71,6 +67,7 @@ pub async fn get_webhook(
 
 #[derive(Debug, Deserialize, JsonSchema)]
 pub struct CreateWebhookParams {
+    pub site_id: String,
     pub label: String,
     pub url: String,
     #[schemars(with = "ArbitraryJson")]
@@ -83,7 +80,7 @@ pub async fn create_webhook(
     actor: &Actor,
     params: Parameters<CreateWebhookParams>,
 ) -> Result<CallToolResult, McpError> {
-    let site_id = require_site_id(actor)?;
+    let site_id = params.0.site_id.clone();
     if let Err(e) = authorization
         .require_site_action(actor, &site_id, Action::WebhooksWrite)
         .await
@@ -107,6 +104,7 @@ pub async fn create_webhook(
 
 #[derive(Debug, Deserialize, JsonSchema)]
 pub struct UpdateWebhookParams {
+    pub site_id: String,
     pub webhook_id: String,
     pub label: Option<String>,
     pub url: Option<String>,
@@ -120,7 +118,7 @@ pub async fn update_webhook(
     actor: &Actor,
     params: Parameters<UpdateWebhookParams>,
 ) -> Result<CallToolResult, McpError> {
-    let site_id = require_site_id(actor)?;
+    let site_id = params.0.site_id.clone();
     if let Err(e) = authorization
         .require_site_action(actor, &site_id, Action::WebhooksWrite)
         .await
@@ -146,6 +144,7 @@ pub async fn update_webhook(
 
 #[derive(Debug, Deserialize, JsonSchema)]
 pub struct TriggerWebhookParams {
+    pub site_id: String,
     pub webhook_id: String,
 }
 
@@ -155,7 +154,7 @@ pub async fn trigger_webhook(
     actor: &Actor,
     params: Parameters<TriggerWebhookParams>,
 ) -> Result<CallToolResult, McpError> {
-    let site_id = require_site_id(actor)?;
+    let site_id = params.0.site_id.clone();
     if let Err(e) = authorization
         .require_site_action(actor, &site_id, Action::WebhooksWrite)
         .await
@@ -174,6 +173,7 @@ pub async fn trigger_webhook(
 
 #[derive(Debug, Deserialize, JsonSchema)]
 pub struct DeleteWebhookParams {
+    pub site_id: String,
     pub webhook_id: String,
 }
 
@@ -183,7 +183,7 @@ pub async fn delete_webhook(
     actor: &Actor,
     params: Parameters<DeleteWebhookParams>,
 ) -> Result<CallToolResult, McpError> {
-    let site_id = require_site_id(actor)?;
+    let site_id = params.0.site_id.clone();
     if let Err(e) = authorization
         .require_site_action(actor, &site_id, Action::WebhooksWrite)
         .await
@@ -198,6 +198,7 @@ pub async fn delete_webhook(
 
 #[derive(Debug, Deserialize, JsonSchema)]
 pub struct ListWebhookDeliveriesParams {
+    pub site_id: String,
     pub webhook_id: String,
     pub page: Option<i64>,
     pub per_page: Option<i64>,
@@ -209,7 +210,7 @@ pub async fn list_webhook_deliveries(
     actor: &Actor,
     params: Parameters<ListWebhookDeliveriesParams>,
 ) -> Result<CallToolResult, McpError> {
-    let site_id = require_site_id(actor)?;
+    let site_id = params.0.site_id.clone();
     if let Err(e) = authorization
         .require_site_action(actor, &site_id, Action::WebhooksRead)
         .await

@@ -48,6 +48,15 @@ impl CmsServer {
         }
     }
 
+    #[tool(description = "List sites accessible to the authenticated user")]
+    async fn list_sites(&self, ctx: RequestContext<RoleServer>) -> Result<CallToolResult, McpError> {
+        let actor = self.resolve_actor(&ctx)?;
+        match self.services.site.list_sites_for_actor(&actor).await {
+            Ok(v) => crate::mcp::auth::ok_result(&v),
+            Err(e) => Err(crate::mcp::auth::map_err(e)),
+        }
+    }
+
     #[tool(description = "Get details of a specific site by ID")]
     async fn get_site(
         &self,
@@ -524,7 +533,7 @@ mod tests {
         let tools = CmsServer::tool_router().list_all();
         assert!(tools.iter().any(|tool| tool.name == "get_site"));
         assert!(!tools.iter().any(|tool| tool.name.contains("token")));
-        assert!(!tools.iter().any(|tool| tool.name == "list_sites"));
+        assert!(tools.iter().any(|tool| tool.name == "list_sites"));
         assert!(tools.len() > 15);
     }
 
@@ -638,6 +647,21 @@ mod tests {
                     );
                 }
             }
+        }
+    }
+
+    #[test]
+    fn every_site_tool_requires_explicit_site_id() {
+        for tool in all_tools().into_iter().filter(|tool| tool.name != "list_sites") {
+            let cleaned = clean_input_schema(tool.input_schema);
+            assert!(
+                cleaned
+                    .get("required")
+                    .and_then(|value| value.as_array())
+                    .is_some_and(|required| required.iter().any(|value| value.as_str() == Some("site_id"))),
+                "tool '{}' must require site_id",
+                tool.name
+            );
         }
     }
 }
