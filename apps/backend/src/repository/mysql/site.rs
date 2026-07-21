@@ -19,7 +19,7 @@ impl MysqlSiteRepository {
 impl SiteRepository for MysqlSiteRepository {
     async fn list_all(&self) -> Result<Vec<Site>, RepositoryError> {
         let result = sqlx::query_as::<_, Site>(
-            "SELECT id, name, storage_provider, created_by, CAST(created_at AS CHAR) AS created_at, CAST(updated_at AS CHAR) AS updated_at FROM sites ORDER BY name",
+            "SELECT id, name, storage_provider, storage_profile_id, created_by, CAST(created_at AS CHAR) AS created_at, CAST(updated_at AS CHAR) AS updated_at FROM sites ORDER BY name",
         )
         .fetch_all(&self.pool)
         .await?;
@@ -29,7 +29,7 @@ impl SiteRepository for MysqlSiteRepository {
 
     async fn list_for_user(&self, user_id: &str) -> Result<Vec<SiteWithRole>, RepositoryError> {
         let result = sqlx::query_as::<_, SiteWithRole>(
-            "SELECT s.id, s.name, s.storage_provider, s.created_by, CAST(s.created_at AS CHAR) AS created_at, CAST(s.updated_at AS CHAR) AS updated_at, sm.role
+            "SELECT s.id, s.name, s.storage_provider, s.storage_profile_id, s.created_by, CAST(s.created_at AS CHAR) AS created_at, CAST(s.updated_at AS CHAR) AS updated_at, sm.role
              FROM sites s
              JOIN site_members sm ON s.id = sm.site_id
              WHERE sm.user_id = ?
@@ -44,7 +44,7 @@ impl SiteRepository for MysqlSiteRepository {
 
     async fn get_by_id(&self, id: &str) -> Result<Option<Site>, RepositoryError> {
         let result = sqlx::query_as::<_, Site>(
-            "SELECT id, name, storage_provider, created_by, CAST(created_at AS CHAR) AS created_at, CAST(updated_at AS CHAR) AS updated_at FROM sites WHERE id = ?",
+            "SELECT id, name, storage_provider, storage_profile_id, created_by, CAST(created_at AS CHAR) AS created_at, CAST(updated_at AS CHAR) AS updated_at FROM sites WHERE id = ?",
         )
         .bind(id)
         .fetch_optional(&self.pool)

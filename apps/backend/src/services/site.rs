@@ -83,9 +83,8 @@ impl SiteService {
     pub async fn list_sites_for_actor(&self, actor: &Actor) -> Result<Vec<serde_json::Value>, SiteError> {
         match actor {
             Actor::User(user) => self.list_sites_for_user(&user.user_id).await,
-            Actor::ApiKey(_) => {
-                unreachable!("ApiKey should not be used for listing sites")
-            }
+            Actor::ApiKey(key) => Ok(self.get_site(&key.site_id).await?.into_iter().map(|site| serde_json::json!({"id":site.id,"name":site.name,"storage_provider":site.storage_provider,"storage_profile_id":site.storage_profile_id,"created_by":site.created_by,"created_at":site.created_at,"updated_at":site.updated_at,"role":"site_key"})).collect()),
+            Actor::PersonalToken(token) => self.list_sites_for_user(&token.user_id).await,
         }
     }
 
@@ -113,6 +112,7 @@ impl SiteService {
                                 "id": site.id,
                                 "name": site.name,
                                 "storage_provider": site.storage_provider,
+                                "storage_profile_id": site.storage_profile_id,
                                 "created_by": site.created_by,
                                 "created_at": site.created_at,
                                 "updated_at": site.updated_at,
@@ -412,6 +412,7 @@ mod tests {
             id: "site-123".to_string(),
             name: "Test Site".to_string(),
             storage_provider: "filesystem".to_string(),
+            storage_profile_id: Some("local-filesystem".to_string()),
             created_by: "user-123".to_string(),
             created_at: "2024-01-01 00:00:00".to_string(),
             updated_at: "2024-01-01 00:00:00".to_string(),
