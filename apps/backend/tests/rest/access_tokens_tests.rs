@@ -1,6 +1,10 @@
 use serde_json::{Value, json};
 
-use crate::common::{TestServer, auth::auth_header, fixtures::setup};
+use crate::common::{
+    TestServer,
+    auth::auth_header,
+    fixtures::{setup, site_key_scopes},
+};
 
 #[tokio::test]
 async fn test_create_token() {
@@ -11,7 +15,7 @@ async fn test_create_token() {
     let resp = client
         .post(format!("{}/api/dashboard/sites/{}/tokens", server.base_url, site_id))
         .headers(auth_header(&token, &csrf))
-        .json(&json!({"name": "Test Token", "permission": "read"}))
+        .json(&json!({"name": "Test Token", "scopes": site_key_scopes("read")}))
         .send()
         .await
         .unwrap();
@@ -19,7 +23,12 @@ async fn test_create_token() {
     assert_eq!(resp.status(), 201);
     let body: Value = resp.json().await.unwrap();
     assert_eq!(body["name"], "Test Token");
-    assert_eq!(body["permission"], "read");
+    assert!(
+        body["scopes"]
+            .as_array()
+            .unwrap()
+            .contains(&Value::String("site.read".into()))
+    );
     assert!(body["token"].as_str().unwrap().starts_with("vcms_site_"));
 }
 
@@ -32,7 +41,7 @@ async fn test_list_tokens() {
     client
         .post(format!("{}/api/dashboard/sites/{}/tokens", server.base_url, site_id))
         .headers(auth_header(&token, &csrf))
-        .json(&json!({"name": "Token One", "permission": "read"}))
+        .json(&json!({"name": "Token One", "scopes": site_key_scopes("read")}))
         .send()
         .await
         .unwrap();
@@ -59,7 +68,7 @@ async fn test_delete_token() {
     let create_resp = client
         .post(format!("{}/api/dashboard/sites/{}/tokens", server.base_url, site_id))
         .headers(auth_header(&token, &csrf))
-        .json(&json!({"name": "To Delete", "permission": "write"}))
+        .json(&json!({"name": "To Delete", "scopes": site_key_scopes("write")}))
         .send()
         .await
         .unwrap();
@@ -88,7 +97,7 @@ async fn test_create_token_empty_name() {
     let resp = client
         .post(format!("{}/api/dashboard/sites/{}/tokens", server.base_url, site_id))
         .headers(auth_header(&token, &csrf))
-        .json(&json!({"name": "   ", "permission": "read"}))
+        .json(&json!({"name": "   ", "scopes": site_key_scopes("read")}))
         .send()
         .await
         .unwrap();
@@ -105,7 +114,7 @@ async fn test_token_can_authenticate_public_api() {
     let token_resp = client
         .post(format!("{}/api/dashboard/sites/{}/tokens", server.base_url, site_id))
         .headers(auth_header(&token, &csrf))
-        .json(&json!({"name": "API Key", "permission": "read"}))
+        .json(&json!({"name": "API Key", "scopes": site_key_scopes("read")}))
         .send()
         .await
         .unwrap();
