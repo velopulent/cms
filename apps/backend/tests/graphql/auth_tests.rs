@@ -58,7 +58,7 @@ async fn setup_site_token(server: &TestServer) -> (reqwest::Client, String) {
         .post(format!("{}/api/dashboard/sites/{}/tokens", server.base_url, site_id))
         .header("Cookie", format!("token={}; csrf={}", token, csrf))
         .header("X-CSRF-Token", &csrf)
-        .json(&json!({"name": "GraphQL Token", "permission": "write"}))
+        .json(&json!({"name": "GraphQL Token", "scopes": crate::common::fixtures::site_key_scopes("write")}))
         .send()
         .await
         .unwrap();
@@ -111,7 +111,7 @@ async fn setup_read_token(server: &TestServer) -> String {
         .post(format!("{}/api/dashboard/sites/{}/tokens", server.base_url, site_id))
         .header("Cookie", format!("token={}; csrf={}", token, csrf))
         .header("X-CSRF-Token", &csrf)
-        .json(&json!({"name": "Read Token", "permission": "read"}))
+        .json(&json!({"name": "Read Token", "scopes": crate::common::fixtures::site_key_scopes("read")}))
         .send()
         .await
         .unwrap();
@@ -210,7 +210,7 @@ async fn test_wrong_site_token() {
         .post(format!("{}/api/dashboard/sites/{}/tokens", server.base_url, site_a_id))
         .header("Cookie", format!("token={}; csrf={}", token, csrf))
         .header("X-CSRF-Token", &csrf)
-        .json(&json!({"name": "Token A", "permission": "write"}))
+        .json(&json!({"name": "Token A", "scopes": crate::common::fixtures::site_key_scopes("write")}))
         .send()
         .await
         .unwrap();
