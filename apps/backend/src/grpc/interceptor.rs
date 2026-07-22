@@ -7,7 +7,7 @@ use tracing::{Span, error};
 
 use crate::config::Config;
 use crate::grpc::auth::{AuthContext, parse_token};
-use crate::models::access_token::AccessTokenPermission;
+use crate::models::access_token::{AccessTokenPermission, TokenScope, TokenScopes, decode_scopes};
 use crate::repository::Repository;
 
 pub type HmacSha256 = Hmac<Sha256>;
@@ -23,6 +23,7 @@ pub struct GrpcAuthContext {
     pub token_id: String,
     pub site_id: String,
     pub permission: AccessTokenPermission,
+    pub scopes: TokenScopes,
 }
 
 impl GrpcAuthContext {
@@ -30,28 +31,18 @@ impl GrpcAuthContext {
         self.permission.can_write()
     }
 
-    pub fn can_read(&self) -> bool {
-        true
-    }
-
-    pub fn require_read(&self) -> Result<(), tonic::Status> {
-        if self.can_read() {
+    pub fn require_scope(&self, scope: TokenScope) -> Result<(), tonic::Status> {
+        if self.scopes.contains(&scope) {
             Ok(())
         } else {
-            Err(tonic::Status::permission_denied("Read permission required"))
+            Err(tonic::Status::permission_denied(
+                "Token scope does not permit this operation",
+            ))
         }
     }
 
     pub fn require_site_id(&self) -> Result<&str, tonic::Status> {
         Ok(&self.site_id)
-    }
-
-    pub fn require_write(&self) -> Result<(), tonic::Status> {
-        if self.can_write() {
-            Ok(())
-        } else {
-            Err(tonic::Status::permission_denied("Write permission required"))
-        }
     }
 }
 
@@ -119,12 +110,27 @@ async fn validate_auth(ctx: &AuthContext, repository: &Repository) -> Result<Grp
 
         Span::current().record("site_id", tracing::field::display(&site_id));
 
+        let scopes = decode_scopes(&permission).map_err(|_| tonic::Status::unauthenticated("Invalid access token"))?;
+        let can_write = scopes.iter().any(|scope| {
+            matches!(
+                scope,
+                TokenScope::SiteSettingsWrite
+                    | TokenScope::ContentWrite
+                    | TokenScope::FilesWrite
+                    | TokenScope::SchemaWrite
+                    | TokenScope::WebhooksWrite
+                    | TokenScope::DeploymentsWrite
+            )
+        });
         return Ok(GrpcAuthContext {
             token_id: key_id,
             site_id,
-            permission: permission
-                .parse::<AccessTokenPermission>()
-                .map_err(|_| tonic::Status::unauthenticated("Invalid access token"))?,
+            permission: if can_write {
+                AccessTokenPermission::Write
+            } else {
+                AccessTokenPermission::Read
+            },
+            scopes,
         });
     }
 
@@ -181,10 +187,12 @@ mod tests {
             token_id: "token123".to_string(),
             site_id: "site123".to_string(),
             permission: AccessTokenPermission::Write,
+            scopes: [TokenScope::ContentWrite].into_iter().collect(),
         };
 
         assert!(ctx.can_write());
-        assert!(ctx.can_read());
+        assert!(ctx.require_scope(TokenScope::ContentWrite).is_ok());
+        assert!(ctx.require_scope(TokenScope::ContentRead).is_err());
     }
 
     #[test]
@@ -193,9 +201,9 @@ mod tests {
             token_id: "token456".to_string(),
             site_id: "site456".to_string(),
             permission: AccessTokenPermission::Read,
+            scopes: [TokenScope::ContentRead].into_iter().collect(),
         };
 
-        assert!(ctx.can_read());
         assert!(!ctx.can_write());
     }
 }
