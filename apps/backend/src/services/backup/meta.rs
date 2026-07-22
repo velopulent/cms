@@ -168,8 +168,8 @@ pub async fn insert_running(
         i64::from(encrypt),
         created_by.map(|s| s.to_string()),
         now.to_string(),
-        storage_profile_id.map(|value| value.to_string()),
         now.to_string(),
+        storage_profile_id.map(|value| value.to_string()),
     );
     Ok(())
 }
@@ -384,8 +384,8 @@ pub async fn create_schedule(
         next_run_at.map(|s| s.to_string()),
         created_by.map(|s| s.to_string()),
         now.to_string(),
-        storage_profile_id.map(|value| value.to_string()),
         now.to_string(),
+        storage_profile_id.map(|value| value.to_string()),
     );
     Ok(())
 }
