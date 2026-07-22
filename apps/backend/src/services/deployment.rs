@@ -7,6 +7,58 @@ use crate::{
 };
 use uuid::Uuid;
 
+fn map_job_insert_error(error: sqlx::Error) -> String {
+    if error
+        .as_database_error()
+        .is_some_and(|database_error| database_error.is_unique_violation())
+    {
+        "deployment_in_progress".into()
+    } else {
+        error.to_string()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::database::{init_db, pool::DbPool};
+
+    #[tokio::test]
+    async fn active_job_is_unique_per_trigger() {
+        let pool = init_db("sqlite::memory:").await.expect("database initializes");
+        let DbPool::Sqlite(database) = pool else { unreachable!() };
+        sqlx::query("INSERT INTO users(id,name,email,password_hash) VALUES('u','User','u@example.com','hash')")
+            .execute(&database)
+            .await
+            .expect("user inserts");
+        sqlx::query("INSERT INTO sites(id,name,storage_provider,created_by,storage_profile_id) VALUES('s','Site','filesystem','u','local-filesystem')")
+            .execute(&database).await.expect("site inserts");
+        sqlx::query("INSERT INTO deployment_triggers(id,site_id,label,provider,url_encrypted,headers_encrypted) VALUES('t','s','Deploy','custom','u','h')")
+            .execute(&database).await.expect("trigger inserts");
+        sqlx::query("INSERT INTO deployment_jobs(id,trigger_id,site_id,status) VALUES('j1','t','s','queued')")
+            .execute(&database)
+            .await
+            .expect("first active job inserts");
+        let error =
+            sqlx::query("INSERT INTO deployment_jobs(id,trigger_id,site_id,status) VALUES('j2','t','s','running')")
+                .execute(&database)
+                .await
+                .expect_err("second active job must conflict");
+        assert!(
+            error
+                .as_database_error()
+                .is_some_and(|value| value.is_unique_violation())
+        );
+        sqlx::query("UPDATE deployment_jobs SET status='succeeded' WHERE id='j1'")
+            .execute(&database)
+            .await
+            .expect("job completes");
+        sqlx::query("INSERT INTO deployment_jobs(id,trigger_id,site_id,status) VALUES('j2','t','s','queued')")
+            .execute(&database)
+            .await
+            .expect("new active job inserts after completion");
+    }
+}
+
 #[derive(Clone)]
 pub struct DeploymentService {
     pool: DbPool,
@@ -230,7 +282,7 @@ impl DeploymentService {
             .execute(p)
             .await
             .map(|_| ())
-            .map_err(|e| e.to_string()),
+            .map_err(map_job_insert_error),
             DbPool::Postgres(p) => sqlx::query(
                 "INSERT INTO deployment_jobs(id,trigger_id,site_id,status,triggered_by) VALUES($1,$2,$3,'queued',$4)",
             )
@@ -241,7 +293,7 @@ impl DeploymentService {
             .execute(p)
             .await
             .map(|_| ())
-            .map_err(|e| e.to_string()),
+            .map_err(map_job_insert_error),
             DbPool::MySql(p) => sqlx::query(
                 "INSERT INTO deployment_jobs(id,trigger_id,site_id,status,triggered_by) VALUES(?,?,?,'queued',?)",
             )
@@ -252,7 +304,7 @@ impl DeploymentService {
             .execute(p)
             .await
             .map(|_| ())
-            .map_err(|e| e.to_string()),
+            .map_err(map_job_insert_error),
         }?;
         self.history(trigger_id)
             .await?
@@ -269,21 +321,25 @@ impl DeploymentService {
                 .map_err(|e| e.to_string())
         });
         let result = match result {
-            Ok((url, headers)) => {
-                let mut request = reqwest::Client::new().post(url);
-                for (k, v) in headers {
-                    request = request.header(k, v)
+            Ok((url, headers)) => match self.webhooks.build_protected_client(&url).await {
+                Ok(client) => {
+                    let mut request = client.post(&url);
+                    for (key, value) in headers {
+                        request = request.header(key, value);
+                    }
+                    request.send().await.map_err(|error| error.to_string()).map(|response| {
+                        (
+                            response.status().as_u16() as i32,
+                            response
+                                .headers()
+                                .get("retry-after")
+                                .and_then(|value| value.to_str().ok())
+                                .and_then(|value| value.parse().ok()),
+                        )
+                    })
                 }
-                request.send().await.map_err(|e| e.to_string()).map(|r| {
-                    (
-                        r.status().as_u16() as i32,
-                        r.headers()
-                            .get("retry-after")
-                            .and_then(|v| v.to_str().ok())
-                            .and_then(|v| v.parse().ok()),
-                    )
-                })
-            }
+                Err(error) => Err(error.to_string()),
+            },
             Err(e) => Err(e),
         };
         let (status, code, category, retry) = match result {
