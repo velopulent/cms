@@ -1,7 +1,9 @@
 use crate::middleware::auth::{Actor, verify_access_token};
 use crate::models::access_token::{TokenScope, TokenScopes};
+use crate::models::authorization::Action;
 use crate::repository::Repository;
 use crate::services::Services;
+use crate::services::authorization::AuthorizationService;
 
 pub struct GqlContext {
     pub repository: Repository,
@@ -32,8 +34,15 @@ impl GqlContext {
                 site_id = Some(k.site_id.clone());
                 permission = Some(k.scopes.clone());
             } else if let Actor::PersonalToken(k) = &auth_actor {
-                site_id = requested_site.map(str::to_owned);
                 permission = Some(k.scopes.clone());
+                if let Some(requested_site) = requested_site
+                    && AuthorizationService::new(repository.user.clone())
+                        .require_site_action(&auth_actor, requested_site, Action::SiteRead)
+                        .await
+                        .is_ok()
+                {
+                    site_id = Some(requested_site.to_owned());
+                }
             }
             actor = Some(auth_actor);
         }
