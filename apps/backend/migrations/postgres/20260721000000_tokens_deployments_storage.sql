@@ -11,3 +11,4 @@ CREATE TABLE IF NOT EXISTS deployment_triggers (id TEXT PRIMARY KEY,site_id TEXT
 CREATE UNIQUE INDEX IF NOT EXISTS idx_deployment_primary ON deployment_triggers(site_id) WHERE is_primary=TRUE;
 CREATE TABLE IF NOT EXISTS deployment_jobs (id TEXT PRIMARY KEY,trigger_id TEXT NOT NULL REFERENCES deployment_triggers(id) ON DELETE CASCADE,site_id TEXT NOT NULL REFERENCES sites(id) ON DELETE CASCADE,status TEXT NOT NULL,status_code INTEGER,error_category TEXT,response_body TEXT,retry_after_seconds BIGINT,duration_ms BIGINT,triggered_by TEXT,created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),started_at TIMESTAMPTZ,finished_at TIMESTAMPTZ);
 CREATE INDEX IF NOT EXISTS idx_deployment_jobs_trigger ON deployment_jobs(trigger_id,created_at DESC);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_deployment_jobs_active_trigger ON deployment_jobs(trigger_id) WHERE status IN ('queued','running');

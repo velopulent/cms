@@ -38,3 +38,5 @@ CREATE TABLE IF NOT EXISTS deployment_jobs (
     started_at TEXT, finished_at TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_deployment_jobs_trigger ON deployment_jobs(trigger_id, created_at DESC);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_deployment_jobs_active_trigger
+    ON deployment_jobs(trigger_id) WHERE status IN ('queued', 'running');
