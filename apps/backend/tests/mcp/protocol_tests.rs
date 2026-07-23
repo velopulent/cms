@@ -121,13 +121,13 @@ async fn test_tool_schemas_are_valid() {
 }
 
 #[tokio::test]
-async fn test_no_list_sites_tool() {
+async fn test_list_sites_tool_is_available() {
     let server = start_mcp_server().await;
     let (_, token) = setup_site_token(&server).await;
 
     let tools = mcp_list_tools(&server.base_url, &token).await;
     let names: Vec<&str> = tools.iter().filter_map(|t| t["name"].as_str()).collect();
-    assert!(!names.contains(&"list_sites"), "list_sites tool should not exist");
+    assert!(names.contains(&"list_sites"), "list_sites tool should be available");
 }
 
 #[tokio::test]
