@@ -17,7 +17,7 @@ pub struct TestServer {
     pub base_url: String,
     _shutdown: tokio::sync::oneshot::Sender<()>,
     _storage_dir: tempfile::TempDir,
-    // Dropped last: best-effort drops the per-test Postgres/MySQL database
+    // Dropped last: best-effort drops the per-test Postgres database
     // (no-op for the default SQLite `:memory:` backend).
     _db: super::test_db::TestDbHandle,
 }
@@ -45,7 +45,7 @@ impl TestServer {
         let storage_path = storage_dir.path().to_str().unwrap().to_string();
 
         // Provision an isolated database for this server: `sqlite::memory:` by
-        // default, or a fresh `cms_test_<id>` Postgres/MySQL database when
+        // default, or a fresh `cms_test_<id>` Postgres database when
         // `TEST_DATABASE` selects one. The handle drops the database on teardown.
         let (database_url, db_handle) = super::test_db::provision().await;
 
@@ -59,14 +59,14 @@ impl TestServer {
             // Real config defaults this to 24h; `Config::default()` leaves it 0, which
             // mints already-expired sessions. SQLite hid that (it compares the datetime
             // columns lexicographically, where the stored `…T…+00:00` sorts above
-            // `datetime('now')`); Postgres/MySQL do a real timestamp compare and reject.
+            // `datetime('now')`); Postgres does a real timestamp compare and rejects.
             session_lifetime_hours: 24,
             mcp_enabled: true,
             mcp_allowed_hosts: vec!["127.0.0.1".to_string()],
             mcp_allowed_origins: vec![],
             rate_limit_max_requests: 10000,
             rate_limit_window_secs: 60,
-            // Tests spin up many servers in parallel against one shared Postgres/MySQL
+            // Tests spin up many servers in parallel against one shared Postgres
             // instance. Keep each pool tiny and release idle connections fast so the
             // aggregate stays well under the server's connection ceiling (Postgres
             // defaults to 100); otherwise high-core CI runners intermittently exhaust

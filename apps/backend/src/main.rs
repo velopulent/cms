@@ -172,7 +172,6 @@ async fn invalidate_credentials(pool: &cms::database::pool::DbPool) -> Result<(i
     }
     match pool {
         DbPool::Postgres(pool) => invalidate!(pool, "UPDATE site_webhooks SET headers_encrypted = '', enabled = FALSE"),
-        DbPool::MySql(pool) => invalidate!(pool, "UPDATE site_webhooks SET headers_encrypted = '', enabled = FALSE"),
         DbPool::Sqlite(pool) => invalidate!(pool, "UPDATE site_webhooks SET headers_encrypted = '', enabled = 0"),
     }
 }

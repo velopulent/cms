@@ -29,7 +29,6 @@ impl StorageProfileService {
         match &self.pool{
         DbPool::Sqlite(p)=>sqlx::query_as("SELECT id,name,kind,endpoint,region,bucket,public_url,enabled,immutable,created_by,created_at,updated_at FROM storage_profiles ORDER BY immutable DESC,name").fetch_all(p).await,
         DbPool::Postgres(p)=>sqlx::query_as("SELECT id,name,kind,endpoint,region,bucket,public_url,enabled,immutable,created_by,created_at::text,updated_at::text FROM storage_profiles ORDER BY immutable DESC,name").fetch_all(p).await,
-        DbPool::MySql(p)=>sqlx::query_as("SELECT id,name,kind,endpoint,region,bucket,public_url,enabled,immutable,created_by,CAST(created_at AS CHAR) AS created_at,CAST(updated_at AS CHAR) AS updated_at FROM storage_profiles ORDER BY immutable DESC,name").fetch_all(p).await,
     }.map_err(|e|e.to_string())
     }
     pub async fn create(&self, v: CreateStorageProfile, by: &str) -> Result<StorageProfile, String> {
@@ -44,7 +43,6 @@ impl StorageProfileService {
         match &self.pool{
             DbPool::Sqlite(p)=>sqlx::query("INSERT INTO storage_profiles(id,name,kind,endpoint,region,bucket,public_url,credentials_encrypted,created_by)VALUES(?,?,'s3',?,?,?,?,?,?)").bind(&id).bind(v.name.trim()).bind(v.endpoint).bind(v.region).bind(v.bucket).bind(v.public_url).bind(credentials).bind(by).execute(p).await.map(|_|()).map_err(|e|e.to_string()),
             DbPool::Postgres(p)=>sqlx::query("INSERT INTO storage_profiles(id,name,kind,endpoint,region,bucket,public_url,credentials_encrypted,created_by)VALUES($1,$2,'s3',$3,$4,$5,$6,$7,$8)").bind(&id).bind(v.name.trim()).bind(v.endpoint).bind(v.region).bind(v.bucket).bind(v.public_url).bind(credentials).bind(by).execute(p).await.map(|_|()).map_err(|e|e.to_string()),
-            DbPool::MySql(p)=>sqlx::query("INSERT INTO storage_profiles(id,name,kind,endpoint,region,bucket,public_url,credentials_encrypted,created_by)VALUES(?,?,'s3',?,?,?,?,?,?)").bind(&id).bind(v.name.trim()).bind(v.endpoint).bind(v.region).bind(v.bucket).bind(v.public_url).bind(credentials).bind(by).execute(p).await.map(|_|()).map_err(|e|e.to_string()),
         }?;
         self.list()
             .await?
@@ -80,8 +78,6 @@ impl StorageProfileService {
             DbPool::Sqlite(pool) => sqlx::query("UPDATE storage_profiles SET name=?,endpoint=?,region=?,bucket=?,public_url=?,enabled=?,credentials_encrypted=COALESCE(?,credentials_encrypted),updated_at=datetime('now') WHERE id=?")
                 .bind(v.name.trim()).bind(v.endpoint).bind(v.region).bind(v.bucket).bind(v.public_url).bind(v.enabled).bind(credentials).bind(id).execute(pool).await.map(|_| ()),
             DbPool::Postgres(pool) => sqlx::query("UPDATE storage_profiles SET name=$1,endpoint=$2,region=$3,bucket=$4,public_url=$5,enabled=$6,credentials_encrypted=COALESCE($7,credentials_encrypted),updated_at=NOW() WHERE id=$8")
-                .bind(v.name.trim()).bind(v.endpoint).bind(v.region).bind(v.bucket).bind(v.public_url).bind(v.enabled).bind(credentials).bind(id).execute(pool).await.map(|_| ()),
-            DbPool::MySql(pool) => sqlx::query("UPDATE storage_profiles SET name=?,endpoint=?,region=?,bucket=?,public_url=?,enabled=?,credentials_encrypted=COALESCE(?,credentials_encrypted),updated_at=NOW() WHERE id=?")
                 .bind(v.name.trim()).bind(v.endpoint).bind(v.region).bind(v.bucket).bind(v.public_url).bind(v.enabled).bind(credentials).bind(id).execute(pool).await.map(|_| ()),
         }.map_err(|error| error.to_string())?;
         self.list()
@@ -125,14 +121,6 @@ impl StorageProfileService {
                     .fetch_one(p)
                     .await
             }
-            DbPool::MySql(p) => {
-                sqlx::query_scalar("SELECT (SELECT COUNT(*) FROM sites WHERE storage_profile_id=?) + (SELECT COUNT(*) FROM backup_schedules WHERE storage_profile_id=?) + (SELECT COUNT(*) FROM backups WHERE storage_profile_id=? AND status IN ('pending','running'))")
-                    .bind(id)
-                    .bind(id)
-                    .bind(id)
-                    .fetch_one(p)
-                    .await
-            }
         }.map_err(|error| error.to_string())?;
         Ok(count)
     }
@@ -157,12 +145,6 @@ impl StorageProfileService {
                 .map(|_| ())
                 .map_err(|e| e.to_string()),
             DbPool::Postgres(p) => sqlx::query("DELETE FROM storage_profiles WHERE id=$1")
-                .bind(id)
-                .execute(p)
-                .await
-                .map(|_| ())
-                .map_err(|e| e.to_string()),
-            DbPool::MySql(p) => sqlx::query("DELETE FROM storage_profiles WHERE id=?")
                 .bind(id)
                 .execute(p)
                 .await
@@ -197,14 +179,6 @@ impl StorageProfileService {
                     .map(|_| ())
                     .map_err(|e| e.to_string())
             }
-            DbPool::MySql(db) => sqlx::query("UPDATE sites SET storage_profile_id=?,storage_provider=? WHERE id=?")
-                .bind(profile)
-                .bind(&p.kind)
-                .bind(site)
-                .execute(db)
-                .await
-                .map(|_| ())
-                .map_err(|e| e.to_string()),
         }?;
         Ok(())
     }
@@ -254,12 +228,6 @@ impl StorageProfileService {
             }
             DbPool::Postgres(pool) => {
                 sqlx::query_scalar("SELECT credentials_encrypted FROM storage_profiles WHERE id=$1")
-                    .bind(id)
-                    .fetch_optional(pool)
-                    .await
-            }
-            DbPool::MySql(pool) => {
-                sqlx::query_scalar("SELECT credentials_encrypted FROM storage_profiles WHERE id=?")
                     .bind(id)
                     .fetch_optional(pool)
                     .await

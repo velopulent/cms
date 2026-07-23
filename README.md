@@ -49,7 +49,7 @@ Upload, organize, and serve images and files with automatic thumbnail generation
 
 ### 💾 Backups & Disaster Recovery
 
-Create on-demand or scheduled backups of a single site or the whole instance. Backups are compressed, optionally encrypted (AES-256-GCM), and stored on local disk or a separate S3 bucket — keep the last N automatically. Restore in place or import a site as a copy, from the dashboard or offline with `vcms restore` when the server won't even boot. Backups are a portable logical dump, so you can move data between SQLite, PostgreSQL, and MySQL.
+Create on-demand or scheduled backups of a single site or the whole instance. Backups are compressed, optionally encrypted (AES-256-GCM), and stored on local disk or a separate S3 bucket — keep the last N automatically. Restore in place or import a site as a copy, from the dashboard or offline with `vcms restore` when the server won't even boot. Backups are a portable logical dump, so you can move data between SQLite and PostgreSQL.
 
 ### 🔐 Secure & Scalable
 
@@ -167,7 +167,7 @@ Built by developers, for developers. The API is predictable, the documentation i
 
 ### Database Flexibility
 
-Use SQLite for simple deployments or connect to PostgreSQL or MySQL for production workloads. The same binary works with all three.
+Use SQLite for simple deployments or connect to PostgreSQL for production workloads. The same binary works with both.
 
 ### Built for Teams
 

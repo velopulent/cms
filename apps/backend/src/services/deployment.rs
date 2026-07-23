@@ -70,14 +70,13 @@ impl DeploymentService {
         Self { pool, webhooks }
     }
     pub async fn reconcile_interrupted(&self) -> Result<u64, String> {
-        match &self.pool{DbPool::Sqlite(p)=>sqlx::query("UPDATE deployment_jobs SET status='failed',error_category='interrupted',finished_at=datetime('now') WHERE status IN ('queued','running')").execute(p).await.map(|v|v.rows_affected()).map_err(|e|e.to_string()),DbPool::Postgres(p)=>sqlx::query("UPDATE deployment_jobs SET status='failed',error_category='interrupted',finished_at=NOW() WHERE status IN ('queued','running')").execute(p).await.map(|v|v.rows_affected()).map_err(|e|e.to_string()),DbPool::MySql(p)=>sqlx::query("UPDATE deployment_jobs SET status='failed',error_category='interrupted',finished_at=NOW() WHERE status IN ('queued','running')").execute(p).await.map(|v|v.rows_affected()).map_err(|e|e.to_string())}
+        match &self.pool{DbPool::Sqlite(p)=>sqlx::query("UPDATE deployment_jobs SET status='failed',error_category='interrupted',finished_at=datetime('now') WHERE status IN ('queued','running')").execute(p).await.map(|v|v.rows_affected()).map_err(|e|e.to_string()),DbPool::Postgres(p)=>sqlx::query("UPDATE deployment_jobs SET status='failed',error_category='interrupted',finished_at=NOW() WHERE status IN ('queued','running')").execute(p).await.map(|v|v.rows_affected()).map_err(|e|e.to_string())}
     }
 
     pub async fn list(&self, site_id: &str) -> Result<Vec<DeploymentTrigger>, String> {
         match &self.pool {
             DbPool::Sqlite(p) => sqlx::query_as("SELECT id,site_id,label,provider,enabled,is_primary,cooldown_seconds,daily_quota,created_by,created_at,updated_at FROM deployment_triggers WHERE site_id=? ORDER BY is_primary DESC,label").bind(site_id).fetch_all(p).await,
             DbPool::Postgres(p) => sqlx::query_as("SELECT id,site_id,label,provider,enabled,is_primary,cooldown_seconds,daily_quota,created_by,created_at::text,updated_at::text FROM deployment_triggers WHERE site_id=$1 ORDER BY is_primary DESC,label").bind(site_id).fetch_all(p).await,
-            DbPool::MySql(p) => sqlx::query_as("SELECT id,site_id,label,provider,enabled,is_primary,cooldown_seconds,daily_quota,created_by,CAST(created_at AS CHAR) AS created_at,CAST(updated_at AS CHAR) AS updated_at FROM deployment_triggers WHERE site_id=? ORDER BY is_primary DESC,label").bind(site_id).fetch_all(p).await,
         }.map_err(|e| e.to_string())
     }
 
@@ -108,7 +107,6 @@ impl DeploymentService {
         match &self.pool {
             DbPool::Sqlite(p) => sqlx::query("INSERT INTO deployment_triggers(id,site_id,label,provider,url_encrypted,headers_encrypted,enabled,is_primary,cooldown_seconds,daily_quota,created_by) VALUES(?,?,?,?,?,?,?,?,?,?,?)").bind(&id).bind(site_id).bind(value.label.trim()).bind(&value.provider).bind(&url).bind(&headers).bind(value.enabled).bind(value.is_primary).bind(value.cooldown_seconds).bind(value.daily_quota).bind(user_id).execute(p).await.map(|_|()).map_err(|e|e.to_string()),
             DbPool::Postgres(p) => sqlx::query("INSERT INTO deployment_triggers(id,site_id,label,provider,url_encrypted,headers_encrypted,enabled,is_primary,cooldown_seconds,daily_quota,created_by) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)").bind(&id).bind(site_id).bind(value.label.trim()).bind(&value.provider).bind(&url).bind(&headers).bind(value.enabled).bind(value.is_primary).bind(value.cooldown_seconds).bind(value.daily_quota).bind(user_id).execute(p).await.map(|_|()).map_err(|e|e.to_string()),
-            DbPool::MySql(p) => sqlx::query("INSERT INTO deployment_triggers(id,site_id,label,provider,url_encrypted,headers_encrypted,enabled,is_primary,cooldown_seconds,daily_quota,created_by) VALUES(?,?,?,?,?,?,?,?,?,?,?)").bind(&id).bind(site_id).bind(value.label.trim()).bind(&value.provider).bind(&url).bind(&headers).bind(value.enabled).bind(value.is_primary).bind(value.cooldown_seconds).bind(value.daily_quota).bind(user_id).execute(p).await.map(|_|()).map_err(|e|e.to_string()),
         }?;
         self.list(site_id)
             .await?
@@ -148,8 +146,6 @@ impl DeploymentService {
                 .bind(value.label.trim()).bind(value.provider).bind(url).bind(headers).bind(value.enabled).bind(value.is_primary).bind(value.cooldown_seconds).bind(value.daily_quota).bind(id).bind(site_id).execute(pool).await.map(|_| ()),
             DbPool::Postgres(pool) => sqlx::query("UPDATE deployment_triggers SET label=$1,provider=$2,url_encrypted=$3,headers_encrypted=$4,enabled=$5,is_primary=$6,cooldown_seconds=$7,daily_quota=$8,updated_at=NOW() WHERE id=$9 AND site_id=$10")
                 .bind(value.label.trim()).bind(value.provider).bind(url).bind(headers).bind(value.enabled).bind(value.is_primary).bind(value.cooldown_seconds).bind(value.daily_quota).bind(id).bind(site_id).execute(pool).await.map(|_| ()),
-            DbPool::MySql(pool) => sqlx::query("UPDATE deployment_triggers SET label=?,provider=?,url_encrypted=?,headers_encrypted=?,enabled=?,is_primary=?,cooldown_seconds=?,daily_quota=?,updated_at=NOW() WHERE id=? AND site_id=?")
-                .bind(value.label.trim()).bind(value.provider).bind(url).bind(headers).bind(value.enabled).bind(value.is_primary).bind(value.cooldown_seconds).bind(value.daily_quota).bind(id).bind(site_id).execute(pool).await.map(|_| ()),
         }
         .map_err(|error| error.to_string())?;
         self.list(site_id)
@@ -175,13 +171,6 @@ impl DeploymentService {
                 .await
                 .map(|value| value.rows_affected())
                 .map_err(|error| error.to_string()),
-            DbPool::MySql(pool) => sqlx::query("DELETE FROM deployment_triggers WHERE id=? AND site_id=?")
-                .bind(id)
-                .bind(site_id)
-                .execute(pool)
-                .await
-                .map(|value| value.rows_affected())
-                .map_err(|error| error.to_string()),
         }
     }
 
@@ -197,11 +186,6 @@ impl DeploymentService {
                 .execute(p)
                 .await
                 .map(|_| ()),
-            DbPool::MySql(p) => sqlx::query("UPDATE deployment_triggers SET is_primary=FALSE WHERE site_id=?")
-                .bind(site_id)
-                .execute(p)
-                .await
-                .map(|_| ()),
         }
         .map_err(|e| e.to_string())
     }
@@ -210,7 +194,6 @@ impl DeploymentService {
         match &self.pool {
             DbPool::Sqlite(p) => sqlx::query_as("SELECT id,trigger_id,site_id,status,status_code,error_category,response_body,retry_after_seconds,duration_ms,triggered_by,created_at,started_at,finished_at FROM deployment_jobs WHERE trigger_id=? ORDER BY created_at DESC LIMIT 100").bind(trigger_id).fetch_all(p).await,
             DbPool::Postgres(p) => sqlx::query_as("SELECT id,trigger_id,site_id,status,status_code,error_category,response_body,retry_after_seconds,duration_ms,triggered_by,created_at::text,started_at::text,finished_at::text FROM deployment_jobs WHERE trigger_id=$1 ORDER BY created_at DESC LIMIT 100").bind(trigger_id).fetch_all(p).await,
-            DbPool::MySql(p) => sqlx::query_as("SELECT id,trigger_id,site_id,status,status_code,error_category,response_body,retry_after_seconds,duration_ms,triggered_by,CAST(created_at AS CHAR) AS created_at,CAST(started_at AS CHAR) AS started_at,CAST(finished_at AS CHAR) AS finished_at FROM deployment_jobs WHERE trigger_id=? ORDER BY created_at DESC LIMIT 100").bind(trigger_id).fetch_all(p).await,
         }.map_err(|e|e.to_string())
     }
 
@@ -294,17 +277,6 @@ impl DeploymentService {
             .await
             .map(|_| ())
             .map_err(map_job_insert_error),
-            DbPool::MySql(p) => sqlx::query(
-                "INSERT INTO deployment_jobs(id,trigger_id,site_id,status,triggered_by) VALUES(?,?,?,'queued',?)",
-            )
-            .bind(&id)
-            .bind(trigger_id)
-            .bind(site_id)
-            .bind(user_id)
-            .execute(p)
-            .await
-            .map(|_| ())
-            .map_err(map_job_insert_error),
         }?;
         self.history(trigger_id)
             .await?
@@ -375,12 +347,6 @@ impl DeploymentService {
                     .fetch_one(p)
                     .await
             }
-            DbPool::MySql(p) => {
-                sqlx::query_as("SELECT url_encrypted,headers_encrypted FROM deployment_triggers WHERE id=?")
-                    .bind(id)
-                    .fetch_one(p)
-                    .await
-            }
         }
         .map_err(|e| e.to_string())
     }
@@ -393,6 +359,6 @@ impl DeploymentService {
         retry: Option<i64>,
         duration: i64,
     ) -> Result<(), String> {
-        match &self.pool{DbPool::Sqlite(p)=>sqlx::query("UPDATE deployment_jobs SET status=?,status_code=?,error_category=?,retry_after_seconds=?,duration_ms=?,started_at=COALESCE(started_at,created_at),finished_at=datetime('now') WHERE id=?").bind(status).bind(code).bind(category).bind(retry).bind(duration).bind(id).execute(p).await.map(|_|()).map_err(|e|e.to_string()),DbPool::Postgres(p)=>sqlx::query("UPDATE deployment_jobs SET status=$1,status_code=$2,error_category=$3,retry_after_seconds=$4,duration_ms=$5,started_at=COALESCE(started_at,created_at),finished_at=NOW() WHERE id=$6").bind(status).bind(code).bind(category).bind(retry).bind(duration).bind(id).execute(p).await.map(|_|()).map_err(|e|e.to_string()),DbPool::MySql(p)=>sqlx::query("UPDATE deployment_jobs SET status=?,status_code=?,error_category=?,retry_after_seconds=?,duration_ms=?,started_at=COALESCE(started_at,created_at),finished_at=NOW() WHERE id=?").bind(status).bind(code).bind(category).bind(retry).bind(duration).bind(id).execute(p).await.map(|_|()).map_err(|e|e.to_string())}
+        match &self.pool{DbPool::Sqlite(p)=>sqlx::query("UPDATE deployment_jobs SET status=?,status_code=?,error_category=?,retry_after_seconds=?,duration_ms=?,started_at=COALESCE(started_at,created_at),finished_at=datetime('now') WHERE id=?").bind(status).bind(code).bind(category).bind(retry).bind(duration).bind(id).execute(p).await.map(|_|()).map_err(|e|e.to_string()),DbPool::Postgres(p)=>sqlx::query("UPDATE deployment_jobs SET status=$1,status_code=$2,error_category=$3,retry_after_seconds=$4,duration_ms=$5,started_at=COALESCE(started_at,created_at),finished_at=NOW() WHERE id=$6").bind(status).bind(code).bind(category).bind(retry).bind(duration).bind(id).execute(p).await.map(|_|()).map_err(|e|e.to_string())}
     }
 }

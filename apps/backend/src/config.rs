@@ -198,8 +198,6 @@ impl Config {
     pub fn redacted_toml(&self, paths: &RuntimePaths) -> String {
         let db_kind = if self.database_url.starts_with("postgres") {
             "postgres"
-        } else if self.database_url.starts_with("mysql") {
-            "mysql"
         } else {
             "sqlite"
         };

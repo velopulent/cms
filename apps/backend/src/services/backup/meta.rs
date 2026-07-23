@@ -1,6 +1,6 @@
 //! CRUD for the backup bookkeeping tables (`backups`, `backup_schedules`,
 //! `restore_jobs`). Integer/bool columns are BIGINT (0/1) so a single i64 binds
-//! across SQLite/Postgres/MySQL; `?` placeholders are rewritten to `$n` for
+//! across SQLite/Postgres; `?` placeholders are rewritten to `$n` for
 //! Postgres by [`q`].
 
 use serde::Serialize;
@@ -39,7 +39,6 @@ macro_rules! exec {
         match $pool {
             DbPool::Sqlite(p) => { sqlx::query(sqlx::AssertSqlSafe(sql.as_str()))$(.bind($bind))*.execute(p).await.map_err(dberr)?; }
             DbPool::Postgres(p) => { sqlx::query(sqlx::AssertSqlSafe(sql.as_str()))$(.bind($bind))*.execute(p).await.map_err(dberr)?; }
-            DbPool::MySql(p) => { sqlx::query(sqlx::AssertSqlSafe(sql.as_str()))$(.bind($bind))*.execute(p).await.map_err(dberr)?; }
         }
     }};
 }
@@ -50,7 +49,6 @@ macro_rules! fetch_all_as {
         match $pool {
             DbPool::Sqlite(p) => sqlx::query_as::<_, $ty>(sqlx::AssertSqlSafe(sql.as_str()))$(.bind($bind))*.fetch_all(p).await.map_err(dberr)?,
             DbPool::Postgres(p) => sqlx::query_as::<_, $ty>(sqlx::AssertSqlSafe(sql.as_str()))$(.bind($bind))*.fetch_all(p).await.map_err(dberr)?,
-            DbPool::MySql(p) => sqlx::query_as::<_, $ty>(sqlx::AssertSqlSafe(sql.as_str()))$(.bind($bind))*.fetch_all(p).await.map_err(dberr)?,
         }
     }};
 }
@@ -61,7 +59,6 @@ macro_rules! fetch_opt_as {
         match $pool {
             DbPool::Sqlite(p) => sqlx::query_as::<_, $ty>(sqlx::AssertSqlSafe(sql.as_str()))$(.bind($bind))*.fetch_optional(p).await.map_err(dberr)?,
             DbPool::Postgres(p) => sqlx::query_as::<_, $ty>(sqlx::AssertSqlSafe(sql.as_str()))$(.bind($bind))*.fetch_optional(p).await.map_err(dberr)?,
-            DbPool::MySql(p) => sqlx::query_as::<_, $ty>(sqlx::AssertSqlSafe(sql.as_str()))$(.bind($bind))*.fetch_optional(p).await.map_err(dberr)?,
         }
     }};
 }
@@ -228,12 +225,6 @@ pub async fn fail_orphaned(pool: &DbPool, now: &str) -> Result<u64, BackupError>
             .map_err(dberr)?
             .rows_affected(),
         DbPool::Postgres(p) => sqlx::query(sqlx::AssertSqlSafe(backups_sql.as_str()))
-            .bind(now.to_string())
-            .execute(p)
-            .await
-            .map_err(dberr)?
-            .rows_affected(),
-        DbPool::MySql(p) => sqlx::query(sqlx::AssertSqlSafe(backups_sql.as_str()))
             .bind(now.to_string())
             .execute(p)
             .await

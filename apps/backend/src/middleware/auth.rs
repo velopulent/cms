@@ -195,7 +195,7 @@ fn extract_csrf_token(parts: &Parts) -> Option<String> {
 pub(crate) const TOUCH_INTERVAL_SECS: i64 = 60;
 
 /// Lenient parse of the backend-specific timestamp texts: RFC3339, Postgres
-/// `::text` (`YYYY-MM-DD HH:MM:SS[.fff]+00`), or naive UTC (SQLite/MySQL).
+/// `::text` (`YYYY-MM-DD HH:MM:SS[.fff]+00`), or naive UTC (SQLite).
 pub(crate) fn parse_db_timestamp(s: &str) -> Option<chrono::DateTime<chrono::Utc>> {
     if let Ok(dt) = chrono::DateTime::parse_from_rfc3339(s) {
         return Some(dt.with_timezone(&chrono::Utc));
