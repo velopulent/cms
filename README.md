@@ -103,10 +103,11 @@ that the client process can't read.
 VCMS_MCP_TOKEN=vcms_site_... VCMS_MCP_URL=http://127.0.0.1:3000 vcms mcp stdio
 ```
 
-It needs only two env vars: `VCMS_MCP_TOKEN` (a `vcms_site_*` access token, forwarded
-as the `Authorization: Bearer` credential) and `VCMS_MCP_URL` (the running server's
-base URL, default `http://127.0.0.1:3000`; the proxy posts to `{url}/mcp`). A `vcms
-serve` instance must be running. MCP protocol messages use stdout; logs use stderr.
+It needs only two env vars: `VCMS_MCP_TOKEN` (a `vcms_site_*` or `vcms_pat_*`
+access token with the `mcp.use` scope, forwarded as the `Authorization: Bearer`
+credential) and `VCMS_MCP_URL` (the running server's base URL, default
+`http://127.0.0.1:3000`; the proxy posts to `{url}/mcp`). A `vcms serve` instance
+must be running. MCP protocol messages use stdout; logs use stderr.
 
 ```jsonc
 // Example MCP client config
