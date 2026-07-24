@@ -226,7 +226,7 @@ a backup taken on a **newer** schema and relies on additive migrations otherwise
 Entry search is backed by an embedded [Tantivy](https://github.com/quickwit-oss/tantivy)
 index in `apps/backend/src/services/search/` — one engine that gives ranked,
 tokenized, stemmed search identically across SQLite/Postgres (native per-DB
-FTS would mean three implementations). The DB stays the source of truth; the index
+FTS would mean two implementations). The DB stays the source of truth; the index
 is **derived** and fully rebuildable.
 
 **Reads vs writes are split** so the single-writer limit never blocks *searching*:
