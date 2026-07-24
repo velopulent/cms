@@ -63,6 +63,13 @@ pub trait SiteRepository: Send + Sync {
         storage_provider: &str,
         created_by: &str,
     ) -> Result<Site, RepositoryError>;
+    async fn create_with_storage_profile(
+        &self,
+        id: &str,
+        name: &str,
+        storage_profile_id: &str,
+        created_by: &str,
+    ) -> Result<Site, RepositoryError>;
     async fn update(&self, id: &str, name: &str) -> Result<Site, RepositoryError>;
     async fn delete(&self, id: &str) -> Result<u64, RepositoryError>;
     async fn list_members(&self, site_id: &str) -> Result<Vec<SiteMember>, RepositoryError>;

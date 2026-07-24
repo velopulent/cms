@@ -342,6 +342,27 @@ impl SiteRepository for InMemorySiteRepository {
         Ok(site)
     }
 
+    async fn create_with_storage_profile(
+        &self,
+        id: &str,
+        name: &str,
+        storage_profile_id: &str,
+        created_by: &str,
+    ) -> Result<Site, RepositoryError> {
+        let mut sites = self.sites.lock().unwrap();
+        let site = Site {
+            id: id.to_string(),
+            name: name.to_string(),
+            storage_provider: "s3".to_string(),
+            storage_profile_id: Some(storage_profile_id.to_string()),
+            created_by: created_by.to_string(),
+            created_at: now_timestamp(),
+            updated_at: now_timestamp(),
+        };
+        sites.push(site.clone());
+        Ok(site)
+    }
+
     async fn update(&self, id: &str, name: &str) -> Result<Site, RepositoryError> {
         let mut sites = self.sites.lock().unwrap();
         if let Some(site) = sites.iter_mut().find(|s| s.id == id) {

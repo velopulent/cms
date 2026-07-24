@@ -73,6 +73,36 @@ impl SiteRepository for SqliteSiteRepository {
         self.get_by_id(id).await?.ok_or(RepositoryError::NotFound)
     }
 
+    async fn create_with_storage_profile(
+        &self,
+        id: &str,
+        name: &str,
+        storage_profile_id: &str,
+        created_by: &str,
+    ) -> Result<Site, RepositoryError> {
+        let mut transaction = self.pool.begin().await?;
+        let storage_provider: Option<String> =
+            sqlx::query_scalar("SELECT kind FROM storage_profiles WHERE id = ? AND enabled = 1")
+                .bind(storage_profile_id)
+                .fetch_optional(&mut *transaction)
+                .await?;
+        let storage_provider = storage_provider.ok_or(RepositoryError::NotFound)?;
+        let site = sqlx::query_as::<_, Site>(
+            "INSERT INTO sites (id, name, storage_provider, storage_profile_id, created_by) \
+             VALUES (?, ?, ?, ?, ?) \
+             RETURNING id, name, storage_provider, storage_profile_id, created_by, created_at, updated_at",
+        )
+        .bind(id)
+        .bind(name)
+        .bind(storage_provider)
+        .bind(storage_profile_id)
+        .bind(created_by)
+        .fetch_one(&mut *transaction)
+        .await?;
+        transaction.commit().await?;
+        Ok(site)
+    }
+
     async fn update(&self, id: &str, name: &str) -> Result<Site, RepositoryError> {
         sqlx::query("UPDATE sites SET name = ?, updated_at = datetime('now') WHERE id = ?")
             .bind(name)
