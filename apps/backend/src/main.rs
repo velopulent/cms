@@ -131,13 +131,14 @@ async fn run_secrets(action: &SecretsAction) -> Result<(), Box<dyn Error>> {
             let fresh = cms::secrets::fresh(old_database_url);
             let config = cms::config::Config::load(&paths, &fresh)?;
             let pool = init_db_with_config(&config).await?;
-            let (tokens, webhooks, s3_sites) = invalidate_credentials(&pool).await?;
+            let (tokens, webhooks, storage_profiles, s3_sites) = invalidate_credentials(&pool).await?;
             cms::secrets::replace(&paths, &fresh)?;
             println!("Trust root replaced. Recovery report:");
             println!("- {tokens} API access token(s) invalidated");
             println!("- Active dashboard sessions invalidated");
             println!("- {webhooks} webhook(s) disabled; secret headers cleared");
-            println!("- Encrypted storage and backup credentials cleared");
+            println!("- {storage_profiles} S3 storage profile(s) disabled; credentials cleared");
+            println!("- Encrypted backup credentials cleared");
             if s3_sites > 0 {
                 println!("- {s3_sites} S3-backed site(s) require new storage credentials");
             }
@@ -146,7 +147,7 @@ async fn run_secrets(action: &SecretsAction) -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 
-async fn invalidate_credentials(pool: &cms::database::pool::DbPool) -> Result<(i64, i64, i64), Box<dyn Error>> {
+async fn invalidate_credentials(pool: &cms::database::pool::DbPool) -> Result<(i64, i64, i64, i64), Box<dyn Error>> {
     use cms::database::pool::DbPool;
     macro_rules! invalidate {
         ($pool:expr, $disabled:expr) => {{
@@ -160,14 +161,23 @@ async fn invalidate_credentials(pool: &cms::database::pool::DbPool) -> Result<(i
             let sites = sqlx::query_scalar("SELECT COUNT(*) FROM sites WHERE storage_provider = 's3'")
                 .fetch_one(&mut *tx)
                 .await?;
+            let storage_profiles = sqlx::query_scalar(
+                "SELECT COUNT(*) FROM storage_profiles \
+                 WHERE kind = 's3' AND (credentials_encrypted IS NOT NULL OR enabled = TRUE)",
+            )
+            .fetch_one(&mut *tx)
+            .await?;
             sqlx::query("DELETE FROM access_tokens").execute(&mut *tx).await?;
             sqlx::query("DELETE FROM sessions").execute(&mut *tx).await?;
             sqlx::query($disabled).execute(&mut *tx).await?;
+            sqlx::query("UPDATE storage_profiles SET credentials_encrypted = NULL, enabled = FALSE WHERE kind = 's3'")
+                .execute(&mut *tx)
+                .await?;
             sqlx::query("UPDATE instance_settings SET credentials_encrypted = NULL")
                 .execute(&mut *tx)
                 .await?;
             tx.commit().await?;
-            Ok((tokens, webhooks, sites))
+            Ok((tokens, webhooks, storage_profiles, sites))
         }};
     }
     match pool {
