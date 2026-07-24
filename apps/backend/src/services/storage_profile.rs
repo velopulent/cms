@@ -25,32 +25,97 @@ impl StorageProfileService {
             key: Sha256::digest(secret.as_bytes()).into(),
         }
     }
+    fn database_error(error: sqlx::Error) -> String {
+        if error
+            .as_database_error()
+            .is_some_and(|database_error| database_error.is_unique_violation())
+        {
+            "profile_name_exists".into()
+        } else {
+            error.to_string()
+        }
+    }
     pub async fn list(&self) -> Result<Vec<StorageProfile>, String> {
         match &self.pool{
         DbPool::Sqlite(p)=>sqlx::query_as("SELECT id,name,kind,endpoint,region,bucket,public_url,enabled,immutable,created_by,created_at,updated_at FROM storage_profiles ORDER BY immutable DESC,name").fetch_all(p).await,
         DbPool::Postgres(p)=>sqlx::query_as("SELECT id,name,kind,endpoint,region,bucket,public_url,enabled,immutable,created_by,created_at::text,updated_at::text FROM storage_profiles ORDER BY immutable DESC,name").fetch_all(p).await,
     }.map_err(|e|e.to_string())
     }
-    pub async fn create(&self, v: CreateStorageProfile, by: &str) -> Result<StorageProfile, String> {
+    pub async fn create(
+        &self,
+        v: CreateStorageProfile,
+        by: &str,
+        registry: &StorageRegistry,
+    ) -> Result<StorageProfile, String> {
         if v.name.trim().is_empty() || v.bucket.trim().is_empty() {
             return Err("name_and_bucket_required".into());
         }
         url::Url::parse(&v.endpoint).map_err(|_| "invalid_endpoint")?;
+        let provider = Self::new_s3_provider(
+            &v.access_key_id,
+            &v.secret_access_key,
+            &v.bucket,
+            v.region.as_deref(),
+            &v.endpoint,
+            v.public_url.as_deref(),
+        )?;
         let id = Uuid::now_v7().to_string();
         let credentials = self.encrypt(
             &serde_json::json!({"access_key_id":v.access_key_id,"secret_access_key":v.secret_access_key}).to_string(),
         )?;
-        match &self.pool{
-            DbPool::Sqlite(p)=>sqlx::query("INSERT INTO storage_profiles(id,name,kind,endpoint,region,bucket,public_url,credentials_encrypted,created_by)VALUES(?,?,'s3',?,?,?,?,?,?)").bind(&id).bind(v.name.trim()).bind(v.endpoint).bind(v.region).bind(v.bucket).bind(v.public_url).bind(credentials).bind(by).execute(p).await.map(|_|()).map_err(|e|e.to_string()),
-            DbPool::Postgres(p)=>sqlx::query("INSERT INTO storage_profiles(id,name,kind,endpoint,region,bucket,public_url,credentials_encrypted,created_by)VALUES($1,$2,'s3',$3,$4,$5,$6,$7,$8)").bind(&id).bind(v.name.trim()).bind(v.endpoint).bind(v.region).bind(v.bucket).bind(v.public_url).bind(credentials).bind(by).execute(p).await.map(|_|()).map_err(|e|e.to_string()),
-        }?;
-        self.list()
-            .await?
-            .into_iter()
-            .find(|p| p.id == id)
-            .ok_or("profile_not_found".into())
+        let profile = match &self.pool {
+            DbPool::Sqlite(pool) => {
+                let mut transaction = pool.begin().await.map_err(|error| error.to_string())?;
+                let profile = sqlx::query_as(
+                    "INSERT INTO storage_profiles(id,name,kind,endpoint,region,bucket,public_url,credentials_encrypted,created_by) \
+                     VALUES(?,?,'s3',?,?,?,?,?,?) \
+                     RETURNING id,name,kind,endpoint,region,bucket,public_url,enabled,immutable,created_by,created_at,updated_at",
+                )
+                .bind(&id)
+                .bind(v.name.trim())
+                .bind(&v.endpoint)
+                .bind(&v.region)
+                .bind(&v.bucket)
+                .bind(&v.public_url)
+                .bind(&credentials)
+                .bind(by)
+                .fetch_one(&mut *transaction)
+                .await
+                .map_err(Self::database_error)?;
+                transaction.commit().await.map_err(|error| error.to_string())?;
+                profile
+            }
+            DbPool::Postgres(pool) => {
+                let mut transaction = pool.begin().await.map_err(|error| error.to_string())?;
+                let profile = sqlx::query_as(
+                    "INSERT INTO storage_profiles(id,name,kind,endpoint,region,bucket,public_url,credentials_encrypted,created_by) \
+                     VALUES($1,$2,'s3',$3,$4,$5,$6,$7,$8) \
+                     RETURNING id,name,kind,endpoint,region,bucket,public_url,enabled,immutable,created_by,created_at::text AS created_at,updated_at::text AS updated_at",
+                )
+                .bind(&id)
+                .bind(v.name.trim())
+                .bind(&v.endpoint)
+                .bind(&v.region)
+                .bind(&v.bucket)
+                .bind(&v.public_url)
+                .bind(&credentials)
+                .bind(by)
+                .fetch_one(&mut *transaction)
+                .await
+                .map_err(Self::database_error)?;
+                transaction.commit().await.map_err(|error| error.to_string())?;
+                profile
+            }
+        };
+        registry.register(&id, provider);
+        Ok(profile)
     }
-    pub async fn update(&self, id: &str, v: UpdateStorageProfile) -> Result<StorageProfile, String> {
+    pub async fn update(
+        &self,
+        id: &str,
+        v: UpdateStorageProfile,
+        registry: &StorageRegistry,
+    ) -> Result<StorageProfile, String> {
         let current = self
             .list()
             .await?
@@ -67,24 +132,98 @@ impl StorageProfileService {
             return Err("name_and_bucket_required".into());
         }
         url::Url::parse(&v.endpoint).map_err(|_| "invalid_endpoint")?;
-        let credentials = match (v.access_key_id, v.secret_access_key) {
+        let (credentials, provider) = match (v.access_key_id, v.secret_access_key) {
             (Some(access), Some(secret)) if !access.is_empty() && !secret.is_empty() => {
-                Some(self.encrypt(&serde_json::json!({"access_key_id":access,"secret_access_key":secret}).to_string())?)
+                let encrypted =
+                    self.encrypt(&serde_json::json!({"access_key_id":access,"secret_access_key":secret}).to_string())?;
+                let provider = if v.enabled {
+                    Some(Self::new_s3_provider(
+                        &access,
+                        &secret,
+                        &v.bucket,
+                        v.region.as_deref(),
+                        &v.endpoint,
+                        v.public_url.as_deref(),
+                    )?)
+                } else {
+                    None
+                };
+                (Some(encrypted), provider)
             }
-            (None, None) => None,
+            (None, None) if v.enabled => {
+                let credentials = self.credentials(id).await?;
+                let access = credentials
+                    .get("access_key_id")
+                    .and_then(|value| value.as_str())
+                    .ok_or("invalid_storage_credentials")?
+                    .to_string();
+                let secret = credentials
+                    .get("secret_access_key")
+                    .and_then(|value| value.as_str())
+                    .ok_or("invalid_storage_credentials")?
+                    .to_string();
+                let provider = Self::new_s3_provider(
+                    &access,
+                    &secret,
+                    &v.bucket,
+                    v.region.as_deref(),
+                    &v.endpoint,
+                    v.public_url.as_deref(),
+                )?;
+                (None, Some(provider))
+            }
+            (None, None) => (None, None),
             _ => return Err("both_credentials_required".into()),
         };
-        match &self.pool {
-            DbPool::Sqlite(pool) => sqlx::query("UPDATE storage_profiles SET name=?,endpoint=?,region=?,bucket=?,public_url=?,enabled=?,credentials_encrypted=COALESCE(?,credentials_encrypted),updated_at=datetime('now') WHERE id=?")
-                .bind(v.name.trim()).bind(v.endpoint).bind(v.region).bind(v.bucket).bind(v.public_url).bind(v.enabled).bind(credentials).bind(id).execute(pool).await.map(|_| ()),
-            DbPool::Postgres(pool) => sqlx::query("UPDATE storage_profiles SET name=$1,endpoint=$2,region=$3,bucket=$4,public_url=$5,enabled=$6,credentials_encrypted=COALESCE($7,credentials_encrypted),updated_at=NOW() WHERE id=$8")
-                .bind(v.name.trim()).bind(v.endpoint).bind(v.region).bind(v.bucket).bind(v.public_url).bind(v.enabled).bind(credentials).bind(id).execute(pool).await.map(|_| ()),
-        }.map_err(|error| error.to_string())?;
-        self.list()
-            .await?
-            .into_iter()
-            .find(|profile| profile.id == id)
-            .ok_or_else(|| "profile_not_found".into())
+        let profile = match &self.pool {
+            DbPool::Sqlite(pool) => {
+                let mut transaction = pool.begin().await.map_err(|error| error.to_string())?;
+                let profile = sqlx::query_as(
+                    "UPDATE storage_profiles SET name=?,endpoint=?,region=?,bucket=?,public_url=?,enabled=?, \
+                     credentials_encrypted=COALESCE(?,credentials_encrypted),updated_at=datetime('now') WHERE id=? \
+                     RETURNING id,name,kind,endpoint,region,bucket,public_url,enabled,immutable,created_by,created_at,updated_at",
+                )
+                .bind(v.name.trim())
+                .bind(&v.endpoint)
+                .bind(&v.region)
+                .bind(&v.bucket)
+                .bind(&v.public_url)
+                .bind(v.enabled)
+                .bind(&credentials)
+                .bind(id)
+                .fetch_one(&mut *transaction)
+                .await
+                .map_err(Self::database_error)?;
+                transaction.commit().await.map_err(|error| error.to_string())?;
+                profile
+            }
+            DbPool::Postgres(pool) => {
+                let mut transaction = pool.begin().await.map_err(|error| error.to_string())?;
+                let profile = sqlx::query_as(
+                    "UPDATE storage_profiles SET name=$1,endpoint=$2,region=$3,bucket=$4,public_url=$5,enabled=$6, \
+                     credentials_encrypted=COALESCE($7,credentials_encrypted),updated_at=NOW() WHERE id=$8 \
+                     RETURNING id,name,kind,endpoint,region,bucket,public_url,enabled,immutable,created_by,created_at::text AS created_at,updated_at::text AS updated_at",
+                )
+                .bind(v.name.trim())
+                .bind(&v.endpoint)
+                .bind(&v.region)
+                .bind(&v.bucket)
+                .bind(&v.public_url)
+                .bind(v.enabled)
+                .bind(&credentials)
+                .bind(id)
+                .fetch_one(&mut *transaction)
+                .await
+                .map_err(Self::database_error)?;
+                transaction.commit().await.map_err(|error| error.to_string())?;
+                profile
+            }
+        };
+        match provider {
+            Some(provider) => registry.register(id, provider),
+            None => registry.remove(id),
+        }
+        Ok(profile)
     }
 
     pub async fn probe(&self, id: &str) -> Result<(), String> {
@@ -108,7 +247,7 @@ impl StorageProfileService {
     async fn reference_count(&self, id: &str) -> Result<i64, String> {
         let count: i64 = match &self.pool {
             DbPool::Sqlite(p) => {
-                sqlx::query_scalar("SELECT (SELECT COUNT(*) FROM sites WHERE storage_profile_id=?) + (SELECT COUNT(*) FROM backup_schedules WHERE storage_profile_id=?) + (SELECT COUNT(*) FROM backups WHERE storage_profile_id=? AND status IN ('pending','running'))")
+                sqlx::query_scalar("SELECT (SELECT COUNT(*) FROM sites WHERE storage_profile_id=?) + (SELECT COUNT(*) FROM backup_schedules WHERE storage_profile_id=?) + (SELECT COUNT(*) FROM backups WHERE storage_profile_id=?)")
                     .bind(id)
                     .bind(id)
                     .bind(id)
@@ -116,7 +255,7 @@ impl StorageProfileService {
                     .await
             }
             DbPool::Postgres(p) => {
-                sqlx::query_scalar("SELECT (SELECT COUNT(*) FROM sites WHERE storage_profile_id=$1) + (SELECT COUNT(*) FROM backup_schedules WHERE storage_profile_id=$1) + (SELECT COUNT(*) FROM backups WHERE storage_profile_id=$1 AND status IN ('pending','running'))")
+                sqlx::query_scalar("SELECT (SELECT COUNT(*) FROM sites WHERE storage_profile_id=$1) + (SELECT COUNT(*) FROM backup_schedules WHERE storage_profile_id=$1) + (SELECT COUNT(*) FROM backups WHERE storage_profile_id=$1)")
                     .bind(id)
                     .fetch_one(p)
                     .await
@@ -206,17 +345,33 @@ impl StorageProfileService {
             .get("secret_access_key")
             .and_then(|value| value.as_str())
             .ok_or("invalid_storage_credentials")?;
-        Ok(Arc::new(
-            S3Storage::new(
-                access,
-                secret,
-                profile.bucket.as_deref().ok_or("missing_bucket")?,
-                profile.region.as_deref().unwrap_or("auto"),
-                profile.endpoint.as_deref(),
-                profile.public_url.as_deref(),
-            )
-            .map_err(|error| error.to_string())?,
-        ))
+        Self::new_s3_provider(
+            access,
+            secret,
+            profile.bucket.as_deref().ok_or("missing_bucket")?,
+            profile.region.as_deref(),
+            profile.endpoint.as_deref().ok_or("invalid_endpoint")?,
+            profile.public_url.as_deref(),
+        )
+    }
+    fn new_s3_provider(
+        access_key_id: &str,
+        secret_access_key: &str,
+        bucket: &str,
+        region: Option<&str>,
+        endpoint: &str,
+        public_url: Option<&str>,
+    ) -> Result<Arc<dyn StorageProvider>, String> {
+        S3Storage::new(
+            access_key_id,
+            secret_access_key,
+            bucket,
+            region.unwrap_or("auto"),
+            Some(endpoint),
+            public_url,
+        )
+        .map(|provider| Arc::new(provider) as Arc<dyn StorageProvider>)
+        .map_err(|_| "invalid_storage_configuration".into())
     }
     async fn credentials(&self, id: &str) -> Result<serde_json::Value, String> {
         let encrypted: Option<String> = match &self.pool {
