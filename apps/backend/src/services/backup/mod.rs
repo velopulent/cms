@@ -231,6 +231,12 @@ impl BackupDestination {
 }
 
 impl BackupService {
+    fn provider_for_profile(&self, id: &str) -> Result<Arc<dyn StorageProvider>, BackupError> {
+        self.storage
+            .get(id)
+            .ok_or_else(|| BackupError::Invalid("storage profile is unavailable".into()))
+    }
+
     pub fn new(pool: DbPool, storage: Arc<StorageRegistry>, destination: BackupDestination, config: &Config) -> Self {
         let encryption_key = config.backup_encryption_key.as_deref().and_then(parse_key_hex);
         let filesystem_destination = config
@@ -405,10 +411,7 @@ impl BackupService {
         };
         let destination = if let Some(profile_id) = &opts.storage_profile_id {
             BackupDestination {
-                provider: self
-                    .storage
-                    .get(profile_id)
-                    .ok_or_else(|| BackupError::Invalid("storage profile is unavailable".into()))?,
+                provider: self.provider_for_profile(profile_id)?,
                 spec: DestinationSpec::Profile { id: profile_id.clone() },
             }
         } else {
@@ -592,10 +595,7 @@ impl BackupService {
         let (spec, key): (DestinationSpec, String) =
             serde_json::from_slice(&plaintext).map_err(|error| BackupError::Invalid(error.to_string()))?;
         let provider: Arc<dyn StorageProvider> = match spec {
-            DestinationSpec::Profile { id } => self
-                .storage
-                .get(&id)
-                .ok_or_else(|| BackupError::Invalid("storage profile is unavailable".into()))?,
+            DestinationSpec::Profile { id } => self.provider_for_profile(&id)?,
             DestinationSpec::Filesystem { path } => {
                 Arc::new(FileSystemStorage::new(&path).map_err(|error| BackupError::Storage(error.to_string()))?)
             }
