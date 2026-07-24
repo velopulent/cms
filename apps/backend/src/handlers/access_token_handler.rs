@@ -7,9 +7,9 @@ use axum::{
 use serde_json::json;
 use tracing::instrument;
 
-use crate::middleware::auth::{Actor, AuthContext, RequestContext, require_user_action};
+use crate::middleware::auth::{Actor, AuthContext, RequestContext, require_user_action, site_role_allows_token_scope};
 use crate::models::access_token::{CreatePersonalAccessToken, CreateSiteToken};
-use crate::models::authorization::Action;
+use crate::models::authorization::{Action, SiteRole};
 use crate::repository::Repository;
 use crate::services::Services;
 
@@ -86,17 +86,10 @@ pub async fn create_personal_token(
         .and_then(|account| account.instance_role)
         .is_some();
     if !operator
-        && payload.scopes.iter().any(|scope| {
-            matches!(
-                scope,
-                crate::models::access_token::TokenScope::SiteSettingsWrite
-                    | crate::models::access_token::TokenScope::SchemaWrite
-                    | crate::models::access_token::TokenScope::WebhooksRead
-                    | crate::models::access_token::TokenScope::WebhooksWrite
-                    | crate::models::access_token::TokenScope::WebhooksTrigger
-                    | crate::models::access_token::TokenScope::DeploymentsWrite
-            )
-        })
+        && payload
+            .scopes
+            .iter()
+            .any(|scope| !site_role_allows_token_scope(SiteRole::Editor, *scope))
     {
         return (
             StatusCode::FORBIDDEN,
