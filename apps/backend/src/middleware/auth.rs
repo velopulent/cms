@@ -424,6 +424,38 @@ pub const fn scope_for_action(action: Action) -> Option<TokenScope> {
     })
 }
 
+pub const fn action_for_scope(scope: TokenScope) -> Option<Action> {
+    Some(match scope {
+        TokenScope::SiteRead | TokenScope::SiteSettingsRead => Action::SiteRead,
+        TokenScope::SiteSettingsWrite => Action::SiteManage,
+        TokenScope::ContentRead => Action::ContentRead,
+        TokenScope::ContentWrite => Action::ContentWrite,
+        TokenScope::SchemaRead => Action::SchemaRead,
+        TokenScope::SchemaWrite => Action::SchemaWrite,
+        TokenScope::FilesRead => Action::FilesRead,
+        TokenScope::FilesWrite => Action::FilesWrite,
+        TokenScope::WebhooksRead => Action::WebhooksRead,
+        TokenScope::WebhooksWrite => Action::WebhooksWrite,
+        TokenScope::WebhooksTrigger => Action::WebhooksTrigger,
+        TokenScope::DeploymentsRead => Action::DeploymentsRead,
+        TokenScope::DeploymentsWrite => Action::DeploymentsWrite,
+        TokenScope::DeploymentsTrigger => Action::DeploymentsTrigger,
+        TokenScope::McpUse => return None,
+    })
+}
+
+/// Whether a site collaborator may mint a personal token carrying this scope.
+///
+/// Personal tokens span sites, so use the most capable collaborator role as the
+/// minting ceiling. Request authorization still checks the user's live role on
+/// the selected site.
+pub const fn site_role_allows_token_scope(role: SiteRole, scope: TokenScope) -> bool {
+    match action_for_scope(scope) {
+        Some(action) => Authorizer::allows_site(role, action),
+        None => matches!(scope, TokenScope::McpUse),
+    }
+}
+
 pub async fn require_user_action(
     ctx: &RequestContext,
     repository: &Repository,
@@ -562,5 +594,29 @@ mod tests {
         });
         assert_eq!(actor.user_id(), Some("usr-1"));
         assert!(actor.bound_site_id().is_none());
+    }
+
+    #[test]
+    fn editor_token_scope_ceiling_follows_site_rbac() {
+        for scope in [
+            TokenScope::WebhooksRead,
+            TokenScope::DeploymentsRead,
+            TokenScope::DeploymentsTrigger,
+            TokenScope::ContentWrite,
+            TokenScope::FilesWrite,
+            TokenScope::McpUse,
+        ] {
+            assert!(site_role_allows_token_scope(SiteRole::Editor, scope), "{scope:?}");
+        }
+
+        for scope in [
+            TokenScope::SiteSettingsWrite,
+            TokenScope::SchemaWrite,
+            TokenScope::WebhooksWrite,
+            TokenScope::WebhooksTrigger,
+            TokenScope::DeploymentsWrite,
+        ] {
+            assert!(!site_role_allows_token_scope(SiteRole::Editor, scope), "{scope:?}");
+        }
     }
 }
