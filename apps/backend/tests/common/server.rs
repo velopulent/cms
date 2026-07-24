@@ -7,6 +7,7 @@ use std::time::Duration;
 
 use cms::config::Config;
 use cms::database::init_db_with_config;
+use cms::database::pool::DbPool;
 use cms::repository::Repository;
 use cms::router::create_router;
 use cms::services::Services;
@@ -15,6 +16,7 @@ use tokio::net::TcpListener;
 
 pub struct TestServer {
     pub base_url: String,
+    pub pool: DbPool,
     _shutdown: tokio::sync::oneshot::Sender<()>,
     _storage_dir: tempfile::TempDir,
     // Dropped last: best-effort drops the per-test Postgres database
@@ -159,6 +161,7 @@ impl TestServer {
 
         TestServer {
             base_url: format!("http://127.0.0.1:{}", port),
+            pool,
             _shutdown: shutdown_tx,
             _storage_dir: storage_dir,
             _db: db_handle,
