@@ -13,13 +13,6 @@ fn map_err(e: impl Into<crate::services::error::ServiceError>) -> McpError {
     crate::mcp::auth::service_error_to_mcp(e.into())
 }
 
-fn require_site_id(actor: &Actor) -> Result<String, McpError> {
-    actor
-        .bound_site_id()
-        .map(String::from)
-        .ok_or_else(|| McpError::invalid_request("No site context", None))
-}
-
 fn resource_uri(site_id: &str, path: &str) -> String {
     format!("cms://{}{}", site_id, path)
 }
@@ -53,49 +46,39 @@ pub async fn list_resources(
     actor: &Actor,
     _request: Option<rmcp::model::PaginatedRequestParams>,
 ) -> Result<ListResourcesResult, McpError> {
-    let site_id = require_site_id(actor)?;
-
-    authorization
-        .require_site_action(actor, &site_id, Action::SiteRead)
-        .await
-        .map_err(map_err)?;
-
-    let site = services
-        .site
-        .get_site(&site_id)
-        .await
-        .map_err(map_err)?
-        .ok_or_else(|| McpError::invalid_request("Site not found", None))?;
-
-    let site_name = site.name.clone();
-
-    let mut resources = vec![make_resource(
-        &resource_uri(&site_id, "/schema"),
-        &format!("{} Schema", site_name),
-        &format!("Content schema for {}", site_name),
-        &format!("Full content schema for {}", site_name),
-    )];
-
-    let collections = services.collection.list_collections(&site_id).await.map_err(map_err)?;
-
-    for c in &collections {
+    let sites = services.site.list_sites_for_actor(actor).await.map_err(map_err)?;
+    let mut resources = Vec::new();
+    for site in sites {
+        let Some(site_id) = site.get("id").and_then(|value| value.as_str()) else {
+            continue;
+        };
+        authorization
+            .require_site_action(actor, site_id, Action::SiteRead)
+            .await
+            .map_err(map_err)?;
+        let site_name = site.get("name").and_then(|value| value.as_str()).unwrap_or(site_id);
         resources.push(make_resource(
-            &resource_uri(&site_id, &format!("/collections/{}", c.slug)),
-            &format!("{}/{}", site_name, c.name),
-            &format!("Collection: {}", c.name),
-            &format!("Schema for {} collection", c.name),
+            &resource_uri(site_id, "/schema"),
+            &format!("{} Schema", site_name),
+            &format!("Content schema for {}", site_name),
+            &format!("Full content schema for {}", site_name),
         ));
-    }
-
-    let singletons = services.singleton.list_singletons(&site_id).await.map_err(map_err)?;
-
-    for s in &singletons {
-        resources.push(make_resource(
-            &resource_uri(&site_id, &format!("/singletons/{}", s.slug)),
-            &format!("{}/{}", site_name, s.name),
-            &format!("Singleton: {}", s.name),
-            &format!("Schema for {} singleton", s.name),
-        ));
+        for collection in services.collection.list_collections(site_id).await.map_err(map_err)? {
+            resources.push(make_resource(
+                &resource_uri(site_id, &format!("/collections/{}", collection.slug)),
+                &format!("{}/{}", site_name, collection.name),
+                &format!("Collection: {}", collection.name),
+                &format!("Schema for {} collection", collection.name),
+            ));
+        }
+        for singleton in services.singleton.list_singletons(site_id).await.map_err(map_err)? {
+            resources.push(make_resource(
+                &resource_uri(site_id, &format!("/singletons/{}", singleton.slug)),
+                &format!("{}/{}", site_name, singleton.name),
+                &format!("Singleton: {}", singleton.name),
+                &format!("Schema for {} singleton", singleton.name),
+            ));
+        }
     }
 
     Ok(ListResourcesResult::with_all_items(resources))

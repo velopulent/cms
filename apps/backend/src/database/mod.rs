@@ -6,14 +6,12 @@ use pool::DbPool;
 
 static SQLITE_MIGRATOR: sqlx::migrate::Migrator = sqlx::migrate!("migrations/sqlite");
 static POSTGRES_MIGRATOR: sqlx::migrate::Migrator = sqlx::migrate!("migrations/postgres");
-static MYSQL_MIGRATOR: sqlx::migrate::Migrator = sqlx::migrate!("migrations/mysql");
 
 /// The highest migration version known to this binary for a backend. Used to
 /// stamp backups and to refuse restoring a backup taken on a newer schema.
 pub fn latest_migration_version(backend: DatabaseBackend) -> i64 {
     let migrator = match backend {
         DatabaseBackend::Postgres => &POSTGRES_MIGRATOR,
-        DatabaseBackend::MySQL => &MYSQL_MIGRATOR,
         DatabaseBackend::SQLite => &SQLITE_MIGRATOR,
     };
     migrator.iter().map(|m| m.version).max().unwrap_or(0)

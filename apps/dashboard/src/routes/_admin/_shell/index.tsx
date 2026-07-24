@@ -45,6 +45,7 @@ import { useAuth } from "@/contexts/auth-context";
 import {
   createSite,
   getSites,
+  getStorageProfiles,
   isOperator,
   type SiteWithRole,
   siteRoleLabel,
@@ -116,6 +117,11 @@ function CreateSiteDialog({
 }) {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const { data: storageProfiles = [] } = useQuery({
+    queryKey: ["storage-profiles"],
+    queryFn: getStorageProfiles,
+    enabled: open,
+  });
 
   const createMutation = useMutation({
     mutationFn: ({
@@ -127,7 +133,10 @@ function CreateSiteDialog({
     }) =>
       createSite({
         name,
-        storage_provider: storageProvider,
+        storage_provider:
+          storageProfiles.find((profile) => profile.id === storageProvider)
+            ?.kind ?? "filesystem",
+        storage_profile_id: storageProvider,
       }),
     onSuccess: (site) => {
       queryClient.invalidateQueries({ queryKey: ["sites"] });
@@ -145,7 +154,7 @@ function CreateSiteDialog({
   const form = useForm({
     defaultValues: {
       name: "",
-      storageProvider: "filesystem",
+      storageProvider: "local-filesystem",
     },
     validators: {
       onSubmit: createSiteSchema,
@@ -220,12 +229,16 @@ function CreateSiteDialog({
                           !field.state.meta.isValid
                         }
                       >
-                        {field.state.value === "filesystem" ? (
+                        {storageProfiles.find(
+                          (profile) => profile.id === field.state.value,
+                        )?.kind === "filesystem" ? (
                           <div className="flex items-center gap-2">
                             <HardDrive className="size-4" />
                             <span>Filesystem</span>
                           </div>
-                        ) : field.state.value === "s3" ? (
+                        ) : storageProfiles.find(
+                            (profile) => profile.id === field.state.value,
+                          )?.kind === "s3" ? (
                           <div className="flex items-center gap-2">
                             <Cloud className="size-4" />
                             <span>S3 / Cloud Storage</span>
@@ -235,27 +248,22 @@ function CreateSiteDialog({
                         )}
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="filesystem">
-                          <div className="flex items-center gap-2">
-                            <HardDrive className="size-4" />
-                            <span>Filesystem</span>
-                            <span className="text-xs text-muted-foreground">
-                              (default)
-                            </span>
-                          </div>
-                        </SelectItem>
-                        <SelectItem value="s3">
-                          <div className="flex items-center gap-2">
-                            <Cloud className="size-4" />
-                            <span>S3 / Cloud Storage</span>
-                          </div>
-                        </SelectItem>
+                        {storageProfiles.map((profile) => (
+                          <SelectItem key={profile.id} value={profile.id}>
+                            <div className="flex items-center gap-2">
+                              {profile.kind === "filesystem" ? (
+                                <HardDrive className="size-4" />
+                              ) : (
+                                <Cloud className="size-4" />
+                              )}
+                              <span>{profile.name}</span>
+                            </div>
+                          </SelectItem>
+                        ))}
                       </SelectContent>
                     </Select>
                     <p className="text-xs text-muted-foreground">
-                      {field.state.value === "s3"
-                        ? "Files will be stored in your S3 bucket"
-                        : "Files will be stored on the local filesystem"}
+                      Storage cannot be changed after site creation.
                     </p>
                   </Field>
                 );

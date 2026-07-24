@@ -50,6 +50,7 @@ async fn tick(service: &BackupService) -> Result<(), BackupError> {
             encrypt: sched.encrypt != 0,
             schedule_id: Some(sched.id.clone()),
             created_by: sched.created_by.clone(),
+            storage_profile_id: sched.storage_profile_id.clone(),
         };
         if let Err(e) = service.create_backup(opts).await {
             tracing::error!(schedule = %sched.id, error = %e, "scheduled backup failed");

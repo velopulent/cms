@@ -12,7 +12,7 @@ use tracing::Span;
 
 use crate::config::Config;
 use crate::middleware::error::AuthError;
-use crate::models::access_token::AccessTokenPermission;
+use crate::models::access_token::{AccessTokenPermission, TokenScope, TokenScopes, decode_scopes};
 use crate::models::authorization::{Action, Authorizer, InstanceRole, SiteRole};
 use crate::repository::Repository;
 
@@ -32,19 +32,30 @@ pub struct UserActor {
 pub struct ApiKeyActor {
     pub token_id: String,
     pub site_id: String,
+    pub scopes: TokenScopes,
     pub permission: AccessTokenPermission,
+}
+
+#[derive(Debug, Clone)]
+pub struct PersonalTokenActor {
+    pub token_id: String,
+    pub user_id: String,
+    pub scopes: TokenScopes,
+    pub site_id: Option<String>,
 }
 
 #[derive(Debug, Clone)]
 pub enum Actor {
     User(UserActor),
     ApiKey(ApiKeyActor),
+    PersonalToken(PersonalTokenActor),
 }
 
 impl Actor {
     pub fn user_id(&self) -> Option<&str> {
         match self {
             Self::User(u) => Some(&u.user_id),
+            Self::PersonalToken(t) => Some(&t.user_id),
             _ => None,
         }
     }
@@ -52,6 +63,7 @@ impl Actor {
     pub fn bound_site_id(&self) -> Option<&str> {
         match self {
             Self::ApiKey(k) => Some(&k.site_id),
+            Self::PersonalToken(t) => t.site_id.as_deref(),
             _ => None,
         }
     }
@@ -63,6 +75,7 @@ impl Actor {
 pub enum AuthMethod {
     Session,
     ApiKey,
+    PersonalToken,
 }
 
 #[derive(Debug, Clone)]
@@ -182,7 +195,7 @@ fn extract_csrf_token(parts: &Parts) -> Option<String> {
 pub(crate) const TOUCH_INTERVAL_SECS: i64 = 60;
 
 /// Lenient parse of the backend-specific timestamp texts: RFC3339, Postgres
-/// `::text` (`YYYY-MM-DD HH:MM:SS[.fff]+00`), or naive UTC (SQLite/MySQL).
+/// `::text` (`YYYY-MM-DD HH:MM:SS[.fff]+00`), or naive UTC (SQLite).
 pub(crate) fn parse_db_timestamp(s: &str) -> Option<chrono::DateTime<chrono::Utc>> {
     if let Ok(dt) = chrono::DateTime::parse_from_rfc3339(s) {
         return Some(dt.with_timezone(&chrono::Utc));
@@ -237,6 +250,33 @@ pub(crate) async fn verify_access_token(
     repository: &Repository,
     hmac_secret: &str,
 ) -> Result<Actor, (StatusCode, Json<AuthError>)> {
+    if token.starts_with("vcms_pat_") {
+        let prefix: String = token.chars().take(TOKEN_PREFIX_LEN).collect();
+        let rows = repository
+            .access_token
+            .find_personal_by_prefix(&prefix)
+            .await
+            .map_err(|_| AuthError::unauthorized("Internal server error"))?;
+        for (id, user_id, stored_hash, expires_at, revoked_at, scopes_json, last_used_at) in rows {
+            if !bcrypt::verify(token, &stored_hash).unwrap_or(false) {
+                continue;
+            }
+            if revoked_at.is_some() || !is_token_not_expired(expires_at.as_deref()) {
+                return Err(AuthError::unauthorized("Personal access token is expired or revoked"));
+            }
+            if needs_touch(last_used_at.as_deref()) {
+                let _ = repository.access_token.touch_personal(&id).await;
+            }
+            let scopes = decode_scopes(&scopes_json).map_err(|_| AuthError::unauthorized("Invalid token scopes"))?;
+            return Ok(Actor::PersonalToken(PersonalTokenActor {
+                token_id: id,
+                user_id,
+                scopes,
+                site_id: None,
+            }));
+        }
+        return Err(AuthError::unauthorized("Invalid personal access token"));
+    }
     if !token.starts_with("vcms_site_") {
         return Err(AuthError::unauthorized("Invalid access token"));
     }
@@ -268,9 +308,7 @@ pub(crate) async fn verify_access_token(
             return Err(AuthError::unauthorized("Access token has expired"));
         }
 
-        let permission = permission
-            .parse::<AccessTokenPermission>()
-            .map_err(|_| AuthError::unauthorized("Invalid access token"))?;
+        let scopes = decode_scopes(&permission).map_err(|_| AuthError::unauthorized("Invalid access token scopes"))?;
 
         if needs_touch(last_used_at.as_deref()) {
             let _ = repository.access_token.update_last_used(&token_id).await;
@@ -280,7 +318,21 @@ pub(crate) async fn verify_access_token(
         return Ok(Actor::ApiKey(ApiKeyActor {
             token_id,
             site_id,
-            permission,
+            permission: if scopes.iter().any(|s| {
+                matches!(
+                    s,
+                    TokenScope::ContentWrite
+                        | TokenScope::FilesWrite
+                        | TokenScope::SchemaWrite
+                        | TokenScope::WebhooksWrite
+                        | TokenScope::DeploymentsWrite
+                )
+            }) {
+                AccessTokenPermission::Write
+            } else {
+                AccessTokenPermission::Read
+            },
+            scopes,
         }));
     }
 
@@ -332,13 +384,75 @@ pub async fn require_site_action(
 ) -> Result<(), (StatusCode, Json<AuthError>)> {
     match &ctx.auth.actor {
         Actor::ApiKey(key) => {
-            if Authorizer::allows_api_key(key.permission.can_write(), action) {
+            if !Authorizer::token_hard_denied(action)
+                && scope_for_action(action).is_some_and(|scope| key.scopes.contains(&scope))
+            {
                 Ok(())
             } else {
                 Err(AuthError::insufficient_permission("write"))
             }
         }
+        Actor::PersonalToken(token) => {
+            if Authorizer::token_hard_denied(action)
+                || !scope_for_action(action).is_some_and(|scope| token.scopes.contains(&scope))
+            {
+                return Err(AuthError::insufficient_permission("token scope"));
+            }
+            check_site_action_repo(repository, &token.user_id, &ctx.site_id, action).await
+        }
         Actor::User(user) => check_site_action_repo(repository, &user.user_id, &ctx.site_id, action).await,
+    }
+}
+
+pub const fn scope_for_action(action: Action) -> Option<TokenScope> {
+    Some(match action {
+        Action::SiteRead => TokenScope::SiteRead,
+        Action::SiteManage => TokenScope::SiteSettingsWrite,
+        Action::ContentRead => TokenScope::ContentRead,
+        Action::ContentWrite => TokenScope::ContentWrite,
+        Action::SchemaRead => TokenScope::SchemaRead,
+        Action::SchemaWrite => TokenScope::SchemaWrite,
+        Action::FilesRead => TokenScope::FilesRead,
+        Action::FilesWrite => TokenScope::FilesWrite,
+        Action::WebhooksRead => TokenScope::WebhooksRead,
+        Action::WebhooksWrite => TokenScope::WebhooksWrite,
+        Action::WebhooksTrigger => TokenScope::WebhooksTrigger,
+        Action::DeploymentsRead => TokenScope::DeploymentsRead,
+        Action::DeploymentsWrite => TokenScope::DeploymentsWrite,
+        Action::DeploymentsTrigger => TokenScope::DeploymentsTrigger,
+        _ => return None,
+    })
+}
+
+pub const fn action_for_scope(scope: TokenScope) -> Option<Action> {
+    Some(match scope {
+        TokenScope::SiteRead | TokenScope::SiteSettingsRead => Action::SiteRead,
+        TokenScope::SiteSettingsWrite => Action::SiteManage,
+        TokenScope::ContentRead => Action::ContentRead,
+        TokenScope::ContentWrite => Action::ContentWrite,
+        TokenScope::SchemaRead => Action::SchemaRead,
+        TokenScope::SchemaWrite => Action::SchemaWrite,
+        TokenScope::FilesRead => Action::FilesRead,
+        TokenScope::FilesWrite => Action::FilesWrite,
+        TokenScope::WebhooksRead => Action::WebhooksRead,
+        TokenScope::WebhooksWrite => Action::WebhooksWrite,
+        TokenScope::WebhooksTrigger => Action::WebhooksTrigger,
+        TokenScope::DeploymentsRead => Action::DeploymentsRead,
+        TokenScope::DeploymentsWrite => Action::DeploymentsWrite,
+        TokenScope::DeploymentsTrigger => Action::DeploymentsTrigger,
+        TokenScope::McpUse => return None,
+    })
+}
+
+/// Whether a site collaborator may mint a personal token carrying this scope.
+///
+/// Personal tokens span sites, so use the most capable collaborator role as the
+/// minting ceiling. Request authorization still checks the user's live role on
+/// the selected site.
+pub const fn site_role_allows_token_scope(role: SiteRole, scope: TokenScope) -> bool {
+    match action_for_scope(scope) {
+        Some(action) => Authorizer::allows_site(role, action),
+        None => matches!(scope, TokenScope::McpUse),
     }
 }
 
@@ -466,6 +580,7 @@ mod tests {
             token_id: "tok-1".into(),
             site_id: "site-42".into(),
             permission: AccessTokenPermission::Read,
+            scopes: AccessTokenPermission::Read.into(),
         });
         assert_eq!(actor.bound_site_id(), Some("site-42"));
         assert!(actor.user_id().is_none());
@@ -479,5 +594,29 @@ mod tests {
         });
         assert_eq!(actor.user_id(), Some("usr-1"));
         assert!(actor.bound_site_id().is_none());
+    }
+
+    #[test]
+    fn editor_token_scope_ceiling_follows_site_rbac() {
+        for scope in [
+            TokenScope::WebhooksRead,
+            TokenScope::DeploymentsRead,
+            TokenScope::DeploymentsTrigger,
+            TokenScope::ContentWrite,
+            TokenScope::FilesWrite,
+            TokenScope::McpUse,
+        ] {
+            assert!(site_role_allows_token_scope(SiteRole::Editor, scope), "{scope:?}");
+        }
+
+        for scope in [
+            TokenScope::SiteSettingsWrite,
+            TokenScope::SchemaWrite,
+            TokenScope::WebhooksWrite,
+            TokenScope::WebhooksTrigger,
+            TokenScope::DeploymentsWrite,
+        ] {
+            assert!(!site_role_allows_token_scope(SiteRole::Editor, scope), "{scope:?}");
+        }
     }
 }

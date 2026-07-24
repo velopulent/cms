@@ -84,7 +84,9 @@ impl MutationRoot {
     ) -> Result<crate::graphql::types::webhook::SiteWebhook> {
         let gql_ctx = ctx.data::<GqlContext>()?;
         gql_ctx.require_site_match(&site_id)?;
-        gql_ctx.require_write()?;
+        gql_ctx
+            .require_write(crate::models::authorization::Action::WebhooksWrite)
+            .await?;
 
         let parsed_headers: HashMap<String, String> = match headers {
             Some(ref h) if !h.is_empty() => serde_json::from_str(h).unwrap_or_default(),
@@ -113,7 +115,9 @@ impl MutationRoot {
     ) -> Result<crate::graphql::types::webhook::SiteWebhook> {
         let gql_ctx = ctx.data::<GqlContext>()?;
         gql_ctx.require_site_match(&site_id)?;
-        gql_ctx.require_write()?;
+        gql_ctx
+            .require_write(crate::models::authorization::Action::WebhooksWrite)
+            .await?;
 
         let parsed_headers: Option<HashMap<String, String>> =
             headers.map(|h| serde_json::from_str(&h).unwrap_or_default());
@@ -138,7 +142,9 @@ impl MutationRoot {
     async fn delete_webhook(&self, ctx: &Context<'_>, site_id: String, webhook_id: String) -> Result<bool> {
         let gql_ctx = ctx.data::<GqlContext>()?;
         gql_ctx.require_site_match(&site_id)?;
-        gql_ctx.require_write()?;
+        gql_ctx
+            .require_write(crate::models::authorization::Action::WebhooksWrite)
+            .await?;
 
         let deleted = gql_ctx
             .services
@@ -158,7 +164,9 @@ impl MutationRoot {
     ) -> Result<crate::graphql::types::webhook::WebhookDelivery> {
         let gql_ctx = ctx.data::<GqlContext>()?;
         gql_ctx.require_site_match(&site_id)?;
-        gql_ctx.require_write()?;
+        gql_ctx
+            .require_write(crate::models::authorization::Action::WebhooksTrigger)
+            .await?;
 
         let delivery = gql_ctx
             .services

@@ -10,6 +10,7 @@ use crate::grpc::cms::v1::{
     TriggerWebhookRequest, UpdateWebhookRequest, WebhookDelivery as ProtoWebhookDelivery,
 };
 use crate::grpc::interceptor::{GrpcAuthContext, get_auth_context};
+use crate::models::access_token::TokenScope;
 use crate::models::webhook::WebhookDelivery;
 use crate::repository::Repository;
 use crate::services::webhook::WebhookService as AppWebhookService;
@@ -46,7 +47,7 @@ impl WebhookService for WebhookServiceImpl {
         mut request: Request<ListWebhooksRequest>,
     ) -> Result<Response<ListWebhooksResponse>, Status> {
         let auth = get_auth_context(&mut request, &self.repository).await?;
-        auth.require_read()?;
+        auth.require_scope(TokenScope::WebhooksRead)?;
         let site_id = request.into_inner().site_id;
         ensure_same_site(&auth, &site_id)?;
 
@@ -63,7 +64,7 @@ impl WebhookService for WebhookServiceImpl {
 
     async fn get_webhook(&self, mut request: Request<GetWebhookRequest>) -> Result<Response<ProtoSiteWebhook>, Status> {
         let auth = get_auth_context(&mut request, &self.repository).await?;
-        auth.require_read()?;
+        auth.require_scope(TokenScope::WebhooksRead)?;
         let req = request.into_inner();
         ensure_same_site(&auth, &req.site_id)?;
 
@@ -83,7 +84,7 @@ impl WebhookService for WebhookServiceImpl {
         mut request: Request<CreateWebhookRequest>,
     ) -> Result<Response<ProtoSiteWebhook>, Status> {
         let auth = get_auth_context(&mut request, &self.repository).await?;
-        auth.require_write()?;
+        auth.require_scope(TokenScope::WebhooksWrite)?;
         let req = request.into_inner();
         ensure_same_site(&auth, &req.site_id)?;
 
@@ -104,7 +105,7 @@ impl WebhookService for WebhookServiceImpl {
         mut request: Request<UpdateWebhookRequest>,
     ) -> Result<Response<ProtoSiteWebhook>, Status> {
         let auth = get_auth_context(&mut request, &self.repository).await?;
-        auth.require_write()?;
+        auth.require_scope(TokenScope::WebhooksWrite)?;
         let req = request.into_inner();
         ensure_same_site(&auth, &req.site_id)?;
 
@@ -135,7 +136,7 @@ impl WebhookService for WebhookServiceImpl {
         mut request: Request<DeleteWebhookRequest>,
     ) -> Result<Response<crate::grpc::cms::v1::DeleteResponse>, Status> {
         let auth = get_auth_context(&mut request, &self.repository).await?;
-        auth.require_write()?;
+        auth.require_scope(TokenScope::WebhooksWrite)?;
         let req = request.into_inner();
         ensure_same_site(&auth, &req.site_id)?;
 
@@ -160,7 +161,7 @@ impl WebhookService for WebhookServiceImpl {
         mut request: Request<TriggerWebhookRequest>,
     ) -> Result<Response<ProtoWebhookDelivery>, Status> {
         let auth = get_auth_context(&mut request, &self.repository).await?;
-        auth.require_write()?;
+        auth.require_scope(TokenScope::WebhooksTrigger)?;
         let req = request.into_inner();
         ensure_same_site(&auth, &req.site_id)?;
 
@@ -180,7 +181,7 @@ impl WebhookService for WebhookServiceImpl {
         mut request: Request<ListWebhookDeliveriesRequest>,
     ) -> Result<Response<ListWebhookDeliveriesResponse>, Status> {
         let auth = get_auth_context(&mut request, &self.repository).await?;
-        auth.require_read()?;
+        auth.require_scope(TokenScope::WebhooksRead)?;
         let req = request.into_inner();
         ensure_same_site(&auth, &req.site_id)?;
 

@@ -3,6 +3,7 @@ mod auth;
 mod backup;
 mod collections;
 mod dashboard;
+mod deployments;
 mod docs;
 mod entry;
 mod files;
@@ -72,6 +73,7 @@ fn dashboard_site_v1_routes(max_upload_bytes: usize) -> Router {
         .merge(entry::dashboard_routes())
         .merge(singleton::dashboard_routes())
         .merge(webhooks::dashboard_routes())
+        .merge(deployments::routes())
         .merge(access_tokens::dashboard_routes())
         .merge(backup::site_routes())
         .merge(files::dashboard_routes(max_upload_bytes));
@@ -127,6 +129,7 @@ pub fn create_router(
             Router::new()
                 .nest("/sites/{site_id}", dashboard_site_v1_routes(max_upload_bytes))
                 .merge(sites::dashboard_list_routes())
+                .merge(access_tokens::account_routes())
                 .merge(instance::routes())
                 .merge(backup::instance_routes())
                 .layer(from_fn(dashboard_auth_middleware)),

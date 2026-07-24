@@ -32,12 +32,23 @@ function SettingsLayout() {
 
       <Tabs value={active}>
         <TabsList>
+          {canManage && (
+            <TabsTrigger
+              value="general"
+              nativeButton={false}
+              render={<Link to="/sites/$siteId/settings" params={{ siteId }} />}
+            >
+              General
+            </TabsTrigger>
+          )}
           <TabsTrigger
-            value="general"
+            value="mcp"
             nativeButton={false}
-            render={<Link to="/sites/$siteId/settings" params={{ siteId }} />}
+            render={
+              <Link to="/sites/$siteId/settings/mcp" params={{ siteId }} />
+            }
           >
-            General
+            MCP
           </TabsTrigger>
           <TabsTrigger
             value="members"

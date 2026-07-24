@@ -38,6 +38,7 @@ pub struct CreateBackupBody {
     pub include_files: Option<bool>,
     #[serde(default)]
     pub encrypt: bool,
+    pub storage_profile_id: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -47,6 +48,7 @@ pub struct ScheduleBody {
     pub include_files: Option<bool>,
     pub encrypt: Option<bool>,
     pub enabled: Option<bool>,
+    pub storage_profile_id: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -127,6 +129,7 @@ async fn create_backup(
         scope,
         schedule_id: None,
         created_by,
+        storage_profile_id: body.storage_profile_id,
     };
     match backup.create_backup(opts).await {
         Ok(row) => (StatusCode::CREATED, Json(meta::BackupInfo::from(row))).into_response(),
@@ -284,6 +287,7 @@ async fn create_schedule(
         body.enabled.unwrap_or(true),
         Some(&next),
         created_by.as_deref(),
+        body.storage_profile_id.as_deref(),
         &now,
     )
     .await;
@@ -332,6 +336,7 @@ async fn update_schedule(backup: &BackupService, id: &str, expect_site: Option<&
         body.encrypt.unwrap_or(false),
         body.enabled.unwrap_or(true),
         next.as_deref(),
+        body.storage_profile_id.as_deref(),
         &now,
     )
     .await;
@@ -388,6 +393,7 @@ async fn run_schedule_now(
         encrypt: row.encrypt != 0,
         schedule_id: Some(row.id.clone()),
         created_by,
+        storage_profile_id: row.storage_profile_id,
     };
     match backup.create_backup(opts).await {
         Ok(b) => (StatusCode::CREATED, Json(meta::BackupInfo::from(b))).into_response(),

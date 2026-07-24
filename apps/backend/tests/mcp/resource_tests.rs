@@ -38,7 +38,7 @@ async fn test_read_collection_resource() {
     let server = start_mcp_server().await;
     let (site_id, token) = setup_site_token(&server).await;
 
-    create_test_collection(&server.base_url, &token, "Posts", "posts").await;
+    create_test_collection(&server.base_url, &token, &site_id, "Posts", "posts").await;
 
     let result = mcp_read_resource(
         &server.base_url,
@@ -116,10 +116,10 @@ async fn test_resources_require_auth() {
 #[tokio::test]
 async fn test_resources_reflect_created_collections() {
     let server = start_mcp_server().await;
-    let (_site_id, token) = setup_site_token(&server).await;
+    let (site_id, token) = setup_site_token(&server).await;
 
-    create_test_collection(&server.base_url, &token, "Posts", "posts").await;
-    create_test_collection(&server.base_url, &token, "Pages", "pages").await;
+    create_test_collection(&server.base_url, &token, &site_id, "Posts", "posts").await;
+    create_test_collection(&server.base_url, &token, &site_id, "Pages", "pages").await;
 
     let resources = mcp_list_resources(&server.base_url, &token).await;
 

@@ -4,7 +4,7 @@
 //! `::text`, booleans via `::int`), so a backup is a portable, DB-agnostic set of
 //! NDJSON rows. On restore the values are bound back as strings; only Postgres
 //! needs per-column casts (`::jsonb`, `::timestamptz`, `::bigint`,
-//! `::int::boolean`) because it is strictly typed — SQLite and MySQL coerce.
+//! `::int::boolean`) because it is strictly typed — SQLite coerces.
 
 use sqlx::Row;
 
@@ -225,10 +225,6 @@ fn select_expr(backend: DatabaseBackend, c: &Column) -> String {
             ColType::Text | ColType::Json | ColType::Timestamp => c.name.to_string(),
             ColType::Int | ColType::Bool => format!("CAST({} AS TEXT) AS {}", c.name, c.name),
         },
-        DatabaseBackend::MySQL => match c.ty {
-            ColType::Text => c.name.to_string(),
-            _ => format!("CAST({} AS CHAR) AS {}", c.name, c.name),
-        },
     }
 }
 
@@ -324,7 +320,6 @@ pub async fn fetch_rows(
     Ok(match pool {
         DbPool::Sqlite(p) => run!(p),
         DbPool::Postgres(p) => run!(p),
-        DbPool::MySql(p) => run!(p),
     })
 }
 
@@ -406,11 +401,6 @@ pub async fn apply_restore(pool: &DbPool, plan: &RestorePlan) -> Result<(), Back
             tx.commit().await.map_err(|e| BackupError::Db(e.to_string()))?;
         }
         DbPool::Postgres(p) => {
-            let mut tx = p.begin().await.map_err(|e| BackupError::Db(e.to_string()))?;
-            exec!(tx);
-            tx.commit().await.map_err(|e| BackupError::Db(e.to_string()))?;
-        }
-        DbPool::MySql(p) => {
             let mut tx = p.begin().await.map_err(|e| BackupError::Db(e.to_string()))?;
             exec!(tx);
             tx.commit().await.map_err(|e| BackupError::Db(e.to_string()))?;

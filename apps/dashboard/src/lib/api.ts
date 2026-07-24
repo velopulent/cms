@@ -196,6 +196,7 @@ export interface Site {
   id: string;
   name: string;
   storage_provider: string;
+  storage_profile_id: string | null;
   created_by: string;
   created_at: string;
   updated_at: string;
@@ -366,7 +367,7 @@ interface AccessToken {
   site_id: string;
   name: string;
   token_prefix: string;
-  permission: "read" | "write";
+  permission: string;
   last_used_at: string | null;
   created_at: string;
   expires_at: string | null;
@@ -378,17 +379,26 @@ interface AccessTokenResponse {
   name: string;
   token: string;
   token_prefix: string;
-  permission: "read" | "write";
+  scopes: string[];
   created_at: string;
 }
 
 function mapAccessToken(token: AccessToken): ApiKey {
+  const scopes = (() => {
+    try {
+      return JSON.parse(token.permission) as string[];
+    } catch {
+      return [token.permission];
+    }
+  })();
   return {
     id: token.id,
     site_id: token.site_id,
     name: token.name,
     key_prefix: token.token_prefix,
-    permissions: token.permission,
+    permissions: scopes.some((scope) => scope.endsWith(".write"))
+      ? "write"
+      : "read",
     last_used_at: token.last_used_at,
     created_at: token.created_at,
     expires_at: token.expires_at,
@@ -402,7 +412,7 @@ function mapCreatedAccessToken(token: AccessTokenResponse): ApiKeyResponse {
     name: token.name,
     key: token.token,
     key_prefix: token.token_prefix,
-    permissions: token.permission,
+    permissions: token.scopes.join(", "),
     created_at: token.created_at,
   };
 }
@@ -672,6 +682,7 @@ export interface BackupInfo {
   created_by: string | null;
   completed_at: string | null;
   created_at: string;
+  storage_profile_id: string | null;
 }
 
 export interface BackupSchedule {
@@ -686,11 +697,13 @@ export interface BackupSchedule {
   last_run_at: string | null;
   next_run_at: string | null;
   created_at: string;
+  storage_profile_id: string | null;
 }
 
 export interface CreateBackupInput {
   include_files?: boolean;
   encrypt?: boolean;
+  storage_profile_id?: string;
 }
 
 export interface ScheduleInput {
@@ -699,6 +712,7 @@ export interface ScheduleInput {
   include_files: boolean;
   encrypt: boolean;
   enabled: boolean;
+  storage_profile_id?: string;
 }
 
 export interface RestoreInput {
@@ -898,6 +912,7 @@ export async function getSites() {
 export async function createSite(data: {
   name: string;
   storage_provider?: string;
+  storage_profile_id?: string;
 }) {
   return api<Site>("/sites", {
     method: "POST",
@@ -963,12 +978,134 @@ export async function createApiKey(
   name: string,
   permissions?: string,
 ) {
+  const scopes =
+    permissions === "write"
+      ? [
+          "site.read",
+          "site.settings.read",
+          "site.settings.write",
+          "content.read",
+          "content.write",
+          "files.read",
+          "files.write",
+          "schema.read",
+          "schema.write",
+          "webhooks.read",
+          "webhooks.write",
+          "webhooks.trigger",
+          "deployments.read",
+          "deployments.write",
+          "deployments.trigger",
+          "mcp.use",
+        ]
+      : permissions === "read"
+        ? ["site.read", "content.read", "files.read", "schema.read"]
+        : (permissions
+            ?.split(",")
+            .map((value) => value.trim())
+            .filter(Boolean) ?? ["site.read", "content.read"]);
   const token = await api<AccessTokenResponse>(`/sites/${siteId}/tokens`, {
     method: "POST",
-    body: JSON.stringify({ name, permission: permissions ?? "read" }),
+    body: JSON.stringify({ name, scopes }),
   });
   return mapCreatedAccessToken(token);
 }
+
+export interface PersonalToken {
+  id: string;
+  name: string;
+  token_prefix: string;
+  scopes: string[];
+  last_used_at: string | null;
+  created_at: string;
+  expires_at: string | null;
+  revoked_at: string | null;
+}
+export interface CreatedPersonalToken extends PersonalToken {
+  token: string;
+}
+export const getPersonalTokens = () => api<PersonalToken[]>("/account/tokens");
+export const createPersonalToken = (value: {
+  name: string;
+  scopes: string[];
+  expires_at: string | null;
+}) =>
+  api<{ token_info: PersonalToken; token: string }>("/account/tokens", {
+    method: "POST",
+    body: JSON.stringify(value),
+  });
+export const revokePersonalToken = (id: string) =>
+  api<void>(`/account/tokens/${id}`, { method: "DELETE" });
+
+export interface DeploymentTrigger {
+  id: string;
+  site_id: string;
+  label: string;
+  provider: string;
+  enabled: boolean;
+  is_primary: boolean;
+  cooldown_seconds: number;
+  daily_quota: number;
+  created_at: string;
+  updated_at: string;
+}
+export interface DeploymentJob {
+  id: string;
+  status: string;
+  status_code: number | null;
+  error_category: string | null;
+  retry_after_seconds: number | null;
+  created_at: string;
+  finished_at: string | null;
+}
+export const getDeployments = (siteId: string) =>
+  api<DeploymentTrigger[]>(`/sites/${siteId}/deployments`);
+export const createDeployment = (siteId: string, value: unknown) =>
+  api<DeploymentTrigger>(`/sites/${siteId}/deployments`, {
+    method: "POST",
+    body: JSON.stringify(value),
+  });
+export const updateDeployment = (siteId: string, id: string, value: unknown) =>
+  api<DeploymentTrigger>(`/sites/${siteId}/deployments/${id}`, {
+    method: "PUT",
+    body: JSON.stringify(value),
+  });
+export const triggerDeployment = (siteId: string, id: string) =>
+  api<DeploymentJob>(`/sites/${siteId}/deployments/${id}/trigger`, {
+    method: "POST",
+  });
+export const getDeploymentHistory = (siteId: string, id: string) =>
+  api<DeploymentJob[]>(`/sites/${siteId}/deployments/${id}/history`);
+
+export interface StorageProfile {
+  id: string;
+  name: string;
+  kind: "filesystem" | "s3";
+  endpoint: string | null;
+  region: string | null;
+  bucket: string | null;
+  public_url: string | null;
+  enabled: boolean;
+  immutable: boolean;
+}
+export const getStorageProfiles = () =>
+  api<StorageProfile[]>("/instance/storage-profiles");
+export const createStorageProfile = (value: unknown) =>
+  api<StorageProfile>("/instance/storage-profiles", {
+    method: "POST",
+    body: JSON.stringify(value),
+  });
+export const updateStorageProfile = (id: string, value: unknown) =>
+  api<StorageProfile>(`/instance/storage-profiles/${id}`, {
+    method: "PUT",
+    body: JSON.stringify(value),
+  });
+export const probeStorageProfile = (id: string) =>
+  api<{ ok: boolean }>(`/instance/storage-profiles/${id}/probe`, {
+    method: "POST",
+  });
+export const deleteStorageProfile = (id: string) =>
+  api<void>(`/instance/storage-profiles/${id}`, { method: "DELETE" });
 
 export async function deleteApiKey(siteId: string, keyId: string) {
   return api<void>(`/sites/${siteId}/tokens/${keyId}`, {

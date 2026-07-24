@@ -332,10 +332,11 @@ impl FileRepository for SqliteFileRepository {
     }
 
     async fn get_storage_provider(&self, site_id: &str) -> Result<String, RepositoryError> {
-        let provider: Option<String> = sqlx::query_scalar("SELECT storage_provider FROM sites WHERE id = ?")
-            .bind(site_id)
-            .fetch_optional(&self.pool)
-            .await?;
+        let provider: Option<String> =
+            sqlx::query_scalar("SELECT COALESCE(storage_profile_id, storage_provider) FROM sites WHERE id = ?")
+                .bind(site_id)
+                .fetch_optional(&self.pool)
+                .await?;
 
         Ok(provider.unwrap_or_else(|| "filesystem".into()))
     }

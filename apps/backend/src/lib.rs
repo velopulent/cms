@@ -27,10 +27,12 @@ pub mod models {
     pub mod access_token;
     pub mod authorization;
     pub mod collection;
+    pub mod deployment;
     pub mod entry;
     pub mod file;
     pub mod session;
     pub mod site;
+    pub mod storage_profile;
     pub mod user;
     pub mod webhook;
 }
@@ -40,12 +42,14 @@ pub mod handlers {
     pub mod backup_handler;
     pub mod collection_handler;
     pub mod dashboard_handler;
+    pub mod deployment_handler;
     pub mod entry_handler;
     pub mod file_handler;
     pub mod instance_handler;
     pub mod settings_handler;
     pub mod singleton_handler;
     pub mod site_handler;
+    pub mod storage_profile_handler;
     pub mod webhook_handler;
 }
 pub mod grpc;

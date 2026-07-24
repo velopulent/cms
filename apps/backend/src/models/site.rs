@@ -7,6 +7,8 @@ pub struct Site {
     pub id: String,
     pub name: String,
     pub storage_provider: String,
+    #[sqlx(default)]
+    pub storage_profile_id: Option<String>,
     pub created_by: String,
     pub created_at: String,
     pub updated_at: String,
@@ -17,6 +19,8 @@ pub struct SiteWithRole {
     pub id: String,
     pub name: String,
     pub storage_provider: String,
+    #[sqlx(default)]
+    pub storage_profile_id: Option<String>,
     pub created_by: String,
     pub created_at: String,
     pub updated_at: String,
@@ -26,7 +30,12 @@ pub struct SiteWithRole {
 #[derive(Deserialize, ToSchema)]
 pub struct CreateSite {
     pub name: String,
+    #[serde(default = "default_storage_kind")]
     pub storage_provider: String,
+    pub storage_profile_id: Option<String>,
+}
+fn default_storage_kind() -> String {
+    "filesystem".into()
 }
 
 #[derive(Deserialize, ToSchema)]

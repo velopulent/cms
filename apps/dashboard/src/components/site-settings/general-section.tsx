@@ -38,9 +38,11 @@ const siteSettingsSchema = z.object({
 export function GeneralSection({
   siteId,
   canManage,
+  role,
 }: {
   siteId: string;
   canManage: boolean;
+  role: "editor" | "viewer";
 }) {
   const queryClient = useQueryClient();
   const navigate = useNavigate();
@@ -96,6 +98,32 @@ export function GeneralSection({
   if (!site) {
     return <p className="text-sm text-muted-foreground">Site not found.</p>;
   }
+
+  if (!canManage)
+    return (
+      <Card>
+        <CardHeader>
+          <CardTitle>General</CardTitle>
+          <CardDescription>
+            Site information available to your account.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="flex flex-col gap-4">
+          <div>
+            <p className="text-sm text-muted-foreground">Site name</p>
+            <p className="font-medium">{site.name}</p>
+          </div>
+          <div>
+            <p className="text-sm text-muted-foreground">Site ID</p>
+            <p className="font-mono text-sm">{site.id}</p>
+          </div>
+          <div>
+            <p className="text-sm text-muted-foreground">Your role</p>
+            <p className="capitalize font-medium">{role}</p>
+          </div>
+        </CardContent>
+      </Card>
+    );
 
   return (
     <div className="flex flex-col gap-6">

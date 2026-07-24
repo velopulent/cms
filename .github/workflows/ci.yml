@@ -134,10 +134,9 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # SQLite runs fully parallel (in-memory, isolated per test). Postgres and
-        # MySQL run database-per-test against one shared server, so concurrent
-        # tests are capped to keep the connection demand well under the server's
-        # ceiling on high-core runners.
+        # SQLite runs fully parallel (in-memory, isolated per test). Postgres runs
+        # database-per-test against one shared server, so concurrent tests are
+        # capped to keep connection demand well under server ceiling.
         include:
           - db: sqlite
             test_database: sqlite
@@ -147,14 +146,10 @@ jobs:
             test_database: postgres
             test_database_url: postgres://postgres:postgres@localhost:5432/postgres
             test_args: "--test-threads 4"
-          - db: mysql
-            test_database: mysql
-            test_database_url: mysql://root:root@localhost:3306/mysql
-            test_args: "--test-threads 4"
     env:
       TEST_DATABASE: ${{ matrix.test_database }}
       TEST_DATABASE_URL: ${{ matrix.test_database_url }}
-    # Both services run for every lane; the sqlite lane simply ignores them
+    # Service runs for every lane; sqlite lane simply ignores it
     # (GitHub Actions can't attach services conditionally per matrix value).
     # Service containers are Linux-only, which is why Windows/macOS live in the
     # separate `test-os` job (SQLite only).
@@ -172,17 +167,6 @@ jobs:
           --health-interval 2s
           --health-timeout 5s
           --health-retries 15
-      mysql:
-        image: mysql:8
-        env:
-          MYSQL_ROOT_PASSWORD: root
-        ports:
-          - 3306:3306
-        options: >-
-          --health-cmd "mysqladmin ping -h 127.0.0.1 -uroot -proot"
-          --health-interval 2s
-          --health-timeout 5s
-          --health-retries 15
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
       - uses: arduino/setup-protoc@c65c819552d16ad3c9b72d9dfd5ba5237b9c906b # v3
@@ -195,7 +179,7 @@ jobs:
         with:
           # Workspace root is the REPO root (Cargo.lock + target/ live there).
           workspaces: ". -> target"
-          # All 3 db lanes compile an identical binary (db is chosen at runtime
+          # Both db lanes compile an identical binary (db is chosen at runtime
           # via TEST_DATABASE), so one shared cache serves all of them; the
           # save race between lanes is harmless. NOT shared with lint: clippy
           # saves check-artifacts that are useless for test codegen.

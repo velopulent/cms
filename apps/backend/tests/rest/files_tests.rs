@@ -16,7 +16,7 @@ async fn get_api_key(server: &TestServer, token: &str, csrf: &str, site_id: &str
     let resp = client
         .post(format!("{}/api/dashboard/sites/{}/tokens", server.base_url, site_id))
         .headers(auth_header(token, csrf))
-        .json(&json!({"name": "File Token", "permission": "write"}))
+        .json(&json!({"name": "File Token", "scopes": crate::common::fixtures::site_key_scopes("write")}))
         .send()
         .await
         .unwrap();

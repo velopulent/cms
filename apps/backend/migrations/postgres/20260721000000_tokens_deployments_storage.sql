@@ -1,0 +1,14 @@
+CREATE TABLE IF NOT EXISTS personal_access_tokens (id TEXT PRIMARY KEY,user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,name TEXT NOT NULL,token_hash TEXT NOT NULL,token_hmac TEXT NOT NULL,token_prefix TEXT NOT NULL,scopes_json TEXT NOT NULL,created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),last_used_at TIMESTAMPTZ,expires_at TIMESTAMPTZ,revoked_at TIMESTAMPTZ);
+CREATE INDEX IF NOT EXISTS idx_pat_prefix ON personal_access_tokens(token_prefix);
+ALTER TABLE access_tokens ADD COLUMN IF NOT EXISTS scopes_json TEXT NOT NULL DEFAULT '[]';
+CREATE TABLE IF NOT EXISTS storage_profiles (id TEXT PRIMARY KEY,name TEXT NOT NULL UNIQUE,kind TEXT NOT NULL CHECK(kind IN ('filesystem','s3')),endpoint TEXT,region TEXT,bucket TEXT,public_url TEXT,credentials_encrypted TEXT,enabled BOOLEAN NOT NULL DEFAULT TRUE,immutable BOOLEAN NOT NULL DEFAULT FALSE,created_by TEXT REFERENCES users(id),created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW());
+INSERT INTO storage_profiles(id,name,kind,enabled,immutable) VALUES ('local-filesystem','Local Filesystem','filesystem',TRUE,TRUE) ON CONFLICT DO NOTHING;
+ALTER TABLE sites ADD COLUMN IF NOT EXISTS storage_profile_id TEXT REFERENCES storage_profiles(id);
+UPDATE sites SET storage_profile_id='local-filesystem' WHERE storage_profile_id IS NULL;
+ALTER TABLE backups ADD COLUMN IF NOT EXISTS storage_profile_id TEXT REFERENCES storage_profiles(id);
+ALTER TABLE backup_schedules ADD COLUMN IF NOT EXISTS storage_profile_id TEXT REFERENCES storage_profiles(id);
+CREATE TABLE IF NOT EXISTS deployment_triggers (id TEXT PRIMARY KEY,site_id TEXT NOT NULL REFERENCES sites(id) ON DELETE CASCADE,label TEXT NOT NULL,provider TEXT NOT NULL,url_encrypted TEXT NOT NULL,headers_encrypted TEXT NOT NULL,enabled BOOLEAN NOT NULL DEFAULT TRUE,is_primary BOOLEAN NOT NULL DEFAULT FALSE,cooldown_seconds BIGINT NOT NULL DEFAULT 60,daily_quota BIGINT NOT NULL DEFAULT 20,created_by TEXT REFERENCES users(id),created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW());
+CREATE UNIQUE INDEX IF NOT EXISTS idx_deployment_primary ON deployment_triggers(site_id) WHERE is_primary=TRUE;
+CREATE TABLE IF NOT EXISTS deployment_jobs (id TEXT PRIMARY KEY,trigger_id TEXT NOT NULL REFERENCES deployment_triggers(id) ON DELETE CASCADE,site_id TEXT NOT NULL REFERENCES sites(id) ON DELETE CASCADE,status TEXT NOT NULL,status_code INTEGER,error_category TEXT,response_body TEXT,retry_after_seconds BIGINT,duration_ms BIGINT,triggered_by TEXT,created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),started_at TIMESTAMPTZ,finished_at TIMESTAMPTZ);
+CREATE INDEX IF NOT EXISTS idx_deployment_jobs_trigger ON deployment_jobs(trigger_id,created_at DESC);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_deployment_jobs_active_trigger ON deployment_jobs(trigger_id) WHERE status IN ('queued','running');

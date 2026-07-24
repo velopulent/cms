@@ -256,7 +256,7 @@ impl GrpcTestContext {
             .post(format!("{}/api/dashboard/sites/{}/tokens", self.rest_base_url, site_id))
             .header("Cookie", format!("token={}; csrf={}", token, csrf))
             .header("X-CSRF-Token", &csrf)
-            .json(&serde_json::json!({"name": "Test Token", "permission": "write"}))
+            .json(&serde_json::json!({"name": "Test Token", "scopes": super::fixtures::site_key_scopes("write")}))
             .send()
             .await
             .expect("Failed to create token");

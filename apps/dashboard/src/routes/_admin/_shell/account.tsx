@@ -3,6 +3,7 @@ import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { KeyRound, LogOut } from "lucide-react";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
+import { PersonalTokensCard } from "@/components/account/personal-tokens-card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -152,6 +153,8 @@ function AccountPage() {
           </form>
         </CardContent>
       </Card>
+
+      <PersonalTokensCard />
 
       <Card>
         <CardHeader>

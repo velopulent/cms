@@ -22,8 +22,8 @@ const features = [
     number: "03",
     title: "Flexible Database Support",
     description:
-      "Works seamlessly with SQLite, MySQL, PostgreSQL and more. Configure once and scale across your infrastructure.",
-    stats: { value: "3+", label: "database engines" },
+      "Use embedded SQLite for lightweight deployments or PostgreSQL for demanding production workloads.",
+    stats: { value: "2", label: "database engines" },
   },
   {
     number: "04",

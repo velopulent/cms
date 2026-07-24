@@ -9,6 +9,7 @@ use crate::handlers::instance_handler::{
 use crate::handlers::settings_handler::{
     get_settings, update_backups, update_general, update_security, update_storage,
 };
+use crate::handlers::storage_profile_handler;
 
 pub fn routes() -> Router {
     Router::new()
@@ -23,4 +24,16 @@ pub fn routes() -> Router {
         .route("/instance/settings/security", put(update_security))
         .route("/instance/settings/storage", put(update_storage))
         .route("/instance/settings/backups", put(update_backups))
+        .route(
+            "/instance/storage-profiles",
+            get(storage_profile_handler::list).post(storage_profile_handler::create),
+        )
+        .route(
+            "/instance/storage-profiles/{profile_id}",
+            axum::routing::put(storage_profile_handler::update).delete(storage_profile_handler::delete),
+        )
+        .route(
+            "/storage-profiles/{id}/probe",
+            axum::routing::post(storage_profile_handler::probe),
+        )
 }

@@ -2,7 +2,7 @@
 
 ## Architecture
 
-- **Backend**: Rust + Axum HTTP server, `SQLx` + (SQLite | PostgreSQL | MySQL), `rust-embed` (static assets)
+- **Backend**: Rust + Axum HTTP server, `SQLx` + (SQLite | PostgreSQL), `rust-embed` (static assets)
 - **Frontend**: React in `apps/dashboard/` with Tanstack Router, Tanstack Query, shadcn/ui
 - **gRPC**: Separate server on port 50051 (compiled from `libs/proto/*.proto` via `tonic-build`)
 - **Build**: Nx orchestrates `dashboard:build` → `backend:build`. `build.rs` compiles proto files only.
@@ -225,8 +225,8 @@ a backup taken on a **newer** schema and relies on additive migrations otherwise
 
 Entry search is backed by an embedded [Tantivy](https://github.com/quickwit-oss/tantivy)
 index in `apps/backend/src/services/search/` — one engine that gives ranked,
-tokenized, stemmed search identically across SQLite/Postgres/MySQL (native per-DB
-FTS would mean three implementations). The DB stays the source of truth; the index
+tokenized, stemmed search identically across SQLite/Postgres (native per-DB
+FTS would mean two implementations). The DB stays the source of truth; the index
 is **derived** and fully rebuildable.
 
 **Reads vs writes are split** so the single-writer limit never blocks *searching*:

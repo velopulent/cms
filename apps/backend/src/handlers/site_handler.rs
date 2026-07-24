@@ -68,7 +68,12 @@ pub async fn create_site(
 
     match services
         .site
-        .create_site(&payload.name, Some(&payload.storage_provider), &created_by)
+        .create_site(
+            &payload.name,
+            Some(&payload.storage_provider),
+            payload.storage_profile_id.as_deref(),
+            &created_by,
+        )
         .await
     {
         Ok(site) => (StatusCode::CREATED, Json(site)).into_response(),

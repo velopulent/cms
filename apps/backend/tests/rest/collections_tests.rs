@@ -199,7 +199,7 @@ async fn test_public_api_collections() {
     let token_resp = client
         .post(format!("{}/api/dashboard/sites/{}/tokens", server.base_url, site_id))
         .headers(auth_header(&token, &csrf))
-        .json(&json!({"name": "Test Token", "permission": "read"}))
+        .json(&json!({"name": "Test Token", "scopes": crate::common::fixtures::site_key_scopes("read")}))
         .send()
         .await
         .unwrap();

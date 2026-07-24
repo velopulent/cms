@@ -5,8 +5,8 @@
 //! server runs as the (often privileged) service account that owns the database,
 //! secrets, and search index. Rather than open those files directly — which fails
 //! when they belong to the service account — this proxy forwards JSON-RPC over HTTP
-//! and lets the server do all disk I/O. It needs only a URL and a `vcms_site_*`
-//! access token, which it injects as the `Authorization: Bearer` header.
+//! and lets the server do all disk I/O. It needs only a URL and a VCMS access
+//! token, which it injects as the `Authorization: Bearer` header.
 //!
 //! The server runs the HTTP transport in stateless, JSON-response mode (no SSE, no
 //! `Mcp-Session-Id`), so a flat per-message proxy is sufficient: read a
@@ -18,7 +18,7 @@ use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 /// Run the proxy loop until stdin closes (EOF → clean exit).
 ///
 /// `endpoint` is the fully-qualified MCP URL (e.g. `http://127.0.0.1:3000/mcp`) and
-/// `token` is the `vcms_site_*` access token forwarded as the bearer credential.
+/// `token` is the VCMS access token forwarded as the bearer credential.
 pub async fn serve(endpoint: String, token: String) -> Result<(), Box<dyn std::error::Error>> {
     let client = reqwest::Client::new();
     let mut lines = BufReader::new(tokio::io::stdin()).lines();

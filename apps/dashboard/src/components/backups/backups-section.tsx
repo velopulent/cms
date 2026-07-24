@@ -60,6 +60,7 @@ import {
   createBackupSchedule,
   deleteBackup,
   deleteBackupSchedule,
+  getStorageProfiles,
   type InspectResult,
   inspectBackup,
   inspectBackupUpload,
@@ -112,6 +113,7 @@ export function BackupsSection({ scope }: { scope: BackupScope }) {
 
   const [includeFiles, setIncludeFiles] = useState(true);
   const [encrypt, setEncrypt] = useState(false);
+  const [storageProfileId, setStorageProfileId] = useState("local-filesystem");
 
   const [restoreSource, setRestoreSource] = useState<RestoreSource | null>(
     null,
@@ -144,6 +146,10 @@ export function BackupsSection({ scope }: { scope: BackupScope }) {
     queryKey: ["backup-schedules", scopeKey],
     queryFn: () => listBackupSchedules(scope),
   });
+  const storageProfilesQuery = useQuery({
+    queryKey: ["storage-profiles"],
+    queryFn: getStorageProfiles,
+  });
 
   const invalidateBackups = () =>
     queryClient.invalidateQueries({ queryKey: ["backups", scopeKey] });
@@ -152,7 +158,11 @@ export function BackupsSection({ scope }: { scope: BackupScope }) {
 
   const createMutation = useMutation({
     mutationFn: () =>
-      createBackup(scope, { include_files: includeFiles, encrypt }),
+      createBackup(scope, {
+        include_files: includeFiles,
+        encrypt,
+        storage_profile_id: storageProfileId,
+      }),
     onSuccess: () => {
       invalidateBackups();
       toast.success("Backup created");
@@ -290,6 +300,28 @@ export function BackupsSection({ scope }: { scope: BackupScope }) {
           </CardDescription>
         </CardHeader>
         <CardContent className="flex flex-col gap-4">
+          <Field>
+            <FieldLabel>Destination</FieldLabel>
+            <Select
+              value={storageProfileId}
+              onValueChange={(value) =>
+                setStorageProfileId(value ?? "local-filesystem")
+              }
+            >
+              <SelectTrigger className="w-full sm:w-80">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {(storageProfilesQuery.data ?? [])
+                  .filter((profile) => profile.enabled)
+                  .map((profile) => (
+                    <SelectItem key={profile.id} value={profile.id}>
+                      {profile.name}
+                    </SelectItem>
+                  ))}
+              </SelectContent>
+            </Select>
+          </Field>
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div className="flex flex-wrap items-center gap-4">
               <Field orientation="horizontal">
@@ -425,6 +457,7 @@ export function BackupsSection({ scope }: { scope: BackupScope }) {
 
       <SchedulesCard
         schedules={schedules}
+        storageProfiles={storageProfilesQuery.data ?? []}
         loading={schedulesQuery.isLoading}
         onCreate={async (input) => {
           await createBackupSchedule(scope, input);
@@ -437,6 +470,7 @@ export function BackupsSection({ scope }: { scope: BackupScope }) {
             include_files: s.include_files,
             encrypt: s.encrypt,
             enabled: !s.enabled,
+            storage_profile_id: s.storage_profile_id ?? undefined,
           });
           invalidateSchedules();
         }}
@@ -666,6 +700,7 @@ interface SchedulesCardProps {
   onToggle: (s: import("@/lib/api").BackupSchedule) => Promise<void>;
   onRun: (id: string) => Promise<void>;
   onDelete: (id: string) => Promise<void>;
+  storageProfiles: import("@/lib/api").StorageProfile[];
 }
 
 function SchedulesCard({
@@ -675,6 +710,7 @@ function SchedulesCard({
   onToggle,
   onRun,
   onDelete,
+  storageProfiles,
 }: SchedulesCardProps) {
   const [preset, setPreset] = useState(CRON_PRESETS[0].value);
   const [customCron, setCustomCron] = useState("0 2 * * *");
@@ -682,6 +718,7 @@ function SchedulesCard({
   const [includeFiles, setIncludeFiles] = useState(true);
   const [encrypt, setEncrypt] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [storageProfileId, setStorageProfileId] = useState("local-filesystem");
 
   const cron = preset === "custom" ? customCron : preset;
 
@@ -694,6 +731,7 @@ function SchedulesCard({
         include_files: includeFiles,
         encrypt,
         enabled: true,
+        storage_profile_id: storageProfileId,
       });
       toast.success("Schedule added");
     } catch (e) {
@@ -712,7 +750,29 @@ function SchedulesCard({
         </CardDescription>
       </CardHeader>
       <CardContent className="flex flex-col gap-4">
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4 lg:items-end">
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5 lg:items-end">
+          <Field>
+            <FieldLabel>Destination</FieldLabel>
+            <Select
+              value={storageProfileId}
+              onValueChange={(value) =>
+                setStorageProfileId(value ?? "local-filesystem")
+              }
+            >
+              <SelectTrigger className="w-full">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {storageProfiles
+                  .filter((profile) => profile.enabled)
+                  .map((profile) => (
+                    <SelectItem key={profile.id} value={profile.id}>
+                      {profile.name}
+                    </SelectItem>
+                  ))}
+              </SelectContent>
+            </Select>
+          </Field>
           <div className="flex flex-col gap-1.5">
             <Label>Frequency</Label>
             <Select

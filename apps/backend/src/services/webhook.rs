@@ -101,6 +101,45 @@ impl WebhookService {
         self
     }
 
+    pub(crate) fn protect_deployment_config(
+        &self,
+        url: &str,
+        headers: &HashMap<String, String>,
+    ) -> Result<(String, String), WebhookError> {
+        validate_url(url, self.allow_private_targets())?;
+        Ok((
+            encrypt_headers(&HashMap::from([("url".into(), url.into())]), &self.encryption_key),
+            encrypt_headers(headers, &self.encryption_key),
+        ))
+    }
+
+    pub(crate) fn reveal_deployment_config(
+        &self,
+        url: &str,
+        headers: &str,
+    ) -> Result<(String, HashMap<String, String>), WebhookError> {
+        let url = decrypt_headers_checked(url, &self.encryption_key)
+            .and_then(|mut values| values.remove("url"))
+            .ok_or_else(|| WebhookError::DatabaseError("Deployment URL cannot be decrypted".into()))?;
+        let headers = decrypt_headers_checked(headers, &self.encryption_key)
+            .ok_or_else(|| WebhookError::DatabaseError("Deployment headers cannot be decrypted".into()))?;
+        validate_url(&url, self.allow_private_targets())?;
+        Ok((url, headers))
+    }
+
+    pub(crate) async fn build_protected_client(&self, url: &str) -> Result<reqwest::Client, WebhookError> {
+        validate_url(url, self.allow_private_targets())?;
+        let parsed_url = url::Url::parse(url).map_err(|_| WebhookError::InvalidUrl("Invalid URL format".into()))?;
+        let safe_addr = resolve_safe_addr(&parsed_url, self.allow_private_targets()).await?;
+        let host = parsed_url.host_str().unwrap_or_default().to_string();
+        reqwest::Client::builder()
+            .timeout(Duration::from_secs(WEBHOOK_TIMEOUT_SECS))
+            .redirect(reqwest::redirect::Policy::none())
+            .resolve(&host, safe_addr)
+            .build()
+            .map_err(|error| WebhookError::DeliveryFailed(error.to_string()))
+    }
+
     fn allow_private_targets(&self) -> bool {
         self.settings
             .as_ref()
@@ -294,21 +333,10 @@ impl WebhookService {
                 "Webhook is disabled and needs reconfiguration".into(),
             ));
         }
-        validate_url(&webhook.url, self.allow_private_targets())?;
-        let parsed_url =
-            url::Url::parse(&webhook.url).map_err(|_| WebhookError::InvalidUrl("Invalid URL format".into()))?;
-        let safe_addr = resolve_safe_addr(&parsed_url, self.allow_private_targets()).await?;
-        let host = parsed_url.host_str().unwrap_or_default().to_string();
-
-        let client = reqwest::Client::builder()
-            .timeout(Duration::from_secs(WEBHOOK_TIMEOUT_SECS))
-            .redirect(reqwest::redirect::Policy::none())
-            .resolve(&host, safe_addr)
-            .build()
-            .map_err(|e| {
-                error!("Failed to create HTTP client for webhook: error={}", e);
-                WebhookError::DeliveryFailed(e.to_string())
-            })?;
+        let client = self.build_protected_client(&webhook.url).await.map_err(|error| {
+            error!("Failed to create HTTP client for webhook: error={}", error);
+            error
+        })?;
 
         let mut request = client.post(&webhook.url);
         debug!(

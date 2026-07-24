@@ -72,7 +72,7 @@ function InstanceSettingsLayout() {
               Security
             </TabsTrigger>
           )}
-          {isOwner && (
+          {isOperator(me?.instance_role) && (
             <TabsTrigger
               value="storage"
               nativeButton={false}

@@ -25,6 +25,9 @@ pub enum SiteError {
     #[error("Invalid storage provider: {0}")]
     InvalidStorageProvider(String),
 
+    #[error("Storage profile not found or disabled")]
+    StorageProfileNotFound,
+
     #[error("Invalid name: {0}")]
     InvalidName(String),
 
@@ -52,6 +55,10 @@ impl SiteError {
         let (status, body) = match self {
             SiteError::NotFound => (StatusCode::NOT_FOUND, Json(json!({"error": "Site not found"}))),
             SiteError::InvalidStorageProvider(msg) => (StatusCode::BAD_REQUEST, Json(json!({"error": msg}))),
+            SiteError::StorageProfileNotFound => (
+                StatusCode::BAD_REQUEST,
+                Json(json!({"error": "Storage profile not found or disabled"})),
+            ),
             SiteError::InvalidName(msg) => (StatusCode::BAD_REQUEST, Json(json!({"error": msg}))),
             SiteError::InvalidRole(msg) => (StatusCode::BAD_REQUEST, Json(json!({"error": msg}))),
             SiteError::CannotRemoveSelf => (
@@ -83,9 +90,8 @@ impl SiteService {
     pub async fn list_sites_for_actor(&self, actor: &Actor) -> Result<Vec<serde_json::Value>, SiteError> {
         match actor {
             Actor::User(user) => self.list_sites_for_user(&user.user_id).await,
-            Actor::ApiKey(_) => {
-                unreachable!("ApiKey should not be used for listing sites")
-            }
+            Actor::ApiKey(key) => Ok(self.get_site(&key.site_id).await?.into_iter().map(|site| serde_json::json!({"id":site.id,"name":site.name,"storage_provider":site.storage_provider,"storage_profile_id":site.storage_profile_id,"created_by":site.created_by,"created_at":site.created_at,"updated_at":site.updated_at,"role":"site_key"})).collect()),
+            Actor::PersonalToken(token) => self.list_sites_for_user(&token.user_id).await,
         }
     }
 
@@ -113,6 +119,7 @@ impl SiteService {
                                 "id": site.id,
                                 "name": site.name,
                                 "storage_provider": site.storage_provider,
+                                "storage_profile_id": site.storage_profile_id,
                                 "created_by": site.created_by,
                                 "created_at": site.created_at,
                                 "updated_at": site.updated_at,
@@ -146,6 +153,7 @@ impl SiteService {
         &self,
         name: &str,
         storage_provider: Option<&str>,
+        storage_profile_id: Option<&str>,
         created_by: &str,
     ) -> Result<Site, SiteError> {
         let name = name.trim();
@@ -173,14 +181,29 @@ impl SiteService {
             site_id, name, storage_provider, created_by
         );
 
-        match self
-            .site_repo
-            .create(&site_id, name, storage_provider, created_by)
-            .await
-        {
+        let result = match storage_profile_id {
+            Some(profile_id) => {
+                self.site_repo
+                    .create_with_storage_profile(&site_id, name, profile_id, created_by)
+                    .await
+            }
+            None => {
+                self.site_repo
+                    .create(&site_id, name, storage_provider, created_by)
+                    .await
+            }
+        };
+        match result {
             Ok(site) => {
                 info!("Site created successfully: id={}", site.id);
                 Ok(site)
+            }
+            Err(RepositoryError::NotFound) if storage_profile_id.is_some() => {
+                warn!(
+                    site_id,
+                    storage_profile_id, "Storage profile unavailable during site creation"
+                );
+                Err(SiteError::StorageProfileNotFound)
             }
             Err(e) => {
                 error!("Failed to create site: id={}, error={}", site_id, e);
@@ -412,6 +435,7 @@ mod tests {
             id: "site-123".to_string(),
             name: "Test Site".to_string(),
             storage_provider: "filesystem".to_string(),
+            storage_profile_id: Some("local-filesystem".to_string()),
             created_by: "user-123".to_string(),
             created_at: "2024-01-01 00:00:00".to_string(),
             updated_at: "2024-01-01 00:00:00".to_string(),
@@ -463,7 +487,9 @@ mod tests {
         let user_repo = test_user_repo();
         let service = SiteService::new(site_repo, user_repo);
 
-        let result = service.create_site("My New Site", Some("filesystem"), "user-123").await;
+        let result = service
+            .create_site("My New Site", Some("filesystem"), None, "user-123")
+            .await;
         assert!(result.is_ok());
         let site = result.unwrap();
         assert_eq!(site.name, "My New Site");
@@ -476,7 +502,7 @@ mod tests {
         let user_repo = test_user_repo();
         let service = SiteService::new(site_repo, user_repo);
 
-        let result = service.create_site("My Site", None, "user-123").await;
+        let result = service.create_site("My Site", None, None, "user-123").await;
         assert!(result.is_ok());
         let site = result.unwrap();
         assert_eq!(site.storage_provider, "filesystem");
@@ -488,7 +514,7 @@ mod tests {
         let user_repo = test_user_repo();
         let service = SiteService::new(site_repo, user_repo);
 
-        let result = service.create_site("My S3 Site", Some("s3"), "user-123").await;
+        let result = service.create_site("My S3 Site", Some("s3"), None, "user-123").await;
         assert!(result.is_ok());
         let site = result.unwrap();
         assert_eq!(site.storage_provider, "s3");
@@ -500,7 +526,7 @@ mod tests {
         let user_repo = test_user_repo();
         let service = SiteService::new(site_repo, user_repo);
 
-        let result = service.create_site("", Some("filesystem"), "user-123").await;
+        let result = service.create_site("", Some("filesystem"), None, "user-123").await;
         assert!(matches!(result, Err(SiteError::InvalidName(msg)) if msg.contains("Name is required")));
     }
 
@@ -510,7 +536,7 @@ mod tests {
         let user_repo = test_user_repo();
         let service = SiteService::new(site_repo, user_repo);
 
-        let result = service.create_site("   ", Some("filesystem"), "user-123").await;
+        let result = service.create_site("   ", Some("filesystem"), None, "user-123").await;
         assert!(matches!(result, Err(SiteError::InvalidName(msg)) if msg.contains("Name is required")));
     }
 
@@ -520,7 +546,7 @@ mod tests {
         let user_repo = test_user_repo();
         let service = SiteService::new(site_repo, user_repo);
 
-        let result = service.create_site("My Site", Some("invalid"), "user-123").await;
+        let result = service.create_site("My Site", Some("invalid"), None, "user-123").await;
         assert!(
             matches!(result, Err(SiteError::InvalidStorageProvider(msg)) if msg.contains("Invalid storage provider"))
         );
@@ -745,6 +771,10 @@ mod tests {
         );
         assert_eq!(
             SiteError::InvalidStorageProvider("bad".into()).into_response().status(),
+            axum::http::StatusCode::BAD_REQUEST
+        );
+        assert_eq!(
+            SiteError::StorageProfileNotFound.into_response().status(),
             axum::http::StatusCode::BAD_REQUEST
         );
         assert_eq!(
