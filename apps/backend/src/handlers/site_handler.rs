@@ -68,18 +68,15 @@ pub async fn create_site(
 
     match services
         .site
-        .create_site(&payload.name, Some(&payload.storage_provider), &created_by)
+        .create_site(
+            &payload.name,
+            Some(&payload.storage_provider),
+            payload.storage_profile_id.as_deref(),
+            &created_by,
+        )
         .await
     {
-        Ok(mut site) => {
-            if let Some(profile_id) = payload.storage_profile_id.as_deref() {
-                if let Err(error) = services.storage_profile.assign_site(&site.id, profile_id).await {
-                    return (StatusCode::BAD_REQUEST, Json(json!({"error":error}))).into_response();
-                }
-                site.storage_profile_id = Some(profile_id.to_string());
-            }
-            (StatusCode::CREATED, Json(site)).into_response()
-        }
+        Ok(site) => (StatusCode::CREATED, Json(site)).into_response(),
         Err(e) => e.into_response(),
     }
 }
