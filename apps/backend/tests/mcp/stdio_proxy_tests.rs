@@ -19,8 +19,8 @@ struct StdioClient {
 }
 
 impl StdioClient {
-    /// Spawn the proxy the way an MCP client does: it knows only the server URL and a
-    /// access token and no server configuration.
+    /// Spawn the proxy the way an MCP client does: it knows only the server URL and
+    /// an access token and no server configuration.
     async fn start(url: &str, token: &str) -> Self {
         let mut child = Command::new(env!("CARGO_BIN_EXE_vcms"))
             .args(["mcp", "stdio"])
