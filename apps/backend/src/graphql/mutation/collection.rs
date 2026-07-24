@@ -10,7 +10,9 @@ impl CollectionMutation {
     pub async fn create_collection(&self, ctx: &Context<'_>, input: CreateCollectionInput) -> Result<Collection> {
         let gql_ctx = ctx.data::<GqlContext>()?;
         let site_id = gql_ctx.require_site()?;
-        gql_ctx.require_write()?;
+        gql_ctx
+            .require_write(crate::models::authorization::Action::SchemaWrite)
+            .await?;
 
         let definition_str = input.definition.to_string();
         let is_singleton = input.is_singleton.unwrap_or(false);
@@ -33,7 +35,9 @@ impl CollectionMutation {
     ) -> Result<Collection> {
         let gql_ctx = ctx.data::<GqlContext>()?;
         let site_id = gql_ctx.require_site()?;
-        gql_ctx.require_write()?;
+        gql_ctx
+            .require_write(crate::models::authorization::Action::SchemaWrite)
+            .await?;
 
         let definition_str = input.definition.as_ref().map(|s| s.to_string());
 
@@ -56,7 +60,9 @@ impl CollectionMutation {
     pub async fn delete_collection(&self, ctx: &Context<'_>, slug: String) -> Result<bool> {
         let gql_ctx = ctx.data::<GqlContext>()?;
         let site_id = gql_ctx.require_site()?;
-        gql_ctx.require_write()?;
+        gql_ctx
+            .require_write(crate::models::authorization::Action::SchemaWrite)
+            .await?;
 
         gql_ctx
             .services

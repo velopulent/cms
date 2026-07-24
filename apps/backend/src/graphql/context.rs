@@ -1,5 +1,4 @@
 use crate::middleware::auth::{Actor, verify_access_token};
-use crate::models::access_token::{TokenScope, TokenScopes};
 use crate::models::authorization::Action;
 use crate::repository::Repository;
 use crate::services::Services;
@@ -10,7 +9,6 @@ pub struct GqlContext {
     pub services: Services,
     pub actor: Option<Actor>,
     pub site_id: Option<String>,
-    pub permission: Option<TokenScopes>,
 }
 
 impl GqlContext {
@@ -23,7 +21,6 @@ impl GqlContext {
     ) -> Self {
         let mut actor = None;
         let mut site_id = None;
-        let mut permission = None;
 
         if let Some(header) = auth_header
             && let Some(token) = header.strip_prefix("Bearer ")
@@ -32,17 +29,14 @@ impl GqlContext {
         {
             if let Actor::ApiKey(k) = &auth_actor {
                 site_id = Some(k.site_id.clone());
-                permission = Some(k.scopes.clone());
-            } else if let Actor::PersonalToken(k) = &auth_actor {
-                permission = Some(k.scopes.clone());
-                if let Some(requested_site) = requested_site
-                    && AuthorizationService::new(repository.user.clone())
-                        .require_site_action(&auth_actor, requested_site, Action::SiteRead)
-                        .await
-                        .is_ok()
-                {
-                    site_id = Some(requested_site.to_owned());
-                }
+            } else if let Actor::PersonalToken(_) = &auth_actor
+                && let Some(requested_site) = requested_site
+                && AuthorizationService::new(repository.user.clone())
+                    .require_site_action(&auth_actor, requested_site, Action::SiteRead)
+                    .await
+                    .is_ok()
+            {
+                site_id = Some(requested_site.to_owned());
             }
             actor = Some(auth_actor);
         }
@@ -52,7 +46,6 @@ impl GqlContext {
             services,
             actor,
             site_id,
-            permission,
         }
     }
 
@@ -62,26 +55,26 @@ impl GqlContext {
             .ok_or_else(|| async_graphql::Error::new("Site token authentication required"))
     }
 
-    pub fn require_read(&self) -> async_graphql::Result<()> {
-        match (&self.actor, &self.permission) {
-            (Some(Actor::ApiKey(_) | Actor::PersonalToken(_)), Some(scopes))
-                if scopes.contains(&TokenScope::ContentRead) =>
-            {
-                Ok(())
-            }
-            (Some(Actor::ApiKey(_) | Actor::PersonalToken(_)), None) => Err(async_graphql::Error::new(
-                "Access token does not have required permission",
-            )),
-            _ => Err(async_graphql::Error::new("Site token authentication required")),
-        }
+    async fn require_action(&self, action: Action, message: &'static str) -> async_graphql::Result<()> {
+        let actor = self
+            .actor
+            .as_ref()
+            .ok_or_else(|| async_graphql::Error::new("Site token authentication required"))?;
+        let site_id = self.require_site()?;
+        AuthorizationService::new(self.repository.user.clone())
+            .require_site_action(actor, site_id, action)
+            .await
+            .map_err(|_| async_graphql::Error::new(message))
     }
 
-    pub fn require_write(&self) -> async_graphql::Result<()> {
-        match &self.permission {
-            Some(scopes) if scopes.contains(&TokenScope::ContentWrite) => Ok(()),
-            Some(_) => Err(async_graphql::Error::new("Access token does not have write permission")),
-            None => Err(async_graphql::Error::new("Site token authentication required")),
-        }
+    pub async fn require_read(&self, action: Action) -> async_graphql::Result<()> {
+        self.require_action(action, "Access token does not have required permission")
+            .await
+    }
+
+    pub async fn require_write(&self, action: Action) -> async_graphql::Result<()> {
+        self.require_action(action, "Access token does not have write permission")
+            .await
     }
 
     pub fn require_site_match(&self, site_id: &str) -> async_graphql::Result<()> {
