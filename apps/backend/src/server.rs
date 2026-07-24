@@ -70,6 +70,10 @@ pub async fn run(
     let mut services = Services::new(repository_arc.clone(), &pool, &config);
     services.auth = Arc::new((*services.auth).clone().with_settings(settings.clone()));
     services.webhook = Arc::new((*services.webhook).clone().with_settings(settings.clone()));
+    services.deployment = Arc::new(crate::services::deployment::DeploymentService::new(
+        pool.clone(),
+        services.webhook.clone(),
+    ));
     services
         .storage_profile
         .register_all(&storage_registry)
