@@ -59,6 +59,8 @@ pub enum Command {
         scope: String,
         #[arg(long, value_name = "SITE_ID")]
         site: Option<String>,
+        #[arg(long, value_name = "PROFILE_ID")]
+        storage_profile_id: Option<String>,
         #[arg(long)]
         import_as_new: bool,
         #[arg(long)]

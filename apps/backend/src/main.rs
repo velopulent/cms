@@ -53,9 +53,10 @@ async fn dispatch(cli: Cli) -> Result<(), Box<dyn Error>> {
             file,
             scope,
             site,
+            storage_profile_id,
             import_as_new,
             yes,
-        }) => run_restore(file, scope, site, *import_as_new, *yes).await,
+        }) => run_restore(file, scope, site, storage_profile_id, *import_as_new, *yes).await,
         Some(Command::Service { action }) => cms::service::run_service(action, &cli).await,
         Some(Command::Doctor) => cms::diagnostics::run().await,
         Some(Command::Mcp {
@@ -215,6 +216,9 @@ async fn run_backup(action: &BackupAction) -> Result<(), Box<dyn Error>> {
     let settings = cms::services::settings::SettingsService::load(pool.clone(), &context.secrets.master_key).await?;
     settings.apply_to_config(&mut config).await;
     let storage_registry = cms::server::initialize_storage(&config);
+    cms::services::storage_profile::StorageProfileService::new(pool.clone(), &context.secrets.master_key)
+        .register_all(&storage_registry)
+        .await?;
     let destination = build_backup_destination(&config)?;
     let service = BackupService::new(pool.clone(), storage_registry, destination, &config).with_settings(settings);
 
@@ -283,6 +287,7 @@ async fn run_restore(
     file: &std::path::Path,
     scope: &str,
     site: &Option<String>,
+    storage_profile_id: &Option<String>,
     import_as_new: bool,
     yes: bool,
 ) -> Result<(), Box<dyn Error>> {
@@ -299,6 +304,9 @@ async fn run_restore(
     let settings = cms::services::settings::SettingsService::load(pool.clone(), &context.secrets.master_key).await?;
     settings.apply_to_config(&mut config).await;
     let storage_registry = cms::server::initialize_storage(&config);
+    cms::services::storage_profile::StorageProfileService::new(pool.clone(), &context.secrets.master_key)
+        .register_all(&storage_registry)
+        .await?;
     let destination = build_backup_destination(&config)?;
     let service = BackupService::new(pool, storage_registry, destination, &config).with_settings(settings);
     let target = match scope {
@@ -314,6 +322,7 @@ async fn run_restore(
             source: RestoreSource::Bytes(std::fs::read(file)?),
             target,
             created_by: None,
+            storage_profile_id: storage_profile_id.clone(),
         })
         .await?;
     println!("Restore complete. Recovery required:");

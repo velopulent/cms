@@ -26,7 +26,7 @@ use sha2::{Digest, Sha256};
 
 use crate::config::Config;
 use crate::database::pool::DbPool;
-use crate::storage::{FileSystemStorage, S3Storage, StorageProvider, StorageRegistry};
+use crate::storage::{FileSystemStorage, S3Storage, StorageKind, StorageProvider, StorageRegistry};
 
 pub use schema::TABLES;
 
@@ -157,6 +157,10 @@ pub struct RestoreRequest {
     pub source: RestoreSource,
     pub target: RestoreTarget,
     pub created_by: Option<String>,
+    /// The profile that should own restored site/file references. When omitted,
+    /// an existing site's profile is retained; fresh restores prefer the local
+    /// filesystem profile and then the first enabled profile.
+    pub storage_profile_id: Option<String>,
 }
 
 // --- Service ----------------------------------------------------------------
@@ -170,6 +174,19 @@ pub struct BackupService {
     encryption_key: Option<[u8; 32]>,
     zstd_level: i32,
     settings: Option<crate::services::settings::SettingsService>,
+}
+
+#[derive(sqlx::FromRow)]
+struct RestoreProfileRow {
+    id: String,
+    kind: String,
+    enabled: bool,
+}
+
+struct RestoreStorage {
+    profile_id: String,
+    kind: String,
+    provider: Arc<dyn StorageProvider>,
 }
 
 #[derive(Clone, Serialize, Deserialize)]
@@ -232,9 +249,124 @@ impl BackupDestination {
 
 impl BackupService {
     fn provider_for_profile(&self, id: &str) -> Result<Arc<dyn StorageProvider>, BackupError> {
-        self.storage
-            .get(id)
-            .ok_or_else(|| BackupError::Invalid("storage profile is unavailable".into()))
+        if let Some(provider) = self.storage.get(id) {
+            return Ok(provider);
+        }
+        // `local-filesystem` is the canonical profile id. The registry also
+        // keeps the provider kind alias for file upload code, so accepting that
+        // alias here still refers to the same provider, never a different one.
+        if id == "local-filesystem"
+            && let Some(provider) = self.storage.get("filesystem")
+        {
+            return Ok(provider);
+        }
+        Err(BackupError::Invalid("storage profile is unavailable".into()))
+    }
+
+    async fn storage_profile(&self, id: &str) -> Result<Option<RestoreProfileRow>, BackupError> {
+        let result = match &self.pool {
+            DbPool::Sqlite(pool) => {
+                sqlx::query_as::<_, RestoreProfileRow>("SELECT id, kind, enabled FROM storage_profiles WHERE id = ?")
+                    .bind(id)
+                    .fetch_optional(pool)
+                    .await
+            }
+            DbPool::Postgres(pool) => {
+                sqlx::query_as::<_, RestoreProfileRow>("SELECT id, kind, enabled FROM storage_profiles WHERE id = $1")
+                    .bind(id)
+                    .fetch_optional(pool)
+                    .await
+            }
+        };
+        result.map_err(|error| BackupError::Db(error.to_string()))
+    }
+
+    async fn site_storage_profile_id(&self, site_id: &str) -> Result<Option<String>, BackupError> {
+        let result = match &self.pool {
+            DbPool::Sqlite(pool) => {
+                sqlx::query_scalar::<_, String>("SELECT storage_profile_id FROM sites WHERE id = ?")
+                    .bind(site_id)
+                    .fetch_optional(pool)
+                    .await
+            }
+            DbPool::Postgres(pool) => {
+                sqlx::query_scalar::<_, String>("SELECT storage_profile_id FROM sites WHERE id = $1")
+                    .bind(site_id)
+                    .fetch_optional(pool)
+                    .await
+            }
+        };
+        result.map_err(|error| BackupError::Db(error.to_string()))
+    }
+
+    async fn first_enabled_profile_id(&self) -> Result<Option<String>, BackupError> {
+        let result = match &self.pool {
+            DbPool::Sqlite(pool) => sqlx::query_scalar::<_, String>(
+                "SELECT id FROM storage_profiles WHERE enabled = 1 ORDER BY CASE WHEN id = 'local-filesystem' THEN 0 ELSE 1 END, immutable DESC, name LIMIT 1",
+            )
+            .fetch_optional(pool)
+            .await,
+            DbPool::Postgres(pool) => sqlx::query_scalar::<_, String>(
+                "SELECT id FROM storage_profiles WHERE enabled = TRUE ORDER BY CASE WHEN id = 'local-filesystem' THEN 0 ELSE 1 END, immutable DESC, name LIMIT 1",
+            )
+            .fetch_optional(pool)
+            .await,
+        };
+        result.map_err(|error| BackupError::Db(error.to_string()))
+    }
+
+    async fn resolve_restore_storage(
+        &self,
+        target: &RestoreTarget,
+        explicit_profile_id: Option<&str>,
+    ) -> Result<RestoreStorage, BackupError> {
+        let mut selected = explicit_profile_id.map(str::to_owned);
+        if selected.is_none() {
+            let site_ids: Vec<&str> = match target {
+                RestoreTarget::WholeInstance => Vec::new(),
+                RestoreTarget::Site { site_id, .. } => vec![site_id],
+                RestoreTarget::Sites { site_ids, .. } => site_ids.iter().map(String::as_str).collect(),
+            };
+            if !site_ids.is_empty() {
+                let mut existing_profile: Option<String> = None;
+                let mut all_sites_have_one_profile = true;
+                for site_id in site_ids {
+                    match self.site_storage_profile_id(site_id).await? {
+                        Some(profile_id) if existing_profile.as_deref().is_none() => {
+                            existing_profile = Some(profile_id)
+                        }
+                        Some(profile_id) if existing_profile.as_deref() == Some(profile_id.as_str()) => {}
+                        Some(_) | None => all_sites_have_one_profile = false,
+                    }
+                }
+                if all_sites_have_one_profile {
+                    selected = existing_profile;
+                }
+            }
+        }
+        let profile_id = match selected {
+            Some(id) if !id.trim().is_empty() => id,
+            Some(_) => return Err(BackupError::Invalid("storage profile id is empty".into())),
+            None => self
+                .first_enabled_profile_id()
+                .await?
+                .ok_or_else(|| BackupError::Invalid("no enabled storage profile is available".into()))?,
+        };
+        let profile = self
+            .storage_profile(&profile_id)
+            .await?
+            .ok_or_else(|| BackupError::Invalid("storage profile is unavailable".into()))?;
+        if !profile.enabled {
+            return Err(BackupError::Invalid("storage profile is disabled".into()));
+        }
+        let kind = StorageKind::parse(&profile.kind)
+            .ok_or_else(|| BackupError::Invalid("storage profile kind is invalid".into()))?;
+        let provider = self.provider_for_profile(&profile.id)?;
+        Ok(RestoreStorage {
+            profile_id: profile.id,
+            kind: kind.as_str().to_string(),
+            provider,
+        })
     }
 
     pub fn new(pool: DbPool, storage: Arc<StorageRegistry>, destination: BackupDestination, config: &Config) -> Self {
@@ -298,6 +430,11 @@ impl BackupService {
         let mut table_manifest: Vec<TableManifest> = Vec::new();
         let mut file_blobs: Vec<(String, Vec<u8>)> = Vec::new();
         let mut file_manifest: Vec<FileManifest> = Vec::new();
+        let site_profiles = dumped
+            .iter()
+            .find(|table| table.name == "sites")
+            .map(site_profile_map)
+            .unwrap_or_default();
 
         for t in &dumped {
             let ndjson = table_to_ndjson(t);
@@ -308,7 +445,7 @@ impl BackupService {
             tar_tables.push((format!("tables/{}.ndjson", t.name), ndjson));
 
             if include_files && t.name == "files" {
-                let (blobs, manifest) = self.collect_file_blobs(t).await;
+                let (blobs, manifest) = self.collect_file_blobs(t, &site_profiles).await;
                 file_blobs = blobs;
                 file_manifest = manifest;
             }
@@ -452,18 +589,40 @@ impl BackupService {
         Ok(())
     }
 
-    async fn collect_file_blobs(&self, files: &schema::DumpedTable) -> (Vec<(String, Vec<u8>)>, Vec<FileManifest>) {
+    async fn collect_file_blobs(
+        &self,
+        files: &schema::DumpedTable,
+        site_profiles: &HashMap<String, String>,
+    ) -> (Vec<(String, Vec<u8>)>, Vec<FileManifest>) {
         let idx = |name: &str| files.columns.iter().position(|c| *c == name);
-        let (provider_i, key_i, thumb_i) = match (idx("storage_provider"), idx("storage_key"), idx("thumbnail_key")) {
-            (Some(p), Some(k), t) => (p, k, t),
+        let (site_i, kind_i, key_i, thumb_i) = match (
+            idx("site_id"),
+            idx("storage_provider"),
+            idx("storage_key"),
+            idx("thumbnail_key"),
+        ) {
+            (Some(s), Some(k), Some(key), thumb) => (s, k, key, thumb),
             _ => return (Vec::new(), Vec::new()),
         };
         let mut blobs = Vec::new();
         let mut manifest = Vec::new();
         let mut seen: HashSet<String> = HashSet::new();
         for row in &files.rows {
-            let provider = row.get(provider_i).and_then(|v| v.clone()).unwrap_or_default();
-            let Some(provider_store) = self.storage.get(&provider) else {
+            let site_id = row.get(site_i).and_then(|value| value.as_deref()).unwrap_or_default();
+            let provider_kind = row.get(kind_i).and_then(|value| value.as_deref()).unwrap_or_default();
+            let Some(provider_id) = site_profiles.get(site_id).map(String::as_str) else {
+                tracing::warn!(
+                    site_id,
+                    "backup: site storage profile is missing; file blob requires recovery"
+                );
+                continue;
+            };
+            let Ok(provider_store) = self.provider_for_profile(provider_id) else {
+                tracing::warn!(
+                    site_id,
+                    provider_id,
+                    "backup: storage profile is unavailable; file blob requires recovery"
+                );
                 continue;
             };
             let mut keys = Vec::new();
@@ -483,7 +642,7 @@ impl BackupService {
                     Ok(bytes) => {
                         manifest.push(FileManifest {
                             storage_key: key.clone(),
-                            provider: provider.clone(),
+                            provider: provider_kind.to_string(),
                             size: bytes.len(),
                         });
                         blobs.push((format!("files/{key}"), bytes.to_vec()));
@@ -653,10 +812,18 @@ impl BackupService {
             });
         }
 
-        let tables = parse_all_tables(&tables_ndjson)?;
+        let mut tables = parse_all_tables(&tables_ndjson)?;
         if matches!(&req.target, RestoreTarget::WholeInstance) {
             validate_restored_settings(&tables)?;
         }
+
+        // Resolve and validate the destination before changing the database.
+        // The selected profile is then written into every restored site/file row
+        // inside the same restore transaction, so references cannot drift apart.
+        let restore_storage = self
+            .resolve_restore_storage(&req.target, req.storage_profile_id.as_deref())
+            .await?;
+        rewrite_storage_refs(&mut tables, &restore_storage.profile_id, &restore_storage.kind);
 
         let plan = match &req.target {
             RestoreTarget::WholeInstance => {
@@ -704,8 +871,14 @@ impl BackupService {
             ));
         }
 
-        // Restore file blobs (best-effort: a missing blob is non-fatal).
-        self.restore_files(&manifest, &file_blobs).await;
+        // Restore embedded file blobs to the selected target only. Missing or
+        // failed writes are surfaced in the recovery report rather than being
+        // hidden by a fallback to another provider.
+        let file_keys = restore_file_keys(&tables, &req.target);
+        recovery_required.extend(
+            self.restore_files(&manifest, &file_blobs, file_keys.as_ref(), &restore_storage.provider)
+                .await,
+        );
         Ok(RecoveryReport { recovery_required })
     }
 
@@ -771,18 +944,22 @@ impl BackupService {
         Ok(plan)
     }
 
-    async fn restore_files(&self, manifest: &Manifest, blobs: &HashMap<String, Vec<u8>>) {
+    async fn restore_files(
+        &self,
+        manifest: &Manifest,
+        blobs: &HashMap<String, Vec<u8>>,
+        allowed_keys: Option<&HashSet<String>>,
+        provider: &Arc<dyn StorageProvider>,
+    ) -> Vec<String> {
+        let mut recovery_required = Vec::new();
         for f in &manifest.files {
-            let Some(data) = blobs.get(&f.storage_key) else {
+            if let Some(allowed_keys) = allowed_keys
+                && !allowed_keys.contains(&f.storage_key)
+            {
                 continue;
-            };
-            let provider = self
-                .storage
-                .get(&f.provider)
-                .or_else(|| self.storage.get("filesystem"))
-                .or_else(|| self.storage.get("s3"));
-            let Some(provider) = provider else {
-                tracing::warn!(key = %f.storage_key, "restore: no storage provider available for file");
+            }
+            let Some(data) = blobs.get(&f.storage_key) else {
+                recovery_required.push(format!("File blob is missing from backup: {}", f.storage_key));
                 continue;
             };
             if let Err(e) = provider
@@ -794,8 +971,10 @@ impl BackupService {
                 .await
             {
                 tracing::warn!(key = %f.storage_key, error = %e, "restore: failed to write file");
+                recovery_required.push(format!("File blob could not be restored: {} ({e})", f.storage_key));
             }
         }
+        recovery_required
     }
 
     // --- Artifact wrapping ---
@@ -988,6 +1167,68 @@ fn inserts_for(backend: crate::database::backend::DatabaseBackend, tables: &Tabl
 
 type Row = serde_json::Map<String, serde_json::Value>;
 type Tables = HashMap<String, Vec<Row>>;
+
+fn site_profile_map(table: &schema::DumpedTable) -> HashMap<String, String> {
+    let Some(site_i) = table.columns.iter().position(|column| *column == "id") else {
+        return HashMap::new();
+    };
+    let Some(profile_i) = table.columns.iter().position(|column| *column == "storage_profile_id") else {
+        return HashMap::new();
+    };
+    table
+        .rows
+        .iter()
+        .filter_map(|row| {
+            Some((
+                row.get(site_i)?.as_ref()?.clone(),
+                row.get(profile_i)?.as_ref()?.clone(),
+            ))
+        })
+        .collect()
+}
+
+fn rewrite_storage_refs(tables: &mut Tables, profile_id: &str, kind: &str) {
+    if let Some(sites) = tables.get_mut("sites") {
+        for site in sites {
+            site.insert(
+                "storage_profile_id".into(),
+                serde_json::Value::String(profile_id.to_owned()),
+            );
+            site.insert("storage_provider".into(), serde_json::Value::String(kind.to_owned()));
+        }
+    }
+    if let Some(files) = tables.get_mut("files") {
+        for file in files {
+            file.insert("storage_provider".into(), serde_json::Value::String(kind.to_owned()));
+        }
+    }
+}
+
+fn restore_file_keys(tables: &Tables, target: &RestoreTarget) -> Option<HashSet<String>> {
+    let site_ids: Vec<&str> = match target {
+        RestoreTarget::WholeInstance => return None,
+        RestoreTarget::Site { site_id, .. } => vec![site_id],
+        RestoreTarget::Sites { site_ids, .. } => site_ids.iter().map(String::as_str).collect(),
+    };
+    let selected_sites: HashSet<&str> = site_ids.into_iter().collect();
+    let Some(files) = tables.get("files") else {
+        return Some(HashSet::new());
+    };
+    let mut keys = HashSet::new();
+    for row in files {
+        let site_id = row.get("site_id").and_then(serde_json::Value::as_str);
+        if !site_id.is_some_and(|id| selected_sites.contains(id)) {
+            continue;
+        }
+        if let Some(storage_key) = row.get("storage_key").and_then(serde_json::Value::as_str) {
+            keys.insert(storage_key.to_owned());
+        }
+        if let Some(thumbnail_key) = row.get("thumbnail_key").and_then(serde_json::Value::as_str) {
+            keys.insert(thumbnail_key.to_owned());
+        }
+    }
+    Some(keys)
+}
 
 fn validate_restored_settings(tables: &Tables) -> Result<(), BackupError> {
     let row = tables

@@ -87,6 +87,7 @@ pub static TABLES: &[TableSpec] = &[
             col("id", Text),
             col("name", Text),
             col("storage_provider", Text),
+            col("storage_profile_id", Text),
             col("created_by", Text),
             col("created_at", Timestamp),
             col("updated_at", Timestamp),
