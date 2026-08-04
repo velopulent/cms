@@ -346,7 +346,7 @@ export interface ApiKey {
   site_id: string;
   name: string;
   key_prefix: string;
-  permissions: string;
+  scopes: string[];
   last_used_at: string | null;
   created_at: string;
   expires_at: string | null;
@@ -358,8 +358,9 @@ export interface ApiKeyResponse {
   name: string;
   key: string;
   key_prefix: string;
-  permissions: string;
+  scopes: string[];
   created_at: string;
+  expires_at: string | null;
 }
 
 interface AccessToken {
@@ -367,7 +368,7 @@ interface AccessToken {
   site_id: string;
   name: string;
   token_prefix: string;
-  permission: string;
+  scopes: string[];
   last_used_at: string | null;
   created_at: string;
   expires_at: string | null;
@@ -381,24 +382,19 @@ interface AccessTokenResponse {
   token_prefix: string;
   scopes: string[];
   created_at: string;
+  expires_at: string | null;
 }
 
 function mapAccessToken(token: AccessToken): ApiKey {
-  const scopes = (() => {
-    try {
-      return JSON.parse(token.permission) as string[];
-    } catch {
-      return [token.permission];
-    }
-  })();
+  const scopes = Array.isArray(token.scopes)
+    ? token.scopes.filter((scope): scope is string => typeof scope === "string")
+    : [];
   return {
     id: token.id,
     site_id: token.site_id,
     name: token.name,
     key_prefix: token.token_prefix,
-    permissions: scopes.some((scope) => scope.endsWith(".write"))
-      ? "write"
-      : "read",
+    scopes,
     last_used_at: token.last_used_at,
     created_at: token.created_at,
     expires_at: token.expires_at,
@@ -412,8 +408,13 @@ function mapCreatedAccessToken(token: AccessTokenResponse): ApiKeyResponse {
     name: token.name,
     key: token.token,
     key_prefix: token.token_prefix,
-    permissions: token.scopes.join(", "),
+    scopes: Array.isArray(token.scopes)
+      ? token.scopes.filter(
+          (scope): scope is string => typeof scope === "string",
+        )
+      : [],
     created_at: token.created_at,
+    expires_at: token.expires_at,
   };
 }
 
@@ -976,10 +977,10 @@ export async function getApiKeys(siteId: string) {
 export async function createApiKey(
   siteId: string,
   name: string,
-  permissions?: string,
+  accessMode: "read" | "write",
 ) {
   const scopes =
-    permissions === "write"
+    accessMode === "write"
       ? [
           "site.read",
           "site.settings.read",
@@ -998,12 +999,25 @@ export async function createApiKey(
           "deployments.trigger",
           "mcp.use",
         ]
-      : permissions === "read"
-        ? ["site.read", "content.read", "files.read", "schema.read"]
-        : (permissions
-            ?.split(",")
-            .map((value) => value.trim())
-            .filter(Boolean) ?? ["site.read", "content.read"]);
+      : accessMode === "read"
+        ? [
+            "site.read",
+            "site.settings.read",
+            "content.read",
+            "files.read",
+            "schema.read",
+            "webhooks.read",
+            "deployments.read",
+          ]
+        : [
+            "site.read",
+            "site.settings.read",
+            "content.read",
+            "files.read",
+            "schema.read",
+            "webhooks.read",
+            "deployments.read",
+          ];
   const token = await api<AccessTokenResponse>(`/sites/${siteId}/tokens`, {
     method: "POST",
     body: JSON.stringify({ name, scopes }),

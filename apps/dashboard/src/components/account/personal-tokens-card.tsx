@@ -52,6 +52,10 @@ const SCOPES = [
   "mcp.use",
 ];
 
+function scopeInputId(scope: string) {
+  return `pat-scope-${scope.replace(/[^a-z0-9]+/gi, "-")}`;
+}
+
 export function PersonalTokensCard() {
   const client = useQueryClient();
   const [name, setName] = useState("");
@@ -113,6 +117,7 @@ export function PersonalTokensCard() {
                 {SCOPES.map((scope) => (
                   <Field key={scope} orientation="horizontal">
                     <Checkbox
+                      id={scopeInputId(scope)}
                       checked={scopes.includes(scope)}
                       onCheckedChange={(checked) =>
                         setScopes((current) =>
@@ -122,7 +127,9 @@ export function PersonalTokensCard() {
                         )
                       }
                     />
-                    <FieldLabel>{scope}</FieldLabel>
+                    <FieldLabel htmlFor={scopeInputId(scope)}>
+                      {scope}
+                    </FieldLabel>
                   </Field>
                 ))}
               </div>
@@ -187,8 +194,10 @@ export function PersonalTokensCard() {
               size="icon"
               variant="outline"
               onClick={() => {
-                navigator.clipboard.writeText(secret ?? "");
-                toast.success("Token copied");
+                navigator.clipboard
+                  .writeText(secret ?? "")
+                  .then(() => toast.success("Token copied"))
+                  .catch(() => toast.error("Could not copy token"));
               }}
             >
               <Copy />

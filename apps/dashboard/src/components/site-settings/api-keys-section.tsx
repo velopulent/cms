@@ -40,7 +40,7 @@ import {
 
 const apiKeySchema = z.object({
   name: z.string().min(1, "Key name is required"),
-  permissions: z.enum(["read", "write"]),
+  accessMode: z.enum(["read", "write"]),
 });
 
 export function ApiKeysSection({ siteId }: { siteId: string }) {
@@ -56,11 +56,11 @@ export function ApiKeysSection({ siteId }: { siteId: string }) {
   const createMutation = useMutation({
     mutationFn: ({
       name,
-      permissions,
+      accessMode,
     }: {
       name: string;
-      permissions: string;
-    }) => createApiKey(siteId, name, permissions),
+      accessMode: "read" | "write";
+    }) => createApiKey(siteId, name, accessMode),
     onSuccess: (key) => {
       queryClient.invalidateQueries({ queryKey: ["api-keys", siteId] });
       setCreatedKey(key);
@@ -82,7 +82,7 @@ export function ApiKeysSection({ siteId }: { siteId: string }) {
   const apiKeyForm = useForm({
     defaultValues: {
       name: "",
-      permissions: "read" as "read" | "write",
+      accessMode: "read" as "read" | "write",
     },
     validators: {
       onSubmit: apiKeySchema,
@@ -94,10 +94,14 @@ export function ApiKeysSection({ siteId }: { siteId: string }) {
 
   const handleCopy = () => {
     if (createdKey) {
-      navigator.clipboard.writeText(createdKey.key);
-      setCopied(true);
-      toast.success("Copied to clipboard");
-      setTimeout(() => setCopied(false), 2000);
+      navigator.clipboard
+        .writeText(createdKey.key)
+        .then(() => {
+          setCopied(true);
+          toast.success("Copied to clipboard");
+          setTimeout(() => setCopied(false), 2000);
+        })
+        .catch(() => toast.error("Could not copy API key"));
     }
   };
 
@@ -121,15 +125,13 @@ export function ApiKeysSection({ siteId }: { siteId: string }) {
             <div className="flex flex-col gap-4">
               <div className="flex items-center gap-2">
                 <span className="text-sm font-medium">{createdKey.name}</span>
-                <Badge
-                  variant={
-                    createdKey.permissions === "write" ? "default" : "secondary"
-                  }
-                >
-                  {createdKey.permissions === "write"
-                    ? "Read & Write"
-                    : "Read Only"}
-                </Badge>
+                <div className="flex flex-wrap gap-1">
+                  {createdKey.scopes.map((scope) => (
+                    <Badge key={scope} variant="secondary">
+                      {scope}
+                    </Badge>
+                  ))}
+                </div>
               </div>
               <div className="relative">
                 <code className="block rounded-lg border bg-muted p-4 pr-12 font-mono text-sm break-all">
@@ -216,10 +218,12 @@ export function ApiKeysSection({ siteId }: { siteId: string }) {
               }}
             />
             <apiKeyForm.Field
-              name="permissions"
+              name="accessMode"
               children={(field) => (
                 <Field className="sm:w-40">
-                  <FieldLabel htmlFor="permissions">Permissions</FieldLabel>
+                  <FieldLabel htmlFor="api-key-access-mode">
+                    Access mode
+                  </FieldLabel>
                   <Select
                     items={[
                       { value: "read", label: "Read Only" },
@@ -230,7 +234,7 @@ export function ApiKeysSection({ siteId }: { siteId: string }) {
                       field.handleChange(v as "read" | "write")
                     }
                   >
-                    <SelectTrigger id="permissions">
+                    <SelectTrigger id="api-key-access-mode">
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
@@ -270,16 +274,17 @@ export function ApiKeysSection({ siteId }: { siteId: string }) {
                     <div>
                       <div className="flex items-center gap-2">
                         <span className="font-medium">{key.name}</span>
-                        <Badge
-                          variant={
-                            key.permissions === "write"
-                              ? "default"
-                              : "secondary"
-                          }
-                          className="text-xs"
-                        >
-                          {key.permissions === "write" ? "R/W" : "R"}
-                        </Badge>
+                        <div className="flex flex-wrap gap-1">
+                          {key.scopes.map((scope) => (
+                            <Badge
+                              key={scope}
+                              variant="secondary"
+                              className="text-xs"
+                            >
+                              {scope}
+                            </Badge>
+                          ))}
+                        </div>
                       </div>
                       <p className="text-sm text-muted-foreground">
                         {key.key_prefix}... &middot; Created{" "}
