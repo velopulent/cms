@@ -3,6 +3,16 @@ import { createFileRoute, redirect } from "@tanstack/react-router";
 import { Database, Trash2 } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -39,6 +49,7 @@ function StorageProfiles() {
   const [bucket, setBucket] = useState("");
   const [key, setKey] = useState("");
   const [secret, setSecret] = useState("");
+  const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
   const { data = [] } = useQuery({
     queryKey: ["storage-profiles"],
     queryFn: getStorageProfiles,
@@ -67,8 +78,10 @@ function StorageProfiles() {
   });
   const remove = useMutation({
     mutationFn: deleteStorageProfile,
-    onSuccess: () =>
-      client.invalidateQueries({ queryKey: ["storage-profiles"] }),
+    onSuccess: () => {
+      setDeleteTarget(null);
+      client.invalidateQueries({ queryKey: ["storage-profiles"] });
+    },
     onError: (e: Error) => toast.error(e.message),
   });
   return (
@@ -97,7 +110,9 @@ function StorageProfiles() {
                 <Button
                   size="icon"
                   variant="ghost"
-                  onClick={() => remove.mutate(profile.id)}
+                  onClick={() => setDeleteTarget(profile.id)}
+                  disabled={remove.isPending}
+                  aria-label={`Delete ${profile.name}`}
                 >
                   <Trash2 />
                 </Button>
@@ -189,6 +204,36 @@ function StorageProfiles() {
           </FieldGroup>
         </CardContent>
       </Card>
+      <AlertDialog
+        open={deleteTarget !== null}
+        onOpenChange={(open) =>
+          !open && !remove.isPending && setDeleteTarget(null)
+        }
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete storage profile?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This removes the profile permanently. Profiles used by live sites,
+              schedules, or retained backup artifacts must be released first.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={remove.isPending}>
+              Cancel
+            </AlertDialogCancel>
+            <AlertDialogAction
+              variant="destructive"
+              disabled={remove.isPending || deleteTarget === null}
+              onClick={() => {
+                if (deleteTarget) remove.mutate(deleteTarget);
+              }}
+            >
+              {remove.isPending ? "Deleting…" : "Delete profile"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

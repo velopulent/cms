@@ -10,7 +10,7 @@ import {
   RotateCcw,
   Trash2,
 } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -114,6 +114,7 @@ export function BackupsSection({ scope }: { scope: BackupScope }) {
   const [includeFiles, setIncludeFiles] = useState(true);
   const [encrypt, setEncrypt] = useState(false);
   const [storageProfileId, setStorageProfileId] = useState("local-filesystem");
+  const [restoreProfileId, setRestoreProfileId] = useState("");
 
   const [restoreSource, setRestoreSource] = useState<RestoreSource | null>(
     null,
@@ -150,6 +151,16 @@ export function BackupsSection({ scope }: { scope: BackupScope }) {
     queryKey: ["storage-profiles"],
     queryFn: getStorageProfiles,
   });
+
+  useEffect(() => {
+    const enabled = (storageProfilesQuery.data ?? []).filter(
+      (profile) => profile.enabled,
+    );
+    if (enabled.length === 0) return;
+    if (!enabled.some((profile) => profile.id === storageProfileId)) {
+      setStorageProfileId(enabled[0].id);
+    }
+  }, [storageProfileId, storageProfilesQuery.data]);
 
   const invalidateBackups = () =>
     queryClient.invalidateQueries({ queryKey: ["backups", scopeKey] });
@@ -195,6 +206,7 @@ export function BackupsSection({ scope }: { scope: BackupScope }) {
         const opts = {
           mode: "site" as const,
           import_as_new: importAsNew,
+          storage_profile_id: restoreProfileId || undefined,
           confirm: RESTORE_WORD,
         };
         if (restoreSource.type === "upload") {
@@ -221,6 +233,7 @@ export function BackupsSection({ scope }: { scope: BackupScope }) {
         mode,
         site_ids,
         ...(mode === "site" && { import_as_new: importAsNew }),
+        storage_profile_id: restoreProfileId || undefined,
         confirm: RESTORE_WORD,
         // Uploads were staged during inspect — restore by key, no re-upload.
         ...(restoreSource.type === "upload"
@@ -243,6 +256,7 @@ export function BackupsSection({ scope }: { scope: BackupScope }) {
     setRestoreMode(isInstance ? "instance" : "site");
     setSelectedSiteIds([]);
     setImportAsNew(false);
+    setRestoreProfileId("");
     setConfirmText("");
     setInspect(null);
     setInspectError(null);
@@ -301,14 +315,14 @@ export function BackupsSection({ scope }: { scope: BackupScope }) {
         </CardHeader>
         <CardContent className="flex flex-col gap-4">
           <Field>
-            <FieldLabel>Destination</FieldLabel>
+            <FieldLabel htmlFor="backup-destination">Destination</FieldLabel>
             <Select
               value={storageProfileId}
               onValueChange={(value) =>
                 setStorageProfileId(value ?? "local-filesystem")
               }
             >
-              <SelectTrigger className="w-full sm:w-80">
+              <SelectTrigger id="backup-destination" className="w-full sm:w-80">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -361,7 +375,13 @@ export function BackupsSection({ scope }: { scope: BackupScope }) {
               </label>
               <Button
                 onClick={() => createMutation.mutate()}
-                disabled={createMutation.isPending}
+                disabled={
+                  createMutation.isPending ||
+                  storageProfilesQuery.isLoading ||
+                  !(storageProfilesQuery.data ?? []).some(
+                    (profile) => profile.enabled,
+                  )
+                }
               >
                 <Plus className="size-4" />
                 {createMutation.isPending ? "Backing up…" : "Back up now"}
@@ -551,14 +571,14 @@ export function BackupsSection({ scope }: { scope: BackupScope }) {
             {/* An instance backup: choose whole instance or specific sites. */}
             {isInstance && inspect?.scope === "instance" && (
               <div className="flex flex-col gap-2">
-                <Label>What to restore</Label>
+                <Label htmlFor="restore-mode">What to restore</Label>
                 <Select
                   value={restoreMode}
                   onValueChange={(v) =>
                     setRestoreMode(v as "instance" | "site")
                   }
                 >
-                  <SelectTrigger>
+                  <SelectTrigger id="restore-mode">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -593,6 +613,37 @@ export function BackupsSection({ scope }: { scope: BackupScope }) {
                 </FieldLabel>
               </Field>
             )}
+
+            <Field>
+              <FieldLabel htmlFor="restore-storage-profile">
+                Restore files into
+              </FieldLabel>
+              <Select
+                value={restoreProfileId || "automatic"}
+                onValueChange={(value) =>
+                  setRestoreProfileId(
+                    value === "automatic" ? "" : (value ?? ""),
+                  )
+                }
+              >
+                <SelectTrigger id="restore-storage-profile">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="automatic">Automatic target</SelectItem>
+                  {(storageProfilesQuery.data ?? [])
+                    .filter((profile) => profile.enabled)
+                    .map((profile) => (
+                      <SelectItem key={profile.id} value={profile.id}>
+                        {profile.name}
+                      </SelectItem>
+                    ))}
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground">
+                Automatic uses the existing site profile, then local filesystem.
+              </p>
+            </Field>
 
             <div className="flex flex-col gap-2">
               <Label htmlFor="restore-confirm">
@@ -720,6 +771,16 @@ function SchedulesCard({
   const [submitting, setSubmitting] = useState(false);
   const [storageProfileId, setStorageProfileId] = useState("local-filesystem");
 
+  useEffect(() => {
+    const enabled = storageProfiles.filter((profile) => profile.enabled);
+    if (
+      enabled.length > 0 &&
+      !enabled.some((profile) => profile.id === storageProfileId)
+    ) {
+      setStorageProfileId(enabled[0].id);
+    }
+  }, [storageProfileId, storageProfiles]);
+
   const cron = preset === "custom" ? customCron : preset;
 
   async function submit() {
@@ -752,14 +813,14 @@ function SchedulesCard({
       <CardContent className="flex flex-col gap-4">
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5 lg:items-end">
           <Field>
-            <FieldLabel>Destination</FieldLabel>
+            <FieldLabel htmlFor="schedule-destination">Destination</FieldLabel>
             <Select
               value={storageProfileId}
               onValueChange={(value) =>
                 setStorageProfileId(value ?? "local-filesystem")
               }
             >
-              <SelectTrigger className="w-full">
+              <SelectTrigger id="schedule-destination" className="w-full">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -774,7 +835,7 @@ function SchedulesCard({
             </Select>
           </Field>
           <div className="flex flex-col gap-1.5">
-            <Label>Frequency</Label>
+            <Label htmlFor="schedule-frequency">Frequency</Label>
             <Select
               items={CRON_PRESETS.map((p) => ({
                 value: p.value,
@@ -783,7 +844,7 @@ function SchedulesCard({
               value={preset}
               onValueChange={(v) => setPreset(v ?? "")}
             >
-              <SelectTrigger className="w-full">
+              <SelectTrigger id="schedule-frequency" className="w-full">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -796,6 +857,7 @@ function SchedulesCard({
             </Select>
             {preset === "custom" && (
               <Input
+                id="schedule-custom-cron"
                 className="mt-1 font-mono"
                 value={customCron}
                 onChange={(e) => setCustomCron(e.target.value)}
@@ -831,7 +893,12 @@ function SchedulesCard({
               <FieldLabel htmlFor="schedule-encrypt">Encrypt</FieldLabel>
             </Field>
           </div>
-          <Button onClick={submit} disabled={submitting}>
+          <Button
+            onClick={submit}
+            disabled={
+              submitting || !storageProfiles.some((profile) => profile.enabled)
+            }
+          >
             <Plus className="size-4" /> Add schedule
           </Button>
         </div>

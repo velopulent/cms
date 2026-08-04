@@ -724,6 +724,7 @@ export interface RestoreInput {
   /** Sites to restore when mode = "site" (multi-select). Preferred over site_id. */
   site_ids?: string[];
   import_as_new?: boolean;
+  storage_profile_id?: string;
   confirm: string;
 }
 
@@ -786,6 +787,7 @@ export async function restoreBackupUpload(
     mode?: "instance" | "site";
     site_id?: string;
     import_as_new?: boolean;
+    storage_profile_id?: string;
     confirm: string;
   },
 ) {
@@ -793,6 +795,9 @@ export async function restoreBackupUpload(
   formData.append("file", file);
   if (opts.mode) formData.append("mode", opts.mode);
   if (opts.site_id) formData.append("site_id", opts.site_id);
+  if (opts.storage_profile_id) {
+    formData.append("storage_profile_id", opts.storage_profile_id);
+  }
   formData.append("import_as_new", opts.import_as_new ? "true" : "false");
   formData.append("confirm", opts.confirm);
   const csrfToken = getCsrfToken();
@@ -912,8 +917,7 @@ export async function getSites() {
 
 export async function createSite(data: {
   name: string;
-  storage_provider?: string;
-  storage_profile_id?: string;
+  storage_profile_id: string;
 }) {
   return api<Site>("/sites", {
     method: "POST",
