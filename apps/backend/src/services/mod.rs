@@ -96,7 +96,6 @@ impl Services {
             access_token: Arc::new(access_token::AccessTokenService::new(
                 repository.access_token.clone(),
                 config.token_index_key.clone(),
-                config.bcrypt_cost,
             )),
             collection: Arc::new(collection::CollectionService::new(
                 repository.collection.clone(),

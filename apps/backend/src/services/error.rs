@@ -124,7 +124,7 @@ impl ServiceError {
             ServiceError::Token(e) => match e {
                 TokenError::NameRequired => StatusCode::BAD_REQUEST,
                 TokenError::NotFound => StatusCode::NOT_FOUND,
-                TokenError::HashError(_) | TokenError::DatabaseError(_) => StatusCode::INTERNAL_SERVER_ERROR,
+                TokenError::DatabaseError(_) => StatusCode::INTERNAL_SERVER_ERROR,
             },
         }
     }

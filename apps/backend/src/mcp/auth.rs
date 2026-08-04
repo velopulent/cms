@@ -128,7 +128,7 @@ pub fn service_error_to_mcp(error: crate::services::error::ServiceError) -> Erro
 mod tests {
     use crate::database::init_db;
     use crate::middleware::auth::{Actor, is_token_not_expired, verify_access_token};
-    use crate::models::access_token::AccessTokenPermission;
+    use crate::models::access_token::{TokenScope, TokenScopes};
     use crate::repository::Repository;
     use crate::services::access_token::AccessTokenService;
 
@@ -162,16 +162,18 @@ mod tests {
             .expect("user should be created");
         repository
             .site
-            .create("site-123", "Test Site", "filesystem", "user-123")
+            .create_with_storage_profile("site-123", "Test Site", "local-filesystem", "user-123")
             .await
             .expect("site should be created");
-        let service = AccessTokenService::new(
-            repository.access_token.clone(),
-            hmac_secret.to_string(),
-            bcrypt::DEFAULT_COST,
-        );
+        let service = AccessTokenService::new(repository.access_token.clone(), hmac_secret.to_string());
         let token = service
-            .create_site_token("site-123", "MCP".to_string(), AccessTokenPermission::Read, None)
+            .create_site_token(
+                "site-123",
+                "MCP".to_string(),
+                [TokenScope::SiteRead].into_iter().collect::<TokenScopes>(),
+                None,
+                None,
+            )
             .await
             .expect("token should be created");
 
@@ -182,7 +184,7 @@ mod tests {
         match actor {
             Actor::ApiKey(k) => {
                 assert_eq!(k.site_id, "site-123");
-                assert_eq!(k.permission, AccessTokenPermission::Read);
+                assert!(k.scopes.contains(&TokenScope::SiteRead));
             }
             _ => panic!("expected API key actor"),
         }

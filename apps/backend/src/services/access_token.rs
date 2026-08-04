@@ -1,7 +1,6 @@
 use std::sync::Arc;
 
 use axum::{Json, http::StatusCode, response::IntoResponse};
-use bcrypt::hash;
 use serde_json::json;
 use thiserror::Error;
 use tracing::{debug, error, info};
@@ -9,8 +8,8 @@ use uuid::Uuid;
 
 use crate::middleware::auth::compute_key_hmac;
 use crate::models::access_token::{
-    AccessToken, AccessTokenResponse, CreatePersonalAccessToken, PersonalAccessTokenResponse, PersonalAccessTokenView,
-    TokenScopes, decode_scopes, encode_scopes,
+    AccessTokenResponse, AccessTokenView, CreatePersonalAccessToken, PersonalAccessTokenResponse,
+    PersonalAccessTokenView, TokenScopes, decode_scopes, encode_scopes,
 };
 use crate::repository::traits::{AccessTokenRepository, NewAccessToken, NewPersonalToken};
 
@@ -20,16 +19,12 @@ const SITE_TOKEN_PREFIX: &str = "vcms_site_";
 pub struct AccessTokenService {
     access_token_repo: Arc<dyn AccessTokenRepository>,
     hmac_secret: String,
-    bcrypt_cost: u32,
 }
 
 #[derive(Error, Debug)]
 pub enum TokenError {
     #[error("Token not found")]
     NotFound,
-
-    #[error("Hash error: {0}")]
-    HashError(String),
 
     #[error("Name is required")]
     NameRequired,
@@ -43,20 +38,17 @@ impl TokenError {
         let (status, body) = match self {
             TokenError::NotFound => (StatusCode::NOT_FOUND, Json(json!({"error": "Token not found"}))),
             TokenError::NameRequired => (StatusCode::BAD_REQUEST, Json(json!({"error": "Name is required"}))),
-            TokenError::HashError(msg) | TokenError::DatabaseError(msg) => {
-                (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": msg})))
-            }
+            TokenError::DatabaseError(msg) => (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": msg}))),
         };
         (status, body).into_response()
     }
 }
 
 impl AccessTokenService {
-    pub fn new(access_token_repo: Arc<dyn AccessTokenRepository>, hmac_secret: String, bcrypt_cost: u32) -> Self {
+    pub fn new(access_token_repo: Arc<dyn AccessTokenRepository>, hmac_secret: String) -> Self {
         Self {
             access_token_repo,
             hmac_secret,
-            bcrypt_cost,
         }
     }
 
@@ -69,11 +61,28 @@ impl AccessTokenService {
         format!("vcms_pat_{}", Uuid::new_v4().simple())
     }
 
-    pub async fn list_site_tokens(&self, site_id: &str) -> Result<Vec<AccessToken>, TokenError> {
+    pub async fn list_site_tokens(&self, site_id: &str) -> Result<Vec<AccessTokenView>, TokenError> {
         self.access_token_repo
             .list(site_id)
             .await
-            .map_err(|e| TokenError::DatabaseError(e.to_string()))
+            .map_err(|e| TokenError::DatabaseError(e.to_string()))?
+            .into_iter()
+            .map(|token| {
+                Ok(AccessTokenView {
+                    id: token.id,
+                    site_id: token.site_id,
+                    name: token.name,
+                    token_prefix: token.token_prefix,
+                    scopes: decode_scopes(&token.scopes_json)
+                        .map_err(|error| TokenError::DatabaseError(error.to_string()))?,
+                    created_by_user_id: token.created_by_user_id,
+                    last_used_at: token.last_used_at,
+                    created_at: token.created_at,
+                    expires_at: token.expires_at,
+                    revoked_at: token.revoked_at,
+                })
+            })
+            .collect()
     }
 
     pub async fn create_site_token(
@@ -81,6 +90,7 @@ impl AccessTokenService {
         site_id: &str,
         name: String,
         scopes: impl Into<TokenScopes>,
+        expires_at: Option<&str>,
         created_by: Option<&str>,
     ) -> Result<AccessTokenResponse, TokenError> {
         debug!("Creating scoped site token: site_id={}", site_id);
@@ -93,21 +103,20 @@ impl AccessTokenService {
 
         let raw_token = Self::build_token();
         let prefix: String = raw_token.chars().take(24).collect();
-        let token_hash = hash(&raw_token, self.bcrypt_cost).map_err(|e| TokenError::HashError(e.to_string()))?;
         let token_hmac = compute_key_hmac(&raw_token, &self.hmac_secret);
         let id = Uuid::now_v7().to_string();
-        let permission_str = encode_scopes(&scopes).map_err(|e| TokenError::DatabaseError(e.to_string()))?;
+        let scopes_json = encode_scopes(&scopes).map_err(|e| TokenError::DatabaseError(e.to_string()))?;
 
         self.access_token_repo
             .create(NewAccessToken {
                 id: &id,
                 site_id,
                 name,
-                token_hash: &token_hash,
                 token_prefix: &prefix,
                 token_hmac: &token_hmac,
-                permission: &permission_str,
+                scopes_json: &scopes_json,
                 created_by_user_id: created_by,
+                expires_at,
             })
             .await
             .map_err(|e| {
@@ -121,9 +130,9 @@ impl AccessTokenService {
             name: name.to_string(),
             token: raw_token,
             token_prefix: prefix,
-            permission: permission_str,
             scopes,
             created_at: chrono::Utc::now().format("%Y-%m-%d %H:%M:%S").to_string(),
+            expires_at: expires_at.map(str::to_string),
         })
     }
 
@@ -160,7 +169,6 @@ impl AccessTokenService {
         let raw = Self::build_personal_token();
         let prefix: String = raw.chars().take(24).collect();
         let id = Uuid::now_v7().to_string();
-        let token_hash = hash(&raw, self.bcrypt_cost).map_err(|e| TokenError::HashError(e.to_string()))?;
         let token_hmac = compute_key_hmac(&raw, &self.hmac_secret);
         let scopes_json = encode_scopes(&payload.scopes).map_err(|e| TokenError::DatabaseError(e.to_string()))?;
         self.access_token_repo
@@ -168,7 +176,6 @@ impl AccessTokenService {
                 id: &id,
                 user_id,
                 name,
-                token_hash: &token_hash,
                 token_hmac: &token_hmac,
                 token_prefix: &prefix,
                 scopes_json: &scopes_json,
@@ -223,7 +230,7 @@ impl AccessTokenService {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::models::access_token::AccessTokenPermission;
+    use crate::models::access_token::TokenScope;
     use crate::test_helpers::InMemoryAccessTokenRepository;
 
     fn test_repo() -> Arc<InMemoryAccessTokenRepository> {
@@ -231,7 +238,7 @@ mod tests {
     }
 
     fn test_service(repo: Arc<InMemoryAccessTokenRepository>) -> AccessTokenService {
-        AccessTokenService::new(repo, "hmac-secret-key".to_string(), bcrypt::DEFAULT_COST)
+        AccessTokenService::new(repo, "hmac-secret-key".to_string())
     }
 
     #[tokio::test]
@@ -239,7 +246,15 @@ mod tests {
         let service = test_service(test_repo());
 
         let result = service
-            .create_site_token("site-123", "Test Token".to_string(), AccessTokenPermission::Read, None)
+            .create_site_token(
+                "site-123",
+                "Test Token".to_string(),
+                [TokenScope::SiteRead, TokenScope::ContentRead]
+                    .into_iter()
+                    .collect::<TokenScopes>(),
+                None,
+                None,
+            )
             .await;
 
         assert!(result.is_ok());
@@ -259,7 +274,13 @@ mod tests {
         let service = test_service(test_repo());
 
         let result = service
-            .create_site_token("site-123", "   ".to_string(), AccessTokenPermission::Read, None)
+            .create_site_token(
+                "site-123",
+                "   ".to_string(),
+                [TokenScope::SiteRead].into_iter().collect::<TokenScopes>(),
+                None,
+                None,
+            )
             .await;
 
         assert!(matches!(result, Err(TokenError::NameRequired)));
@@ -279,7 +300,15 @@ mod tests {
         let service = test_service(test_repo());
 
         let create_result = service
-            .create_site_token("site-123", "To Delete".to_string(), AccessTokenPermission::Write, None)
+            .create_site_token(
+                "site-123",
+                "To Delete".to_string(),
+                [TokenScope::SiteSettingsWrite, TokenScope::ContentWrite]
+                    .into_iter()
+                    .collect::<TokenScopes>(),
+                None,
+                None,
+            )
             .await
             .unwrap();
 

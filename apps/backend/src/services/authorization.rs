@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use crate::middleware::auth::{Actor, scope_for_action};
+use crate::middleware::auth::{Actor, scopes_allow_action};
 use crate::models::authorization::{Action, Authorizer, InstanceRole, SiteRole};
 use crate::repository::traits::UserRepository;
 use crate::services::error::ServiceError;
@@ -21,18 +21,19 @@ impl AuthorizationService {
                 if site_id != k.site_id {
                     return Err(ServiceError::Forbidden("Token is not authorized for this site".into()));
                 }
-                if !Authorizer::token_hard_denied(action)
-                    && scope_for_action(action).is_some_and(|s| k.scopes.contains(&s))
+                if site_id == k.site_id
+                    && !Authorizer::token_hard_denied(action)
+                    && scopes_allow_action(&k.scopes, action)
                 {
                     Ok(())
+                } else if site_id != k.site_id {
+                    Err(ServiceError::Forbidden("Token is not authorized for this site".into()))
                 } else {
-                    Err(ServiceError::InsufficientPermission("write".into()))
+                    Err(ServiceError::InsufficientPermission("token scope".into()))
                 }
             }
             Actor::PersonalToken(token) => {
-                if Authorizer::token_hard_denied(action)
-                    || !scope_for_action(action).is_some_and(|s| token.scopes.contains(&s))
-                {
+                if Authorizer::token_hard_denied(action) || !scopes_allow_action(&token.scopes, action) {
                     return Err(ServiceError::InsufficientPermission("token scope".into()));
                 }
                 self.check_site_access(&token.user_id, site_id, action).await
@@ -92,7 +93,7 @@ mod tests {
     use std::sync::Arc;
 
     use crate::middleware::auth::{Actor, ApiKeyActor};
-    use crate::models::access_token::AccessTokenPermission;
+    use crate::models::access_token::TokenScope;
     use crate::models::authorization::Action;
     use crate::test_helpers::InMemoryUserRepository;
 
@@ -104,8 +105,7 @@ mod tests {
         let actor = Actor::ApiKey(ApiKeyActor {
             token_id: "token-1".to_string(),
             site_id: "site-1".to_string(),
-            permission: AccessTokenPermission::Read,
-            scopes: AccessTokenPermission::Read.into(),
+            scopes: [TokenScope::SiteRead, TokenScope::ContentRead].into_iter().collect(),
         });
 
         let result = checker.require_site_action(&actor, "site-1", Action::ContentRead).await;
@@ -119,8 +119,7 @@ mod tests {
         let actor = Actor::ApiKey(ApiKeyActor {
             token_id: "token-1".to_string(),
             site_id: "site-1".to_string(),
-            permission: AccessTokenPermission::Read,
-            scopes: AccessTokenPermission::Read.into(),
+            scopes: [TokenScope::SiteRead, TokenScope::ContentRead].into_iter().collect(),
         });
 
         let result = checker
@@ -136,8 +135,7 @@ mod tests {
         let actor = Actor::ApiKey(ApiKeyActor {
             token_id: "token-1".to_string(),
             site_id: "site-1".to_string(),
-            permission: AccessTokenPermission::Read,
-            scopes: AccessTokenPermission::Read.into(),
+            scopes: [TokenScope::SiteRead, TokenScope::ContentRead].into_iter().collect(),
         });
 
         let result = checker.require_site_action(&actor, "site-2", Action::ContentRead).await;
@@ -151,8 +149,7 @@ mod tests {
         let actor = Actor::ApiKey(ApiKeyActor {
             token_id: "token-1".to_string(),
             site_id: "site-1".to_string(),
-            permission: AccessTokenPermission::Write,
-            scopes: AccessTokenPermission::Write.into(),
+            scopes: [TokenScope::SiteRead, TokenScope::ContentWrite].into_iter().collect(),
         });
 
         let result = checker
@@ -188,8 +185,7 @@ mod tests {
         let api_actor = Actor::ApiKey(ApiKeyActor {
             token_id: "token-1".to_string(),
             site_id: "site-1".to_string(),
-            permission: AccessTokenPermission::Read,
-            scopes: AccessTokenPermission::Read.into(),
+            scopes: [TokenScope::SiteRead, TokenScope::ContentRead].into_iter().collect(),
         });
         assert!(checker.actor_user_id(&api_actor).is_none());
     }
@@ -201,8 +197,7 @@ mod tests {
         let api_actor = Actor::ApiKey(ApiKeyActor {
             token_id: "token-1".to_string(),
             site_id: "site-1".to_string(),
-            permission: AccessTokenPermission::Read,
-            scopes: AccessTokenPermission::Read.into(),
+            scopes: [TokenScope::SiteRead, TokenScope::ContentRead].into_iter().collect(),
         });
         assert_eq!(checker.actor_site_id(&api_actor), Some("site-1"));
 

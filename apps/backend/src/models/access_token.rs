@@ -4,13 +4,6 @@ use serde::{Deserialize, Serialize};
 use sqlx::FromRow;
 use utoipa::ToSchema;
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, ToSchema)]
-#[serde(rename_all = "snake_case")]
-pub enum AccessTokenPermission {
-    Read,
-    Write,
-}
-
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord, ToSchema)]
 pub enum TokenScope {
     #[serde(rename = "site.read")]
@@ -48,13 +41,20 @@ pub enum TokenScope {
 }
 
 pub type TokenScopes = BTreeSet<TokenScope>;
-impl From<AccessTokenPermission> for TokenScopes {
-    fn from(value: AccessTokenPermission) -> Self {
-        match value {
-            AccessTokenPermission::Read => decode_scopes("read").unwrap_or_default(),
-            AccessTokenPermission::Write => decode_scopes("write").unwrap_or_default(),
-        }
-    }
+pub fn scopes_can_write(scopes: &TokenScopes) -> bool {
+    scopes.iter().any(|scope| {
+        matches!(
+            scope,
+            TokenScope::SiteSettingsWrite
+                | TokenScope::ContentWrite
+                | TokenScope::FilesWrite
+                | TokenScope::SchemaWrite
+                | TokenScope::WebhooksWrite
+                | TokenScope::WebhooksTrigger
+                | TokenScope::DeploymentsWrite
+                | TokenScope::DeploymentsTrigger
+        )
+    })
 }
 
 pub fn encode_scopes(scopes: &TokenScopes) -> Result<String, serde_json::Error> {
@@ -62,67 +62,7 @@ pub fn encode_scopes(scopes: &TokenScopes) -> Result<String, serde_json::Error> 
 }
 
 pub fn decode_scopes(value: &str) -> Result<TokenScopes, serde_json::Error> {
-    // Existing development keys remain readable during rolling developer upgrades.
-    match value {
-        "read" => Ok([
-            TokenScope::SiteRead,
-            TokenScope::ContentRead,
-            TokenScope::FilesRead,
-            TokenScope::SchemaRead,
-        ]
-        .into_iter()
-        .collect()),
-        "write" => Ok([
-            TokenScope::SiteRead,
-            TokenScope::SiteSettingsRead,
-            TokenScope::SiteSettingsWrite,
-            TokenScope::ContentRead,
-            TokenScope::ContentWrite,
-            TokenScope::FilesRead,
-            TokenScope::FilesWrite,
-            TokenScope::SchemaRead,
-            TokenScope::SchemaWrite,
-            TokenScope::WebhooksRead,
-            TokenScope::WebhooksWrite,
-            TokenScope::WebhooksTrigger,
-        ]
-        .into_iter()
-        .collect()),
-        _ => serde_json::from_str(value),
-    }
-}
-
-pub type ApiKeyPermission = AccessTokenPermission;
-
-impl AccessTokenPermission {
-    pub fn as_str(&self) -> &'static str {
-        match self {
-            Self::Read => "read",
-            Self::Write => "write",
-        }
-    }
-
-    pub fn can_write(&self) -> bool {
-        matches!(self, Self::Write)
-    }
-}
-
-impl std::fmt::Display for AccessTokenPermission {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str(self.as_str())
-    }
-}
-
-impl std::str::FromStr for AccessTokenPermission {
-    type Err = String;
-
-    fn from_str(value: &str) -> Result<Self, Self::Err> {
-        match value {
-            "read" => Ok(Self::Read),
-            "write" => Ok(Self::Write),
-            other => Err(format!("Unknown token permission '{}'", other)),
-        }
-    }
+    serde_json::from_str(value)
 }
 
 #[derive(Serialize, FromRow, ToSchema, Clone)]
@@ -131,14 +71,26 @@ pub struct AccessToken {
     pub site_id: String,
     pub name: String,
     pub token_prefix: String,
-    pub permission: String,
+    pub scopes_json: String,
     pub created_by_user_id: Option<String>,
     pub last_used_at: Option<String>,
     pub created_at: String,
     pub expires_at: Option<String>,
     pub revoked_at: Option<String>,
-    #[sqlx(skip)]
-    pub token_hmac: Option<String>,
+}
+
+#[derive(Serialize, ToSchema, Clone)]
+pub struct AccessTokenView {
+    pub id: String,
+    pub site_id: String,
+    pub name: String,
+    pub token_prefix: String,
+    pub scopes: TokenScopes,
+    pub created_by_user_id: Option<String>,
+    pub last_used_at: Option<String>,
+    pub created_at: String,
+    pub expires_at: Option<String>,
+    pub revoked_at: Option<String>,
 }
 
 #[derive(Deserialize, ToSchema)]
@@ -155,9 +107,9 @@ pub struct AccessTokenResponse {
     pub name: String,
     pub token: String,
     pub token_prefix: String,
-    pub permission: String,
     pub scopes: TokenScopes,
     pub created_at: String,
+    pub expires_at: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, FromRow, ToSchema)]

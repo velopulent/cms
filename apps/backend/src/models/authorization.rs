@@ -146,10 +146,13 @@ impl Authorizer {
     /// Anything beyond that (site/schema/webhook/key/member management) is operator-only.
     pub const fn allows_site(role: SiteRole, action: Action) -> bool {
         match action {
-            Action::SiteRead | Action::ContentRead | Action::SchemaRead | Action::FilesRead | Action::WebhooksRead => {
-                true
-            }
-            Action::ContentWrite | Action::FilesWrite | Action::DeploymentsRead | Action::DeploymentsTrigger => {
+            Action::SiteRead
+            | Action::ContentRead
+            | Action::SchemaRead
+            | Action::FilesRead
+            | Action::WebhooksRead
+            | Action::DeploymentsRead => true,
+            Action::ContentWrite | Action::FilesWrite | Action::DeploymentsTrigger => {
                 matches!(role, SiteRole::Editor)
             }
             _ => false,
@@ -176,14 +179,20 @@ impl Authorizer {
             return false;
         }
         match action {
-            Action::SiteRead | Action::ContentRead | Action::SchemaRead | Action::FilesRead | Action::WebhooksRead => {
-                true
-            }
+            Action::SiteRead
+            | Action::ContentRead
+            | Action::SchemaRead
+            | Action::FilesRead
+            | Action::WebhooksRead
+            | Action::DeploymentsRead => true,
             Action::SiteManage
             | Action::ContentWrite
             | Action::SchemaWrite
             | Action::FilesWrite
-            | Action::WebhooksWrite => can_write,
+            | Action::WebhooksWrite
+            | Action::WebhooksTrigger
+            | Action::DeploymentsWrite
+            | Action::DeploymentsTrigger => can_write,
             _ => false,
         }
     }

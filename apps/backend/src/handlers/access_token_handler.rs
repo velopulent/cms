@@ -47,10 +47,17 @@ pub async fn create_site_token(
     }
 
     let user_id = ctx.auth.actor.user_id().unwrap_or("system");
+    let expires_at = payload.expires_at.clone();
 
     match services
         .access_token
-        .create_site_token(&site_id, payload.name, payload.scopes, Some(user_id))
+        .create_site_token(
+            &site_id,
+            payload.name,
+            payload.scopes,
+            expires_at.as_deref(),
+            Some(user_id),
+        )
         .await
     {
         Ok(response) => (StatusCode::CREATED, Json(response)).into_response(),

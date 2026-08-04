@@ -5,8 +5,6 @@ use crate::grpc::interceptor::compute_key_hmac;
 /// This is inserted into request extensions by the interceptor.
 #[derive(Clone, Debug)]
 pub struct AuthContext {
-    pub token: String,
-    pub prefix: String,
     pub hmac: String,
 }
 
@@ -22,14 +20,12 @@ pub fn parse_token(token: &str, config: &Config) -> Result<AuthContext, InvalidT
         return Err(InvalidToken);
     }
 
-    let prefix = token.get(..24).ok_or(InvalidToken)?.to_string();
+    if token.len() <= "vcms_site_".len() {
+        return Err(InvalidToken);
+    }
     let hmac = compute_key_hmac(token, &config.token_index_key);
 
-    Ok(AuthContext {
-        token: token.to_string(),
-        prefix,
-        hmac,
-    })
+    Ok(AuthContext { hmac })
 }
 
 #[cfg(test)]
@@ -44,8 +40,6 @@ mod tests {
         };
         let token = "vcms_site_abc1234567890123456";
         let ctx = parse_token(token, &config).unwrap();
-        assert_eq!(ctx.token, token);
-        assert_eq!(ctx.prefix, token.chars().take(24).collect::<String>());
         assert_eq!(ctx.hmac.len(), 64);
     }
 

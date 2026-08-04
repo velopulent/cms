@@ -2,7 +2,7 @@ use std::sync::{Arc, Mutex};
 
 use async_trait::async_trait;
 
-use crate::models::access_token::AccessToken;
+use crate::models::access_token::{AccessToken, PersonalAccessToken};
 use crate::models::collection::Collection;
 use crate::models::entry::{Entry, EntryRevision};
 use crate::models::file::{File, FileReference};
@@ -12,8 +12,9 @@ use crate::models::user::User;
 use crate::repository::error::RepositoryError;
 use crate::repository::traits::{
     AccessTokenLookupRow, AccessTokenRepository, CollectionRepository, EntriesListResult, EntryRepository,
-    FileListResult, FileRepository, ListEntriesParams, ListFilesParams, NewAccessToken, NewFile, NewWebhookDelivery,
-    RevisionsListResult, SessionRepository, SiteRepository, UpdateEntryParams, UserRepository,
+    FileListResult, FileRepository, ListEntriesParams, ListFilesParams, NewAccessToken, NewFile, NewPersonalToken,
+    NewWebhookDelivery, PersonalTokenLookupRow, RevisionsListResult, SessionRepository, SiteRepository,
+    UpdateEntryParams, UserRepository,
 };
 
 pub fn now_timestamp() -> String {
@@ -321,27 +322,6 @@ impl SiteRepository for InMemorySiteRepository {
         Ok(sites.iter().find(|s| s.id == id).cloned())
     }
 
-    async fn create(
-        &self,
-        id: &str,
-        name: &str,
-        storage_provider: &str,
-        created_by: &str,
-    ) -> Result<Site, RepositoryError> {
-        let mut sites = self.sites.lock().unwrap();
-        let site = Site {
-            id: id.to_string(),
-            name: name.to_string(),
-            storage_provider: storage_provider.to_string(),
-            storage_profile_id: None,
-            created_by: created_by.to_string(),
-            created_at: now_timestamp(),
-            updated_at: now_timestamp(),
-        };
-        sites.push(site.clone());
-        Ok(site)
-    }
-
     async fn create_with_storage_profile(
         &self,
         id: &str,
@@ -349,11 +329,18 @@ impl SiteRepository for InMemorySiteRepository {
         storage_profile_id: &str,
         created_by: &str,
     ) -> Result<Site, RepositoryError> {
+        if storage_profile_id.starts_with("missing") {
+            return Err(RepositoryError::NotFound);
+        }
         let mut sites = self.sites.lock().unwrap();
         let site = Site {
             id: id.to_string(),
             name: name.to_string(),
-            storage_provider: "s3".to_string(),
+            storage_provider: if storage_profile_id == "local-filesystem" {
+                "filesystem".to_string()
+            } else {
+                "s3".to_string()
+            },
             storage_profile_id: Some(storage_profile_id.to_string()),
             created_by: created_by.to_string(),
             created_at: now_timestamp(),
@@ -1128,12 +1115,18 @@ impl FileRepository for InMemoryFileRepository {
 #[derive(Clone)]
 pub struct InMemoryAccessTokenRepository {
     tokens: Arc<Mutex<Vec<AccessToken>>>,
+    token_hmacs: Arc<Mutex<std::collections::HashMap<String, String>>>,
+    personal_tokens: Arc<Mutex<Vec<PersonalAccessToken>>>,
+    personal_hmacs: Arc<Mutex<std::collections::HashMap<String, String>>>,
 }
 
 impl InMemoryAccessTokenRepository {
     pub fn new() -> Self {
         Self {
             tokens: Arc::new(Mutex::new(Vec::new())),
+            token_hmacs: Arc::new(Mutex::new(std::collections::HashMap::new())),
+            personal_tokens: Arc::new(Mutex::new(Vec::new())),
+            personal_hmacs: Arc::new(Mutex::new(std::collections::HashMap::new())),
         }
     }
 
@@ -1161,11 +1154,11 @@ impl AccessTokenRepository for InMemoryAccessTokenRepository {
             id,
             site_id,
             name,
-            token_hash: _,
             token_prefix,
             token_hmac,
-            permission,
+            scopes_json,
             created_by_user_id,
+            expires_at,
         } = token;
         let mut tokens = self.tokens.lock().unwrap();
         let token = AccessToken {
@@ -1173,14 +1166,17 @@ impl AccessTokenRepository for InMemoryAccessTokenRepository {
             site_id: site_id.to_string(),
             name: name.to_string(),
             token_prefix: token_prefix.to_string(),
-            permission: permission.to_string(),
+            scopes_json: scopes_json.to_string(),
             created_by_user_id: created_by_user_id.map(|s| s.to_string()),
             last_used_at: None,
             created_at: now_timestamp(),
-            expires_at: None,
+            expires_at: expires_at.map(str::to_string),
             revoked_at: None,
-            token_hmac: Some(token_hmac.to_string()),
         };
+        self.token_hmacs
+            .lock()
+            .unwrap()
+            .insert(id.to_string(), token_hmac.to_string());
         tokens.push(token);
         Ok(())
     }
@@ -1192,51 +1188,98 @@ impl AccessTokenRepository for InMemoryAccessTokenRepository {
         Ok((len - tokens.len()) as u64)
     }
 
-    async fn find_by_prefix(&self, prefix: &str) -> Result<Vec<AccessTokenLookupRow>, RepositoryError> {
+    async fn find_by_hmac(&self, hmac: &str) -> Result<Option<AccessTokenLookupRow>, RepositoryError> {
         let tokens = self.tokens.lock().unwrap();
+        let hmacs = self.token_hmacs.lock().unwrap();
         Ok(tokens
             .iter()
-            .filter(|t| t.token_prefix.starts_with(prefix))
-            .map(|t| {
+            .find(|token| hmacs.get(&token.id).is_some_and(|value| value == hmac))
+            .map(|token| {
                 (
-                    t.id.clone(),
-                    t.site_id.clone(),
-                    String::new(),
-                    t.token_hmac.clone(),
-                    t.expires_at.clone(),
-                    t.revoked_at.clone(),
-                    t.permission.clone(),
-                    t.last_used_at.clone(),
+                    token.id.clone(),
+                    token.site_id.clone(),
+                    hmac.to_string(),
+                    token.expires_at.clone(),
+                    token.revoked_at.clone(),
+                    token.scopes_json.clone(),
+                    token.last_used_at.clone(),
                 )
-            })
-            .collect())
+            }))
     }
 
-    async fn update_last_used(&self, _id: &str) -> Result<(), RepositoryError> {
+    async fn update_last_used(&self, id: &str) -> Result<(), RepositoryError> {
+        if let Some(token) = self.tokens.lock().unwrap().iter_mut().find(|token| token.id == id) {
+            token.last_used_at = Some(now_timestamp());
+        }
         Ok(())
     }
-    async fn list_personal(
-        &self,
-        _user_id: &str,
-    ) -> Result<Vec<crate::models::access_token::PersonalAccessToken>, RepositoryError> {
-        Ok(vec![])
+    async fn list_personal(&self, user_id: &str) -> Result<Vec<PersonalAccessToken>, RepositoryError> {
+        Ok(self
+            .personal_tokens
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|token| token.user_id == user_id)
+            .cloned()
+            .collect())
     }
-    async fn create_personal(
-        &self,
-        _token: crate::repository::traits::NewPersonalToken<'_>,
-    ) -> Result<(), RepositoryError> {
+    async fn create_personal(&self, token: NewPersonalToken<'_>) -> Result<(), RepositoryError> {
+        self.personal_hmacs
+            .lock()
+            .unwrap()
+            .insert(token.id.to_string(), token.token_hmac.to_string());
+        self.personal_tokens.lock().unwrap().push(PersonalAccessToken {
+            id: token.id.to_string(),
+            user_id: token.user_id.to_string(),
+            name: token.name.to_string(),
+            token_prefix: token.token_prefix.to_string(),
+            scopes_json: token.scopes_json.to_string(),
+            last_used_at: None,
+            created_at: now_timestamp(),
+            expires_at: token.expires_at.map(str::to_string),
+            revoked_at: None,
+        });
         Ok(())
     }
-    async fn revoke_personal(&self, _id: &str, _user_id: &str) -> Result<u64, RepositoryError> {
+    async fn revoke_personal(&self, id: &str, user_id: &str) -> Result<u64, RepositoryError> {
+        let mut tokens = self.personal_tokens.lock().unwrap();
+        if let Some(token) = tokens
+            .iter_mut()
+            .find(|token| token.id == id && token.user_id == user_id && token.revoked_at.is_none())
+        {
+            token.revoked_at = Some(now_timestamp());
+            return Ok(1);
+        }
         Ok(0)
     }
-    async fn find_personal_by_prefix(
-        &self,
-        _prefix: &str,
-    ) -> Result<Vec<crate::repository::traits::PersonalTokenLookupRow>, RepositoryError> {
-        Ok(vec![])
+    async fn find_personal_by_hmac(&self, hmac: &str) -> Result<Option<PersonalTokenLookupRow>, RepositoryError> {
+        let tokens = self.personal_tokens.lock().unwrap();
+        let hmacs = self.personal_hmacs.lock().unwrap();
+        Ok(tokens
+            .iter()
+            .find(|token| hmacs.get(&token.id).is_some_and(|value| value == hmac))
+            .map(|token| {
+                (
+                    token.id.clone(),
+                    token.user_id.clone(),
+                    hmac.to_string(),
+                    token.expires_at.clone(),
+                    token.revoked_at.clone(),
+                    token.scopes_json.clone(),
+                    token.last_used_at.clone(),
+                )
+            }))
     }
-    async fn touch_personal(&self, _id: &str) -> Result<(), RepositoryError> {
+    async fn touch_personal(&self, id: &str) -> Result<(), RepositoryError> {
+        if let Some(token) = self
+            .personal_tokens
+            .lock()
+            .unwrap()
+            .iter_mut()
+            .find(|token| token.id == id)
+        {
+            token.last_used_at = Some(now_timestamp());
+        }
         Ok(())
     }
 }

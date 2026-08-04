@@ -7,7 +7,7 @@ use tracing::{Span, error};
 
 use crate::config::Config;
 use crate::grpc::auth::{AuthContext, parse_token};
-use crate::models::access_token::{AccessTokenPermission, TokenScope, TokenScopes, decode_scopes};
+use crate::models::access_token::{TokenScope, TokenScopes, decode_scopes, scopes_can_write};
 use crate::repository::Repository;
 
 pub type HmacSha256 = Hmac<Sha256>;
@@ -22,17 +22,18 @@ pub fn compute_key_hmac(key: &str, hmac_secret: &str) -> String {
 pub struct GrpcAuthContext {
     pub token_id: String,
     pub site_id: String,
-    pub permission: AccessTokenPermission,
     pub scopes: TokenScopes,
 }
 
 impl GrpcAuthContext {
     pub fn can_write(&self) -> bool {
-        self.permission.can_write()
+        scopes_can_write(&self.scopes)
     }
 
     pub fn require_scope(&self, scope: TokenScope) -> Result<(), tonic::Status> {
-        if self.scopes.contains(&scope) {
+        if self.scopes.contains(&scope)
+            || (scope == TokenScope::SiteRead && self.scopes.contains(&TokenScope::SiteSettingsRead))
+        {
             Ok(())
         } else {
             Err(tonic::Status::permission_denied(
@@ -75,66 +76,34 @@ impl tonic::service::Interceptor for AuthInterceptor {
 }
 
 async fn validate_auth(ctx: &AuthContext, repository: &Repository) -> Result<GrpcAuthContext, tonic::Status> {
-    let keys = repository.access_token.find_by_prefix(&ctx.prefix).await.map_err(|e| {
+    let key = repository.access_token.find_by_hmac(&ctx.hmac).await.map_err(|e| {
         error!(error = ?e, "Database error during access token lookup");
         tonic::Status::internal("Authentication service unavailable")
     })?;
-
-    for (key_id, site_id, stored_hash, stored_hmac, expires_at, revoked_at, permission, last_used_at) in keys {
-        let valid = if let Some(ref stored) = stored_hmac {
-            stored == &ctx.hmac
-        } else {
-            bcrypt::verify(&ctx.token, &stored_hash).unwrap_or(false)
-        };
-
-        if !valid {
-            continue;
-        }
-
-        if revoked_at.is_some() {
-            return Err(tonic::Status::unauthenticated("Invalid access token"));
-        }
-
-        if let Some(exp) = expires_at
-            && let Ok(expiry) = chrono::NaiveDateTime::parse_from_str(&exp, "%Y-%m-%d %H:%M:%S")
-            && expiry < chrono::Utc::now().naive_utc()
-        {
-            return Err(tonic::Status::unauthenticated("Access token has expired"));
-        }
-
-        if crate::middleware::auth::needs_touch(last_used_at.as_deref())
-            && let Err(e) = repository.access_token.update_last_used(&key_id).await
-        {
-            tracing::warn!(error = ?e, key_id = %key_id, "Failed to update last_used");
-        }
-
-        Span::current().record("site_id", tracing::field::display(&site_id));
-
-        let scopes = decode_scopes(&permission).map_err(|_| tonic::Status::unauthenticated("Invalid access token"))?;
-        let can_write = scopes.iter().any(|scope| {
-            matches!(
-                scope,
-                TokenScope::SiteSettingsWrite
-                    | TokenScope::ContentWrite
-                    | TokenScope::FilesWrite
-                    | TokenScope::SchemaWrite
-                    | TokenScope::WebhooksWrite
-                    | TokenScope::DeploymentsWrite
-            )
-        });
-        return Ok(GrpcAuthContext {
-            token_id: key_id,
-            site_id,
-            permission: if can_write {
-                AccessTokenPermission::Write
-            } else {
-                AccessTokenPermission::Read
-            },
-            scopes,
-        });
+    let Some((key_id, site_id, _stored_hmac, expires_at, revoked_at, scopes_json, last_used_at)) = key else {
+        return Err(tonic::Status::unauthenticated("Invalid access token"));
+    };
+    if revoked_at.is_some() {
+        return Err(tonic::Status::unauthenticated("Invalid access token"));
     }
-
-    Err(tonic::Status::unauthenticated("Invalid access token"))
+    if expires_at
+        .as_deref()
+        .is_some_and(|value| !crate::middleware::auth::is_token_not_expired(Some(value)))
+    {
+        return Err(tonic::Status::unauthenticated("Access token has expired"));
+    }
+    if crate::middleware::auth::needs_touch(last_used_at.as_deref())
+        && let Err(e) = repository.access_token.update_last_used(&key_id).await
+    {
+        tracing::warn!(error = ?e, key_id = %key_id, "Failed to update last_used");
+    }
+    Span::current().record("site_id", tracing::field::display(&site_id));
+    let scopes = decode_scopes(&scopes_json).map_err(|_| tonic::Status::unauthenticated("Invalid access token"))?;
+    Ok(GrpcAuthContext {
+        token_id: key_id,
+        site_id,
+        scopes,
+    })
 }
 
 pub async fn get_auth_context<T>(
@@ -186,7 +155,6 @@ mod tests {
         let ctx = GrpcAuthContext {
             token_id: "token123".to_string(),
             site_id: "site123".to_string(),
-            permission: AccessTokenPermission::Write,
             scopes: [TokenScope::ContentWrite].into_iter().collect(),
         };
 
@@ -200,10 +168,20 @@ mod tests {
         let ctx = GrpcAuthContext {
             token_id: "token456".to_string(),
             site_id: "site456".to_string(),
-            permission: AccessTokenPermission::Read,
             scopes: [TokenScope::ContentRead].into_iter().collect(),
         };
 
         assert!(!ctx.can_write());
+    }
+
+    #[test]
+    fn site_settings_read_satisfies_site_read() {
+        let ctx = GrpcAuthContext {
+            token_id: "token789".to_string(),
+            site_id: "site789".to_string(),
+            scopes: [TokenScope::SiteSettingsRead].into_iter().collect(),
+        };
+
+        assert!(ctx.require_scope(TokenScope::SiteRead).is_ok());
     }
 }

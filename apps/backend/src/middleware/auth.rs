@@ -12,13 +12,11 @@ use tracing::Span;
 
 use crate::config::Config;
 use crate::middleware::error::AuthError;
-use crate::models::access_token::{AccessTokenPermission, TokenScope, TokenScopes, decode_scopes};
+use crate::models::access_token::{TokenScope, TokenScopes, decode_scopes};
 use crate::models::authorization::{Action, Authorizer, InstanceRole, SiteRole};
 use crate::repository::Repository;
 
 type HmacSha256 = Hmac<Sha256>;
-
-const TOKEN_PREFIX_LEN: usize = 24;
 
 // ── Actor model ──
 
@@ -33,7 +31,6 @@ pub struct ApiKeyActor {
     pub token_id: String,
     pub site_id: String,
     pub scopes: TokenScopes,
-    pub permission: AccessTokenPermission,
 }
 
 #[derive(Debug, Clone)]
@@ -251,93 +248,59 @@ pub(crate) async fn verify_access_token(
     hmac_secret: &str,
 ) -> Result<Actor, (StatusCode, Json<AuthError>)> {
     if token.starts_with("vcms_pat_") {
-        let prefix: String = token.chars().take(TOKEN_PREFIX_LEN).collect();
-        let rows = repository
+        let token_hmac = compute_key_hmac(token, hmac_secret);
+        let row = repository
             .access_token
-            .find_personal_by_prefix(&prefix)
+            .find_personal_by_hmac(&token_hmac)
             .await
             .map_err(|_| AuthError::unauthorized("Internal server error"))?;
-        for (id, user_id, stored_hash, expires_at, revoked_at, scopes_json, last_used_at) in rows {
-            if !bcrypt::verify(token, &stored_hash).unwrap_or(false) {
-                continue;
-            }
-            if revoked_at.is_some() || !is_token_not_expired(expires_at.as_deref()) {
-                return Err(AuthError::unauthorized("Personal access token is expired or revoked"));
-            }
-            if needs_touch(last_used_at.as_deref()) {
-                let _ = repository.access_token.touch_personal(&id).await;
-            }
-            let scopes = decode_scopes(&scopes_json).map_err(|_| AuthError::unauthorized("Invalid token scopes"))?;
-            return Ok(Actor::PersonalToken(PersonalTokenActor {
-                token_id: id,
-                user_id,
-                scopes,
-                site_id: None,
-            }));
+        let Some((id, user_id, _stored_hmac, expires_at, revoked_at, scopes_json, last_used_at)) = row else {
+            return Err(AuthError::unauthorized("Invalid personal access token"));
+        };
+        if revoked_at.is_some() || !is_token_not_expired(expires_at.as_deref()) {
+            return Err(AuthError::unauthorized("Personal access token is expired or revoked"));
         }
-        return Err(AuthError::unauthorized("Invalid personal access token"));
+        if needs_touch(last_used_at.as_deref()) {
+            let _ = repository.access_token.touch_personal(&id).await;
+        }
+        let scopes = decode_scopes(&scopes_json).map_err(|_| AuthError::unauthorized("Invalid token scopes"))?;
+        return Ok(Actor::PersonalToken(PersonalTokenActor {
+            token_id: id,
+            user_id,
+            scopes,
+            site_id: None,
+        }));
     }
     if !token.starts_with("vcms_site_") {
         return Err(AuthError::unauthorized("Invalid access token"));
     }
 
-    let prefix: String = token.chars().take(TOKEN_PREFIX_LEN).collect();
-
-    let keys = repository
+    let token_hmac = compute_key_hmac(token, hmac_secret);
+    let row = repository
         .access_token
-        .find_by_prefix(&prefix)
+        .find_by_hmac(&token_hmac)
         .await
         .map_err(|_| AuthError::unauthorized("Internal server error"))?;
-
-    let token_hmac = compute_key_hmac(token, hmac_secret);
-
-    for (token_id, site_id, stored_hash, stored_hmac, expires_at, revoked_at, permission, last_used_at) in keys {
-        if let Some(ref stored) = stored_hmac {
-            if stored != &token_hmac {
-                continue;
-            }
-        } else if !bcrypt::verify(token, &stored_hash).unwrap_or(false) {
-            continue;
-        }
-
-        if revoked_at.is_some() {
-            return Err(AuthError::unauthorized("Access token has been revoked"));
-        }
-
-        if !is_token_not_expired(expires_at.as_deref()) {
-            return Err(AuthError::unauthorized("Access token has expired"));
-        }
-
-        let scopes = decode_scopes(&permission).map_err(|_| AuthError::unauthorized("Invalid access token scopes"))?;
-
-        if needs_touch(last_used_at.as_deref()) {
-            let _ = repository.access_token.update_last_used(&token_id).await;
-        }
-
-        Span::current().record("site_id", tracing::field::display(&site_id));
-        return Ok(Actor::ApiKey(ApiKeyActor {
-            token_id,
-            site_id,
-            permission: if scopes.iter().any(|s| {
-                matches!(
-                    s,
-                    TokenScope::ContentWrite
-                        | TokenScope::FilesWrite
-                        | TokenScope::SchemaWrite
-                        | TokenScope::WebhooksWrite
-                        | TokenScope::DeploymentsWrite
-                )
-            }) {
-                AccessTokenPermission::Write
-            } else {
-                AccessTokenPermission::Read
-            },
-            scopes,
-        }));
+    let Some((token_id, site_id, _stored_hmac, expires_at, revoked_at, scopes_json, last_used_at)) = row else {
+        tracing::warn!("Invalid access token attempt");
+        return Err(AuthError::unauthorized("Invalid access token"));
+    };
+    if revoked_at.is_some() {
+        return Err(AuthError::unauthorized("Access token has been revoked"));
     }
-
-    tracing::warn!(prefix = %prefix, "Invalid access token attempt");
-    Err(AuthError::unauthorized("Invalid access token"))
+    if !is_token_not_expired(expires_at.as_deref()) {
+        return Err(AuthError::unauthorized("Access token has expired"));
+    }
+    let scopes = decode_scopes(&scopes_json).map_err(|_| AuthError::unauthorized("Invalid access token scopes"))?;
+    if needs_touch(last_used_at.as_deref()) {
+        let _ = repository.access_token.update_last_used(&token_id).await;
+    }
+    Span::current().record("site_id", tracing::field::display(&site_id));
+    Ok(Actor::ApiKey(ApiKeyActor {
+        token_id,
+        site_id,
+        scopes,
+    }))
 }
 
 // ── CSRF ──
@@ -384,18 +347,14 @@ pub async fn require_site_action(
 ) -> Result<(), (StatusCode, Json<AuthError>)> {
     match &ctx.auth.actor {
         Actor::ApiKey(key) => {
-            if !Authorizer::token_hard_denied(action)
-                && scope_for_action(action).is_some_and(|scope| key.scopes.contains(&scope))
-            {
+            if !Authorizer::token_hard_denied(action) && scopes_allow_action(&key.scopes, action) {
                 Ok(())
             } else {
-                Err(AuthError::insufficient_permission("write"))
+                Err(AuthError::insufficient_permission("token scope"))
             }
         }
         Actor::PersonalToken(token) => {
-            if Authorizer::token_hard_denied(action)
-                || !scope_for_action(action).is_some_and(|scope| token.scopes.contains(&scope))
-            {
+            if Authorizer::token_hard_denied(action) || !scopes_allow_action(&token.scopes, action) {
                 return Err(AuthError::insufficient_permission("token scope"));
             }
             check_site_action_repo(repository, &token.user_id, &ctx.site_id, action).await
@@ -422,6 +381,13 @@ pub const fn scope_for_action(action: Action) -> Option<TokenScope> {
         Action::DeploymentsTrigger => TokenScope::DeploymentsTrigger,
         _ => return None,
     })
+}
+
+pub fn scopes_allow_action(scopes: &TokenScopes, action: Action) -> bool {
+    match action {
+        Action::SiteRead => scopes.contains(&TokenScope::SiteRead) || scopes.contains(&TokenScope::SiteSettingsRead),
+        _ => scope_for_action(action).is_some_and(|scope| scopes.contains(&scope)),
+    }
 }
 
 pub const fn action_for_scope(scope: TokenScope) -> Option<Action> {
@@ -551,8 +517,6 @@ pub async fn check_site_action_repo(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::models::access_token::AccessTokenPermission;
-
     #[test]
     fn test_is_token_not_expired() {
         let now = chrono::Utc::now();
@@ -579,8 +543,7 @@ mod tests {
         let actor = Actor::ApiKey(ApiKeyActor {
             token_id: "tok-1".into(),
             site_id: "site-42".into(),
-            permission: AccessTokenPermission::Read,
-            scopes: AccessTokenPermission::Read.into(),
+            scopes: [TokenScope::SiteRead].into_iter().collect(),
         });
         assert_eq!(actor.bound_site_id(), Some("site-42"));
         assert!(actor.user_id().is_none());
