@@ -131,18 +131,34 @@ pub async fn create_upload_url(
         ))));
     }
 
-    // Mint against the site's actual storage provider, not a hardcoded default.
-    let storage_provider = services
-        .file
-        .get_storage_provider(&site_id)
-        .await
-        .unwrap_or_else(|_| "filesystem".into());
+    // Bind the signed URL to the selected profile, so the upload cannot use a
+    // different provider when a site has an independent S3 configuration.
+    let storage_profile_id = match services.site.get_site(&site_id).await {
+        Ok(Some(site)) => match site.storage_profile_id {
+            Some(profile_id) => profile_id,
+            None => {
+                return Ok(tool_error(crate::services::error::ServiceError::Internal(
+                    "Storage profile not configured".into(),
+                )));
+            }
+        },
+        Ok(None) => {
+            return Ok(tool_error(crate::services::error::ServiceError::NotFound(
+                "Site not found".into(),
+            )));
+        }
+        Err(error) => {
+            return Ok(tool_error(crate::services::error::ServiceError::Internal(
+                error.to_string(),
+            )));
+        }
+    };
 
-    let (token, upload_path) = SignedUploadToken::generate_with_storage_provider(
+    let (token, upload_path) = SignedUploadToken::generate_with_storage_profile(
         &site_id,
         &params.0.filename,
         &params.0.content_type,
-        &storage_provider,
+        &storage_profile_id,
         &config.signed_upload_key,
         config.upload_token_expiry_secs,
     );

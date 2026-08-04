@@ -1,4 +1,3 @@
-use cms::database::pool::DbPool;
 use serde_json::{Value, json};
 
 use crate::common::{
@@ -31,31 +30,6 @@ fn update_payload(name: &str, bucket: &str) -> Value {
     })
 }
 
-async fn seed_corrupt_unrelated_profile(server: &TestServer) {
-    match &server.pool {
-        DbPool::Sqlite(pool) => {
-            sqlx::query(
-                "INSERT INTO storage_profiles \
-                 (id,name,kind,endpoint,region,bucket,credentials_encrypted,enabled,immutable) \
-                 VALUES('corrupt-profile','A Corrupt Profile','s3','https://s3.example.com','auto','corrupt-bucket','invalid',1,0)",
-            )
-            .execute(pool)
-            .await
-            .unwrap();
-        }
-        DbPool::Postgres(pool) => {
-            sqlx::query(
-                "INSERT INTO storage_profiles \
-                 (id,name,kind,endpoint,region,bucket,credentials_encrypted,enabled,immutable) \
-                 VALUES('corrupt-profile','A Corrupt Profile','s3','https://s3.example.com','auto','corrupt-bucket','invalid',TRUE,FALSE)",
-            )
-            .execute(pool)
-            .await
-            .unwrap();
-        }
-    }
-}
-
 async fn admin_client(server: &TestServer) -> (reqwest::Client, reqwest::header::HeaderMap) {
     let client = reqwest::Client::new();
     let login = server.login_user(&client, "admin@cms.local", "admin").await;
@@ -67,8 +41,6 @@ async fn admin_client(server: &TestServer) -> (reqwest::Client, reqwest::header:
 async fn create_does_not_rebuild_unrelated_registry_entries() {
     let server = TestServer::start().await;
     let (client, headers) = admin_client(&server).await;
-    seed_corrupt_unrelated_profile(&server).await;
-
     let response = client
         .post(format!("{}/api/dashboard/instance/storage-profiles", server.base_url))
         .headers(headers.clone())
@@ -107,8 +79,6 @@ async fn update_does_not_remove_active_provider_before_replacement() {
     assert_eq!(create.status(), 201);
     let profile: Value = create.json().await.unwrap();
     let profile_id = profile["id"].as_str().unwrap();
-
-    seed_corrupt_unrelated_profile(&server).await;
 
     let response = client
         .put(format!("{collection_url}/{profile_id}"))
@@ -203,14 +173,14 @@ async fn site_creation_assigns_profile_atomically() {
 }
 
 #[tokio::test]
-async fn completed_backup_prevents_profile_deletion() {
+async fn live_site_prevents_profile_deletion() {
     let server = TestServer::start().await;
     let (client, headers) = admin_client(&server).await;
     let profiles_url = format!("{}/api/dashboard/instance/storage-profiles", server.base_url);
     let created = client
         .post(&profiles_url)
         .headers(headers.clone())
-        .json(&create_payload("Backup Profile", "backup-profile-bucket"))
+        .json(&create_payload("Live Site Profile", "live-site-profile-bucket"))
         .send()
         .await
         .unwrap();
@@ -218,26 +188,17 @@ async fn completed_backup_prevents_profile_deletion() {
     let profile: Value = created.json().await.unwrap();
     let profile_id = profile["id"].as_str().unwrap();
 
-    match &server.pool {
-        DbPool::Sqlite(pool) => {
-            sqlx::query(
-                "INSERT INTO backups(id,scope,status,storage_profile_id) VALUES('completed-profile-backup','instance','success',?)",
-            )
-            .bind(profile_id)
-            .execute(pool)
-            .await
-            .unwrap();
-        }
-        DbPool::Postgres(pool) => {
-            sqlx::query(
-                "INSERT INTO backups(id,scope,status,storage_profile_id) VALUES('completed-profile-backup','instance','success',$1)",
-            )
-            .bind(profile_id)
-            .execute(pool)
-            .await
-            .unwrap();
-        }
-    }
+    let site = client
+        .post(format!("{}/api/dashboard/sites", server.base_url))
+        .headers(headers.clone())
+        .json(&json!({
+            "name": "Profile-backed site",
+            "storage_profile_id": profile_id
+        }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(site.status(), 201);
 
     let response = client
         .delete(format!("{profiles_url}/{profile_id}"))

@@ -36,10 +36,21 @@ impl StorageProfileService {
         }
     }
     pub async fn list(&self) -> Result<Vec<StorageProfile>, String> {
-        match &self.pool{
-        DbPool::Sqlite(p)=>sqlx::query_as("SELECT id,name,kind,endpoint,region,bucket,public_url,enabled,immutable,created_by,created_at,updated_at FROM storage_profiles ORDER BY immutable DESC,name").fetch_all(p).await,
-        DbPool::Postgres(p)=>sqlx::query_as("SELECT id,name,kind,endpoint,region,bucket,public_url,enabled,immutable,created_by,created_at::text,updated_at::text FROM storage_profiles ORDER BY immutable DESC,name").fetch_all(p).await,
-    }.map_err(|e|e.to_string())
+        match &self.pool {
+            DbPool::Sqlite(pool) => sqlx::query_as(
+                "SELECT id,name,kind,endpoint,region,bucket,public_url,enabled,immutable,created_by,created_at,updated_at \
+                 FROM storage_profiles ORDER BY immutable DESC,name",
+            )
+            .fetch_all(pool)
+            .await,
+            DbPool::Postgres(pool) => sqlx::query_as(
+                "SELECT id,name,kind,endpoint,region,bucket,public_url,enabled,immutable,created_by,created_at::text,updated_at::text \
+                 FROM storage_profiles ORDER BY immutable DESC,name",
+            )
+            .fetch_all(pool)
+            .await,
+        }
+        .map_err(|error| error.to_string())
     }
     pub async fn create(
         &self,
@@ -125,7 +136,7 @@ impl StorageProfileService {
         if current.immutable {
             return Err("immutable_profile".into());
         }
-        if !v.enabled && self.reference_count(id).await? > 0 {
+        if !v.enabled && self.live_reference_count(id).await? > 0 {
             return Err("profile_in_use".into());
         }
         if v.name.trim().is_empty() || v.bucket.trim().is_empty() {
@@ -244,24 +255,43 @@ impl StorageProfileService {
             .map_err(|error| error.to_string())?;
         provider.delete(&key).await.map_err(|error| error.to_string())
     }
-    async fn reference_count(&self, id: &str) -> Result<i64, String> {
+    async fn live_reference_count(&self, id: &str) -> Result<i64, String> {
         let count: i64 = match &self.pool {
             DbPool::Sqlite(p) => {
-                sqlx::query_scalar("SELECT (SELECT COUNT(*) FROM sites WHERE storage_profile_id=?) + (SELECT COUNT(*) FROM backup_schedules WHERE storage_profile_id=?) + (SELECT COUNT(*) FROM backups WHERE storage_profile_id=?)")
-                    .bind(id)
+                sqlx::query_scalar("SELECT (SELECT COUNT(*) FROM sites WHERE storage_profile_id=?) + (SELECT COUNT(*) FROM backup_schedules WHERE storage_profile_id=?)")
                     .bind(id)
                     .bind(id)
                     .fetch_one(p)
                     .await
             }
             DbPool::Postgres(p) => {
-                sqlx::query_scalar("SELECT (SELECT COUNT(*) FROM sites WHERE storage_profile_id=$1) + (SELECT COUNT(*) FROM backup_schedules WHERE storage_profile_id=$1) + (SELECT COUNT(*) FROM backups WHERE storage_profile_id=$1)")
+                sqlx::query_scalar("SELECT (SELECT COUNT(*) FROM sites WHERE storage_profile_id=$1) + (SELECT COUNT(*) FROM backup_schedules WHERE storage_profile_id=$1)")
                     .bind(id)
                     .fetch_one(p)
                     .await
             }
-        }.map_err(|error| error.to_string())?;
+        }
+        .map_err(|error| error.to_string())?;
         Ok(count)
+    }
+
+    async fn retained_artifact_count(&self, id: &str) -> Result<i64, String> {
+        match &self.pool {
+            DbPool::Sqlite(pool) => sqlx::query_scalar(
+                "SELECT COUNT(*) FROM backups WHERE storage_profile_id=? AND status='success' AND destination_key IS NOT NULL",
+            )
+            .bind(id)
+            .fetch_one(pool)
+            .await
+            .map_err(|error| error.to_string()),
+            DbPool::Postgres(pool) => sqlx::query_scalar(
+                "SELECT COUNT(*) FROM backups WHERE storage_profile_id=$1 AND status='success' AND destination_key IS NOT NULL",
+            )
+            .bind(id)
+            .fetch_one(pool)
+            .await
+            .map_err(|error| error.to_string()),
+        }
     }
     pub async fn delete(&self, id: &str) -> Result<(), String> {
         let profile = self
@@ -273,7 +303,7 @@ impl StorageProfileService {
         if profile.immutable {
             return Err("immutable_profile".into());
         }
-        if self.reference_count(id).await? > 0 {
+        if self.live_reference_count(id).await? > 0 || self.retained_artifact_count(id).await? > 0 {
             return Err("profile_in_use".into());
         }
         match &self.pool {
@@ -419,5 +449,21 @@ impl StorageProfileService {
                 .map_err(|_| "encryption_failed")?,
         );
         Ok(format!("v1:{}", B64.encode(out)))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn malformed_encrypted_credentials_are_rejected() {
+        let service = StorageProfileService::new(
+            DbPool::Sqlite(sqlx::SqlitePool::connect_lazy("sqlite::memory:").expect("lazy pool")),
+            "test-key",
+        );
+
+        assert!(service.decrypt("not-an-envelope").is_err());
+        assert!(service.decrypt("v1:AAAA").is_err());
     }
 }

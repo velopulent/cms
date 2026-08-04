@@ -7,7 +7,6 @@ use std::time::Duration;
 
 use cms::config::Config;
 use cms::database::init_db_with_config;
-use cms::database::pool::DbPool;
 use cms::repository::Repository;
 use cms::router::create_router;
 use cms::services::Services;
@@ -16,7 +15,6 @@ use tokio::net::TcpListener;
 
 pub struct TestServer {
     pub base_url: String,
-    pub pool: DbPool,
     _shutdown: tokio::sync::oneshot::Sender<()>,
     _storage_dir: tempfile::TempDir,
     // Dropped last: best-effort drops the per-test Postgres database
@@ -102,8 +100,9 @@ impl TestServer {
 
         let storage_registry = StorageRegistry::new();
         let fs_storage =
-            cms::storage::FileSystemStorage::new(&storage_path).expect("Failed to init filesystem storage");
-        storage_registry.register(STORAGE_KIND_FILESYSTEM, Arc::new(fs_storage));
+            Arc::new(cms::storage::FileSystemStorage::new(&storage_path).expect("Failed to init filesystem storage"));
+        storage_registry.register(STORAGE_KIND_FILESYSTEM, fs_storage.clone());
+        storage_registry.register("local-filesystem", fs_storage);
         let storage_registry = Arc::new(storage_registry);
 
         let services = Services::new(Arc::new(repository.clone()), &pool, &config);
@@ -161,7 +160,6 @@ impl TestServer {
 
         TestServer {
             base_url: format!("http://127.0.0.1:{}", port),
-            pool,
             _shutdown: shutdown_tx,
             _storage_dir: storage_dir,
             _db: db_handle,

@@ -117,18 +117,18 @@ pub async fn update(
 }
 pub async fn probe(
     auth: AuthContext,
-    Path(id): Path<String>,
+    Path(profile_id): Path<String>,
     Extension(repo): Extension<Repository>,
     Extension(services): Extension<Services>,
 ) -> Result<Json<StorageProbeResult>, AppError> {
     require_instance_action(&auth, &repo, Action::InstanceManage)
         .await
         .map_err(map_auth_error)?;
-    match services.storage_profile.probe(&id).await {
+    match services.storage_profile.probe(&profile_id).await {
         Ok(()) => Ok(Json(StorageProbeResult { ok: true })),
         Err(error) if error == "profile_not_found" => Err(AppError::NotFound("Storage profile not found".into())),
         Err(error) => {
-            tracing::warn!(profile_id = %id, %error, "storage profile probe failed");
+            tracing::warn!(%profile_id, %error, "storage profile probe failed");
             Err(AppError::BadGateway("Storage probe failed".into()))
         }
     }

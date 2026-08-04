@@ -30,12 +30,7 @@ pub struct SiteWithRole {
 #[derive(Deserialize, ToSchema)]
 pub struct CreateSite {
     pub name: String,
-    #[serde(default = "default_storage_kind")]
-    pub storage_provider: String,
     pub storage_profile_id: Option<String>,
-}
-fn default_storage_kind() -> String {
-    "filesystem".into()
 }
 
 #[derive(Deserialize, ToSchema)]

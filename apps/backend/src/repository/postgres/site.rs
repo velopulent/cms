@@ -53,26 +53,6 @@ impl SiteRepository for PostgresSiteRepository {
         Ok(result)
     }
 
-    async fn create(
-        &self,
-        id: &str,
-        name: &str,
-        storage_provider: &str,
-        created_by: &str,
-    ) -> Result<Site, RepositoryError> {
-        // The creator is an instance operator; site authority comes from their instance
-        // role, not a site_members row, so no membership is inserted here.
-        sqlx::query("INSERT INTO sites (id, name, storage_provider, created_by) VALUES ($1, $2, $3, $4)")
-            .bind(id)
-            .bind(name)
-            .bind(storage_provider)
-            .bind(created_by)
-            .execute(&self.pool)
-            .await?;
-
-        self.get_by_id(id).await?.ok_or(RepositoryError::NotFound)
-    }
-
     async fn create_with_storage_profile(
         &self,
         id: &str,

@@ -80,11 +80,10 @@ pub async fn get_singleton(
         return (status, err).into_response();
     }
 
-    let storage_provider = services
-        .file
-        .get_storage_provider(&ctx.site_id)
-        .await
-        .unwrap_or_else(|_| "filesystem".into());
+    let storage_provider = match services.file.get_storage_provider(&ctx.site_id).await {
+        Ok(provider) => provider,
+        Err(error) => return error.into_response(),
+    };
     let storage = match get_storage_for_site(&storage_provider, &storage_registry) {
         Ok(s) => s,
         Err(e) => return e.into_response(),

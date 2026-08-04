@@ -82,11 +82,10 @@ pub async fn list_files(
         per_page,
     };
 
-    let storage_provider = services
-        .file
-        .get_storage_provider(&ctx.site_id)
-        .await
-        .unwrap_or_else(|_| "filesystem".into());
+    let storage_provider = match services.file.get_storage_provider(&ctx.site_id).await {
+        Ok(provider) => provider,
+        Err(error) => return error.into_response(),
+    };
 
     match services.file.list_files(list_params).await {
         Ok(result) => {
@@ -140,11 +139,15 @@ pub async fn upload_file(
     }
     let site_id = ctx.site_id.clone();
 
-    let storage_provider = services
-        .file
-        .get_storage_provider(&site_id)
-        .await
-        .unwrap_or_else(|_| "filesystem".into());
+    let site = match services.site.get_site(&site_id).await {
+        Ok(Some(site)) => site,
+        Ok(None) => return (StatusCode::NOT_FOUND, Json(json!({"error": "Site not found"}))).into_response(),
+        Err(error) => return error.into_response(),
+    };
+    let storage_provider = match services.file.get_storage_provider(&site_id).await {
+        Ok(provider) => provider,
+        Err(error) => return error.into_response(),
+    };
 
     let storage = match get_storage_for_site(&storage_provider, &storage_registry) {
         Ok(s) => s,
@@ -186,7 +189,7 @@ pub async fn upload_file(
                             content_type: &content_type,
                             created_by: created_by.as_deref(),
                             storage: storage.clone(),
-                            storage_provider: &storage_provider,
+                            storage_provider: &site.storage_provider,
                             max_bytes,
                         },
                         stream,
@@ -270,7 +273,29 @@ pub async fn upload_via_signed_url(
         }
     }
 
-    let storage = match get_storage_for_site(&token.storage_provider, &storage_registry) {
+    let site = match services.site.get_site(&token.site_id).await {
+        Ok(Some(site)) => site,
+        Ok(None) => return (StatusCode::NOT_FOUND, Json(json!({"error": "Site not found"}))).into_response(),
+        Err(error) => return error.into_response(),
+    };
+    let storage_profile_id = match site.storage_profile_id.as_deref() {
+        Some(profile_id) => profile_id,
+        None => {
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({"error": "Storage profile not configured"})),
+            )
+                .into_response();
+        }
+    };
+    if storage_profile_id != token.storage_profile_id {
+        return (
+            StatusCode::CONFLICT,
+            Json(json!({"error": "Storage selection changed; request a new upload URL"})),
+        )
+            .into_response();
+    }
+    let storage = match get_storage_for_site(storage_profile_id, &storage_registry) {
         Ok(s) => s,
         Err(status) => return (status, Json(json!({"error": "Storage not configured"}))).into_response(),
     };
@@ -291,7 +316,7 @@ pub async fn upload_via_signed_url(
                 content_type: &token.content_type,
                 created_by: None,
                 storage,
-                storage_provider: &token.storage_provider,
+                storage_provider: &site.storage_provider,
                 max_bytes,
             },
             stream,
@@ -368,11 +393,10 @@ pub async fn get_file(
 
     match services.file.get_file(&id, &ctx.site_id).await {
         Ok(Some(file)) => {
-            let storage_provider = services
-                .file
-                .get_storage_provider(&ctx.site_id)
-                .await
-                .unwrap_or_else(|_| "filesystem".into());
+            let storage_provider = match services.file.get_storage_provider(&ctx.site_id).await {
+                Ok(provider) => provider,
+                Err(error) => return error.into_response(),
+            };
             let storage = match get_storage_for_site(&storage_provider, &storage_registry) {
                 Ok(s) => s,
                 Err(status) => return (status, Json(json!({"error": "Storage not configured"}))).into_response(),
@@ -576,11 +600,10 @@ pub async fn batch_permanent_delete_files(
         }
     };
 
-    let storage_provider = services
-        .file
-        .get_storage_provider(&ctx.site_id)
-        .await
-        .unwrap_or_else(|_| "filesystem".into());
+    let storage_provider = match services.file.get_storage_provider(&ctx.site_id).await {
+        Ok(provider) => provider,
+        Err(error) => return error.into_response(),
+    };
     let storage = match get_storage_for_site(&storage_provider, &storage_registry) {
         Ok(s) => s,
         Err(status) => return (status, Json(json!({"error": "Storage not configured"}))).into_response(),
@@ -637,7 +660,11 @@ async fn serve_file_by_key(
         return (StatusCode::NOT_FOUND, Json(json!({"error": "File not found"}))).into_response();
     }
 
-    let storage = match get_storage_for_site(&file.storage_provider, storage_registry) {
+    let storage_profile_id = match services.file.get_storage_provider(&file.site_id).await {
+        Ok(profile_id) => profile_id,
+        Err(error) => return error.into_response(),
+    };
+    let storage = match get_storage_for_site(&storage_profile_id, storage_registry) {
         Ok(s) => s,
         Err(status) => return (status, Json(json!({"error": "Storage not configured"}))).into_response(),
     };

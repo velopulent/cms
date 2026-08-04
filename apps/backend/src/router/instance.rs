@@ -33,7 +33,7 @@ pub fn routes() -> Router {
             axum::routing::put(storage_profile_handler::update).delete(storage_profile_handler::delete),
         )
         .route(
-            "/storage-profiles/{id}/probe",
+            "/instance/storage-profiles/{profile_id}/probe",
             axum::routing::post(storage_profile_handler::probe),
         )
 }

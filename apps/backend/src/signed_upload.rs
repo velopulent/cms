@@ -15,7 +15,7 @@ pub struct SignedUploadToken {
     pub site_id: String,
     pub filename: String,
     pub content_type: String,
-    pub storage_provider: String,
+    pub storage_profile_id: String,
     pub expires_at: i64,
     pub signature: String,
 }
@@ -37,21 +37,21 @@ pub enum SignedUploadError {
 
 impl SignedUploadToken {
     pub fn generate(site_id: &str, filename: &str, content_type: &str, hmac_secret: &str) -> (Self, String) {
-        Self::generate_with_storage_provider(
+        Self::generate_with_storage_profile(
             site_id,
             filename,
             content_type,
-            "filesystem",
+            "local-filesystem",
             hmac_secret,
             DEFAULT_UPLOAD_TOKEN_EXPIRY_SECS,
         )
     }
 
-    pub fn generate_with_storage_provider(
+    pub fn generate_with_storage_profile(
         site_id: &str,
         filename: &str,
         content_type: &str,
-        storage_provider: &str,
+        storage_profile_id: &str,
         hmac_secret: &str,
         expiry_secs: i64,
     ) -> (Self, String) {
@@ -60,7 +60,7 @@ impl SignedUploadToken {
 
         let payload = format!(
             "{}:{}:{}:{}:{}:{}",
-            file_id, site_id, filename, content_type, storage_provider, expires_at
+            file_id, site_id, filename, content_type, storage_profile_id, expires_at
         );
 
         let mut mac = HmacSha256::new_from_slice(hmac_secret.as_bytes()).expect("HMAC can take key of any size");
@@ -72,7 +72,7 @@ impl SignedUploadToken {
             site_id: site_id.to_string(),
             filename: filename.to_string(),
             content_type: content_type.to_string(),
-            storage_provider: storage_provider.to_string(),
+            storage_profile_id: storage_profile_id.to_string(),
             expires_at,
             signature,
         };
@@ -97,7 +97,12 @@ impl SignedUploadToken {
 
         let payload = format!(
             "{}:{}:{}:{}:{}:{}",
-            token.file_id, token.site_id, token.filename, token.content_type, token.storage_provider, token.expires_at
+            token.file_id,
+            token.site_id,
+            token.filename,
+            token.content_type,
+            token.storage_profile_id,
+            token.expires_at
         );
 
         let mut mac = HmacSha256::new_from_slice(hmac_secret.as_bytes()).expect("HMAC can take key of any size");
@@ -113,7 +118,7 @@ impl SignedUploadToken {
             site_id: token.site_id,
             filename: token.filename,
             content_type: token.content_type,
-            storage_provider: token.storage_provider,
+            storage_profile_id: token.storage_profile_id,
             expires_at: token.expires_at,
             signature: token.signature,
         })
@@ -131,7 +136,7 @@ impl SignedUploadToken {
             site_id: token.site_id.clone(),
             filename: token.filename.clone(),
             content_type: token.content_type.clone(),
-            storage_provider: token.storage_provider.clone(),
+            storage_profile_id: token.storage_profile_id.clone(),
             expires_at: token.expires_at,
             signature: token.signature.clone(),
         };
@@ -146,7 +151,7 @@ struct SignedUploadTokenInternal {
     site_id: String,
     filename: String,
     content_type: String,
-    storage_provider: String,
+    storage_profile_id: String,
     expires_at: i64,
     signature: String,
 }
@@ -196,28 +201,28 @@ mod tests {
     }
 
     #[test]
-    fn test_generate_with_storage_provider() {
-        let (token, encoded) = SignedUploadToken::generate_with_storage_provider(
+    fn test_generate_with_storage_profile() {
+        let (token, encoded) = SignedUploadToken::generate_with_storage_profile(
             "site-123",
             "doc.pdf",
             "application/pdf",
-            "s3",
+            "profile-s3",
             "secret",
             DEFAULT_UPLOAD_TOKEN_EXPIRY_SECS,
         );
-        assert_eq!(token.storage_provider, "s3");
+        assert_eq!(token.storage_profile_id, "profile-s3");
 
         let verified = SignedUploadToken::verify(&encoded, "secret").unwrap();
-        assert_eq!(verified.storage_provider, "s3");
+        assert_eq!(verified.storage_profile_id, "profile-s3");
     }
 
     #[test]
     fn test_verify_expired_token() {
-        let (_, encoded) = SignedUploadToken::generate_with_storage_provider(
+        let (_, encoded) = SignedUploadToken::generate_with_storage_profile(
             "site-123",
             "doc.pdf",
             "application/pdf",
-            "filesystem",
+            "local-filesystem",
             "secret",
             -10,
         );
