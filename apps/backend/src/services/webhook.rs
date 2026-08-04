@@ -135,6 +135,7 @@ impl WebhookService {
         reqwest::Client::builder()
             .timeout(Duration::from_secs(WEBHOOK_TIMEOUT_SECS))
             .redirect(reqwest::redirect::Policy::none())
+            .no_proxy()
             .resolve(&host, safe_addr)
             .build()
             .map_err(|error| WebhookError::DeliveryFailed(error.to_string()))

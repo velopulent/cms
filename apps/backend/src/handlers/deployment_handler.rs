@@ -1,4 +1,5 @@
 use crate::{
+    error::AppError,
     middleware::auth::{RequestContext, require_site_action},
     models::{authorization::Action, deployment::CreateDeploymentTrigger},
     repository::Repository,
@@ -17,13 +18,13 @@ pub async fn list(
     Path(site_id): Path<String>,
     Extension(repo): Extension<Repository>,
     Extension(services): Extension<Services>,
-) -> Response {
+) -> Result<Response, AppError> {
     if let Err(v) = require_site_action(&ctx, &repo, Action::DeploymentsRead).await {
-        return v.into_response();
+        return Ok(v.into_response());
     }
     match services.deployment.list(&site_id).await {
-        Ok(v) => Json(v).into_response(),
-        Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error":e}))).into_response(),
+        Ok(v) => Ok(Json(v).into_response()),
+        Err(e) => Err(AppError::Internal(e)),
     }
 }
 pub async fn create(
@@ -32,14 +33,14 @@ pub async fn create(
     Extension(repo): Extension<Repository>,
     Extension(services): Extension<Services>,
     Json(value): Json<CreateDeploymentTrigger>,
-) -> Response {
+) -> Result<Response, AppError> {
     if let Err(v) = require_site_action(&ctx, &repo, Action::DeploymentsWrite).await {
-        return v.into_response();
+        return Ok(v.into_response());
     }
-    let user = ctx.auth.actor.user_id().unwrap_or("system");
+    let user = ctx.auth.actor.user_id();
     match services.deployment.create(&site_id, user, value).await {
-        Ok(v) => (StatusCode::CREATED, Json(v)).into_response(),
-        Err(e) => (StatusCode::BAD_REQUEST, Json(json!({"error":e}))).into_response(),
+        Ok(v) => Ok((StatusCode::CREATED, Json(v)).into_response()),
+        Err(e) => Err(AppError::BadRequest(e)),
     }
 }
 pub async fn update(
@@ -48,14 +49,14 @@ pub async fn update(
     Extension(repo): Extension<Repository>,
     Extension(services): Extension<Services>,
     Json(value): Json<CreateDeploymentTrigger>,
-) -> Response {
+) -> Result<Response, AppError> {
     if let Err(response) = require_site_action(&ctx, &repo, Action::DeploymentsWrite).await {
-        return response.into_response();
+        return Ok(response.into_response());
     }
     match services.deployment.update(&site_id, &trigger_id, value).await {
-        Ok(trigger) => Json(trigger).into_response(),
-        Err(error) if error == "trigger_not_found" => StatusCode::NOT_FOUND.into_response(),
-        Err(error) => (StatusCode::BAD_REQUEST, Json(json!({"error": error}))).into_response(),
+        Ok(trigger) => Ok(Json(trigger).into_response()),
+        Err(error) if error == "trigger_not_found" => Err(AppError::NotFound(error)),
+        Err(error) => Err(AppError::BadRequest(error)),
     }
 }
 pub async fn trigger(
@@ -63,35 +64,44 @@ pub async fn trigger(
     Path((site_id, trigger_id)): Path<(String, String)>,
     Extension(repo): Extension<Repository>,
     Extension(services): Extension<Services>,
-) -> Response {
+) -> Result<Response, AppError> {
     if let Err(v) = require_site_action(&ctx, &repo, Action::DeploymentsTrigger).await {
-        return v.into_response();
+        return Ok(v.into_response());
     }
-    let user = ctx.auth.actor.user_id().unwrap_or("site-key");
-    match services.deployment.trigger(&site_id,&trigger_id,user).await{Ok(v)=>(StatusCode::ACCEPTED,Json(v)).into_response(),Err(e)if e.starts_with("deployment_cooldown:")=>(StatusCode::TOO_MANY_REQUESTS,Json(json!({"error":"deployment_cooldown","retry_after_seconds":e.split(':').nth(1).and_then(|v|v.parse::<i64>().ok())}))).into_response(),Err(e)if e=="deployment_daily_quota"=>(StatusCode::TOO_MANY_REQUESTS,Json(json!({"error":e}))).into_response(),Err(e)=>(StatusCode::CONFLICT,Json(json!({"error":e}))).into_response()}
+    let user = ctx.auth.actor.user_id();
+    match services.deployment.trigger(&site_id, &trigger_id, user).await {
+        Ok(v) => Ok((StatusCode::ACCEPTED, Json(v)).into_response()),
+        Err(e) if e.starts_with("deployment_cooldown:") => Ok((
+            StatusCode::TOO_MANY_REQUESTS,
+            Json(json!({
+                "error": "deployment_cooldown",
+                "retry_after_seconds": e.split(':').nth(1).and_then(|v| v.parse::<i64>().ok())
+            })),
+        )
+            .into_response()),
+        Err(e) if e == "deployment_daily_quota" => Err(AppError::TooManyRequests(e)),
+        Err(e) if e == "deployment_in_progress" => Err(AppError::Conflict(e)),
+        Err(e) if e == "trigger_not_found" => Err(AppError::NotFound(e)),
+        Err(e) => Err(AppError::BadRequest(e)),
+    }
 }
 pub async fn history(
     ctx: RequestContext,
     Path((site_id, trigger_id)): Path<(String, String)>,
     Extension(repo): Extension<Repository>,
     Extension(services): Extension<Services>,
-) -> Response {
+) -> Result<Response, AppError> {
     if let Err(v) = require_site_action(&ctx, &repo, Action::DeploymentsRead).await {
-        return v.into_response();
+        return Ok(v.into_response());
     }
-    if !services
-        .deployment
-        .list(&site_id)
-        .await
-        .unwrap_or_default()
-        .iter()
-        .any(|trigger| trigger.id == trigger_id)
-    {
-        return StatusCode::NOT_FOUND.into_response();
+    match services.deployment.get(&site_id, &trigger_id).await {
+        Ok(Some(_)) => {}
+        Ok(None) => return Err(AppError::NotFound("trigger_not_found".into())),
+        Err(error) => return Err(AppError::Internal(error)),
     }
     match services.deployment.history(&trigger_id).await {
-        Ok(v) => Json(v).into_response(),
-        Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error":e}))).into_response(),
+        Ok(v) => Ok(Json(v).into_response()),
+        Err(e) => Err(AppError::Internal(e)),
     }
 }
 pub async fn delete(
@@ -99,13 +109,13 @@ pub async fn delete(
     Path((site_id, trigger_id)): Path<(String, String)>,
     Extension(repo): Extension<Repository>,
     Extension(services): Extension<Services>,
-) -> Response {
+) -> Result<Response, AppError> {
     if let Err(value) = require_site_action(&ctx, &repo, Action::DeploymentsWrite).await {
-        return value.into_response();
+        return Ok(value.into_response());
     }
     match services.deployment.delete(&site_id, &trigger_id).await {
-        Ok(0) => StatusCode::NOT_FOUND.into_response(),
-        Ok(_) => StatusCode::NO_CONTENT.into_response(),
-        Err(error) => (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error":error}))).into_response(),
+        Ok(0) => Err(AppError::NotFound("trigger_not_found".into())),
+        Ok(_) => Ok(StatusCode::NO_CONTENT.into_response()),
+        Err(error) => Err(AppError::Internal(error)),
     }
 }
