@@ -1047,12 +1047,19 @@ const MultiFileField = memo(function MultiFileField({
 function entryData(entry: Entry): Record<string, unknown> {
   if (typeof entry.data === "string") {
     try {
-      return JSON.parse(entry.data) as Record<string, unknown>;
+      const parsed = JSON.parse(entry.data);
+      return parsed && typeof parsed === "object" && !Array.isArray(parsed)
+        ? (parsed as Record<string, unknown>)
+        : {};
     } catch {
       return {};
     }
   }
-  return entry.data ?? {};
+  return entry.data &&
+    typeof entry.data === "object" &&
+    !Array.isArray(entry.data)
+    ? entry.data
+    : {};
 }
 
 /** Resolve the field name to display for a relation target (presentable → first text → undefined). */
@@ -1060,7 +1067,7 @@ function resolvePresentable(definition?: string): string | undefined {
   if (!definition) return undefined;
   try {
     const def = JSON.parse(definition) as { fields?: ContentField[] };
-    const fields = def.fields ?? [];
+    const fields = Array.isArray(def.fields) ? def.fields : [];
     const presentable = fields.find((f) => f.presentable);
     if (presentable) return presentable.name;
     const firstText = fields.find(
