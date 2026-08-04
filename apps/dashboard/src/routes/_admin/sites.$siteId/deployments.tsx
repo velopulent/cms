@@ -6,7 +6,7 @@ import {
 } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
 import { Rocket } from "lucide-react";
-import { useState } from "react";
+import { useState, useSyncExternalStore } from "react";
 import { toast } from "sonner";
 import { useSiteRole } from "@/components/site-settings/use-site-role";
 import { Badge } from "@/components/ui/badge";
@@ -46,16 +46,35 @@ function DeploymentsPage() {
   const [label, setLabel] = useState("");
   const [provider, setProvider] = useState("custom");
   const [url, setUrl] = useState("");
+  const visible = useSyncExternalStore(
+    (onStoreChange) => {
+      document.addEventListener("visibilitychange", onStoreChange);
+      return () =>
+        document.removeEventListener("visibilitychange", onStoreChange);
+    },
+    () => document.visibilityState === "visible",
+    () => true,
+  );
   const { data = [] } = useQuery({
     queryKey: ["deployments", siteId],
     queryFn: () => getDeployments(siteId),
-    refetchInterval: 5000,
+    refetchOnWindowFocus: true,
   });
   const histories = useQueries({
     queries: data.map((trigger) => ({
       queryKey: ["deployment-history", siteId, trigger.id],
       queryFn: () => getDeploymentHistory(siteId, trigger.id),
-      refetchInterval: 3000,
+      enabled: visible,
+      refetchInterval: (query: {
+        state: { data?: Array<{ status: string }> };
+      }) =>
+        visible &&
+        (query.state.data ?? []).some(
+          (job) => job.status === "queued" || job.status === "running",
+        )
+          ? 3000
+          : false,
+      refetchIntervalInBackground: false,
     })),
   });
   const create = useMutation({
@@ -146,11 +165,16 @@ function DeploymentsPage() {
                 ) : null}
                 <Button
                   className="w-fit"
-                  disabled={!item.enabled || trigger.isPending}
+                  disabled={
+                    !item.enabled ||
+                    (trigger.isPending && trigger.variables === item.id)
+                  }
                   onClick={() => trigger.mutate(item.id)}
                 >
                   <Rocket data-icon="inline-start" />
-                  Deploy now
+                  {trigger.isPending && trigger.variables === item.id
+                    ? "Queuing..."
+                    : "Deploy now"}
                 </Button>
               </CardContent>
             </Card>
@@ -189,12 +213,12 @@ function DeploymentsPage() {
                 />
               </Field>
               <Field>
-                <FieldLabel>Provider</FieldLabel>
+                <FieldLabel htmlFor="deployment-provider">Provider</FieldLabel>
                 <Select
                   value={provider}
                   onValueChange={(value) => value && setProvider(value)}
                 >
-                  <SelectTrigger>
+                  <SelectTrigger id="deployment-provider">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
