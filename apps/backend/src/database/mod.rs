@@ -66,7 +66,7 @@ pub async fn connect_db_without_migrations(
 
 #[cfg(test)]
 mod tests {
-    use super::{connect_db_without_migrations, init_db_with_config};
+    use super::{connect_db_without_migrations, init_db_with_config, latest_migration_version};
     use crate::config::Config;
     use crate::database::pool::DbPool;
 
@@ -115,7 +115,9 @@ mod tests {
         let DbPool::Sqlite(sqlite) = pool else {
             panic!("expected sqlite pool");
         };
-        sqlx::query("DELETE FROM _sqlx_migrations WHERE version = 20260611000000")
+        let latest = latest_migration_version(crate::database::backend::DatabaseBackend::SQLite);
+        sqlx::query("DELETE FROM _sqlx_migrations WHERE version = ?")
+            .bind(latest)
             .execute(&sqlite)
             .await
             .expect("remove latest migration record");
@@ -130,7 +132,8 @@ mod tests {
         let DbPool::Sqlite(sqlite) = pool else {
             panic!("expected sqlite pool");
         };
-        let count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM _sqlx_migrations WHERE version = 20260611000000")
+        let count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM _sqlx_migrations WHERE version = ?")
+            .bind(latest)
             .fetch_one(&sqlite)
             .await
             .expect("read migration table");
