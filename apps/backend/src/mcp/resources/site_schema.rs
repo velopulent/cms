@@ -9,6 +9,8 @@ use crate::models::authorization::Action;
 use crate::models::collection::Collection;
 use crate::services::{Services, authorization::AuthorizationService};
 
+const SITE_PAGE_SIZE: usize = 25;
+
 fn map_err(e: impl Into<crate::services::error::ServiceError>) -> McpError {
     crate::mcp::auth::service_error_to_mcp(e.into())
 }
@@ -44,11 +46,25 @@ pub async fn list_resources(
     authorization: &Arc<AuthorizationService>,
     services: &Arc<Services>,
     actor: &Actor,
-    _request: Option<rmcp::model::PaginatedRequestParams>,
+    request: Option<rmcp::model::PaginatedRequestParams>,
 ) -> Result<ListResourcesResult, McpError> {
     let sites = services.site.list_sites_for_actor(actor).await.map_err(map_err)?;
+    let offset = request
+        .as_ref()
+        .and_then(|params| params.cursor.as_deref())
+        .map(|cursor| {
+            cursor
+                .parse::<usize>()
+                .map_err(|_| McpError::invalid_request("Invalid resources/list cursor", None))
+        })
+        .transpose()?
+        .unwrap_or(0);
+    if offset > sites.len() {
+        return Err(McpError::invalid_request("Invalid resources/list cursor", None));
+    }
+    let page_end = (offset + SITE_PAGE_SIZE).min(sites.len());
     let mut resources = Vec::new();
-    for site in sites {
+    for site in &sites[offset..page_end] {
         let Some(site_id) = site.get("id").and_then(|value| value.as_str()) else {
             continue;
         };
@@ -81,7 +97,11 @@ pub async fn list_resources(
         }
     }
 
-    Ok(ListResourcesResult::with_all_items(resources))
+    Ok(ListResourcesResult {
+        resources,
+        meta: None,
+        next_cursor: (page_end < sites.len()).then(|| page_end.to_string()),
+    })
 }
 
 pub async fn read_resource(
