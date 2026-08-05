@@ -75,13 +75,21 @@ pub async fn authenticate_mcp_request(mut request: Request<Body>, next: Next) ->
     };
 
     let token = match bearer_token(&request) {
-        Some(token) if token.starts_with("vcms_site_") => token,
-        Some(_) => return auth_response(StatusCode::UNAUTHORIZED, "MCP requires a vcms_site_* access token"),
+        Some(token) if token.starts_with("vcms_site_") || token.starts_with("vcms_pat_") => token,
+        Some(_) => return auth_response(StatusCode::UNAUTHORIZED, "MCP requires a VCMS access token"),
         None => return auth_response(StatusCode::UNAUTHORIZED, "Missing Authorization bearer token"),
     };
 
     match verify_access_token(&token, &repository, &config.token_index_key).await {
         Ok(actor) => {
+            let has_mcp = match &actor {
+                Actor::ApiKey(k) => k.scopes.contains(&crate::models::access_token::TokenScope::McpUse),
+                Actor::PersonalToken(k) => k.scopes.contains(&crate::models::access_token::TokenScope::McpUse),
+                Actor::User(_) => false,
+            };
+            if !has_mcp {
+                return auth_response(StatusCode::FORBIDDEN, "Token is missing mcp.use scope");
+            }
             request.extensions_mut().insert(actor);
             next.run(request).await
         }
@@ -120,7 +128,7 @@ pub fn service_error_to_mcp(error: crate::services::error::ServiceError) -> Erro
 mod tests {
     use crate::database::init_db;
     use crate::middleware::auth::{Actor, is_token_not_expired, verify_access_token};
-    use crate::models::access_token::AccessTokenPermission;
+    use crate::models::access_token::{TokenScope, TokenScopes};
     use crate::repository::Repository;
     use crate::services::access_token::AccessTokenService;
 
@@ -154,16 +162,18 @@ mod tests {
             .expect("user should be created");
         repository
             .site
-            .create("site-123", "Test Site", "filesystem", "user-123")
+            .create_with_storage_profile("site-123", "Test Site", "local-filesystem", "user-123")
             .await
             .expect("site should be created");
-        let service = AccessTokenService::new(
-            repository.access_token.clone(),
-            hmac_secret.to_string(),
-            bcrypt::DEFAULT_COST,
-        );
+        let service = AccessTokenService::new(repository.access_token.clone(), hmac_secret.to_string());
         let token = service
-            .create_site_token("site-123", "MCP".to_string(), AccessTokenPermission::Read, None)
+            .create_site_token(
+                "site-123",
+                "MCP".to_string(),
+                [TokenScope::SiteRead].into_iter().collect::<TokenScopes>(),
+                None,
+                None,
+            )
             .await
             .expect("token should be created");
 
@@ -174,7 +184,7 @@ mod tests {
         match actor {
             Actor::ApiKey(k) => {
                 assert_eq!(k.site_id, "site-123");
-                assert_eq!(k.permission, AccessTokenPermission::Read);
+                assert!(k.scopes.contains(&TokenScope::SiteRead));
             }
             _ => panic!("expected API key actor"),
         }

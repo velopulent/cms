@@ -8,6 +8,6 @@ export const Route = createFileRoute("/_admin/sites/$siteId/settings/")({
 
 function GeneralSettings() {
   const { siteId } = Route.useParams();
-  const { canManage } = useSiteRole(siteId);
-  return <GeneralSection siteId={siteId} canManage={canManage} />;
+  const { canManage, role } = useSiteRole(siteId);
+  return <GeneralSection siteId={siteId} canManage={canManage} role={role} />;
 }

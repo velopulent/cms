@@ -21,6 +21,13 @@ function extractTitle(item: Entry): string {
   try {
     const parsedData =
       typeof item.data === "string" ? JSON.parse(item.data) : item.data;
+    if (
+      parsedData === null ||
+      typeof parsedData !== "object" ||
+      Array.isArray(parsedData)
+    ) {
+      return item.slug;
+    }
     return (
       (parsedData.title as string) || (parsedData.name as string) || item.slug
     );

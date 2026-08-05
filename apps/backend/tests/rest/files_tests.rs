@@ -16,7 +16,7 @@ async fn get_api_key(server: &TestServer, token: &str, csrf: &str, site_id: &str
     let resp = client
         .post(format!("{}/api/dashboard/sites/{}/tokens", server.base_url, site_id))
         .headers(auth_header(token, csrf))
-        .json(&json!({"name": "File Token", "permission": "write"}))
+        .json(&json!({"name": "File Token", "scopes": crate::common::fixtures::site_key_scopes("write")}))
         .send()
         .await
         .unwrap();
@@ -351,11 +351,11 @@ async fn test_upload_file_invalid_mime_type() {
 const TEST_HMAC_SECRET: &str = "test-signed-upload-key";
 
 fn mint_upload_url(server: &TestServer, site_id: &str, filename: &str, mime: &str, expiry_secs: i64) -> String {
-    let (_, encoded) = cms::signed_upload::SignedUploadToken::generate_with_storage_provider(
+    let (_, encoded) = cms::signed_upload::SignedUploadToken::generate_with_storage_profile(
         site_id,
         filename,
         mime,
-        "filesystem",
+        "local-filesystem",
         TEST_HMAC_SECRET,
         expiry_secs,
     );
@@ -412,11 +412,11 @@ async fn test_signed_upload_tampered_signature() {
     let client = reqwest::Client::builder().build().unwrap();
 
     // Minted with a different secret => signature check must fail.
-    let (_, encoded) = cms::signed_upload::SignedUploadToken::generate_with_storage_provider(
+    let (_, encoded) = cms::signed_upload::SignedUploadToken::generate_with_storage_profile(
         &site_id,
         "evil.txt",
         "text/plain",
-        "filesystem",
+        "local-filesystem",
         "not-the-server-secret",
         900,
     );

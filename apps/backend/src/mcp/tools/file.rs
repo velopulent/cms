@@ -13,15 +13,9 @@ use crate::models::authorization::Action;
 use crate::services::{Services, authorization::AuthorizationService};
 use crate::signed_upload::SignedUploadToken;
 
-fn require_site_id(actor: &Actor) -> Result<String, McpError> {
-    actor
-        .bound_site_id()
-        .map(String::from)
-        .ok_or_else(|| McpError::invalid_request("No site context", None))
-}
-
 #[derive(Debug, Deserialize, JsonSchema)]
 pub struct ListFilesParams {
+    pub site_id: String,
     #[serde(default)]
     pub page: Option<i64>,
     #[serde(default)]
@@ -40,7 +34,7 @@ pub async fn list_files(
     actor: &Actor,
     params: Parameters<ListFilesParams>,
 ) -> Result<CallToolResult, McpError> {
-    let site_id = require_site_id(actor)?;
+    let site_id = params.0.site_id.clone();
     if let Err(e) = authorization
         .require_site_action(actor, &site_id, Action::FilesRead)
         .await
@@ -74,6 +68,7 @@ pub async fn list_files(
 
 #[derive(Debug, Deserialize, JsonSchema)]
 pub struct GetFileParams {
+    pub site_id: String,
     pub file_id: String,
 }
 
@@ -83,7 +78,7 @@ pub async fn get_file(
     actor: &Actor,
     params: Parameters<GetFileParams>,
 ) -> Result<CallToolResult, McpError> {
-    let site_id = require_site_id(actor)?;
+    let site_id = params.0.site_id.clone();
     if let Err(e) = authorization
         .require_site_action(actor, &site_id, Action::FilesRead)
         .await
@@ -102,6 +97,7 @@ pub async fn get_file(
 
 #[derive(Debug, Deserialize, JsonSchema)]
 pub struct CreateUploadUrlParams {
+    pub site_id: String,
     pub filename: String,
     #[serde(default = "default_content_type")]
     pub content_type: String,
@@ -119,7 +115,7 @@ pub async fn create_upload_url(
     public_base_url: Option<String>,
     params: Parameters<CreateUploadUrlParams>,
 ) -> Result<CallToolResult, McpError> {
-    let site_id = require_site_id(actor)?;
+    let site_id = params.0.site_id.clone();
     if let Err(e) = authorization
         .require_site_action(actor, &site_id, Action::FilesWrite)
         .await
@@ -135,18 +131,34 @@ pub async fn create_upload_url(
         ))));
     }
 
-    // Mint against the site's actual storage provider, not a hardcoded default.
-    let storage_provider = services
-        .file
-        .get_storage_provider(&site_id)
-        .await
-        .unwrap_or_else(|_| "filesystem".into());
+    // Bind the signed URL to the selected profile, so the upload cannot use a
+    // different provider when a site has an independent S3 configuration.
+    let storage_profile_id = match services.site.get_site(&site_id).await {
+        Ok(Some(site)) => match site.storage_profile_id {
+            Some(profile_id) => profile_id,
+            None => {
+                return Ok(tool_error(crate::services::error::ServiceError::Internal(
+                    "Storage profile not configured".into(),
+                )));
+            }
+        },
+        Ok(None) => {
+            return Ok(tool_error(crate::services::error::ServiceError::NotFound(
+                "Site not found".into(),
+            )));
+        }
+        Err(error) => {
+            return Ok(tool_error(crate::services::error::ServiceError::Internal(
+                error.to_string(),
+            )));
+        }
+    };
 
-    let (token, upload_path) = SignedUploadToken::generate_with_storage_provider(
+    let (token, upload_path) = SignedUploadToken::generate_with_storage_profile(
         &site_id,
         &params.0.filename,
         &params.0.content_type,
-        &storage_provider,
+        &storage_profile_id,
         &config.signed_upload_key,
         config.upload_token_expiry_secs,
     );
@@ -171,6 +183,7 @@ pub async fn create_upload_url(
 
 #[derive(Debug, Deserialize, JsonSchema)]
 pub struct DeleteFileParams {
+    pub site_id: String,
     pub file_id: String,
 }
 
@@ -180,7 +193,7 @@ pub async fn delete_file(
     actor: &Actor,
     params: Parameters<DeleteFileParams>,
 ) -> Result<CallToolResult, McpError> {
-    let site_id = require_site_id(actor)?;
+    let site_id = params.0.site_id.clone();
     if let Err(e) = authorization
         .require_site_action(actor, &site_id, Action::FilesWrite)
         .await
@@ -196,6 +209,7 @@ pub async fn delete_file(
 
 #[derive(Debug, Deserialize, JsonSchema)]
 pub struct RestoreFileParams {
+    pub site_id: String,
     pub file_id: String,
 }
 
@@ -205,7 +219,7 @@ pub async fn restore_file(
     actor: &Actor,
     params: Parameters<RestoreFileParams>,
 ) -> Result<CallToolResult, McpError> {
-    let site_id = require_site_id(actor)?;
+    let site_id = params.0.site_id.clone();
     if let Err(e) = authorization
         .require_site_action(actor, &site_id, Action::FilesWrite)
         .await

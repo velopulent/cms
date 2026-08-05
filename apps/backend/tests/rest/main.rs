@@ -12,4 +12,5 @@ mod roles_tests;
 mod settings_tests;
 mod singletons_tests;
 mod sites_tests;
+mod storage_profiles_tests;
 mod webhooks_tests;

@@ -364,11 +364,6 @@ async fn s3_site_count(pool: &DbPool) -> Result<i64, sqlx::Error> {
                 .fetch_one(pool)
                 .await
         }
-        DbPool::MySql(pool) => {
-            sqlx::query_scalar("SELECT COUNT(*) FROM sites WHERE storage_provider = 's3'")
-                .fetch_one(pool)
-                .await
-        }
         DbPool::Sqlite(pool) => {
             sqlx::query_scalar("SELECT COUNT(*) FROM sites WHERE storage_provider = 's3'")
                 .fetch_one(pool)

@@ -45,6 +45,7 @@ import { useAuth } from "@/contexts/auth-context";
 import {
   createSite,
   getSites,
+  getStorageProfiles,
   isOperator,
   type SiteWithRole,
   siteRoleLabel,
@@ -104,7 +105,7 @@ function SiteCard({ site }: { site: SiteWithRole }) {
 
 const createSiteSchema = z.object({
   name: z.string().min(1, "Site name is required"),
-  storageProvider: z.string(),
+  storageProfileId: z.string().min(1, "Select a storage profile"),
 });
 
 function CreateSiteDialog({
@@ -116,18 +117,23 @@ function CreateSiteDialog({
 }) {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const { data: storageProfiles = [] } = useQuery({
+    queryKey: ["storage-profiles"],
+    queryFn: getStorageProfiles,
+    enabled: open,
+  });
 
   const createMutation = useMutation({
     mutationFn: ({
       name,
-      storageProvider,
+      storageProfileId,
     }: {
       name: string;
-      storageProvider: string;
+      storageProfileId: string;
     }) =>
       createSite({
         name,
-        storage_provider: storageProvider,
+        storage_profile_id: storageProfileId,
       }),
     onSuccess: (site) => {
       queryClient.invalidateQueries({ queryKey: ["sites"] });
@@ -145,7 +151,7 @@ function CreateSiteDialog({
   const form = useForm({
     defaultValues: {
       name: "",
-      storageProvider: "filesystem",
+      storageProfileId: "",
     },
     validators: {
       onSubmit: createSiteSchema,
@@ -158,8 +164,20 @@ function CreateSiteDialog({
   useEffect(() => {
     if (!open) {
       form.reset();
+      return;
     }
-  }, [open, form]);
+    const enabledProfiles = storageProfiles.filter(
+      (profile) => profile.enabled,
+    );
+    if (
+      enabledProfiles.length > 0 &&
+      !enabledProfiles.some(
+        (profile) => profile.id === form.state.values.storageProfileId,
+      )
+    ) {
+      form.setFieldValue("storageProfileId", enabledProfiles[0].id);
+    }
+  }, [open, form, storageProfiles]);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -203,7 +221,7 @@ function CreateSiteDialog({
               }}
             />
             <form.Field
-              name="storageProvider"
+              name="storageProfileId"
               children={(field) => {
                 return (
                   <Field>
@@ -220,12 +238,16 @@ function CreateSiteDialog({
                           !field.state.meta.isValid
                         }
                       >
-                        {field.state.value === "filesystem" ? (
+                        {storageProfiles.find(
+                          (profile) => profile.id === field.state.value,
+                        )?.kind === "filesystem" ? (
                           <div className="flex items-center gap-2">
                             <HardDrive className="size-4" />
                             <span>Filesystem</span>
                           </div>
-                        ) : field.state.value === "s3" ? (
+                        ) : storageProfiles.find(
+                            (profile) => profile.id === field.state.value,
+                          )?.kind === "s3" ? (
                           <div className="flex items-center gap-2">
                             <Cloud className="size-4" />
                             <span>S3 / Cloud Storage</span>
@@ -235,27 +257,24 @@ function CreateSiteDialog({
                         )}
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="filesystem">
-                          <div className="flex items-center gap-2">
-                            <HardDrive className="size-4" />
-                            <span>Filesystem</span>
-                            <span className="text-xs text-muted-foreground">
-                              (default)
-                            </span>
-                          </div>
-                        </SelectItem>
-                        <SelectItem value="s3">
-                          <div className="flex items-center gap-2">
-                            <Cloud className="size-4" />
-                            <span>S3 / Cloud Storage</span>
-                          </div>
-                        </SelectItem>
+                        {storageProfiles
+                          .filter((profile) => profile.enabled)
+                          .map((profile) => (
+                            <SelectItem key={profile.id} value={profile.id}>
+                              <div className="flex items-center gap-2">
+                                {profile.kind === "filesystem" ? (
+                                  <HardDrive className="size-4" />
+                                ) : (
+                                  <Cloud className="size-4" />
+                                )}
+                                <span>{profile.name}</span>
+                              </div>
+                            </SelectItem>
+                          ))}
                       </SelectContent>
                     </Select>
                     <p className="text-xs text-muted-foreground">
-                      {field.state.value === "s3"
-                        ? "Files will be stored in your S3 bucket"
-                        : "Files will be stored on the local filesystem"}
+                      Storage cannot be changed after site creation.
                     </p>
                   </Field>
                 );
@@ -270,7 +289,13 @@ function CreateSiteDialog({
             >
               Cancel
             </Button>
-            <Button type="submit" disabled={createMutation.isPending}>
+            <Button
+              type="submit"
+              disabled={
+                createMutation.isPending ||
+                storageProfiles.every((profile) => !profile.enabled)
+              }
+            >
               {createMutation.isPending ? "Creating..." : "Create Site"}
             </Button>
           </div>

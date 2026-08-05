@@ -5,6 +5,7 @@ use tonic::{Request, Response, Status};
 use crate::grpc::cms::v1::singleton_service_server::SingletonService;
 use crate::grpc::cms::v1::{GetSingletonRequest, Singleton as ProtoSingleton, UpdateSingletonRequest};
 use crate::grpc::interceptor::get_auth_context;
+use crate::models::access_token::TokenScope;
 use crate::repository::Repository;
 use crate::services::singleton::SingletonService as AppSingletonService;
 use crate::storage::{STORAGE_KIND_FILESYSTEM, StorageProvider, StorageRegistry};
@@ -37,7 +38,7 @@ impl SingletonService for SingletonServiceImpl {
         mut request: Request<GetSingletonRequest>,
     ) -> Result<Response<ProtoSingleton>, Status> {
         let auth = get_auth_context(&mut request, &self.repository).await?;
-        auth.require_read()?;
+        auth.require_scope(TokenScope::ContentRead)?;
         let site_id = auth.require_site_id()?.to_string();
         let slug = request.into_inner().slug;
 
@@ -61,7 +62,7 @@ impl SingletonService for SingletonServiceImpl {
         mut request: Request<UpdateSingletonRequest>,
     ) -> Result<Response<ProtoSingleton>, Status> {
         let auth = get_auth_context(&mut request, &self.repository).await?;
-        auth.require_write()?;
+        auth.require_scope(TokenScope::ContentWrite)?;
         let site_id = auth.require_site_id()?.to_string();
         let req = request.into_inner();
 

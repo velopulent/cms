@@ -103,17 +103,6 @@ impl SearchQueue {
                     .await
                     .map_err(dberr)?;
             }
-            DbPool::MySql(p) => {
-                sqlx::query(sqlx::AssertSqlSafe(sql.as_str()))
-                    .bind(&id)
-                    .bind(entry_id)
-                    .bind(site_id)
-                    .bind(op)
-                    .bind(&now)
-                    .execute(p)
-                    .await
-                    .map_err(dberr)?;
-            }
         }
         self.notify.notify_one();
         Ok(())
@@ -132,11 +121,6 @@ impl SearchQueue {
                 .await
                 .map_err(dberr)?,
             DbPool::Postgres(p) => sqlx::query_as::<_, QueueRow>(sqlx::AssertSqlSafe(sql.as_str()))
-                .bind(limit)
-                .fetch_all(p)
-                .await
-                .map_err(dberr)?,
-            DbPool::MySql(p) => sqlx::query_as::<_, QueueRow>(sqlx::AssertSqlSafe(sql.as_str()))
                 .bind(limit)
                 .fetch_all(p)
                 .await
@@ -164,13 +148,6 @@ impl SearchQueue {
                 query.execute(p).await.map_err(dberr)?;
             }
             DbPool::Postgres(p) => {
-                let mut query = sqlx::query(sqlx::AssertSqlSafe(sql.as_str()));
-                for id in ids {
-                    query = query.bind(id);
-                }
-                query.execute(p).await.map_err(dberr)?;
-            }
-            DbPool::MySql(p) => {
                 let mut query = sqlx::query(sqlx::AssertSqlSafe(sql.as_str()));
                 for id in ids {
                     query = query.bind(id);

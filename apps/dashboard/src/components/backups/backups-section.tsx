@@ -10,7 +10,7 @@ import {
   RotateCcw,
   Trash2,
 } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -60,6 +60,7 @@ import {
   createBackupSchedule,
   deleteBackup,
   deleteBackupSchedule,
+  getStorageProfiles,
   type InspectResult,
   inspectBackup,
   inspectBackupUpload,
@@ -112,6 +113,8 @@ export function BackupsSection({ scope }: { scope: BackupScope }) {
 
   const [includeFiles, setIncludeFiles] = useState(true);
   const [encrypt, setEncrypt] = useState(false);
+  const [storageProfileId, setStorageProfileId] = useState("local-filesystem");
+  const [restoreProfileId, setRestoreProfileId] = useState("");
 
   const [restoreSource, setRestoreSource] = useState<RestoreSource | null>(
     null,
@@ -144,6 +147,20 @@ export function BackupsSection({ scope }: { scope: BackupScope }) {
     queryKey: ["backup-schedules", scopeKey],
     queryFn: () => listBackupSchedules(scope),
   });
+  const storageProfilesQuery = useQuery({
+    queryKey: ["storage-profiles"],
+    queryFn: getStorageProfiles,
+  });
+
+  useEffect(() => {
+    const enabled = (storageProfilesQuery.data ?? []).filter(
+      (profile) => profile.enabled,
+    );
+    if (enabled.length === 0) return;
+    if (!enabled.some((profile) => profile.id === storageProfileId)) {
+      setStorageProfileId(enabled[0].id);
+    }
+  }, [storageProfileId, storageProfilesQuery.data]);
 
   const invalidateBackups = () =>
     queryClient.invalidateQueries({ queryKey: ["backups", scopeKey] });
@@ -152,7 +169,11 @@ export function BackupsSection({ scope }: { scope: BackupScope }) {
 
   const createMutation = useMutation({
     mutationFn: () =>
-      createBackup(scope, { include_files: includeFiles, encrypt }),
+      createBackup(scope, {
+        include_files: includeFiles,
+        encrypt,
+        storage_profile_id: storageProfileId,
+      }),
     onSuccess: () => {
       invalidateBackups();
       toast.success("Backup created");
@@ -185,6 +206,7 @@ export function BackupsSection({ scope }: { scope: BackupScope }) {
         const opts = {
           mode: "site" as const,
           import_as_new: importAsNew,
+          storage_profile_id: restoreProfileId || undefined,
           confirm: RESTORE_WORD,
         };
         if (restoreSource.type === "upload") {
@@ -211,6 +233,7 @@ export function BackupsSection({ scope }: { scope: BackupScope }) {
         mode,
         site_ids,
         ...(mode === "site" && { import_as_new: importAsNew }),
+        storage_profile_id: restoreProfileId || undefined,
         confirm: RESTORE_WORD,
         // Uploads were staged during inspect — restore by key, no re-upload.
         ...(restoreSource.type === "upload"
@@ -233,6 +256,7 @@ export function BackupsSection({ scope }: { scope: BackupScope }) {
     setRestoreMode(isInstance ? "instance" : "site");
     setSelectedSiteIds([]);
     setImportAsNew(false);
+    setRestoreProfileId("");
     setConfirmText("");
     setInspect(null);
     setInspectError(null);
@@ -290,6 +314,28 @@ export function BackupsSection({ scope }: { scope: BackupScope }) {
           </CardDescription>
         </CardHeader>
         <CardContent className="flex flex-col gap-4">
+          <Field>
+            <FieldLabel htmlFor="backup-destination">Destination</FieldLabel>
+            <Select
+              value={storageProfileId}
+              onValueChange={(value) =>
+                setStorageProfileId(value ?? "local-filesystem")
+              }
+            >
+              <SelectTrigger id="backup-destination" className="w-full sm:w-80">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {(storageProfilesQuery.data ?? [])
+                  .filter((profile) => profile.enabled)
+                  .map((profile) => (
+                    <SelectItem key={profile.id} value={profile.id}>
+                      {profile.name}
+                    </SelectItem>
+                  ))}
+              </SelectContent>
+            </Select>
+          </Field>
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div className="flex flex-wrap items-center gap-4">
               <Field orientation="horizontal">
@@ -329,7 +375,13 @@ export function BackupsSection({ scope }: { scope: BackupScope }) {
               </label>
               <Button
                 onClick={() => createMutation.mutate()}
-                disabled={createMutation.isPending}
+                disabled={
+                  createMutation.isPending ||
+                  storageProfilesQuery.isLoading ||
+                  !(storageProfilesQuery.data ?? []).some(
+                    (profile) => profile.enabled,
+                  )
+                }
               >
                 <Plus className="size-4" />
                 {createMutation.isPending ? "Backing up…" : "Back up now"}
@@ -425,6 +477,7 @@ export function BackupsSection({ scope }: { scope: BackupScope }) {
 
       <SchedulesCard
         schedules={schedules}
+        storageProfiles={storageProfilesQuery.data ?? []}
         loading={schedulesQuery.isLoading}
         onCreate={async (input) => {
           await createBackupSchedule(scope, input);
@@ -437,6 +490,7 @@ export function BackupsSection({ scope }: { scope: BackupScope }) {
             include_files: s.include_files,
             encrypt: s.encrypt,
             enabled: !s.enabled,
+            storage_profile_id: s.storage_profile_id ?? undefined,
           });
           invalidateSchedules();
         }}
@@ -517,14 +571,14 @@ export function BackupsSection({ scope }: { scope: BackupScope }) {
             {/* An instance backup: choose whole instance or specific sites. */}
             {isInstance && inspect?.scope === "instance" && (
               <div className="flex flex-col gap-2">
-                <Label>What to restore</Label>
+                <Label htmlFor="restore-mode">What to restore</Label>
                 <Select
                   value={restoreMode}
                   onValueChange={(v) =>
                     setRestoreMode(v as "instance" | "site")
                   }
                 >
-                  <SelectTrigger>
+                  <SelectTrigger id="restore-mode">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -559,6 +613,37 @@ export function BackupsSection({ scope }: { scope: BackupScope }) {
                 </FieldLabel>
               </Field>
             )}
+
+            <Field>
+              <FieldLabel htmlFor="restore-storage-profile">
+                Restore files into
+              </FieldLabel>
+              <Select
+                value={restoreProfileId || "automatic"}
+                onValueChange={(value) =>
+                  setRestoreProfileId(
+                    value === "automatic" ? "" : (value ?? ""),
+                  )
+                }
+              >
+                <SelectTrigger id="restore-storage-profile">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="automatic">Automatic target</SelectItem>
+                  {(storageProfilesQuery.data ?? [])
+                    .filter((profile) => profile.enabled)
+                    .map((profile) => (
+                      <SelectItem key={profile.id} value={profile.id}>
+                        {profile.name}
+                      </SelectItem>
+                    ))}
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground">
+                Automatic uses the existing site profile, then local filesystem.
+              </p>
+            </Field>
 
             <div className="flex flex-col gap-2">
               <Label htmlFor="restore-confirm">
@@ -666,6 +751,7 @@ interface SchedulesCardProps {
   onToggle: (s: import("@/lib/api").BackupSchedule) => Promise<void>;
   onRun: (id: string) => Promise<void>;
   onDelete: (id: string) => Promise<void>;
+  storageProfiles: import("@/lib/api").StorageProfile[];
 }
 
 function SchedulesCard({
@@ -675,6 +761,7 @@ function SchedulesCard({
   onToggle,
   onRun,
   onDelete,
+  storageProfiles,
 }: SchedulesCardProps) {
   const [preset, setPreset] = useState(CRON_PRESETS[0].value);
   const [customCron, setCustomCron] = useState("0 2 * * *");
@@ -682,6 +769,17 @@ function SchedulesCard({
   const [includeFiles, setIncludeFiles] = useState(true);
   const [encrypt, setEncrypt] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [storageProfileId, setStorageProfileId] = useState("local-filesystem");
+
+  useEffect(() => {
+    const enabled = storageProfiles.filter((profile) => profile.enabled);
+    if (
+      enabled.length > 0 &&
+      !enabled.some((profile) => profile.id === storageProfileId)
+    ) {
+      setStorageProfileId(enabled[0].id);
+    }
+  }, [storageProfileId, storageProfiles]);
 
   const cron = preset === "custom" ? customCron : preset;
 
@@ -694,6 +792,7 @@ function SchedulesCard({
         include_files: includeFiles,
         encrypt,
         enabled: true,
+        storage_profile_id: storageProfileId,
       });
       toast.success("Schedule added");
     } catch (e) {
@@ -712,9 +811,31 @@ function SchedulesCard({
         </CardDescription>
       </CardHeader>
       <CardContent className="flex flex-col gap-4">
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4 lg:items-end">
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5 lg:items-end">
+          <Field>
+            <FieldLabel htmlFor="schedule-destination">Destination</FieldLabel>
+            <Select
+              value={storageProfileId}
+              onValueChange={(value) =>
+                setStorageProfileId(value ?? "local-filesystem")
+              }
+            >
+              <SelectTrigger id="schedule-destination" className="w-full">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {storageProfiles
+                  .filter((profile) => profile.enabled)
+                  .map((profile) => (
+                    <SelectItem key={profile.id} value={profile.id}>
+                      {profile.name}
+                    </SelectItem>
+                  ))}
+              </SelectContent>
+            </Select>
+          </Field>
           <div className="flex flex-col gap-1.5">
-            <Label>Frequency</Label>
+            <Label htmlFor="schedule-frequency">Frequency</Label>
             <Select
               items={CRON_PRESETS.map((p) => ({
                 value: p.value,
@@ -723,7 +844,7 @@ function SchedulesCard({
               value={preset}
               onValueChange={(v) => setPreset(v ?? "")}
             >
-              <SelectTrigger className="w-full">
+              <SelectTrigger id="schedule-frequency" className="w-full">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -736,6 +857,7 @@ function SchedulesCard({
             </Select>
             {preset === "custom" && (
               <Input
+                id="schedule-custom-cron"
                 className="mt-1 font-mono"
                 value={customCron}
                 onChange={(e) => setCustomCron(e.target.value)}
@@ -771,7 +893,12 @@ function SchedulesCard({
               <FieldLabel htmlFor="schedule-encrypt">Encrypt</FieldLabel>
             </Field>
           </div>
-          <Button onClick={submit} disabled={submitting}>
+          <Button
+            onClick={submit}
+            disabled={
+              submitting || !storageProfiles.some((profile) => profile.enabled)
+            }
+          >
             <Plus className="size-4" /> Add schedule
           </Button>
         </div>

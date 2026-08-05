@@ -1,7 +1,8 @@
 use sqlx::{
     Error,
     migrate::{Migrate, MigrateError},
-    mysql::{MySqlPool, MySqlPoolOptions},
+};
+use sqlx::{
     postgres::{PgPool, PgPoolOptions},
     sqlite::{SqlitePool, SqlitePoolOptions},
 };
@@ -10,12 +11,11 @@ use std::time::Duration;
 
 use crate::config::Config;
 use crate::database::backend::DatabaseBackend;
-use crate::database::{MYSQL_MIGRATOR, POSTGRES_MIGRATOR, SQLITE_MIGRATOR};
+use crate::database::{POSTGRES_MIGRATOR, SQLITE_MIGRATOR};
 
 #[derive(Clone)]
 pub enum DbPool {
     Postgres(PgPool),
-    MySql(MySqlPool),
     Sqlite(SqlitePool),
 }
 
@@ -43,24 +43,6 @@ impl DbPool {
                     .await?;
                 Ok(DbPool::Postgres(pool))
             }
-            DatabaseBackend::MySQL => {
-                let pool = MySqlPoolOptions::new()
-                    .max_connections(config.db_max_connections)
-                    .min_connections(config.db_min_connections)
-                    .acquire_timeout(Duration::from_secs(config.db_acquire_timeout_secs))
-                    .idle_timeout(Duration::from_secs(config.db_idle_timeout_secs))
-                    // Pin the session to UTC so NOW()/CURRENT_TIMESTAMP agree with the
-                    // chrono::Utc timestamps the app writes and compares against.
-                    .after_connect(|conn, _meta| {
-                        Box::pin(async move {
-                            sqlx::query("SET time_zone = '+00:00'").execute(&mut *conn).await?;
-                            Ok(())
-                        })
-                    })
-                    .connect(&config.database_url)
-                    .await?;
-                Ok(DbPool::MySql(pool))
-            }
             DatabaseBackend::SQLite => {
                 let options = sqlx::sqlite::SqliteConnectOptions::from_str(&config.database_url)
                     .map_err(|e| Error::Configuration(e.to_string().into()))?
@@ -83,7 +65,6 @@ impl DbPool {
     pub fn backend(&self) -> DatabaseBackend {
         match self {
             DbPool::Postgres(_) => DatabaseBackend::Postgres,
-            DbPool::MySql(_) => DatabaseBackend::MySQL,
             DbPool::Sqlite(_) => DatabaseBackend::SQLite,
         }
     }
@@ -91,7 +72,6 @@ impl DbPool {
     pub async fn run_migrations(&self) -> Result<(), sqlx::migrate::MigrateError> {
         match self {
             DbPool::Postgres(pool) => POSTGRES_MIGRATOR.run(pool).await,
-            DbPool::MySql(pool) => MYSQL_MIGRATOR.run(pool).await,
             DbPool::Sqlite(pool) => SQLITE_MIGRATOR.run(pool).await,
         }
     }
@@ -101,10 +81,6 @@ impl DbPool {
             DbPool::Postgres(pool) => {
                 let mut conn = pool.acquire().await?;
                 validate_connection_migrations(&mut *conn, &POSTGRES_MIGRATOR).await
-            }
-            DbPool::MySql(pool) => {
-                let mut conn = pool.acquire().await?;
-                validate_connection_migrations(&mut *conn, &MYSQL_MIGRATOR).await
             }
             DbPool::Sqlite(pool) => {
                 let mut conn = pool.acquire().await?;
@@ -117,7 +93,6 @@ impl DbPool {
     pub async fn ping(&self) -> Result<(), sqlx::Error> {
         match self {
             DbPool::Postgres(pool) => sqlx::query("SELECT 1").execute(pool).await.map(|_| ()),
-            DbPool::MySql(pool) => sqlx::query("SELECT 1").execute(pool).await.map(|_| ()),
             DbPool::Sqlite(pool) => sqlx::query("SELECT 1").execute(pool).await.map(|_| ()),
         }
     }

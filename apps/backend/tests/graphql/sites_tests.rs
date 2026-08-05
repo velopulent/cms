@@ -45,7 +45,7 @@ async fn setup(server: &TestServer) -> (reqwest::Client, String, String) {
         .post(format!("{}/api/dashboard/sites/{}/tokens", server.base_url, site_id))
         .header("Cookie", format!("token={}; csrf={}", token, csrf))
         .header("X-CSRF-Token", &csrf)
-        .json(&json!({"name": "Token", "permission": "write"}))
+        .json(&json!({"name": "Token", "scopes": crate::common::fixtures::site_key_scopes("write")}))
         .send()
         .await
         .unwrap();

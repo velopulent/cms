@@ -4,6 +4,7 @@ pub mod authorization;
 pub mod backup;
 pub mod collection;
 pub mod definition_validation;
+pub mod deployment;
 pub mod entry;
 pub mod error;
 pub mod file;
@@ -11,6 +12,7 @@ pub mod search;
 pub mod settings;
 pub mod singleton;
 pub mod site;
+pub mod storage_profile;
 pub mod webhook;
 
 use std::path::PathBuf;
@@ -32,6 +34,8 @@ pub struct Services {
     pub file: Arc<file::FileService>,
     pub singleton: Arc<singleton::SingletonService>,
     pub webhook: Arc<webhook::WebhookService>,
+    pub deployment: Arc<deployment::DeploymentService>,
+    pub storage_profile: Arc<storage_profile::StorageProfileService>,
     /// Full-text search engine used for **reads** (ranked queries). `None` when
     /// search is disabled or the index couldn't be opened — callers then fall back
     /// to the SQL `LIKE` path. Read-write in the server process, read-only in
@@ -73,6 +77,11 @@ impl Services {
             None
         };
 
+        let webhook = Arc::new(webhook::WebhookService::new(
+            repository.webhook.clone(),
+            &config.webhook_encryption_key,
+            config.webhook_allow_private_targets,
+        ));
         Self {
             auth: Arc::new(auth::AuthService::new(
                 repository.user.clone(),
@@ -87,7 +96,6 @@ impl Services {
             access_token: Arc::new(access_token::AccessTokenService::new(
                 repository.access_token.clone(),
                 config.token_index_key.clone(),
-                config.bcrypt_cost,
             )),
             collection: Arc::new(collection::CollectionService::new(
                 repository.collection.clone(),
@@ -111,10 +119,11 @@ impl Services {
                 )
                 .with_queue(search_queue.clone()),
             ),
-            webhook: Arc::new(webhook::WebhookService::new(
-                repository.webhook.clone(),
+            webhook: webhook.clone(),
+            deployment: Arc::new(deployment::DeploymentService::new(pool.clone(), webhook)),
+            storage_profile: Arc::new(storage_profile::StorageProfileService::new(
+                pool.clone(),
                 &config.webhook_encryption_key,
-                config.webhook_allow_private_targets,
             )),
             search,
             search_queue,

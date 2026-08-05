@@ -70,6 +70,18 @@ pub async fn run(
     let mut services = Services::new(repository_arc.clone(), &pool, &config);
     services.auth = Arc::new((*services.auth).clone().with_settings(settings.clone()));
     services.webhook = Arc::new((*services.webhook).clone().with_settings(settings.clone()));
+    services.deployment = Arc::new(crate::services::deployment::DeploymentService::new(
+        pool.clone(),
+        services.webhook.clone(),
+    ));
+    services
+        .storage_profile
+        .register_all(&storage_registry)
+        .await
+        .map_err(|error| format!("loading storage profiles: {error}"))?;
+    if let Err(error) = services.deployment.reconcile_interrupted().await {
+        tracing::error!(%error,"Failed to reconcile deployment jobs");
+    }
 
     let backup_destination = crate::services::backup::build_backup_destination(&config)
         .map_err(|e| format!("Failed to initialize backup destination: {e}"))?;

@@ -5,9 +5,7 @@ import { useEffect, useRef, useState } from "react";
 
 const regions = [
   { name: "SQLite", nodes: 0, status: "supported" },
-  { name: "MySQL", nodes: 0, status: "supported" },
   { name: "PostgreSQL", nodes: 0, status: "supported" },
-  { name: "and more...", nodes: 0, status: "planned" },
 ];
 
 export function DatabaseSection() {
@@ -104,8 +102,8 @@ export function DatabaseSection() {
                   isVisible ? "opacity-100" : "opacity-0"
                 }`}
               >
-                Embedded SQLite for lightweight workloads, MySQL for scalable
-                deployments, PostgreSQL for complex, high-volume systems.
+                Embedded SQLite for lightweight workloads and PostgreSQL for
+                scalable, high-volume systems.
               </p>
             </div>
           </div>
@@ -176,7 +174,7 @@ export function DatabaseSection() {
             <div className="relative z-10">
               <div className="flex items-baseline gap-2 mb-4">
                 <span className="text-8xl lg:text-[10rem] font-display leading-none">
-                  3
+                  2
                 </span>
                 <span className="text-2xl text-muted-foreground">
                   databases
@@ -223,7 +221,7 @@ export function DatabaseSection() {
 
         {/* Region list */}
         <div
-          className={`mt-12 grid grid-cols-2 lg:grid-cols-4 gap-4 transition-all duration-1000 delay-300 ${
+          className={`mt-12 grid grid-cols-2 gap-4 transition-all duration-1000 delay-300 ${
             isVisible ? "opacity-100" : "opacity-0"
           }`}
         >

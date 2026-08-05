@@ -9,6 +9,7 @@ use crate::grpc::cms::v1::{
     GetFileRequest, ListFilesRequest, ListFilesResponse, RestoreFileRequest,
 };
 use crate::grpc::interceptor::get_auth_context;
+use crate::models::access_token::TokenScope;
 use crate::models::file::File;
 use crate::repository::Repository;
 use crate::repository::traits::ListFilesParams;
@@ -33,7 +34,7 @@ impl FileServiceImpl {
 impl FileService for FileServiceImpl {
     async fn list_files(&self, mut request: Request<ListFilesRequest>) -> Result<Response<ListFilesResponse>, Status> {
         let auth = get_auth_context(&mut request, &self.repository).await?;
-        auth.require_read()?;
+        auth.require_scope(TokenScope::FilesRead)?;
         let site_id = auth.require_site_id()?.to_string();
 
         let req = request.into_inner();
@@ -68,7 +69,7 @@ impl FileService for FileServiceImpl {
 
     async fn get_file(&self, mut request: Request<GetFileRequest>) -> Result<Response<ProtoFile>, Status> {
         let auth = get_auth_context(&mut request, &self.repository).await?;
-        auth.require_read()?;
+        auth.require_scope(TokenScope::FilesRead)?;
         let site_id = auth.require_site_id()?.to_string();
         let id = request.into_inner().id;
 
@@ -84,7 +85,7 @@ impl FileService for FileServiceImpl {
 
     async fn delete_file(&self, mut request: Request<DeleteFileRequest>) -> Result<Response<DeleteResponse>, Status> {
         let auth = get_auth_context(&mut request, &self.repository).await?;
-        auth.require_write()?;
+        auth.require_scope(TokenScope::FilesWrite)?;
         let site_id = auth.require_site_id()?.to_string();
         let id = request.into_inner().id;
 
@@ -106,7 +107,7 @@ impl FileService for FileServiceImpl {
 
     async fn restore_file(&self, mut request: Request<RestoreFileRequest>) -> Result<Response<ProtoFile>, Status> {
         let auth = get_auth_context(&mut request, &self.repository).await?;
-        auth.require_write()?;
+        auth.require_scope(TokenScope::FilesWrite)?;
         let site_id = auth.require_site_id()?.to_string();
         let id = request.into_inner().id;
 
@@ -135,7 +136,7 @@ impl FileService for FileServiceImpl {
         mut request: Request<BatchDeleteFilesRequest>,
     ) -> Result<Response<BatchOperationResponse>, Status> {
         let auth = get_auth_context(&mut request, &self.repository).await?;
-        auth.require_write()?;
+        auth.require_scope(TokenScope::FilesWrite)?;
         let site_id = auth.require_site_id()?.to_string();
         let ids = request.into_inner().ids;
 
@@ -155,7 +156,7 @@ impl FileService for FileServiceImpl {
         mut request: Request<BatchRestoreFilesRequest>,
     ) -> Result<Response<BatchOperationResponse>, Status> {
         let auth = get_auth_context(&mut request, &self.repository).await?;
-        auth.require_write()?;
+        auth.require_scope(TokenScope::FilesWrite)?;
         let site_id = auth.require_site_id()?.to_string();
         let ids = request.into_inner().ids;
 

@@ -19,8 +19,8 @@ struct StdioClient {
 }
 
 impl StdioClient {
-    /// Spawn the proxy the way an MCP client does: it knows only the server URL and a
-    /// site token and no server configuration.
+    /// Spawn the proxy the way an MCP client does: it knows only the server URL and
+    /// an access token and no server configuration.
     async fn start(url: &str, token: &str) -> Self {
         let mut child = Command::new(env!("CARGO_BIN_EXE_vcms"))
             .args(["mcp", "stdio"])
@@ -96,7 +96,7 @@ async fn initialize(client: &mut StdioClient) -> Value {
 #[tokio::test]
 async fn stdio_proxy_round_trips_tools_and_calls_through_the_server() {
     let server = TestServer::start().await;
-    let (_site_id, token) = fixtures::create_site_and_token(&server, "write").await;
+    let (site_id, token) = fixtures::create_site_and_token(&server, "write").await;
 
     let mut client = StdioClient::start(&server.base_url, &token).await;
     let init = initialize(&mut client).await;
@@ -109,7 +109,11 @@ async fn stdio_proxy_round_trips_tools_and_calls_through_the_server() {
     );
 
     let site = client
-        .request(3, "tools/call", Some(json!({"name": "get_site", "arguments": {}})))
+        .request(
+            3,
+            "tools/call",
+            Some(json!({"name": "get_site", "arguments": {"site_id": site_id}})),
+        )
         .await;
     assert_eq!(
         site["result"]["isError"], false,
@@ -123,7 +127,7 @@ async fn stdio_proxy_round_trips_tools_and_calls_through_the_server() {
 async fn stdio_proxy_enforces_token_permission() {
     let server = TestServer::start().await;
     // A read-only token: reads pass, writes are denied by the server.
-    let (_site_id, token) = fixtures::create_site_and_token(&server, "read").await;
+    let (site_id, token) = fixtures::create_site_and_token(&server, "read").await;
 
     let mut client = StdioClient::start(&server.base_url, &token).await;
     initialize(&mut client).await;
@@ -132,7 +136,10 @@ async fn stdio_proxy_enforces_token_permission() {
         .request(
             2,
             "tools/call",
-            Some(json!({"name": "update_site", "arguments": {"name": "Forbidden"}})),
+            Some(json!({
+                "name": "update_site",
+                "arguments": {"site_id": site_id, "name": "Forbidden"}
+            })),
         )
         .await;
     assert_eq!(

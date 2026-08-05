@@ -8,7 +8,7 @@
 
 ## Architecture
 
-- **Backend**: Rust + Axum HTTP server, `SQLx` + (SQLite | PostgreSQL | MySQL), `rust-embed` (static assets)
+- **Backend**: Rust + Axum HTTP server, `SQLx` + (SQLite | PostgreSQL), `rust-embed` (static assets)
 - **Frontend**: React in `apps/dashboard/` with Tanstack Router, Tanstack Query, shadcn/ui
 - **gRPC**: Separate server on port 50051 (compiled from `libs/proto/*.proto` via `tonic-build`)
 - **Build**: Nx orchestrates `dashboard:build` → `backend:build`. `build.rs` compiles proto files only.
@@ -222,7 +222,7 @@ A logical backup/restore subsystem lives in `apps/backend/src/services/backup/`:
 - `schema.rs` — table registry + cross-backend dump/restore. Every value is
   normalized to **text** (Postgres casts `::text`/`::int`; restore casts back with
   `::jsonb`/`::timestamptz`/`::bigint`/`::int::boolean`), so a backup is a portable,
-  DB-agnostic set of NDJSON rows that restores into any of the three backends.
+  DB-agnostic set of NDJSON rows that restores into either backend.
 - `mod.rs` — `BackupService`: a snapshot read (REPEATABLE READ / WAL) dumps tables →
   tar → zstd → optional AES-256-GCM, written to a destination `StorageProvider`.
   Restore is full-replace within the chosen scope in one transaction (site filter,

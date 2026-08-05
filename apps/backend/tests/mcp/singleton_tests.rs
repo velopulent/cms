@@ -1,9 +1,10 @@
 use crate::common::mcp::*;
 
-async fn setup_singleton(base_url: &str, token: &str, slug: &str) {
-    let result = mcp_call_tool(
+async fn setup_singleton(base_url: &str, token: &str, site_id: &str, slug: &str) {
+    let result = mcp_call_site_tool(
         base_url,
         token,
+        site_id,
         "create_collection",
         serde_json::json!({
             "name": "Settings",
@@ -23,9 +24,16 @@ async fn setup_singleton(base_url: &str, token: &str, slug: &str) {
 #[tokio::test]
 async fn test_list_singletons_empty() {
     let server = start_mcp_server().await;
-    let (_, token) = setup_site_token(&server).await;
+    let (site_id, token) = setup_site_token(&server).await;
 
-    let result = mcp_call_tool(&server.base_url, &token, "list_singletons", serde_json::json!({})).await;
+    let result = mcp_call_site_tool(
+        &server.base_url,
+        &token,
+        &site_id,
+        "list_singletons",
+        serde_json::json!({}),
+    )
+    .await;
     let data = mcp_tool_json(&result);
 
     assert!(data.is_array());
@@ -35,13 +43,14 @@ async fn test_list_singletons_empty() {
 #[tokio::test]
 async fn test_get_singleton() {
     let server = start_mcp_server().await;
-    let (_, token) = setup_site_token(&server).await;
+    let (site_id, token) = setup_site_token(&server).await;
 
-    setup_singleton(&server.base_url, &token, "settings").await;
+    setup_singleton(&server.base_url, &token, &site_id, "settings").await;
 
-    let result = mcp_call_tool(
+    let result = mcp_call_site_tool(
         &server.base_url,
         &token,
+        &site_id,
         "get_singleton",
         serde_json::json!({"slug": "settings"}),
     )
@@ -52,13 +61,14 @@ async fn test_get_singleton() {
 #[tokio::test]
 async fn test_update_singleton_data() {
     let server = start_mcp_server().await;
-    let (_, token) = setup_site_token(&server).await;
+    let (site_id, token) = setup_site_token(&server).await;
 
-    setup_singleton(&server.base_url, &token, "settings").await;
+    setup_singleton(&server.base_url, &token, &site_id, "settings").await;
 
-    let result = mcp_call_tool(
+    let result = mcp_call_site_tool(
         &server.base_url,
         &token,
+        &site_id,
         "update_singleton",
         serde_json::json!({
             "slug": "settings",
@@ -72,11 +82,18 @@ async fn test_update_singleton_data() {
 #[tokio::test]
 async fn test_list_singletons_after_create() {
     let server = start_mcp_server().await;
-    let (_, token) = setup_site_token(&server).await;
+    let (site_id, token) = setup_site_token(&server).await;
 
-    setup_singleton(&server.base_url, &token, "settings").await;
+    setup_singleton(&server.base_url, &token, &site_id, "settings").await;
 
-    let result = mcp_call_tool(&server.base_url, &token, "list_singletons", serde_json::json!({})).await;
+    let result = mcp_call_site_tool(
+        &server.base_url,
+        &token,
+        &site_id,
+        "list_singletons",
+        serde_json::json!({}),
+    )
+    .await;
     let data = mcp_tool_json(&result);
     assert_eq!(data.as_array().unwrap().len(), 1);
 }

@@ -53,9 +53,10 @@ async fn dispatch(cli: Cli) -> Result<(), Box<dyn Error>> {
             file,
             scope,
             site,
+            storage_profile_id,
             import_as_new,
             yes,
-        }) => run_restore(file, scope, site, *import_as_new, *yes).await,
+        }) => run_restore(file, scope, site, storage_profile_id, *import_as_new, *yes).await,
         Some(Command::Service { action }) => cms::service::run_service(action, &cli).await,
         Some(Command::Doctor) => cms::diagnostics::run().await,
         Some(Command::Mcp {
@@ -131,13 +132,14 @@ async fn run_secrets(action: &SecretsAction) -> Result<(), Box<dyn Error>> {
             let fresh = cms::secrets::fresh(old_database_url);
             let config = cms::config::Config::load(&paths, &fresh)?;
             let pool = init_db_with_config(&config).await?;
-            let (tokens, webhooks, s3_sites) = invalidate_credentials(&pool).await?;
+            let (tokens, webhooks, storage_profiles, s3_sites) = invalidate_credentials(&pool).await?;
             cms::secrets::replace(&paths, &fresh)?;
             println!("Trust root replaced. Recovery report:");
             println!("- {tokens} API access token(s) invalidated");
             println!("- Active dashboard sessions invalidated");
             println!("- {webhooks} webhook(s) disabled; secret headers cleared");
-            println!("- Encrypted storage and backup credentials cleared");
+            println!("- {storage_profiles} S3 storage profile(s) disabled; credentials cleared");
+            println!("- Encrypted backup credentials cleared");
             if s3_sites > 0 {
                 println!("- {s3_sites} S3-backed site(s) require new storage credentials");
             }
@@ -146,7 +148,7 @@ async fn run_secrets(action: &SecretsAction) -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 
-async fn invalidate_credentials(pool: &cms::database::pool::DbPool) -> Result<(i64, i64, i64), Box<dyn Error>> {
+async fn invalidate_credentials(pool: &cms::database::pool::DbPool) -> Result<(i64, i64, i64, i64), Box<dyn Error>> {
     use cms::database::pool::DbPool;
     macro_rules! invalidate {
         ($pool:expr, $disabled:expr) => {{
@@ -160,19 +162,27 @@ async fn invalidate_credentials(pool: &cms::database::pool::DbPool) -> Result<(i
             let sites = sqlx::query_scalar("SELECT COUNT(*) FROM sites WHERE storage_provider = 's3'")
                 .fetch_one(&mut *tx)
                 .await?;
+            let storage_profiles = sqlx::query_scalar(
+                "SELECT COUNT(*) FROM storage_profiles \
+                 WHERE kind = 's3' AND (credentials_encrypted IS NOT NULL OR enabled = TRUE)",
+            )
+            .fetch_one(&mut *tx)
+            .await?;
             sqlx::query("DELETE FROM access_tokens").execute(&mut *tx).await?;
             sqlx::query("DELETE FROM sessions").execute(&mut *tx).await?;
             sqlx::query($disabled).execute(&mut *tx).await?;
+            sqlx::query("UPDATE storage_profiles SET credentials_encrypted = NULL, enabled = FALSE WHERE kind = 's3'")
+                .execute(&mut *tx)
+                .await?;
             sqlx::query("UPDATE instance_settings SET credentials_encrypted = NULL")
                 .execute(&mut *tx)
                 .await?;
             tx.commit().await?;
-            Ok((tokens, webhooks, sites))
+            Ok((tokens, webhooks, storage_profiles, sites))
         }};
     }
     match pool {
         DbPool::Postgres(pool) => invalidate!(pool, "UPDATE site_webhooks SET headers_encrypted = '', enabled = FALSE"),
-        DbPool::MySql(pool) => invalidate!(pool, "UPDATE site_webhooks SET headers_encrypted = '', enabled = FALSE"),
         DbPool::Sqlite(pool) => invalidate!(pool, "UPDATE site_webhooks SET headers_encrypted = '', enabled = 0"),
     }
 }
@@ -206,6 +216,9 @@ async fn run_backup(action: &BackupAction) -> Result<(), Box<dyn Error>> {
     let settings = cms::services::settings::SettingsService::load(pool.clone(), &context.secrets.master_key).await?;
     settings.apply_to_config(&mut config).await;
     let storage_registry = cms::server::initialize_storage(&config);
+    cms::services::storage_profile::StorageProfileService::new(pool.clone(), &context.secrets.master_key)
+        .register_all(&storage_registry)
+        .await?;
     let destination = build_backup_destination(&config)?;
     let service = BackupService::new(pool.clone(), storage_registry, destination, &config).with_settings(settings);
 
@@ -232,6 +245,7 @@ async fn run_backup(action: &BackupAction) -> Result<(), Box<dyn Error>> {
             } else {
                 let row = service
                     .create_backup(CreateBackupOptions {
+                        storage_profile_id: None,
                         scope,
                         include_files,
                         encrypt: *encrypt,
@@ -273,6 +287,7 @@ async fn run_restore(
     file: &std::path::Path,
     scope: &str,
     site: &Option<String>,
+    storage_profile_id: &Option<String>,
     import_as_new: bool,
     yes: bool,
 ) -> Result<(), Box<dyn Error>> {
@@ -289,6 +304,9 @@ async fn run_restore(
     let settings = cms::services::settings::SettingsService::load(pool.clone(), &context.secrets.master_key).await?;
     settings.apply_to_config(&mut config).await;
     let storage_registry = cms::server::initialize_storage(&config);
+    cms::services::storage_profile::StorageProfileService::new(pool.clone(), &context.secrets.master_key)
+        .register_all(&storage_registry)
+        .await?;
     let destination = build_backup_destination(&config)?;
     let service = BackupService::new(pool, storage_registry, destination, &config).with_settings(settings);
     let target = match scope {
@@ -304,6 +322,7 @@ async fn run_restore(
             source: RestoreSource::Bytes(std::fs::read(file)?),
             target,
             created_by: None,
+            storage_profile_id: storage_profile_id.clone(),
         })
         .await?;
     println!("Restore complete. Recovery required:");

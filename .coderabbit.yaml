@@ -1,0 +1,6 @@
+language: en-US
+early_access: false
+reviews:
+  path_filters:
+    - "!apps/backend/migrations/mysql/**"
+    - "!apps/backend/src/repository/mysql/**"

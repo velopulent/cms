@@ -1,9 +1,11 @@
 use async_trait::async_trait;
 use sqlx::SqlitePool;
 
-use crate::models::access_token::AccessToken;
+use crate::models::access_token::{AccessToken, PersonalAccessToken};
 use crate::repository::error::RepositoryError;
-use crate::repository::traits::{AccessTokenLookupRow, AccessTokenRepository, NewAccessToken};
+use crate::repository::traits::{
+    AccessTokenLookupRow, AccessTokenRepository, NewAccessToken, NewPersonalToken, PersonalTokenLookupRow,
+};
 
 pub struct SqliteAccessTokenRepository {
     pool: SqlitePool,
@@ -19,7 +21,7 @@ impl SqliteAccessTokenRepository {
 impl AccessTokenRepository for SqliteAccessTokenRepository {
     async fn list(&self, site_id: &str) -> Result<Vec<AccessToken>, RepositoryError> {
         let rows = sqlx::query_as::<_, AccessToken>(
-            "SELECT id, site_id, name, token_prefix, permission, created_by_user_id, last_used_at, created_at, expires_at, revoked_at
+            "SELECT id, site_id, name, token_prefix, scopes_json, created_by_user_id, last_used_at, created_at, expires_at, revoked_at
              FROM access_tokens WHERE site_id = ? ORDER BY created_at DESC",
         )
         .bind(site_id)
@@ -34,25 +36,25 @@ impl AccessTokenRepository for SqliteAccessTokenRepository {
             id,
             site_id,
             name,
-            token_hash,
             token_prefix,
             token_hmac,
-            permission,
+            scopes_json,
             created_by_user_id,
+            expires_at,
         } = token;
         sqlx::query(
             "INSERT INTO access_tokens
-             (id, site_id, name, token_hash, token_prefix, token_hmac, permission, created_by_user_id)
+             (id, site_id, name, token_prefix, token_hmac, scopes_json, created_by_user_id, expires_at)
              VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
         )
         .bind(id)
         .bind(site_id)
         .bind(name)
-        .bind(token_hash)
         .bind(token_prefix)
         .bind(token_hmac)
-        .bind(permission)
+        .bind(scopes_json)
         .bind(created_by_user_id)
+        .bind(expires_at)
         .execute(&self.pool)
         .await?;
 
@@ -69,16 +71,14 @@ impl AccessTokenRepository for SqliteAccessTokenRepository {
         Ok(result.rows_affected())
     }
 
-    async fn find_by_prefix(&self, prefix: &str) -> Result<Vec<AccessTokenLookupRow>, RepositoryError> {
-        let rows = sqlx::query_as::<_, AccessTokenLookupRow>(
-            "SELECT id, site_id, token_hash, token_hmac, expires_at, revoked_at, permission, last_used_at
-             FROM access_tokens WHERE token_prefix = ?",
+    async fn find_by_hmac(&self, hmac: &str) -> Result<Option<AccessTokenLookupRow>, RepositoryError> {
+        Ok(sqlx::query_as::<_, AccessTokenLookupRow>(
+            "SELECT id, site_id, token_hmac, expires_at, revoked_at, scopes_json, last_used_at
+             FROM access_tokens WHERE token_hmac = ?",
         )
-        .bind(prefix)
-        .fetch_all(&self.pool)
-        .await?;
-
-        Ok(rows)
+        .bind(hmac)
+        .fetch_optional(&self.pool)
+        .await?)
     }
 
     async fn update_last_used(&self, id: &str) -> Result<(), RepositoryError> {
@@ -86,6 +86,26 @@ impl AccessTokenRepository for SqliteAccessTokenRepository {
             .bind(id)
             .execute(&self.pool)
             .await;
+        Ok(())
+    }
+    async fn list_personal(&self, user_id: &str) -> Result<Vec<PersonalAccessToken>, RepositoryError> {
+        Ok(sqlx::query_as("SELECT id,user_id,name,token_prefix,scopes_json,last_used_at,created_at,expires_at,revoked_at FROM personal_access_tokens WHERE user_id=? ORDER BY created_at DESC").bind(user_id).fetch_all(&self.pool).await?)
+    }
+    async fn create_personal(&self, t: NewPersonalToken<'_>) -> Result<(), RepositoryError> {
+        sqlx::query("INSERT INTO personal_access_tokens(id,user_id,name,token_hmac,token_prefix,scopes_json,expires_at) VALUES(?,?,?,?,?,?,?)").bind(t.id).bind(t.user_id).bind(t.name).bind(t.token_hmac).bind(t.token_prefix).bind(t.scopes_json).bind(t.expires_at).execute(&self.pool).await?;
+        Ok(())
+    }
+    async fn revoke_personal(&self, id: &str, user_id: &str) -> Result<u64, RepositoryError> {
+        Ok(sqlx::query("UPDATE personal_access_tokens SET revoked_at=datetime('now') WHERE id=? AND user_id=? AND revoked_at IS NULL").bind(id).bind(user_id).execute(&self.pool).await?.rows_affected())
+    }
+    async fn find_personal_by_hmac(&self, hmac: &str) -> Result<Option<PersonalTokenLookupRow>, RepositoryError> {
+        Ok(sqlx::query_as("SELECT id,user_id,token_hmac,expires_at,revoked_at,scopes_json,last_used_at FROM personal_access_tokens WHERE token_hmac=?").bind(hmac).fetch_optional(&self.pool).await?)
+    }
+    async fn touch_personal(&self, id: &str) -> Result<(), RepositoryError> {
+        sqlx::query("UPDATE personal_access_tokens SET last_used_at=datetime('now') WHERE id=?")
+            .bind(id)
+            .execute(&self.pool)
+            .await?;
         Ok(())
     }
 }

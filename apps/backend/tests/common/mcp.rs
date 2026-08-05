@@ -167,6 +167,24 @@ pub async fn mcp_call_tool(base_url: &str, token: &str, tool_name: &str, argumen
     mcp_result(&resp).clone()
 }
 
+pub async fn mcp_call_site_tool(
+    base_url: &str,
+    token: &str,
+    site_id: &str,
+    tool_name: &str,
+    mut arguments: Value,
+) -> Value {
+    let object = arguments
+        .as_object_mut()
+        .expect("site-scoped MCP tool arguments must be a JSON object");
+    let previous = object.insert("site_id".to_string(), Value::String(site_id.to_string()));
+    assert!(
+        previous.is_none(),
+        "site_id must be supplied through mcp_call_site_tool"
+    );
+    mcp_call_tool(base_url, token, tool_name, arguments).await
+}
+
 pub async fn mcp_list_resources(base_url: &str, token: &str) -> Vec<Value> {
     let resp = mcp_request(base_url, token, "resources/list", None).await;
     let result = mcp_result(&resp);
@@ -178,10 +196,11 @@ pub async fn mcp_read_resource(base_url: &str, token: &str, uri: &str) -> Value 
     mcp_result(&resp).clone()
 }
 
-pub async fn create_test_collection(base_url: &str, token: &str, name: &str, slug: &str) -> Value {
-    let result = mcp_call_tool(
+pub async fn create_test_collection(base_url: &str, token: &str, site_id: &str, name: &str, slug: &str) -> Value {
+    let result = mcp_call_site_tool(
         base_url,
         token,
+        site_id,
         "create_collection",
         serde_json::json!({
             "name": name,
@@ -198,10 +217,18 @@ pub async fn create_test_collection(base_url: &str, token: &str, name: &str, slu
     result
 }
 
-pub async fn create_test_entry(base_url: &str, token: &str, collection_id: &str, slug: &str, data: Value) -> Value {
-    let result = mcp_call_tool(
+pub async fn create_test_entry(
+    base_url: &str,
+    token: &str,
+    site_id: &str,
+    collection_id: &str,
+    slug: &str,
+    data: Value,
+) -> Value {
+    let result = mcp_call_site_tool(
         base_url,
         token,
+        site_id,
         "create_entry",
         serde_json::json!({
             "collection_id": collection_id,

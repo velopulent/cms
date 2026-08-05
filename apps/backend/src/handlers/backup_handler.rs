@@ -38,6 +38,7 @@ pub struct CreateBackupBody {
     pub include_files: Option<bool>,
     #[serde(default)]
     pub encrypt: bool,
+    pub storage_profile_id: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -47,6 +48,7 @@ pub struct ScheduleBody {
     pub include_files: Option<bool>,
     pub encrypt: Option<bool>,
     pub enabled: Option<bool>,
+    pub storage_profile_id: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -62,6 +64,7 @@ pub struct RestoreBody {
     pub site_ids: Option<Vec<String>>,
     #[serde(default)]
     pub import_as_new: bool,
+    pub storage_profile_id: Option<String>,
     pub confirm: Option<String>,
 }
 
@@ -127,6 +130,7 @@ async fn create_backup(
         scope,
         schedule_id: None,
         created_by,
+        storage_profile_id: body.storage_profile_id,
     };
     match backup.create_backup(opts).await {
         Ok(row) => (StatusCode::CREATED, Json(meta::BackupInfo::from(row))).into_response(),
@@ -202,6 +206,7 @@ async fn run_restore(
     source: RestoreSource,
     target: RestoreTarget,
     created_by: Option<String>,
+    storage_profile_id: Option<String>,
     repository: &Repository,
     search: Option<Arc<SearchService>>,
 ) -> Response {
@@ -217,6 +222,7 @@ async fn run_restore(
             source,
             target,
             created_by,
+            storage_profile_id,
         })
         .await
     {
@@ -284,6 +290,7 @@ async fn create_schedule(
         body.enabled.unwrap_or(true),
         Some(&next),
         created_by.as_deref(),
+        body.storage_profile_id.as_deref(),
         &now,
     )
     .await;
@@ -332,6 +339,7 @@ async fn update_schedule(backup: &BackupService, id: &str, expect_site: Option<&
         body.encrypt.unwrap_or(false),
         body.enabled.unwrap_or(true),
         next.as_deref(),
+        body.storage_profile_id.as_deref(),
         &now,
     )
     .await;
@@ -388,6 +396,7 @@ async fn run_schedule_now(
         encrypt: row.encrypt != 0,
         schedule_id: Some(row.id.clone()),
         created_by,
+        storage_profile_id: row.storage_profile_id,
     };
     match backup.create_backup(opts).await {
         Ok(b) => (StatusCode::CREATED, Json(meta::BackupInfo::from(b))).into_response(),
@@ -419,6 +428,7 @@ struct UploadedRestore {
     mode: Option<String>,
     site_id: Option<String>,
     import_as_new: bool,
+    storage_profile_id: Option<String>,
     confirm: Option<String>,
 }
 
@@ -427,6 +437,7 @@ async fn parse_restore_upload(mut multipart: Multipart) -> Result<UploadedRestor
     let mut mode = None;
     let mut site_id = None;
     let mut import_as_new = false;
+    let mut storage_profile_id = None;
     let mut confirm = None;
     while let Ok(Some(field)) = multipart.next_field().await {
         match field.name().unwrap_or("") {
@@ -434,6 +445,7 @@ async fn parse_restore_upload(mut multipart: Multipart) -> Result<UploadedRestor
             "mode" => mode = field.text().await.ok(),
             "site_id" => site_id = field.text().await.ok(),
             "import_as_new" => import_as_new = field.text().await.ok().as_deref() == Some("true"),
+            "storage_profile_id" => storage_profile_id = field.text().await.ok(),
             "confirm" => confirm = field.text().await.ok(),
             _ => {}
         }
@@ -446,6 +458,7 @@ async fn parse_restore_upload(mut multipart: Multipart) -> Result<UploadedRestor
         mode,
         site_id,
         import_as_new,
+        storage_profile_id,
         confirm,
     })
 }
@@ -565,6 +578,7 @@ pub async fn restore_instance(
         source,
         target,
         Some(user),
+        body.storage_profile_id.clone(),
         &repository,
         services.search.clone(),
     )
@@ -611,6 +625,7 @@ pub async fn restore_instance_upload(
         RestoreSource::Bytes(upload.bytes),
         target,
         Some(user),
+        upload.storage_profile_id,
         &repository,
         services.search.clone(),
     )
@@ -868,6 +883,7 @@ pub async fn restore_site(
         source,
         target,
         Some(user),
+        body.storage_profile_id.clone(),
         &repository,
         services.search.clone(),
     )
@@ -901,6 +917,7 @@ pub async fn restore_site_upload(
         RestoreSource::Bytes(upload.bytes),
         target,
         Some(user),
+        upload.storage_profile_id,
         &repository,
         services.search.clone(),
     )

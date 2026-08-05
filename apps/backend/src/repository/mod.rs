@@ -1,5 +1,4 @@
 pub mod error;
-pub mod mysql;
 pub mod postgres;
 pub mod sqlite;
 pub mod traits;
@@ -36,16 +35,6 @@ impl Repository {
                 access_token: Arc::new(postgres::PostgresAccessTokenRepository::new(pg_pool.clone())),
                 webhook: Arc::new(postgres::PostgresWebhookRepository::new(pg_pool.clone())),
                 session: Arc::new(postgres::PostgresSessionRepository::new(pg_pool.clone())),
-            },
-            DbPool::MySql(mysql_pool) => Self {
-                user: Arc::new(mysql::MysqlUserRepository::new(mysql_pool.clone())),
-                site: Arc::new(mysql::MysqlSiteRepository::new(mysql_pool.clone())),
-                entry: Arc::new(mysql::MysqlEntryRepository::new(mysql_pool.clone())),
-                collection: Arc::new(mysql::MysqlCollectionRepository::new(mysql_pool.clone())),
-                file: Arc::new(mysql::MysqlFileRepository::new(mysql_pool.clone())),
-                access_token: Arc::new(mysql::MysqlAccessTokenRepository::new(mysql_pool.clone())),
-                webhook: Arc::new(mysql::MysqlWebhookRepository::new(mysql_pool.clone())),
-                session: Arc::new(mysql::MysqlSessionRepository::new(mysql_pool.clone())),
             },
             DbPool::Sqlite(sqlite_pool) => Self {
                 user: Arc::new(sqlite::SqliteUserRepository::new(sqlite_pool.clone())),

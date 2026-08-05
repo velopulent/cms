@@ -3,9 +3,16 @@ use crate::common::mcp::*;
 #[tokio::test]
 async fn test_list_webhooks_empty() {
     let server = start_mcp_server().await;
-    let (_, token) = setup_site_token(&server).await;
+    let (site_id, token) = setup_site_token(&server).await;
 
-    let result = mcp_call_tool(&server.base_url, &token, "list_webhooks", serde_json::json!({})).await;
+    let result = mcp_call_site_tool(
+        &server.base_url,
+        &token,
+        &site_id,
+        "list_webhooks",
+        serde_json::json!({}),
+    )
+    .await;
     let data = mcp_tool_json(&result);
 
     assert!(data.is_array());
@@ -15,11 +22,12 @@ async fn test_list_webhooks_empty() {
 #[tokio::test]
 async fn test_create_webhook() {
     let server = start_mcp_server().await;
-    let (_, token) = setup_site_token(&server).await;
+    let (site_id, token) = setup_site_token(&server).await;
 
-    let result = mcp_call_tool(
+    let result = mcp_call_site_tool(
         &server.base_url,
         &token,
+        &site_id,
         "create_webhook",
         serde_json::json!({
             "label": "Test Hook",
@@ -37,11 +45,12 @@ async fn test_create_webhook() {
 #[tokio::test]
 async fn test_get_webhook() {
     let server = start_mcp_server().await;
-    let (_, token) = setup_site_token(&server).await;
+    let (site_id, token) = setup_site_token(&server).await;
 
-    let result = mcp_call_tool(
+    let result = mcp_call_site_tool(
         &server.base_url,
         &token,
+        &site_id,
         "create_webhook",
         serde_json::json!({
             "label": "Test Hook",
@@ -52,9 +61,10 @@ async fn test_get_webhook() {
     let webhook = mcp_tool_json(&result);
     let hook_id = webhook["id"].as_str().unwrap().to_string();
 
-    let result = mcp_call_tool(
+    let result = mcp_call_site_tool(
         &server.base_url,
         &token,
+        &site_id,
         "get_webhook",
         serde_json::json!({"webhook_id": hook_id}),
     )
@@ -66,11 +76,12 @@ async fn test_get_webhook() {
 #[tokio::test]
 async fn test_get_webhook_not_found() {
     let server = start_mcp_server().await;
-    let (_, token) = setup_site_token(&server).await;
+    let (site_id, token) = setup_site_token(&server).await;
 
-    let result = mcp_call_tool(
+    let result = mcp_call_site_tool(
         &server.base_url,
         &token,
+        &site_id,
         "get_webhook",
         serde_json::json!({"webhook_id": "nonexistent"}),
     )
@@ -81,11 +92,12 @@ async fn test_get_webhook_not_found() {
 #[tokio::test]
 async fn test_update_webhook() {
     let server = start_mcp_server().await;
-    let (_, token) = setup_site_token(&server).await;
+    let (site_id, token) = setup_site_token(&server).await;
 
-    let result = mcp_call_tool(
+    let result = mcp_call_site_tool(
         &server.base_url,
         &token,
+        &site_id,
         "create_webhook",
         serde_json::json!({
             "label": "Old Label",
@@ -96,9 +108,10 @@ async fn test_update_webhook() {
     let webhook = mcp_tool_json(&result);
     let hook_id = webhook["id"].as_str().unwrap().to_string();
 
-    let result = mcp_call_tool(
+    let result = mcp_call_site_tool(
         &server.base_url,
         &token,
+        &site_id,
         "update_webhook",
         serde_json::json!({
             "webhook_id": hook_id,
@@ -113,11 +126,12 @@ async fn test_update_webhook() {
 #[tokio::test]
 async fn test_delete_webhook() {
     let server = start_mcp_server().await;
-    let (_, token) = setup_site_token(&server).await;
+    let (site_id, token) = setup_site_token(&server).await;
 
-    let result = mcp_call_tool(
+    let result = mcp_call_site_tool(
         &server.base_url,
         &token,
+        &site_id,
         "create_webhook",
         serde_json::json!({
             "label": "To Delete",
@@ -128,9 +142,10 @@ async fn test_delete_webhook() {
     let webhook = mcp_tool_json(&result);
     let hook_id = webhook["id"].as_str().unwrap().to_string();
 
-    let result = mcp_call_tool(
+    let result = mcp_call_site_tool(
         &server.base_url,
         &token,
+        &site_id,
         "delete_webhook",
         serde_json::json!({"webhook_id": hook_id}),
     )
@@ -142,11 +157,12 @@ async fn test_delete_webhook() {
 #[tokio::test]
 async fn test_list_webhook_deliveries() {
     let server = start_mcp_server().await;
-    let (_, token) = setup_site_token(&server).await;
+    let (site_id, token) = setup_site_token(&server).await;
 
-    let result = mcp_call_tool(
+    let result = mcp_call_site_tool(
         &server.base_url,
         &token,
+        &site_id,
         "create_webhook",
         serde_json::json!({
             "label": "Delivery Test",
@@ -157,9 +173,10 @@ async fn test_list_webhook_deliveries() {
     let webhook = mcp_tool_json(&result);
     let hook_id = webhook["id"].as_str().unwrap().to_string();
 
-    let result = mcp_call_tool(
+    let result = mcp_call_site_tool(
         &server.base_url,
         &token,
+        &site_id,
         "list_webhook_deliveries",
         serde_json::json!({"webhook_id": hook_id}),
     )
@@ -171,11 +188,12 @@ async fn test_list_webhook_deliveries() {
 #[tokio::test]
 async fn test_create_webhook_requires_admin() {
     let server = start_mcp_server().await;
-    let (_, token) = setup_site_read_token(&server).await;
+    let (site_id, token) = setup_site_read_token(&server).await;
 
-    let result = mcp_call_tool(
+    let result = mcp_call_site_tool(
         &server.base_url,
         &token,
+        &site_id,
         "create_webhook",
         serde_json::json!({
             "label": "Should Fail",
@@ -189,11 +207,12 @@ async fn test_create_webhook_requires_admin() {
 #[tokio::test]
 async fn test_webhook_full_lifecycle() {
     let server = start_mcp_server().await;
-    let (_, token) = setup_site_token(&server).await;
+    let (site_id, token) = setup_site_token(&server).await;
 
-    let result = mcp_call_tool(
+    let result = mcp_call_site_tool(
         &server.base_url,
         &token,
+        &site_id,
         "create_webhook",
         serde_json::json!({
             "label": "Lifecycle Hook",
@@ -204,9 +223,10 @@ async fn test_webhook_full_lifecycle() {
     let webhook = mcp_tool_json(&result);
     let hook_id = webhook["id"].as_str().unwrap().to_string();
 
-    let result = mcp_call_tool(
+    let result = mcp_call_site_tool(
         &server.base_url,
         &token,
+        &site_id,
         "get_webhook",
         serde_json::json!({"webhook_id": hook_id}),
     )
@@ -214,9 +234,10 @@ async fn test_webhook_full_lifecycle() {
     let fetched = mcp_tool_json(&result);
     assert_eq!(fetched["label"].as_str().unwrap(), "Lifecycle Hook");
 
-    let result = mcp_call_tool(
+    let result = mcp_call_site_tool(
         &server.base_url,
         &token,
+        &site_id,
         "update_webhook",
         serde_json::json!({
             "webhook_id": hook_id,
@@ -227,9 +248,10 @@ async fn test_webhook_full_lifecycle() {
     let updated = mcp_tool_json(&result);
     assert_eq!(updated["label"].as_str().unwrap(), "Updated Hook");
 
-    let result = mcp_call_tool(
+    let result = mcp_call_site_tool(
         &server.base_url,
         &token,
+        &site_id,
         "list_webhook_deliveries",
         serde_json::json!({"webhook_id": hook_id}),
     )
@@ -237,9 +259,10 @@ async fn test_webhook_full_lifecycle() {
     let deliveries = mcp_tool_json(&result);
     assert!(deliveries["items"].as_array().unwrap().is_empty());
 
-    let result = mcp_call_tool(
+    let result = mcp_call_site_tool(
         &server.base_url,
         &token,
+        &site_id,
         "delete_webhook",
         serde_json::json!({"webhook_id": hook_id}),
     )

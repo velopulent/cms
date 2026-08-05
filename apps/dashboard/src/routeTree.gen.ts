@@ -22,6 +22,7 @@ import { Route as AdminSitesSiteIdIndexRouteImport } from './routes/_admin/sites
 import { Route as AdminShellSettingsIndexRouteImport } from './routes/_admin/_shell/settings/index'
 import { Route as AdminSitesSiteIdSettingsRouteImport } from './routes/_admin/sites.$siteId/settings'
 import { Route as AdminSitesSiteIdFilesRouteImport } from './routes/_admin/sites.$siteId/files'
+import { Route as AdminSitesSiteIdDeploymentsRouteImport } from './routes/_admin/sites.$siteId/deployments'
 import { Route as AdminSitesSiteIdCollectionsRouteImport } from './routes/_admin/sites.$siteId/collections'
 import { Route as AdminShellSettingsUsersRouteImport } from './routes/_admin/_shell/settings/users'
 import { Route as AdminShellSettingsStorageRouteImport } from './routes/_admin/_shell/settings/storage'
@@ -31,6 +32,7 @@ import { Route as AdminSitesSiteIdSettingsIndexRouteImport } from './routes/_adm
 import { Route as AdminSitesSiteIdSingletonsSlugRouteImport } from './routes/_admin/sites.$siteId/singletons.$slug'
 import { Route as AdminSitesSiteIdSettingsWebhooksRouteImport } from './routes/_admin/sites.$siteId/settings/webhooks'
 import { Route as AdminSitesSiteIdSettingsMembersRouteImport } from './routes/_admin/sites.$siteId/settings/members'
+import { Route as AdminSitesSiteIdSettingsMcpRouteImport } from './routes/_admin/sites.$siteId/settings/mcp'
 import { Route as AdminSitesSiteIdSettingsBackupsRouteImport } from './routes/_admin/sites.$siteId/settings/backups'
 import { Route as AdminSitesSiteIdSettingsApiKeysRouteImport } from './routes/_admin/sites.$siteId/settings/api-keys'
 import { Route as AdminSitesSiteIdEntriesCollectionSlugRouteImport } from './routes/_admin/sites.$siteId/entries.$collectionSlug'
@@ -102,6 +104,12 @@ const AdminSitesSiteIdFilesRoute = AdminSitesSiteIdFilesRouteImport.update({
   path: '/files',
   getParentRoute: () => AdminSitesSiteIdRoute,
 } as any)
+const AdminSitesSiteIdDeploymentsRoute =
+  AdminSitesSiteIdDeploymentsRouteImport.update({
+    id: '/deployments',
+    path: '/deployments',
+    getParentRoute: () => AdminSitesSiteIdRoute,
+  } as any)
 const AdminSitesSiteIdCollectionsRoute =
   AdminSitesSiteIdCollectionsRouteImport.update({
     id: '/collections',
@@ -155,6 +163,12 @@ const AdminSitesSiteIdSettingsMembersRoute =
     path: '/members',
     getParentRoute: () => AdminSitesSiteIdSettingsRoute,
   } as any)
+const AdminSitesSiteIdSettingsMcpRoute =
+  AdminSitesSiteIdSettingsMcpRouteImport.update({
+    id: '/mcp',
+    path: '/mcp',
+    getParentRoute: () => AdminSitesSiteIdSettingsRoute,
+  } as any)
 const AdminSitesSiteIdSettingsBackupsRoute =
   AdminSitesSiteIdSettingsBackupsRouteImport.update({
     id: '/backups',
@@ -205,6 +219,7 @@ export interface FileRoutesByFullPath {
   '/settings/storage': typeof AdminShellSettingsStorageRoute
   '/settings/users': typeof AdminShellSettingsUsersRoute
   '/sites/$siteId/collections': typeof AdminSitesSiteIdCollectionsRoute
+  '/sites/$siteId/deployments': typeof AdminSitesSiteIdDeploymentsRoute
   '/sites/$siteId/files': typeof AdminSitesSiteIdFilesRoute
   '/sites/$siteId/settings': typeof AdminSitesSiteIdSettingsRouteWithChildren
   '/settings/': typeof AdminShellSettingsIndexRoute
@@ -212,6 +227,7 @@ export interface FileRoutesByFullPath {
   '/sites/$siteId/entries/$collectionSlug': typeof AdminSitesSiteIdEntriesCollectionSlugRouteWithChildren
   '/sites/$siteId/settings/api-keys': typeof AdminSitesSiteIdSettingsApiKeysRoute
   '/sites/$siteId/settings/backups': typeof AdminSitesSiteIdSettingsBackupsRoute
+  '/sites/$siteId/settings/mcp': typeof AdminSitesSiteIdSettingsMcpRoute
   '/sites/$siteId/settings/members': typeof AdminSitesSiteIdSettingsMembersRoute
   '/sites/$siteId/settings/webhooks': typeof AdminSitesSiteIdSettingsWebhooksRoute
   '/sites/$siteId/singletons/$slug': typeof AdminSitesSiteIdSingletonsSlugRoute
@@ -231,11 +247,13 @@ export interface FileRoutesByTo {
   '/settings/storage': typeof AdminShellSettingsStorageRoute
   '/settings/users': typeof AdminShellSettingsUsersRoute
   '/sites/$siteId/collections': typeof AdminSitesSiteIdCollectionsRoute
+  '/sites/$siteId/deployments': typeof AdminSitesSiteIdDeploymentsRoute
   '/sites/$siteId/files': typeof AdminSitesSiteIdFilesRoute
   '/settings': typeof AdminShellSettingsIndexRoute
   '/sites/$siteId': typeof AdminSitesSiteIdIndexRoute
   '/sites/$siteId/settings/api-keys': typeof AdminSitesSiteIdSettingsApiKeysRoute
   '/sites/$siteId/settings/backups': typeof AdminSitesSiteIdSettingsBackupsRoute
+  '/sites/$siteId/settings/mcp': typeof AdminSitesSiteIdSettingsMcpRoute
   '/sites/$siteId/settings/members': typeof AdminSitesSiteIdSettingsMembersRoute
   '/sites/$siteId/settings/webhooks': typeof AdminSitesSiteIdSettingsWebhooksRoute
   '/sites/$siteId/singletons/$slug': typeof AdminSitesSiteIdSingletonsSlugRoute
@@ -260,6 +278,7 @@ export interface FileRoutesById {
   '/_admin/_shell/settings/storage': typeof AdminShellSettingsStorageRoute
   '/_admin/_shell/settings/users': typeof AdminShellSettingsUsersRoute
   '/_admin/sites/$siteId/collections': typeof AdminSitesSiteIdCollectionsRoute
+  '/_admin/sites/$siteId/deployments': typeof AdminSitesSiteIdDeploymentsRoute
   '/_admin/sites/$siteId/files': typeof AdminSitesSiteIdFilesRoute
   '/_admin/sites/$siteId/settings': typeof AdminSitesSiteIdSettingsRouteWithChildren
   '/_admin/_shell/settings/': typeof AdminShellSettingsIndexRoute
@@ -267,6 +286,7 @@ export interface FileRoutesById {
   '/_admin/sites/$siteId/entries/$collectionSlug': typeof AdminSitesSiteIdEntriesCollectionSlugRouteWithChildren
   '/_admin/sites/$siteId/settings/api-keys': typeof AdminSitesSiteIdSettingsApiKeysRoute
   '/_admin/sites/$siteId/settings/backups': typeof AdminSitesSiteIdSettingsBackupsRoute
+  '/_admin/sites/$siteId/settings/mcp': typeof AdminSitesSiteIdSettingsMcpRoute
   '/_admin/sites/$siteId/settings/members': typeof AdminSitesSiteIdSettingsMembersRoute
   '/_admin/sites/$siteId/settings/webhooks': typeof AdminSitesSiteIdSettingsWebhooksRoute
   '/_admin/sites/$siteId/singletons/$slug': typeof AdminSitesSiteIdSingletonsSlugRoute
@@ -290,6 +310,7 @@ export interface FileRouteTypes {
     | '/settings/storage'
     | '/settings/users'
     | '/sites/$siteId/collections'
+    | '/sites/$siteId/deployments'
     | '/sites/$siteId/files'
     | '/sites/$siteId/settings'
     | '/settings/'
@@ -297,6 +318,7 @@ export interface FileRouteTypes {
     | '/sites/$siteId/entries/$collectionSlug'
     | '/sites/$siteId/settings/api-keys'
     | '/sites/$siteId/settings/backups'
+    | '/sites/$siteId/settings/mcp'
     | '/sites/$siteId/settings/members'
     | '/sites/$siteId/settings/webhooks'
     | '/sites/$siteId/singletons/$slug'
@@ -316,11 +338,13 @@ export interface FileRouteTypes {
     | '/settings/storage'
     | '/settings/users'
     | '/sites/$siteId/collections'
+    | '/sites/$siteId/deployments'
     | '/sites/$siteId/files'
     | '/settings'
     | '/sites/$siteId'
     | '/sites/$siteId/settings/api-keys'
     | '/sites/$siteId/settings/backups'
+    | '/sites/$siteId/settings/mcp'
     | '/sites/$siteId/settings/members'
     | '/sites/$siteId/settings/webhooks'
     | '/sites/$siteId/singletons/$slug'
@@ -344,6 +368,7 @@ export interface FileRouteTypes {
     | '/_admin/_shell/settings/storage'
     | '/_admin/_shell/settings/users'
     | '/_admin/sites/$siteId/collections'
+    | '/_admin/sites/$siteId/deployments'
     | '/_admin/sites/$siteId/files'
     | '/_admin/sites/$siteId/settings'
     | '/_admin/_shell/settings/'
@@ -351,6 +376,7 @@ export interface FileRouteTypes {
     | '/_admin/sites/$siteId/entries/$collectionSlug'
     | '/_admin/sites/$siteId/settings/api-keys'
     | '/_admin/sites/$siteId/settings/backups'
+    | '/_admin/sites/$siteId/settings/mcp'
     | '/_admin/sites/$siteId/settings/members'
     | '/_admin/sites/$siteId/settings/webhooks'
     | '/_admin/sites/$siteId/singletons/$slug'
@@ -459,6 +485,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AdminSitesSiteIdFilesRouteImport
       parentRoute: typeof AdminSitesSiteIdRoute
     }
+    '/_admin/sites/$siteId/deployments': {
+      id: '/_admin/sites/$siteId/deployments'
+      path: '/deployments'
+      fullPath: '/sites/$siteId/deployments'
+      preLoaderRoute: typeof AdminSitesSiteIdDeploymentsRouteImport
+      parentRoute: typeof AdminSitesSiteIdRoute
+    }
     '/_admin/sites/$siteId/collections': {
       id: '/_admin/sites/$siteId/collections'
       path: '/collections'
@@ -520,6 +553,13 @@ declare module '@tanstack/react-router' {
       path: '/members'
       fullPath: '/sites/$siteId/settings/members'
       preLoaderRoute: typeof AdminSitesSiteIdSettingsMembersRouteImport
+      parentRoute: typeof AdminSitesSiteIdSettingsRoute
+    }
+    '/_admin/sites/$siteId/settings/mcp': {
+      id: '/_admin/sites/$siteId/settings/mcp'
+      path: '/mcp'
+      fullPath: '/sites/$siteId/settings/mcp'
+      preLoaderRoute: typeof AdminSitesSiteIdSettingsMcpRouteImport
       parentRoute: typeof AdminSitesSiteIdSettingsRoute
     }
     '/_admin/sites/$siteId/settings/backups': {
@@ -605,6 +645,7 @@ const AdminShellRouteWithChildren = AdminShellRoute._addFileChildren(
 interface AdminSitesSiteIdSettingsRouteChildren {
   AdminSitesSiteIdSettingsApiKeysRoute: typeof AdminSitesSiteIdSettingsApiKeysRoute
   AdminSitesSiteIdSettingsBackupsRoute: typeof AdminSitesSiteIdSettingsBackupsRoute
+  AdminSitesSiteIdSettingsMcpRoute: typeof AdminSitesSiteIdSettingsMcpRoute
   AdminSitesSiteIdSettingsMembersRoute: typeof AdminSitesSiteIdSettingsMembersRoute
   AdminSitesSiteIdSettingsWebhooksRoute: typeof AdminSitesSiteIdSettingsWebhooksRoute
   AdminSitesSiteIdSettingsIndexRoute: typeof AdminSitesSiteIdSettingsIndexRoute
@@ -614,6 +655,7 @@ const AdminSitesSiteIdSettingsRouteChildren: AdminSitesSiteIdSettingsRouteChildr
   {
     AdminSitesSiteIdSettingsApiKeysRoute: AdminSitesSiteIdSettingsApiKeysRoute,
     AdminSitesSiteIdSettingsBackupsRoute: AdminSitesSiteIdSettingsBackupsRoute,
+    AdminSitesSiteIdSettingsMcpRoute: AdminSitesSiteIdSettingsMcpRoute,
     AdminSitesSiteIdSettingsMembersRoute: AdminSitesSiteIdSettingsMembersRoute,
     AdminSitesSiteIdSettingsWebhooksRoute:
       AdminSitesSiteIdSettingsWebhooksRoute,
@@ -648,6 +690,7 @@ const AdminSitesSiteIdEntriesCollectionSlugRouteWithChildren =
 
 interface AdminSitesSiteIdRouteChildren {
   AdminSitesSiteIdCollectionsRoute: typeof AdminSitesSiteIdCollectionsRoute
+  AdminSitesSiteIdDeploymentsRoute: typeof AdminSitesSiteIdDeploymentsRoute
   AdminSitesSiteIdFilesRoute: typeof AdminSitesSiteIdFilesRoute
   AdminSitesSiteIdSettingsRoute: typeof AdminSitesSiteIdSettingsRouteWithChildren
   AdminSitesSiteIdIndexRoute: typeof AdminSitesSiteIdIndexRoute
@@ -657,6 +700,7 @@ interface AdminSitesSiteIdRouteChildren {
 
 const AdminSitesSiteIdRouteChildren: AdminSitesSiteIdRouteChildren = {
   AdminSitesSiteIdCollectionsRoute: AdminSitesSiteIdCollectionsRoute,
+  AdminSitesSiteIdDeploymentsRoute: AdminSitesSiteIdDeploymentsRoute,
   AdminSitesSiteIdFilesRoute: AdminSitesSiteIdFilesRoute,
   AdminSitesSiteIdSettingsRoute: AdminSitesSiteIdSettingsRouteWithChildren,
   AdminSitesSiteIdIndexRoute: AdminSitesSiteIdIndexRoute,

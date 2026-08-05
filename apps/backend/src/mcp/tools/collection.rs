@@ -12,23 +12,18 @@ use crate::middleware::auth::Actor;
 use crate::models::authorization::Action;
 use crate::services::{Services, authorization::AuthorizationService};
 
-fn require_site_id(actor: &Actor) -> Result<String, McpError> {
-    actor
-        .bound_site_id()
-        .map(String::from)
-        .ok_or_else(|| McpError::invalid_request("No site context", None))
-}
-
 #[derive(Debug, Deserialize, JsonSchema)]
-pub struct ListCollectionsParams {}
+pub struct ListCollectionsParams {
+    pub site_id: String,
+}
 
 pub async fn list_collections(
     authorization: &Arc<AuthorizationService>,
     services: &Arc<Services>,
     actor: &Actor,
-    _params: Parameters<ListCollectionsParams>,
+    params: Parameters<ListCollectionsParams>,
 ) -> Result<CallToolResult, McpError> {
-    let site_id = require_site_id(actor)?;
+    let site_id = params.0.site_id;
     if let Err(e) = authorization
         .require_site_action(actor, &site_id, Action::SchemaRead)
         .await
@@ -43,6 +38,7 @@ pub async fn list_collections(
 
 #[derive(Debug, Deserialize, JsonSchema)]
 pub struct GetCollectionParams {
+    pub site_id: String,
     pub slug: String,
 }
 
@@ -52,7 +48,7 @@ pub async fn get_collection(
     actor: &Actor,
     params: Parameters<GetCollectionParams>,
 ) -> Result<CallToolResult, McpError> {
-    let site_id = require_site_id(actor)?;
+    let site_id = params.0.site_id.clone();
     if let Err(e) = authorization
         .require_site_action(actor, &site_id, Action::SchemaRead)
         .await
@@ -70,6 +66,7 @@ pub async fn get_collection(
 
 #[derive(Debug, Deserialize, JsonSchema)]
 pub struct CreateCollectionParams {
+    pub site_id: String,
     pub name: String,
     pub slug: Option<String>,
     #[schemars(with = "ArbitraryJson")]
@@ -83,7 +80,7 @@ pub async fn create_collection(
     actor: &Actor,
     params: Parameters<CreateCollectionParams>,
 ) -> Result<CallToolResult, McpError> {
-    let site_id = require_site_id(actor)?;
+    let site_id = params.0.site_id.clone();
     if let Err(e) = authorization
         .require_site_action(actor, &site_id, Action::SchemaWrite)
         .await
@@ -110,6 +107,7 @@ pub async fn create_collection(
 
 #[derive(Debug, Deserialize, JsonSchema)]
 pub struct UpdateCollectionParams {
+    pub site_id: String,
     pub slug: String,
     pub name: Option<String>,
     pub new_slug: Option<String>,
@@ -123,7 +121,7 @@ pub async fn update_collection(
     actor: &Actor,
     params: Parameters<UpdateCollectionParams>,
 ) -> Result<CallToolResult, McpError> {
-    let site_id = require_site_id(actor)?;
+    let site_id = params.0.site_id.clone();
     if let Err(e) = authorization
         .require_site_action(actor, &site_id, Action::SchemaWrite)
         .await
@@ -156,6 +154,7 @@ pub async fn update_collection(
 
 #[derive(Debug, Deserialize, JsonSchema)]
 pub struct DeleteCollectionParams {
+    pub site_id: String,
     pub slug: String,
 }
 
@@ -165,7 +164,7 @@ pub async fn delete_collection(
     actor: &Actor,
     params: Parameters<DeleteCollectionParams>,
 ) -> Result<CallToolResult, McpError> {
-    let site_id = require_site_id(actor)?;
+    let site_id = params.0.site_id.clone();
     if let Err(e) = authorization
         .require_site_action(actor, &site_id, Action::SchemaWrite)
         .await

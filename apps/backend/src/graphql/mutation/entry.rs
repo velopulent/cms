@@ -10,7 +10,9 @@ impl EntryMutation {
     pub async fn create_entry(&self, ctx: &Context<'_>, input: CreateEntryInput) -> Result<Entry> {
         let gql_ctx = ctx.data::<GqlContext>()?;
         let site_id = gql_ctx.require_site()?;
-        gql_ctx.require_write()?;
+        gql_ctx
+            .require_write(crate::models::authorization::Action::ContentWrite)
+            .await?;
 
         let created_by = gql_ctx.user_id();
         let entry = gql_ctx
@@ -26,7 +28,9 @@ impl EntryMutation {
     pub async fn update_entry(&self, ctx: &Context<'_>, id: String, input: UpdateEntryInput) -> Result<Entry> {
         let gql_ctx = ctx.data::<GqlContext>()?;
         let site_id = gql_ctx.require_site()?;
-        gql_ctx.require_write()?;
+        gql_ctx
+            .require_write(crate::models::authorization::Action::ContentWrite)
+            .await?;
 
         let created_by = gql_ctx.user_id();
         let entry = gql_ctx
@@ -50,7 +54,9 @@ impl EntryMutation {
     pub async fn delete_entry(&self, ctx: &Context<'_>, id: String) -> Result<bool> {
         let gql_ctx = ctx.data::<GqlContext>()?;
         let site_id = gql_ctx.require_site()?;
-        gql_ctx.require_write()?;
+        gql_ctx
+            .require_write(crate::models::authorization::Action::ContentWrite)
+            .await?;
 
         gql_ctx
             .services
@@ -65,7 +71,9 @@ impl EntryMutation {
     pub async fn publish_entry(&self, ctx: &Context<'_>, id: String) -> Result<Entry> {
         let gql_ctx = ctx.data::<GqlContext>()?;
         let site_id = gql_ctx.require_site()?;
-        gql_ctx.require_write()?;
+        gql_ctx
+            .require_write(crate::models::authorization::Action::ContentWrite)
+            .await?;
 
         let entry = gql_ctx
             .services
@@ -80,7 +88,9 @@ impl EntryMutation {
     pub async fn unpublish_entry(&self, ctx: &Context<'_>, id: String) -> Result<Entry> {
         let gql_ctx = ctx.data::<GqlContext>()?;
         let site_id = gql_ctx.require_site()?;
-        gql_ctx.require_write()?;
+        gql_ctx
+            .require_write(crate::models::authorization::Action::ContentWrite)
+            .await?;
 
         let entry = gql_ctx
             .services
@@ -95,7 +105,9 @@ impl EntryMutation {
     pub async fn restore_revision(&self, ctx: &Context<'_>, entry_id: String, revision_number: i64) -> Result<Entry> {
         let gql_ctx = ctx.data::<GqlContext>()?;
         let site_id = gql_ctx.require_site()?;
-        gql_ctx.require_write()?;
+        gql_ctx
+            .require_write(crate::models::authorization::Action::ContentWrite)
+            .await?;
 
         let created_by = gql_ctx.user_id();
         let entry = gql_ctx

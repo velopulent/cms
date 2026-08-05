@@ -28,7 +28,7 @@ tower = { version = "0.5", features = ["full"] }
 tower-http = { version = "0.7", features = ["cors", "limit", "trace"] }
 rust-embed = { version = "8", optional = true }
 mime_guess = "2"
-sqlx = { version = "0.9", features = ["runtime-tokio", "macros", "postgres", "mysql", "sqlite", "chrono", "uuid", "migrate"] }
+sqlx = { version = "0.9", features = ["runtime-tokio", "macros", "postgres", "sqlite", "chrono", "uuid", "migrate"] }
 thiserror = "2"
 async-trait = "0.1"
 uuid = { version = "1", features = ["v4", "v7", "serde"] }

@@ -15,15 +15,9 @@ use crate::services::entry::UpdateEntryInput;
 use crate::services::{Services, authorization::AuthorizationService};
 use crate::storage::StorageRegistry;
 
-fn require_site_id(actor: &Actor) -> Result<String, McpError> {
-    actor
-        .bound_site_id()
-        .map(String::from)
-        .ok_or_else(|| McpError::invalid_request("No site context", None))
-}
-
 #[derive(Debug, Deserialize, JsonSchema)]
 pub struct ListEntriesParams {
+    pub site_id: String,
     pub collection_slug: Option<String>,
     pub published_only: Option<bool>,
     pub page: Option<i64>,
@@ -37,7 +31,7 @@ pub async fn list_entries(
     actor: &Actor,
     params: Parameters<ListEntriesParams>,
 ) -> Result<CallToolResult, McpError> {
-    let site_id = require_site_id(actor)?;
+    let site_id = params.0.site_id.clone();
     if let Err(e) = authorization
         .require_site_action(actor, &site_id, Action::ContentRead)
         .await
@@ -73,6 +67,7 @@ pub async fn list_entries(
 
 #[derive(Debug, Deserialize, JsonSchema)]
 pub struct GetEntryParams {
+    pub site_id: String,
     pub id: String,
 }
 
@@ -83,7 +78,7 @@ pub async fn get_entry(
     actor: &Actor,
     params: Parameters<GetEntryParams>,
 ) -> Result<CallToolResult, McpError> {
-    let site_id = require_site_id(actor)?;
+    let site_id = params.0.site_id.clone();
     if let Err(e) = authorization
         .require_site_action(actor, &site_id, Action::ContentRead)
         .await
@@ -101,6 +96,7 @@ pub async fn get_entry(
 
 #[derive(Debug, Deserialize, JsonSchema)]
 pub struct CreateEntryParams {
+    pub site_id: String,
     pub collection_id: String,
     #[schemars(with = "ArbitraryJson")]
     pub values: serde_json::Value,
@@ -114,7 +110,7 @@ pub async fn create_entry(
     actor: &Actor,
     params: Parameters<CreateEntryParams>,
 ) -> Result<CallToolResult, McpError> {
-    let site_id = require_site_id(actor)?;
+    let site_id = params.0.site_id.clone();
     if let Err(e) = authorization
         .require_site_action(actor, &site_id, Action::ContentWrite)
         .await
@@ -144,6 +140,7 @@ pub async fn create_entry(
 
 #[derive(Debug, Deserialize, JsonSchema)]
 pub struct UpdateEntryParams {
+    pub site_id: String,
     pub id: String,
     #[schemars(with = "ArbitraryJson")]
     pub values: Option<serde_json::Value>,
@@ -158,7 +155,7 @@ pub async fn update_entry(
     actor: &Actor,
     params: Parameters<UpdateEntryParams>,
 ) -> Result<CallToolResult, McpError> {
-    let site_id = require_site_id(actor)?;
+    let site_id = params.0.site_id.clone();
     if let Err(e) = authorization
         .require_site_action(actor, &site_id, Action::ContentWrite)
         .await
@@ -185,6 +182,7 @@ pub async fn update_entry(
 
 #[derive(Debug, Deserialize, JsonSchema)]
 pub struct DeleteEntryParams {
+    pub site_id: String,
     pub id: String,
 }
 
@@ -194,7 +192,7 @@ pub async fn delete_entry(
     actor: &Actor,
     params: Parameters<DeleteEntryParams>,
 ) -> Result<CallToolResult, McpError> {
-    let site_id = require_site_id(actor)?;
+    let site_id = params.0.site_id.clone();
     if let Err(e) = authorization
         .require_site_action(actor, &site_id, Action::ContentWrite)
         .await
@@ -217,6 +215,7 @@ pub async fn delete_entry(
 
 #[derive(Debug, Deserialize, JsonSchema)]
 pub struct PublishEntryParams {
+    pub site_id: String,
     pub id: String,
 }
 
@@ -226,7 +225,7 @@ pub async fn publish_entry(
     actor: &Actor,
     params: Parameters<PublishEntryParams>,
 ) -> Result<CallToolResult, McpError> {
-    let site_id = require_site_id(actor)?;
+    let site_id = params.0.site_id.clone();
     if let Err(e) = authorization
         .require_site_action(actor, &site_id, Action::ContentWrite)
         .await
@@ -241,6 +240,7 @@ pub async fn publish_entry(
 
 #[derive(Debug, Deserialize, JsonSchema)]
 pub struct UnpublishEntryParams {
+    pub site_id: String,
     pub id: String,
 }
 
@@ -250,7 +250,7 @@ pub async fn unpublish_entry(
     actor: &Actor,
     params: Parameters<UnpublishEntryParams>,
 ) -> Result<CallToolResult, McpError> {
-    let site_id = require_site_id(actor)?;
+    let site_id = params.0.site_id.clone();
     if let Err(e) = authorization
         .require_site_action(actor, &site_id, Action::ContentWrite)
         .await
@@ -265,6 +265,7 @@ pub async fn unpublish_entry(
 
 #[derive(Debug, Deserialize, JsonSchema)]
 pub struct ListRevisionsParams {
+    pub site_id: String,
     pub entry_id: String,
     pub page: Option<i64>,
     pub per_page: Option<i64>,
@@ -276,7 +277,7 @@ pub async fn list_revisions(
     actor: &Actor,
     params: Parameters<ListRevisionsParams>,
 ) -> Result<CallToolResult, McpError> {
-    let site_id = require_site_id(actor)?;
+    let site_id = params.0.site_id.clone();
     if let Err(e) = authorization
         .require_site_action(actor, &site_id, Action::ContentRead)
         .await
@@ -305,6 +306,7 @@ pub async fn list_revisions(
 
 #[derive(Debug, Deserialize, JsonSchema)]
 pub struct RestoreRevisionParams {
+    pub site_id: String,
     pub entry_id: String,
     pub revision_number: i64,
 }
@@ -315,7 +317,7 @@ pub async fn restore_revision(
     actor: &Actor,
     params: Parameters<RestoreRevisionParams>,
 ) -> Result<CallToolResult, McpError> {
-    let site_id = require_site_id(actor)?;
+    let site_id = params.0.site_id.clone();
     if let Err(e) = authorization
         .require_site_action(actor, &site_id, Action::ContentWrite)
         .await

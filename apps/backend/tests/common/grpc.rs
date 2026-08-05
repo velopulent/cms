@@ -83,8 +83,9 @@ impl GrpcTestContext {
 
         let storage_registry = StorageRegistry::new();
         let fs_storage =
-            cms::storage::FileSystemStorage::new(&storage_path).expect("Failed to init filesystem storage");
-        storage_registry.register(STORAGE_KIND_FILESYSTEM, Arc::new(fs_storage));
+            Arc::new(cms::storage::FileSystemStorage::new(&storage_path).expect("Failed to init filesystem storage"));
+        storage_registry.register(STORAGE_KIND_FILESYSTEM, fs_storage.clone());
+        storage_registry.register("local-filesystem", fs_storage);
         let storage_registry = Arc::new(storage_registry);
 
         let config = Arc::new(config);
@@ -256,7 +257,7 @@ impl GrpcTestContext {
             .post(format!("{}/api/dashboard/sites/{}/tokens", self.rest_base_url, site_id))
             .header("Cookie", format!("token={}; csrf={}", token, csrf))
             .header("X-CSRF-Token", &csrf)
-            .json(&serde_json::json!({"name": "Test Token", "permission": "write"}))
+            .json(&serde_json::json!({"name": "Test Token", "scopes": super::fixtures::site_key_scopes("write")}))
             .send()
             .await
             .expect("Failed to create token");

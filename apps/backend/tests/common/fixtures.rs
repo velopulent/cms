@@ -26,9 +26,36 @@ pub async fn setup(server: &TestServer) -> (String, String, String) {
     (token, csrf, site_id)
 }
 
-/// Log in as admin, create a site, and mint a site access token with the given
-/// `permission` (`"read"` or `"write"`). Returns `(site_id, token)`.
-pub async fn create_site_and_token(server: &TestServer, permission: &str) -> (String, String) {
+/// Test-only scope presets for scoped machine site keys.
+pub fn site_key_scopes(access: &str) -> Vec<&'static str> {
+    let mut scopes = vec![
+        "site.read",
+        "site.settings.read",
+        "content.read",
+        "files.read",
+        "schema.read",
+        "webhooks.read",
+        "deployments.read",
+        "mcp.use",
+    ];
+    if access == "write" {
+        scopes.extend([
+            "site.settings.write",
+            "content.write",
+            "files.write",
+            "schema.write",
+            "webhooks.write",
+            "webhooks.trigger",
+            "deployments.write",
+            "deployments.trigger",
+        ]);
+    }
+    scopes
+}
+
+/// Log in as admin, create a site, and mint a scoped machine site key.
+/// Returns `(site_id, token)`.
+pub async fn create_site_and_token(server: &TestServer, access: &str) -> (String, String) {
     let client = http_client();
     let resp = server.login_user(&client, "admin@cms.local", "admin").await;
     let (token, csrf) = extract_cookies(&resp);
@@ -52,7 +79,7 @@ pub async fn create_site_and_token(server: &TestServer, permission: &str) -> (St
     let resp = client
         .post(format!("{}/api/dashboard/sites/{}/tokens", server.base_url, site_id))
         .headers(auth_header(&token, &csrf))
-        .json(&json!({"name": "Test Token", "permission": permission}))
+        .json(&json!({"name": "Test Token", "scopes": site_key_scopes(access)}))
         .send()
         .await
         .unwrap();

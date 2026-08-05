@@ -40,6 +40,15 @@ function SettingsLayout() {
             General
           </TabsTrigger>
           <TabsTrigger
+            value="mcp"
+            nativeButton={false}
+            render={
+              <Link to="/sites/$siteId/settings/mcp" params={{ siteId }} />
+            }
+          >
+            MCP
+          </TabsTrigger>
+          <TabsTrigger
             value="members"
             nativeButton={false}
             render={

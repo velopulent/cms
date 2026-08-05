@@ -347,11 +347,6 @@ async fn load_row(pool: &DbPool) -> Result<Option<(i64, String, Option<String>)>
             .fetch_optional(pool)
             .await
         }
-        DbPool::MySql(pool) => sqlx::query_as(
-            "SELECT CAST(version AS SIGNED), settings_json, credentials_encrypted FROM instance_settings WHERE id = 1",
-        )
-        .fetch_optional(pool)
-        .await,
         DbPool::Sqlite(pool) => {
             sqlx::query_as("SELECT version, settings_json, credentials_encrypted FROM instance_settings WHERE id = 1")
                 .fetch_optional(pool)
@@ -365,8 +360,6 @@ async fn persist(pool: &DbPool, settings: &InstanceSettings, encrypted: Option<&
     match pool {
         DbPool::Postgres(pool) => sqlx::query("INSERT INTO instance_settings (id, version, settings_json, credentials_encrypted) VALUES (1, $1, $2, $3) ON CONFLICT (id) DO UPDATE SET version = EXCLUDED.version, settings_json = EXCLUDED.settings_json, credentials_encrypted = EXCLUDED.credentials_encrypted, updated_at = NOW()")
             .bind(SETTINGS_VERSION as i32).bind(json).bind(encrypted).execute(pool).await.map(|_| ()),
-        DbPool::MySql(pool) => sqlx::query("INSERT INTO instance_settings (id, version, settings_json, credentials_encrypted) VALUES (1, ?, ?, ?) ON DUPLICATE KEY UPDATE version = VALUES(version), settings_json = VALUES(settings_json), credentials_encrypted = VALUES(credentials_encrypted)")
-            .bind(SETTINGS_VERSION).bind(json).bind(encrypted).execute(pool).await.map(|_| ()),
         DbPool::Sqlite(pool) => sqlx::query("INSERT INTO instance_settings (id, version, settings_json, credentials_encrypted) VALUES (1, ?1, ?2, ?3) ON CONFLICT(id) DO UPDATE SET version = excluded.version, settings_json = excluded.settings_json, credentials_encrypted = excluded.credentials_encrypted, updated_at = datetime('now')")
             .bind(SETTINGS_VERSION).bind(json).bind(encrypted).execute(pool).await.map(|_| ()),
     }

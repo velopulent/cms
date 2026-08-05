@@ -1,6 +1,6 @@
 //! CRUD for the backup bookkeeping tables (`backups`, `backup_schedules`,
 //! `restore_jobs`). Integer/bool columns are BIGINT (0/1) so a single i64 binds
-//! across SQLite/Postgres/MySQL; `?` placeholders are rewritten to `$n` for
+//! across SQLite/Postgres; `?` placeholders are rewritten to `$n` for
 //! Postgres by [`q`].
 
 use serde::Serialize;
@@ -39,7 +39,6 @@ macro_rules! exec {
         match $pool {
             DbPool::Sqlite(p) => { sqlx::query(sqlx::AssertSqlSafe(sql.as_str()))$(.bind($bind))*.execute(p).await.map_err(dberr)?; }
             DbPool::Postgres(p) => { sqlx::query(sqlx::AssertSqlSafe(sql.as_str()))$(.bind($bind))*.execute(p).await.map_err(dberr)?; }
-            DbPool::MySql(p) => { sqlx::query(sqlx::AssertSqlSafe(sql.as_str()))$(.bind($bind))*.execute(p).await.map_err(dberr)?; }
         }
     }};
 }
@@ -50,7 +49,6 @@ macro_rules! fetch_all_as {
         match $pool {
             DbPool::Sqlite(p) => sqlx::query_as::<_, $ty>(sqlx::AssertSqlSafe(sql.as_str()))$(.bind($bind))*.fetch_all(p).await.map_err(dberr)?,
             DbPool::Postgres(p) => sqlx::query_as::<_, $ty>(sqlx::AssertSqlSafe(sql.as_str()))$(.bind($bind))*.fetch_all(p).await.map_err(dberr)?,
-            DbPool::MySql(p) => sqlx::query_as::<_, $ty>(sqlx::AssertSqlSafe(sql.as_str()))$(.bind($bind))*.fetch_all(p).await.map_err(dberr)?,
         }
     }};
 }
@@ -61,7 +59,6 @@ macro_rules! fetch_opt_as {
         match $pool {
             DbPool::Sqlite(p) => sqlx::query_as::<_, $ty>(sqlx::AssertSqlSafe(sql.as_str()))$(.bind($bind))*.fetch_optional(p).await.map_err(dberr)?,
             DbPool::Postgres(p) => sqlx::query_as::<_, $ty>(sqlx::AssertSqlSafe(sql.as_str()))$(.bind($bind))*.fetch_optional(p).await.map_err(dberr)?,
-            DbPool::MySql(p) => sqlx::query_as::<_, $ty>(sqlx::AssertSqlSafe(sql.as_str()))$(.bind($bind))*.fetch_optional(p).await.map_err(dberr)?,
         }
     }};
 }
@@ -90,6 +87,7 @@ pub struct BackupRow {
     pub started_at: Option<String>,
     pub completed_at: Option<String>,
     pub created_at: String,
+    pub storage_profile_id: Option<String>,
 }
 
 /// Frontend-friendly view with proper booleans.
@@ -110,6 +108,7 @@ pub struct BackupInfo {
     pub created_by: Option<String>,
     pub completed_at: Option<String>,
     pub created_at: String,
+    pub storage_profile_id: Option<String>,
 }
 
 impl From<BackupRow> for BackupInfo {
@@ -130,13 +129,14 @@ impl From<BackupRow> for BackupInfo {
             created_by: r.created_by,
             completed_at: r.completed_at,
             created_at: r.created_at,
+            storage_profile_id: r.storage_profile_id,
         }
     }
 }
 
 const BACKUP_COLS: &str = "id, schedule_id, scope, site_id, status, format_version, schema_version, \
     size_bytes, file_count, includes_files, encrypted, destination_key, checksum, error, created_by, \
-    started_at, completed_at, created_at";
+    started_at, completed_at, created_at, storage_profile_id";
 
 /// Insert a `running` backup row at the start of a run.
 #[allow(clippy::too_many_arguments)]
@@ -149,12 +149,13 @@ pub async fn insert_running(
     includes_files: bool,
     encrypt: bool,
     created_by: Option<&str>,
+    storage_profile_id: Option<&str>,
     now: &str,
 ) -> Result<(), BackupError> {
     exec!(
         pool,
-        "INSERT INTO backups (id, schedule_id, scope, site_id, status, format_version, includes_files, encrypted, created_by, started_at, created_at) \
-         VALUES (?, ?, ?, ?, 'running', ?, ?, ?, ?, ?, ?)",
+        "INSERT INTO backups (id, schedule_id, scope, site_id, status, format_version, includes_files, encrypted, created_by, started_at, created_at, storage_profile_id) \
+         VALUES (?, ?, ?, ?, 'running', ?, ?, ?, ?, ?, ?, ?)",
         id.to_string(),
         schedule_id.map(|s| s.to_string()),
         scope.to_string(),
@@ -165,6 +166,7 @@ pub async fn insert_running(
         created_by.map(|s| s.to_string()),
         now.to_string(),
         now.to_string(),
+        storage_profile_id.map(|value| value.to_string()),
     );
     Ok(())
 }
@@ -223,12 +225,6 @@ pub async fn fail_orphaned(pool: &DbPool, now: &str) -> Result<u64, BackupError>
             .map_err(dberr)?
             .rows_affected(),
         DbPool::Postgres(p) => sqlx::query(sqlx::AssertSqlSafe(backups_sql.as_str()))
-            .bind(now.to_string())
-            .execute(p)
-            .await
-            .map_err(dberr)?
-            .rows_affected(),
-        DbPool::MySql(p) => sqlx::query(sqlx::AssertSqlSafe(backups_sql.as_str()))
             .bind(now.to_string())
             .execute(p)
             .await
@@ -307,6 +303,7 @@ pub struct BackupScheduleRow {
     pub created_by: Option<String>,
     pub created_at: String,
     pub updated_at: String,
+    pub storage_profile_id: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -322,6 +319,7 @@ pub struct ScheduleInfo {
     pub last_run_at: Option<String>,
     pub next_run_at: Option<String>,
     pub created_at: String,
+    pub storage_profile_id: Option<String>,
 }
 
 impl From<BackupScheduleRow> for ScheduleInfo {
@@ -338,12 +336,13 @@ impl From<BackupScheduleRow> for ScheduleInfo {
             last_run_at: r.last_run_at,
             next_run_at: r.next_run_at,
             created_at: r.created_at,
+            storage_profile_id: r.storage_profile_id,
         }
     }
 }
 
 const SCHEDULE_COLS: &str = "id, scope, site_id, cron, retention_n, include_files, encrypt, enabled, \
-    last_run_at, next_run_at, created_by, created_at, updated_at";
+    last_run_at, next_run_at, created_by, created_at, updated_at, storage_profile_id";
 
 #[allow(clippy::too_many_arguments)]
 pub async fn create_schedule(
@@ -358,12 +357,13 @@ pub async fn create_schedule(
     enabled: bool,
     next_run_at: Option<&str>,
     created_by: Option<&str>,
+    storage_profile_id: Option<&str>,
     now: &str,
 ) -> Result<(), BackupError> {
     exec!(
         pool,
-        "INSERT INTO backup_schedules (id, scope, site_id, cron, retention_n, include_files, encrypt, enabled, next_run_at, created_by, created_at, updated_at) \
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        "INSERT INTO backup_schedules (id, scope, site_id, cron, retention_n, include_files, encrypt, enabled, next_run_at, created_by, created_at, updated_at, storage_profile_id) \
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         id.to_string(),
         scope.to_string(),
         site_id.map(|s| s.to_string()),
@@ -376,6 +376,7 @@ pub async fn create_schedule(
         created_by.map(|s| s.to_string()),
         now.to_string(),
         now.to_string(),
+        storage_profile_id.map(|value| value.to_string()),
     );
     Ok(())
 }
@@ -390,17 +391,19 @@ pub async fn update_schedule(
     encrypt: bool,
     enabled: bool,
     next_run_at: Option<&str>,
+    storage_profile_id: Option<&str>,
     now: &str,
 ) -> Result<(), BackupError> {
     exec!(
         pool,
-        "UPDATE backup_schedules SET cron = ?, retention_n = ?, include_files = ?, encrypt = ?, enabled = ?, next_run_at = ?, updated_at = ? WHERE id = ?",
+        "UPDATE backup_schedules SET cron = ?, retention_n = ?, include_files = ?, encrypt = ?, enabled = ?, next_run_at = ?, storage_profile_id = ?, updated_at = ? WHERE id = ?",
         cron.to_string(),
         retention_n,
         i64::from(include_files),
         i64::from(encrypt),
         i64::from(enabled),
         next_run_at.map(|s| s.to_string()),
+        storage_profile_id.map(|value| value.to_string()),
         now.to_string(),
         id.to_string(),
     );

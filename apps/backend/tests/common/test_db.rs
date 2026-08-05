@@ -1,4 +1,4 @@
-//! Per-test database provisioning across SQLite / Postgres / MySQL.
+//! Per-test database provisioning across SQLite / Postgres.
 //!
 //! Integration tests are black-box (HTTP / gRPC against a real server that owns
 //! its own connection pool), so transaction-rollback isolation is impossible —
@@ -6,13 +6,13 @@
 //! its own *physical* database.
 //!
 //! The backend is chosen once per `cargo test` invocation via `TEST_DATABASE`
-//! (`sqlite` — the default — `postgres`, or `mysql`). The admin / maintenance
+//! (`sqlite` — the default — or `postgres`). The admin / maintenance
 //! connection used to create and drop databases comes from `TEST_DATABASE_URL`
 //! (sensible localhost defaults matching `docker-compose.test.yml` otherwise).
 //!
 //! - **SQLite** stays `sqlite::memory:` — no Docker, identical to the original
 //!   behaviour, so a bare `cargo test` keeps working with zero setup.
-//! - **Postgres / MySQL** get a fresh `cms_test_<uuidv7>` database created here
+//! - **Postgres** gets a fresh `cms_test_<uuidv7>` database created here
 //!   and dropped on teardown (best-effort). A startup sweep drops leftover
 //!   `cms_test_*` databases from a previous aborted run (only ones older than
 //!   [`SWEEP_MIN_AGE_MS`], so concurrent test processes never sweep each
@@ -29,7 +29,6 @@ const DB_PREFIX: &str = "cms_test_";
 enum Backend {
     Sqlite,
     Postgres,
-    MySql,
 }
 
 impl Backend {
@@ -41,8 +40,7 @@ impl Backend {
         {
             "" | "sqlite" => Backend::Sqlite,
             "postgres" | "postgresql" | "pg" => Backend::Postgres,
-            "mysql" | "mariadb" => Backend::MySql,
-            other => panic!("unknown TEST_DATABASE={other:?} (expected sqlite | postgres | mysql)"),
+            other => panic!("unknown TEST_DATABASE={other:?} (expected sqlite | postgres)"),
         }
     }
 
@@ -54,7 +52,6 @@ impl Backend {
         match self {
             Backend::Sqlite => String::new(),
             Backend::Postgres => "postgres://postgres:postgres@localhost:5432/postgres".to_string(),
-            Backend::MySql => "mysql://root:root@localhost:3306/mysql".to_string(),
         }
     }
 }
@@ -146,12 +143,6 @@ async fn create_database(admin_url: &str, db_name: &str, backend: Backend) -> Re
             sqlx::query(sqlx::AssertSqlSafe(sql)).execute(&mut conn).await?;
             conn.close().await?;
         }
-        Backend::MySql => {
-            let mut conn = sqlx::mysql::MySqlConnection::connect(admin_url).await?;
-            let sql = format!("CREATE DATABASE `{db_name}`");
-            sqlx::query(sqlx::AssertSqlSafe(sql)).execute(&mut conn).await?;
-            conn.close().await?;
-        }
         Backend::Sqlite => {}
     }
     Ok(())
@@ -166,12 +157,6 @@ async fn drop_database(admin_url: &str, db_name: &str, backend: Backend) -> Resu
             let mut conn = sqlx::postgres::PgConnection::connect(admin_url).await?;
             // FORCE (PG13+) evicts any straggler connections so the drop can't hang.
             let sql = format!("DROP DATABASE IF EXISTS \"{db_name}\" WITH (FORCE)");
-            sqlx::query(sqlx::AssertSqlSafe(sql)).execute(&mut conn).await?;
-            conn.close().await?;
-        }
-        Backend::MySql => {
-            let mut conn = sqlx::mysql::MySqlConnection::connect(admin_url).await?;
-            let sql = format!("DROP DATABASE IF EXISTS `{db_name}`");
             sqlx::query(sqlx::AssertSqlSafe(sql)).execute(&mut conn).await?;
             conn.close().await?;
         }
@@ -235,20 +220,6 @@ async fn sweep_leftovers(admin_url: &str, backend: Backend) -> Result<(), sqlx::
                 .await?;
             conn.close().await?;
             names
-        }
-        Backend::MySql => {
-            let mut conn = sqlx::mysql::MySqlConnection::connect(admin_url).await?;
-            // `SHOW DATABASES LIKE ?` can't be a bound prepared statement; list
-            // all and filter by prefix in Rust. MySQL returns the column as
-            // binary, so decode as bytes then to UTF-8.
-            let all = sqlx::query_scalar::<_, Vec<u8>>("SHOW DATABASES")
-                .fetch_all(&mut conn)
-                .await?;
-            conn.close().await?;
-            all.into_iter()
-                .map(|b| String::from_utf8_lossy(&b).into_owned())
-                .filter(|n| n.starts_with(DB_PREFIX))
-                .collect()
         }
         Backend::Sqlite => return Ok(()),
     };

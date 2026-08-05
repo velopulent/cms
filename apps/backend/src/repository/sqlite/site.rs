@@ -19,7 +19,7 @@ impl SqliteSiteRepository {
 impl SiteRepository for SqliteSiteRepository {
     async fn list_all(&self) -> Result<Vec<Site>, RepositoryError> {
         let result = sqlx::query_as::<_, Site>(
-            "SELECT id, name, storage_provider, created_by, created_at, updated_at FROM sites ORDER BY name",
+            "SELECT id, name, storage_provider, storage_profile_id, created_by, created_at, updated_at FROM sites ORDER BY name",
         )
         .fetch_all(&self.pool)
         .await?;
@@ -29,7 +29,7 @@ impl SiteRepository for SqliteSiteRepository {
 
     async fn list_for_user(&self, user_id: &str) -> Result<Vec<SiteWithRole>, RepositoryError> {
         let result = sqlx::query_as::<_, SiteWithRole>(
-            "SELECT s.id, s.name, s.storage_provider, s.created_by, s.created_at, s.updated_at, sm.role
+            "SELECT s.id, s.name, s.storage_provider, s.storage_profile_id, s.created_by, s.created_at, s.updated_at, sm.role
              FROM sites s
              JOIN site_members sm ON s.id = sm.site_id
              WHERE sm.user_id = ?
@@ -44,7 +44,7 @@ impl SiteRepository for SqliteSiteRepository {
 
     async fn get_by_id(&self, id: &str) -> Result<Option<Site>, RepositoryError> {
         let result = sqlx::query_as::<_, Site>(
-            "SELECT id, name, storage_provider, created_by, created_at, updated_at FROM sites WHERE id = ?",
+            "SELECT id, name, storage_provider, storage_profile_id, created_by, created_at, updated_at FROM sites WHERE id = ?",
         )
         .bind(id)
         .fetch_optional(&self.pool)
@@ -53,24 +53,34 @@ impl SiteRepository for SqliteSiteRepository {
         Ok(result)
     }
 
-    async fn create(
+    async fn create_with_storage_profile(
         &self,
         id: &str,
         name: &str,
-        storage_provider: &str,
+        storage_profile_id: &str,
         created_by: &str,
     ) -> Result<Site, RepositoryError> {
-        // The creator is an instance operator; site authority comes from their instance
-        // role, not a site_members row, so no membership is inserted here.
-        sqlx::query("INSERT INTO sites (id, name, storage_provider, created_by) VALUES (?, ?, ?, ?)")
-            .bind(id)
-            .bind(name)
-            .bind(storage_provider)
-            .bind(created_by)
-            .execute(&self.pool)
-            .await?;
-
-        self.get_by_id(id).await?.ok_or(RepositoryError::NotFound)
+        let mut transaction = self.pool.begin().await?;
+        let storage_provider: Option<String> =
+            sqlx::query_scalar("SELECT kind FROM storage_profiles WHERE id = ? AND enabled = 1")
+                .bind(storage_profile_id)
+                .fetch_optional(&mut *transaction)
+                .await?;
+        let storage_provider = storage_provider.ok_or(RepositoryError::NotFound)?;
+        let site = sqlx::query_as::<_, Site>(
+            "INSERT INTO sites (id, name, storage_provider, storage_profile_id, created_by) \
+             VALUES (?, ?, ?, ?, ?) \
+             RETURNING id, name, storage_provider, storage_profile_id, created_by, created_at, updated_at",
+        )
+        .bind(id)
+        .bind(name)
+        .bind(storage_provider)
+        .bind(storage_profile_id)
+        .bind(created_by)
+        .fetch_one(&mut *transaction)
+        .await?;
+        transaction.commit().await?;
+        Ok(site)
     }
 
     async fn update(&self, id: &str, name: &str) -> Result<Site, RepositoryError> {

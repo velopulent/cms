@@ -13,23 +13,18 @@ use crate::models::authorization::Action;
 use crate::services::{Services, authorization::AuthorizationService};
 use crate::storage::StorageRegistry;
 
-fn require_site_id(actor: &Actor) -> Result<String, McpError> {
-    actor
-        .bound_site_id()
-        .map(String::from)
-        .ok_or_else(|| McpError::invalid_request("No site context", None))
-}
-
 #[derive(Debug, Deserialize, JsonSchema)]
-pub struct ListSingletonsParams {}
+pub struct ListSingletonsParams {
+    pub site_id: String,
+}
 
 pub async fn list_singletons(
     authorization: &Arc<AuthorizationService>,
     services: &Arc<Services>,
     actor: &Actor,
-    _params: Parameters<ListSingletonsParams>,
+    params: Parameters<ListSingletonsParams>,
 ) -> Result<CallToolResult, McpError> {
-    let site_id = require_site_id(actor)?;
+    let site_id = params.0.site_id;
     if let Err(e) = authorization
         .require_site_action(actor, &site_id, Action::ContentRead)
         .await
@@ -44,6 +39,7 @@ pub async fn list_singletons(
 
 #[derive(Debug, Deserialize, JsonSchema)]
 pub struct GetSingletonParams {
+    pub site_id: String,
     pub slug: String,
 }
 
@@ -54,7 +50,7 @@ pub async fn get_singleton(
     actor: &Actor,
     params: Parameters<GetSingletonParams>,
 ) -> Result<CallToolResult, McpError> {
-    let site_id = require_site_id(actor)?;
+    let site_id = params.0.site_id.clone();
     if let Err(e) = authorization
         .require_site_action(actor, &site_id, Action::ContentRead)
         .await
@@ -88,6 +84,7 @@ pub async fn get_singleton(
 
 #[derive(Debug, Deserialize, JsonSchema)]
 pub struct UpdateSingletonParams {
+    pub site_id: String,
     pub slug: String,
     #[schemars(with = "ArbitraryJson")]
     pub data: serde_json::Value,
@@ -100,7 +97,7 @@ pub async fn update_singleton(
     actor: &Actor,
     params: Parameters<UpdateSingletonParams>,
 ) -> Result<CallToolResult, McpError> {
-    let site_id = require_site_id(actor)?;
+    let site_id = params.0.site_id.clone();
     if let Err(e) = authorization
         .require_site_action(actor, &site_id, Action::ContentWrite)
         .await

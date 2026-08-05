@@ -5,6 +5,7 @@ use tonic::{Request, Response, Status};
 use crate::grpc::cms::v1::site_service_server::SiteService;
 use crate::grpc::cms::v1::{GetSiteRequest, Site as ProtoSite, UpdateSiteRequest};
 use crate::grpc::interceptor::{GrpcAuthContext, get_auth_context};
+use crate::models::access_token::TokenScope;
 use crate::models::site::Site;
 use crate::repository::Repository;
 use crate::services::site::SiteService as AppSiteService;
@@ -38,7 +39,7 @@ fn ensure_same_site(auth: &GrpcAuthContext, site_id: &str) -> Result<(), Status>
 impl SiteService for SiteServiceImpl {
     async fn get_site(&self, mut request: Request<GetSiteRequest>) -> Result<Response<ProtoSite>, Status> {
         let auth = get_auth_context(&mut request, &self.repository).await?;
-        auth.require_read()?;
+        auth.require_scope(TokenScope::SiteRead)?;
         let site_id = request.into_inner().site_id;
         ensure_same_site(&auth, &site_id)?;
 
@@ -54,7 +55,7 @@ impl SiteService for SiteServiceImpl {
 
     async fn update_site(&self, mut request: Request<UpdateSiteRequest>) -> Result<Response<ProtoSite>, Status> {
         let auth = get_auth_context(&mut request, &self.repository).await?;
-        auth.require_write()?;
+        auth.require_scope(TokenScope::SiteSettingsWrite)?;
         let req = request.into_inner();
         ensure_same_site(&auth, &req.site_id)?;
 

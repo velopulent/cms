@@ -11,23 +11,18 @@ use crate::middleware::auth::Actor;
 use crate::models::authorization::Action;
 use crate::services::{Services, authorization::AuthorizationService};
 
-fn require_site_id(actor: &Actor) -> Result<String, McpError> {
-    actor
-        .bound_site_id()
-        .map(String::from)
-        .ok_or_else(|| McpError::invalid_request("No site context", None))
-}
-
 #[derive(Debug, Deserialize, JsonSchema)]
-pub struct GetSiteParams {}
+pub struct GetSiteParams {
+    pub site_id: String,
+}
 
 pub async fn get_site(
     authorization: &Arc<AuthorizationService>,
     services: &Arc<Services>,
     actor: &Actor,
-    _params: Parameters<GetSiteParams>,
+    params: Parameters<GetSiteParams>,
 ) -> Result<CallToolResult, McpError> {
-    let site_id = require_site_id(actor)?;
+    let site_id = params.0.site_id;
     if let Err(e) = authorization
         .require_site_action(actor, &site_id, Action::SiteRead)
         .await
@@ -45,6 +40,7 @@ pub async fn get_site(
 
 #[derive(Debug, Deserialize, JsonSchema)]
 pub struct UpdateSiteParams {
+    pub site_id: String,
     pub name: Option<String>,
 }
 
@@ -54,7 +50,7 @@ pub async fn update_site(
     actor: &Actor,
     params: Parameters<UpdateSiteParams>,
 ) -> Result<CallToolResult, McpError> {
-    let site_id = require_site_id(actor)?;
+    let site_id = params.0.site_id.clone();
     if let Err(e) = authorization
         .require_site_action(actor, &site_id, Action::SiteManage)
         .await

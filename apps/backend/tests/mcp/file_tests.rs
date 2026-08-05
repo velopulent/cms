@@ -3,9 +3,9 @@ use crate::common::mcp::*;
 #[tokio::test]
 async fn test_list_files_empty() {
     let server = start_mcp_server().await;
-    let (_, token) = setup_site_token(&server).await;
+    let (site_id, token) = setup_site_token(&server).await;
 
-    let result = mcp_call_tool(&server.base_url, &token, "list_files", serde_json::json!({})).await;
+    let result = mcp_call_site_tool(&server.base_url, &token, &site_id, "list_files", serde_json::json!({})).await;
     let data = mcp_tool_json(&result);
 
     assert!(data["items"].as_array().unwrap().is_empty());
@@ -15,11 +15,12 @@ async fn test_list_files_empty() {
 #[tokio::test]
 async fn test_get_file_not_found() {
     let server = start_mcp_server().await;
-    let (_, token) = setup_site_token(&server).await;
+    let (site_id, token) = setup_site_token(&server).await;
 
-    let result = mcp_call_tool(
+    let result = mcp_call_site_tool(
         &server.base_url,
         &token,
+        &site_id,
         "get_file",
         serde_json::json!({"file_id": "nonexistent"}),
     )
@@ -30,11 +31,12 @@ async fn test_get_file_not_found() {
 #[tokio::test]
 async fn test_create_upload_url() {
     let server = start_mcp_server().await;
-    let (_, token) = setup_site_token(&server).await;
+    let (site_id, token) = setup_site_token(&server).await;
 
-    let result = mcp_call_tool(
+    let result = mcp_call_site_tool(
         &server.base_url,
         &token,
+        &site_id,
         "create_upload_url",
         serde_json::json!({
             "filename": "test.txt",
@@ -58,11 +60,12 @@ async fn test_create_upload_url() {
 #[tokio::test]
 async fn test_create_upload_url_then_put_uploads_file() {
     let server = start_mcp_server().await;
-    let (_, token) = setup_site_token(&server).await;
+    let (site_id, token) = setup_site_token(&server).await;
 
-    let result = mcp_call_tool(
+    let result = mcp_call_site_tool(
         &server.base_url,
         &token,
+        &site_id,
         "create_upload_url",
         serde_json::json!({
             "filename": "e2e.txt",
@@ -93,9 +96,10 @@ async fn test_create_upload_url_then_put_uploads_file() {
     assert_eq!(again.status(), 409);
 
     // The file is visible through MCP.
-    let got = mcp_call_tool(
+    let got = mcp_call_site_tool(
         &server.base_url,
         &token,
+        &site_id,
         "get_file",
         serde_json::json!({"file_id": file_id}),
     )
@@ -107,11 +111,12 @@ async fn test_create_upload_url_then_put_uploads_file() {
 #[tokio::test]
 async fn test_create_upload_url_requires_editor() {
     let server = start_mcp_server().await;
-    let (_, token) = setup_site_read_token(&server).await;
+    let (site_id, token) = setup_site_read_token(&server).await;
 
-    let result = mcp_call_tool(
+    let result = mcp_call_site_tool(
         &server.base_url,
         &token,
+        &site_id,
         "create_upload_url",
         serde_json::json!({"filename": "x.txt", "content_type": "text/plain"}),
     )
@@ -122,11 +127,12 @@ async fn test_create_upload_url_requires_editor() {
 #[tokio::test]
 async fn test_create_upload_url_rejects_disallowed_content_type() {
     let server = start_mcp_server().await;
-    let (_, token) = setup_site_token(&server).await;
+    let (site_id, token) = setup_site_token(&server).await;
 
-    let result = mcp_call_tool(
+    let result = mcp_call_site_tool(
         &server.base_url,
         &token,
+        &site_id,
         "create_upload_url",
         serde_json::json!({"filename": "x.exe", "content_type": "application/x-executable"}),
     )
@@ -137,11 +143,12 @@ async fn test_create_upload_url_rejects_disallowed_content_type() {
 #[tokio::test]
 async fn test_list_files_with_pagination() {
     let server = start_mcp_server().await;
-    let (_, token) = setup_site_token(&server).await;
+    let (site_id, token) = setup_site_token(&server).await;
 
-    let result = mcp_call_tool(
+    let result = mcp_call_site_tool(
         &server.base_url,
         &token,
+        &site_id,
         "list_files",
         serde_json::json!({"page": 1, "per_page": 10}),
     )
@@ -153,11 +160,12 @@ async fn test_list_files_with_pagination() {
 #[tokio::test]
 async fn test_delete_file_requires_editor() {
     let server = start_mcp_server().await;
-    let (_, token) = setup_site_read_token(&server).await;
+    let (site_id, token) = setup_site_read_token(&server).await;
 
-    let result = mcp_call_tool(
+    let result = mcp_call_site_tool(
         &server.base_url,
         &token,
+        &site_id,
         "delete_file",
         serde_json::json!({"file_id": "any"}),
     )

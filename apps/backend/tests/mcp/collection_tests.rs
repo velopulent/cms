@@ -3,9 +3,16 @@ use crate::common::mcp::*;
 #[tokio::test]
 async fn test_list_collections_empty() {
     let server = start_mcp_server().await;
-    let (_, token) = setup_site_token(&server).await;
+    let (site_id, token) = setup_site_token(&server).await;
 
-    let result = mcp_call_tool(&server.base_url, &token, "list_collections", serde_json::json!({})).await;
+    let result = mcp_call_site_tool(
+        &server.base_url,
+        &token,
+        &site_id,
+        "list_collections",
+        serde_json::json!({}),
+    )
+    .await;
     let data = mcp_tool_json(&result);
 
     assert!(data.is_array(), "Expected array, got: {}", data);
@@ -15,11 +22,12 @@ async fn test_list_collections_empty() {
 #[tokio::test]
 async fn test_create_collection() {
     let server = start_mcp_server().await;
-    let (_, token) = setup_site_token(&server).await;
+    let (site_id, token) = setup_site_token(&server).await;
 
-    let result = mcp_call_tool(
+    let result = mcp_call_site_tool(
         &server.base_url,
         &token,
+        &site_id,
         "create_collection",
         serde_json::json!({
             "name": "Posts",
@@ -38,11 +46,12 @@ async fn test_create_collection() {
 #[tokio::test]
 async fn test_create_collection_auto_slug() {
     let server = start_mcp_server().await;
-    let (_, token) = setup_site_token(&server).await;
+    let (site_id, token) = setup_site_token(&server).await;
 
-    let result = mcp_call_tool(
+    let result = mcp_call_site_tool(
         &server.base_url,
         &token,
+        &site_id,
         "create_collection",
         serde_json::json!({
             "name": "My Collection",
@@ -58,13 +67,14 @@ async fn test_create_collection_auto_slug() {
 #[tokio::test]
 async fn test_get_collection() {
     let server = start_mcp_server().await;
-    let (_, token) = setup_site_token(&server).await;
+    let (site_id, token) = setup_site_token(&server).await;
 
-    create_test_collection(&server.base_url, &token, "Posts", "posts").await;
+    create_test_collection(&server.base_url, &token, &site_id, "Posts", "posts").await;
 
-    let result = mcp_call_tool(
+    let result = mcp_call_site_tool(
         &server.base_url,
         &token,
+        &site_id,
         "get_collection",
         serde_json::json!({"slug": "posts"}),
     )
@@ -78,11 +88,12 @@ async fn test_get_collection() {
 #[tokio::test]
 async fn test_get_collection_not_found() {
     let server = start_mcp_server().await;
-    let (_, token) = setup_site_token(&server).await;
+    let (site_id, token) = setup_site_token(&server).await;
 
-    let result = mcp_call_tool(
+    let result = mcp_call_site_tool(
         &server.base_url,
         &token,
+        &site_id,
         "get_collection",
         serde_json::json!({"slug": "nonexistent"}),
     )
@@ -96,13 +107,14 @@ async fn test_get_collection_not_found() {
 #[tokio::test]
 async fn test_update_collection_name() {
     let server = start_mcp_server().await;
-    let (_, token) = setup_site_token(&server).await;
+    let (site_id, token) = setup_site_token(&server).await;
 
-    create_test_collection(&server.base_url, &token, "Posts", "posts").await;
+    create_test_collection(&server.base_url, &token, &site_id, "Posts", "posts").await;
 
-    let result = mcp_call_tool(
+    let result = mcp_call_site_tool(
         &server.base_url,
         &token,
+        &site_id,
         "update_collection",
         serde_json::json!({
             "slug": "posts",
@@ -117,13 +129,14 @@ async fn test_update_collection_name() {
 #[tokio::test]
 async fn test_update_collection_definition() {
     let server = start_mcp_server().await;
-    let (_, token) = setup_site_token(&server).await;
+    let (site_id, token) = setup_site_token(&server).await;
 
-    create_test_collection(&server.base_url, &token, "Posts", "posts").await;
+    create_test_collection(&server.base_url, &token, &site_id, "Posts", "posts").await;
 
-    let result = mcp_call_tool(
+    let result = mcp_call_site_tool(
         &server.base_url,
         &token,
+        &site_id,
         "update_collection",
         serde_json::json!({
             "slug": "posts",
@@ -140,13 +153,14 @@ async fn test_update_collection_definition() {
 #[tokio::test]
 async fn test_delete_collection() {
     let server = start_mcp_server().await;
-    let (_, token) = setup_site_token(&server).await;
+    let (site_id, token) = setup_site_token(&server).await;
 
-    create_test_collection(&server.base_url, &token, "Posts", "posts").await;
+    create_test_collection(&server.base_url, &token, &site_id, "Posts", "posts").await;
 
-    let result = mcp_call_tool(
+    let result = mcp_call_site_tool(
         &server.base_url,
         &token,
+        &site_id,
         "delete_collection",
         serde_json::json!({"slug": "posts"}),
     )
@@ -154,7 +168,14 @@ async fn test_delete_collection() {
     let data = mcp_tool_json(&result);
     assert!(data["deleted"].as_bool().unwrap());
 
-    let list = mcp_call_tool(&server.base_url, &token, "list_collections", serde_json::json!({})).await;
+    let list = mcp_call_site_tool(
+        &server.base_url,
+        &token,
+        &site_id,
+        "list_collections",
+        serde_json::json!({}),
+    )
+    .await;
     let list_data = mcp_tool_json(&list);
     assert!(list_data.as_array().unwrap().is_empty());
 }
@@ -162,11 +183,12 @@ async fn test_delete_collection() {
 #[tokio::test]
 async fn test_delete_collection_not_found() {
     let server = start_mcp_server().await;
-    let (_, token) = setup_site_token(&server).await;
+    let (site_id, token) = setup_site_token(&server).await;
 
-    let result = mcp_call_tool(
+    let result = mcp_call_site_tool(
         &server.base_url,
         &token,
+        &site_id,
         "delete_collection",
         serde_json::json!({"slug": "nonexistent"}),
     )
@@ -180,11 +202,12 @@ async fn test_delete_collection_not_found() {
 #[tokio::test]
 async fn test_create_collection_requires_admin() {
     let server = start_mcp_server().await;
-    let (_, token) = setup_site_read_token(&server).await;
+    let (site_id, token) = setup_site_read_token(&server).await;
 
-    let result = mcp_call_tool(
+    let result = mcp_call_site_tool(
         &server.base_url,
         &token,
+        &site_id,
         "create_collection",
         serde_json::json!({
             "name": "Posts",
@@ -198,16 +221,17 @@ async fn test_create_collection_requires_admin() {
 #[tokio::test]
 async fn test_collection_full_lifecycle() {
     let server = start_mcp_server().await;
-    let (_, token) = setup_site_token(&server).await;
+    let (site_id, token) = setup_site_token(&server).await;
 
-    let result = create_test_collection(&server.base_url, &token, "Posts", "posts").await;
+    let result = create_test_collection(&server.base_url, &token, &site_id, "Posts", "posts").await;
     let col = mcp_tool_json(&result);
     let col_id = col["id"].as_str().unwrap();
     assert!(!col_id.is_empty());
 
-    let result = mcp_call_tool(
+    let result = mcp_call_site_tool(
         &server.base_url,
         &token,
+        &site_id,
         "get_collection",
         serde_json::json!({"slug": "posts"}),
     )
@@ -215,9 +239,10 @@ async fn test_collection_full_lifecycle() {
     let fetched = mcp_tool_json(&result);
     assert_eq!(fetched["id"].as_str().unwrap(), col_id);
 
-    let result = mcp_call_tool(
+    let result = mcp_call_site_tool(
         &server.base_url,
         &token,
+        &site_id,
         "update_collection",
         serde_json::json!({"slug": "posts", "name": "Articles"}),
     )
@@ -225,13 +250,21 @@ async fn test_collection_full_lifecycle() {
     let updated = mcp_tool_json(&result);
     assert_eq!(updated["name"].as_str().unwrap(), "Articles");
 
-    let result = mcp_call_tool(&server.base_url, &token, "list_collections", serde_json::json!({})).await;
+    let result = mcp_call_site_tool(
+        &server.base_url,
+        &token,
+        &site_id,
+        "list_collections",
+        serde_json::json!({}),
+    )
+    .await;
     let list = mcp_tool_json(&result);
     assert_eq!(list.as_array().unwrap().len(), 1);
 
-    let result = mcp_call_tool(
+    let result = mcp_call_site_tool(
         &server.base_url,
         &token,
+        &site_id,
         "delete_collection",
         serde_json::json!({"slug": "posts"}),
     )
@@ -239,7 +272,14 @@ async fn test_collection_full_lifecycle() {
     let data = mcp_tool_json(&result);
     assert!(data["deleted"].as_bool().unwrap());
 
-    let result = mcp_call_tool(&server.base_url, &token, "list_collections", serde_json::json!({})).await;
+    let result = mcp_call_site_tool(
+        &server.base_url,
+        &token,
+        &site_id,
+        "list_collections",
+        serde_json::json!({}),
+    )
+    .await;
     let list = mcp_tool_json(&result);
     assert!(list.as_array().unwrap().is_empty());
 }

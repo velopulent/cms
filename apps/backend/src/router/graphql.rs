@@ -21,6 +21,7 @@ async fn graphql_handler(
     req: async_graphql_axum::GraphQLRequest,
 ) -> async_graphql_axum::GraphQLResponse {
     let auth_header = headers.get("Authorization").and_then(|v| v.to_str().ok());
+    let requested_site = headers.get("X-VCMS-Site").and_then(|v| v.to_str().ok());
 
     // Per-request DataLoader (request-scoped cache) to batch nested resolvers.
     let entry_loader = async_graphql::dataloader::DataLoader::new(
@@ -30,7 +31,14 @@ async fn graphql_handler(
         tokio::spawn,
     );
 
-    let gql_ctx = GqlContext::from_request(repository, services, auth_header, &config.token_index_key).await;
+    let gql_ctx = GqlContext::from_request(
+        repository,
+        services,
+        auth_header,
+        requested_site,
+        &config.token_index_key,
+    )
+    .await;
 
     let response = schema.execute(req.into_inner().data(gql_ctx).data(entry_loader)).await;
     async_graphql_axum::GraphQLResponse::from(response)

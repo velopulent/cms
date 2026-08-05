@@ -8,6 +8,7 @@ use crate::grpc::cms::v1::{
     GetCollectionRequest, ListCollectionsRequest, ListCollectionsResponse, UpdateCollectionRequest,
 };
 use crate::grpc::interceptor::get_auth_context;
+use crate::models::access_token::TokenScope;
 use crate::models::collection::Collection;
 use crate::repository::Repository;
 use crate::services::collection::CollectionService as AppCollectionService;
@@ -34,7 +35,7 @@ impl CollectionService for CollectionServiceImpl {
         mut request: Request<ListCollectionsRequest>,
     ) -> Result<Response<ListCollectionsResponse>, Status> {
         let auth = get_auth_context(&mut request, &self.repository).await?;
-        auth.require_read()?;
+        auth.require_scope(TokenScope::SchemaRead)?;
         let site_id = auth.require_site_id()?.to_string();
 
         let collections = self
@@ -58,7 +59,7 @@ impl CollectionService for CollectionServiceImpl {
         mut request: Request<GetCollectionRequest>,
     ) -> Result<Response<ProtoCollection>, Status> {
         let auth = get_auth_context(&mut request, &self.repository).await?;
-        auth.require_read()?;
+        auth.require_scope(TokenScope::SchemaRead)?;
         let site_id = auth.require_site_id()?.to_string();
         let slug = &request.into_inner().slug;
 
@@ -77,7 +78,7 @@ impl CollectionService for CollectionServiceImpl {
         mut request: Request<CreateCollectionRequest>,
     ) -> Result<Response<ProtoCollection>, Status> {
         let auth = get_auth_context(&mut request, &self.repository).await?;
-        auth.require_write()?;
+        auth.require_scope(TokenScope::SchemaWrite)?;
         let site_id = auth.require_site_id()?.to_string();
 
         let req = request.into_inner();
@@ -102,7 +103,7 @@ impl CollectionService for CollectionServiceImpl {
         mut request: Request<UpdateCollectionRequest>,
     ) -> Result<Response<ProtoCollection>, Status> {
         let auth = get_auth_context(&mut request, &self.repository).await?;
-        auth.require_write()?;
+        auth.require_scope(TokenScope::SchemaWrite)?;
         let site_id = auth.require_site_id()?.to_string();
 
         let req = request.into_inner();
@@ -134,7 +135,7 @@ impl CollectionService for CollectionServiceImpl {
         mut request: Request<DeleteCollectionRequest>,
     ) -> Result<Response<DeleteResponse>, Status> {
         let auth = get_auth_context(&mut request, &self.repository).await?;
-        auth.require_write()?;
+        auth.require_scope(TokenScope::SchemaWrite)?;
         let site_id = auth.require_site_id()?.to_string();
         let req = request.into_inner();
 
