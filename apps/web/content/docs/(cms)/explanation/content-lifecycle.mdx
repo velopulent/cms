@@ -1,0 +1,12 @@
+---
+title: Content lifecycle
+description: Understand drafts, publishing, revisions, deletion, and deployment triggers.
+---
+
+An entry starts as a draft. Editors can save work without signaling that consumers should present it as published content. Publishing changes the status; unpublishing returns it to draft.
+
+Each meaningful change can carry a summary and produces revision history. Restoring a prior revision makes its data current while preserving later history for audit and recovery.
+
+Deleting an entry removes it directly. Files use a separate trash workflow because stored binaries often need reference checks and a recovery window.
+
+Deployment triggers remain separate from publishing. This lets a team publish several entries, review them, then run one frontend build. Webhooks serve event receivers that need individual content notifications.

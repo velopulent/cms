@@ -1,0 +1,78 @@
+---
+title: Create an editorial site
+description: Build Authors, Posts, and Site Settings, then publish the first article.
+---
+
+This tutorial starts with a fresh installation. You will build the same **Editorial** site used throughout these docs.
+
+## Before you begin
+
+You need an instance-owner account and a running server. For a local portable server, follow [Install VCMS Server](/docs/server/install).
+
+<Steps>
+
+### Sign in and change the temporary password
+
+Open `http://127.0.0.1:3000/dashboard`. Sign in with `admin@cms.local` and `admin`, open **Account**, then replace the password.
+
+### Create the site
+
+Return to **Sites**, choose **New site**, enter `Editorial`, select the default filesystem storage profile, and create the site.
+
+### Create Authors
+
+Open **Collections**, choose **New collection**, and enter:
+
+| Setting | Value |
+| --- | --- |
+| Name | `Authors` |
+| Slug | `authors` |
+| Type | Collection |
+
+Add these fields:
+
+| Field | Type | Settings |
+| --- | --- | --- |
+| Name | Text | Required |
+| Bio | Long text | Optional |
+| Portrait | File | Images |
+
+Save the collection.
+
+### Create Posts
+
+Create another collection named `Posts` with slug `posts`. Add Title as required text, Excerpt as long text, Body as rich text, Cover as an image file, Author as a relationship to Authors, and Published at as date/time.
+
+### Create Site Settings
+
+Create a **singleton** named `Site Settings` with slug `site-settings`. Add Site title as required text, Description as long text, and Logo as an image file.
+
+Single-instance content appears in the sidebar by name. Open **Site Settings**, enter the publication name and description, then save.
+
+### Add an author
+
+Open **Authors**, choose **New entry**, enter `Maya Chen`, add a short biography, and save. The entry begins as a draft.
+
+### Upload a cover image
+
+Open **Files** and upload an image. Velopulent CMS records its media type, size, storage provider, and generated thumbnail when supported.
+
+### Write and publish a post
+
+Open **Posts**, create `Designing an editorial workflow`, select Maya as author, choose the uploaded cover, write the body, and save. Review the entry, then choose **Publish**.
+
+### Read the published content
+
+Create a read-only key under **Settings → API keys**. Copy it when the dashboard displays it because the full token appears once. Continue with the [API quickstart](/docs/api/quickstart).
+
+</Steps>
+
+## Result
+
+Your site now has reusable author records, publishable posts, one site-settings record, stored media, and a credential for content delivery.
+
+## Continue
+
+- [Model content safely](/docs/guides/content-modeling)
+- [Manage drafts and revisions](/docs/guides/entries)
+- [Connect a static site](/docs/api/guides/static-sites)

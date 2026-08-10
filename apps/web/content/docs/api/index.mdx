@@ -1,0 +1,26 @@
+---
+title: VCMS API
+description: Deliver Velopulent CMS content through REST, GraphQL, gRPC, and MCP.
+---
+
+One VCMS Server exposes four protocols. Choose the client model that fits your application; all protocols use the same content and authorization rules.
+
+<Cards>
+  <Card icon={<Rocket className="docs-card-icon docs-icon-violet" />} title="API quickstart" href="/docs/api/quickstart" description="Fetch the Editorial site's first published post." />
+  <Card icon={<Cable className="docs-card-icon docs-icon-blue" />} title="Choose a protocol" href="/docs/api/reference/protocols" description="Compare REST, GraphQL, gRPC, and MCP." />
+  <Card icon={<KeyRound className="docs-card-icon docs-icon-amber" />} title="Authentication" href="/docs/api/authentication" description="Use site keys and personal tokens safely." />
+  <Card icon={<BookOpenCheck className="docs-card-icon docs-icon-green" />} title="Operation catalog" href="/docs/api/reference/operations" description="Find resources, live references, and protocol coverage." />
+</Cards>
+
+## Live schema references
+
+Your running server remains the source of truth for generated schemas:
+
+| Protocol | Reference |
+| --- | --- |
+| REST | `http://127.0.0.1:3000/api/v1/docs` |
+| GraphQL | `http://127.0.0.1:3000/api/graphql` |
+| gRPC | `cms.proto` distributed with the project/source release |
+| MCP | `tools/list` and `resources/list` after initialization |
+
+Collection definitions can vary by site, so inspect the active site schema before generating consumer types.

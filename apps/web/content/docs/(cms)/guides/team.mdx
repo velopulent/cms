@@ -1,0 +1,30 @@
+---
+title: Manage users and collaborators
+description: Create installation users, grant operator roles, and assign site access.
+---
+
+## Create a user
+
+An instance owner or admin opens **Instance settings → Users**, creates the account, and sets an initial password. Send credentials through a secure channel and ask the user to change the password after sign-in.
+
+## Grant an instance role
+
+Only the instance owner can grant or revoke instance roles.
+
+- **Instance owner** controls the installation, grants roles, and performs instance-wide backup and restore.
+- **Instance admin** manages users and sites and has full authority within every site.
+
+Operators do not need site memberships. Velopulent CMS rejects attempts to invite them as collaborators.
+
+## Invite a site collaborator
+
+Open **Site settings → Members**, invite an existing user by email, and choose:
+
+- **Editor** for content and file changes.
+- **Viewer** for read-only access.
+
+Operators manage schemas, webhooks, API keys, members, and site deletion. Site roles do not receive those powers.
+
+## Remove access
+
+Remove a site membership to revoke that site's access. Delete or disable broader credentials separately: personal tokens belong to the user, site keys belong to the site, and active dashboard sessions remain visible from the account page.

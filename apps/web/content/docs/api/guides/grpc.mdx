@@ -1,0 +1,33 @@
+---
+title: Use gRPC
+description: Connect typed service clients to the VCMS gRPC listener.
+---
+
+VCMS Server listens on `127.0.0.1:50051` by default. Generate a client from `libs/proto/cms.proto` or the proto file bundled with your source release.
+
+## Services
+
+The schema defines Collection, Entry, Singleton, File, Site, and Webhook services. Entry operations include publishing, unpublishing, and revisions. File operations include trash and restore.
+
+## Authentication
+
+Attach the bearer credential as gRPC metadata:
+
+```text
+authorization: Bearer vcms_site_…
+```
+
+## Inspect with grpcurl
+
+When your environment supports server reflection, list services with:
+
+```bash
+grpcurl -H "authorization: Bearer $VCMS_TOKEN" \
+  127.0.0.1:50051 list
+```
+
+Otherwise pass the proto file explicitly. Treat that file as the field-level reference for your installed version.
+
+## Network placement
+
+The default listener accepts local connections only. Change `[server].grpc_address` in `config.toml` or place a compatible proxy in front of it when remote clients need access. Protect remote gRPC traffic with TLS at the service or proxy boundary.

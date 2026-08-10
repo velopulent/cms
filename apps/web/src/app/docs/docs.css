@@ -10,3 +10,32 @@ html > body[data-scroll-locked] {
   margin-right: 0px;
   --removed-body-scroll-bar-size: 0px;
 }
+
+#nd-sidebar svg {
+  color: var(--color-fd-primary);
+}
+
+.docs-card-icon {
+  border-radius: 0.5rem;
+  padding: 0.4rem;
+}
+
+.docs-icon-violet {
+  color: var(--color-violet-500);
+  background: color-mix(in oklab, var(--color-violet-500) 12%, transparent);
+}
+
+.docs-icon-blue {
+  color: var(--color-blue-500);
+  background: color-mix(in oklab, var(--color-blue-500) 12%, transparent);
+}
+
+.docs-icon-amber {
+  color: var(--color-amber-500);
+  background: color-mix(in oklab, var(--color-amber-500) 12%, transparent);
+}
+
+.docs-icon-green {
+  color: var(--color-emerald-500);
+  background: color-mix(in oklab, var(--color-emerald-500) 12%, transparent);
+}

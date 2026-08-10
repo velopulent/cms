@@ -1,0 +1,25 @@
+{
+  "title": "VCMS Server",
+  "description": "Run and protect a Velopulent CMS installation",
+  "icon": "ServerCog",
+  "root": true,
+  "pages": [
+    "index",
+    "---[PackageOpen]Get started---",
+    "install",
+    "first-start",
+    "---[Settings2]Operations---",
+    "guides/production",
+    "guides/services",
+    "guides/storage",
+    "guides/backups",
+    "guides/upgrades",
+    "guides/recovery",
+    "guides/troubleshooting",
+    "---[BookOpenText]Reference---",
+    "reference/configuration",
+    "reference/data-layout",
+    "reference/cli",
+    "reference/health-security"
+  ]
+}

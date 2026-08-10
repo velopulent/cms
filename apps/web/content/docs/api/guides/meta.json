@@ -1,0 +1,14 @@
+{
+  "title": "Protocol guides",
+  "icon": "Cable",
+  "defaultOpen": true,
+  "pages": [
+    "rest",
+    "graphql",
+    "grpc",
+    "mcp",
+    "files",
+    "webhooks-deployments",
+    "static-sites"
+  ]
+}

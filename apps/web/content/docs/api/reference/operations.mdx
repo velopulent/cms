@@ -1,0 +1,31 @@
+---
+title: Operation catalog
+description: Find supported resource groups and their live field-level references.
+---
+
+## REST resources
+
+Public `/api/v1` routes cover the current site, collections, entries and revisions, singletons, webhooks and deliveries, and files. File delivery uses `/api/files`; signed uploads use `/api/v1/files/upload/{token}`.
+
+Open `/api/v1/docs` on the running server for methods, request bodies, and response schemas.
+
+## GraphQL
+
+Queries expose site content resources. Mutations cover collection, entry, file, and webhook workflows supported by the current schema. Open `/api/graphql` and use introspection for the installed version.
+
+## gRPC services
+
+| Service | Operations |
+| --- | --- |
+| CollectionService | List, get, create, update, delete |
+| EntryService | List, get, create, update, delete, publish, unpublish, revisions |
+| SingletonService | Get and update |
+| FileService | List, get, trash, restore, batch trash and restore |
+| SiteService | Get and update |
+| WebhookService | List, get, create, update, delete, trigger, deliveries |
+
+Use `cms.proto` for message fields.
+
+## MCP
+
+MCP tools cover accessible sites, collections, entries, publication, revisions, singletons, files, signed upload URLs, and webhooks. A site-schema resource describes each accessible site's current model. Call `tools/list` and `resources/list`; do not hard-code tool schemas from this page.

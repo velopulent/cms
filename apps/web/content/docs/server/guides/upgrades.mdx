@@ -1,0 +1,26 @@
+---
+title: Upgrade or remove VCMS Server
+description: Preserve data through package upgrades, forward migrations, and removal.
+---
+
+## Before upgrading
+
+1. Read release notes.
+2. Create an instance backup with files.
+3. Copy `secrets.toml` through a protected path.
+4. Verify available disk space.
+5. Record `vcms config show` and `vcms doctor` output without exposing secrets.
+
+## Upgrade
+
+Use the same native package manager that installed the service. Startup applies database migrations automatically. There is no separate migration command.
+
+Run readiness and one content-delivery check after restart. Inspect logs and `vcms doctor` before allowing editorial changes.
+
+## Downgrade
+
+Database migrations move forward. Restore a backup created under the older version when a downgrade becomes necessary; replacing only the executable can leave an incompatible schema.
+
+## Remove
+
+Normal package removal keeps the system data root. Purging that directory separately deletes configuration, secrets, database, files, backups, logs, and search state. Verify an external backup before any purge.

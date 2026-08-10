@@ -1,0 +1,36 @@
+---
+title: Health and security reference
+description: Probes, trust boundaries, cookies, CORS, rate limits, and secret ownership.
+---
+
+## Health probes
+
+| Endpoint | Authentication | Meaning |
+| --- | --- | --- |
+| `/health/live` | None | Process can answer HTTP |
+| `/health/ready` | None | Process and database are ready to serve traffic |
+
+Keep detailed failures in logs and `vcms doctor`; probes expose minimal operational status.
+
+## Request policy
+
+- Dashboard requests authenticate with cookie sessions.
+- State-changing dashboard requests use CSRF protection.
+- Public protocol requests authenticate with bearer credentials.
+- CORS allows only exact origins configured in instance security settings.
+- Upload bodies must fit the database-backed upload limit.
+- Rate limiting protects HTTP requests; trusted proxy headers affect client identification only when enabled.
+- MCP can be disabled and checks host/origin policy.
+
+## Secret inventory
+
+| Secret | Location | Protects |
+| --- | --- | --- |
+| Master key | `secrets.toml` | Derived runtime keys and encrypted integration credentials |
+| Backup encryption key | `secrets.toml` | Encrypted backup artifacts |
+| PostgreSQL URL | `secrets.toml` | External database access |
+| Storage credentials | Encrypted database row | Primary S3-compatible storage |
+| Backup credentials | Encrypted database row | Backup S3-compatible destination |
+| Site/personal tokens | Shown once; verifier stored | Protocol access |
+
+Back up `secrets.toml` separately from normal logical artifacts. Limit filesystem access to the service identity and recovery administrators.

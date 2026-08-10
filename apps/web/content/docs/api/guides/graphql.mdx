@@ -1,0 +1,31 @@
+---
+title: Use GraphQL
+description: Explore and query Velopulent CMS through the GraphQL endpoint.
+---
+
+GraphQL uses `/api/graphql` for both the API and the interactive GraphiQL explorer when enabled by the server mode.
+
+## Explore the schema
+
+Open `http://127.0.0.1:3000/api/graphql`, add your bearer token in the request headers, and use schema completion to inspect current query and mutation fields.
+
+```json
+{
+  "Authorization": "Bearer vcms_site_replace_me"
+}
+```
+
+## Send a request
+
+```bash
+curl http://127.0.0.1:3000/api/graphql \
+  -H "Authorization: Bearer $VCMS_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"query":"{ collections { id name slug isSingleton } }"}'
+```
+
+Use GraphQL when one screen needs related resource shapes in one request. Use the live explorer for field names because collection definitions and GraphQL schema capabilities can change with the running release.
+
+<Callout type="info">
+GraphQL authorization matches REST authorization. A query cannot expand a token's site or action permissions.
+</Callout>

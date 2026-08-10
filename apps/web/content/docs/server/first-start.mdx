@@ -1,0 +1,49 @@
+---
+title: First start
+description: Initialize the root, inspect effective configuration, and secure the owner account.
+---
+
+<Steps>
+
+### Start the process or native service
+
+Portable:
+
+```bash
+vcms serve
+```
+
+For a package installation, use the native service manager after reviewing `config.toml`.
+
+### Check readiness
+
+```bash
+curl http://127.0.0.1:3000/health/ready
+```
+
+Readiness includes a database check. Use `vcms doctor` when it fails.
+
+### Inspect the resolved root
+
+```bash
+vcms config show
+vcms service status
+```
+
+The config command redacts secret values and reports mode, root, database kind, listener addresses, and log location.
+
+### Secure the owner
+
+Open `/dashboard`, sign in as `admin@cms.local` with `admin`, and change the password under **Account**.
+
+### Create a backup
+
+```bash
+vcms backup create --scope instance --out first-start.vcms-backup --encrypt
+```
+
+Store the artifact apart from the server and protect the corresponding `backup_encryption_key`.
+
+</Steps>
+
+Follow the [production checklist](/docs/server/guides/production) before binding to a non-loopback address.

@@ -1,0 +1,33 @@
+---
+title: Queries and errors
+description: Pagination, filtering, search, status codes, and troubleshooting.
+---
+
+## Entry queries
+
+The REST entry list accepts:
+
+| Parameter | Meaning |
+| --- | --- |
+| `type` | Collection slug |
+| `status` | Entry publication status |
+| `search` | Full-text search text |
+| `page` | One-based page number |
+| `per_page` | Results per page, from 1 through 200 |
+
+The default entry page contains 50 results. File lists use fixed pages of 30 and accept page, search, media type, and trash state through the current REST schema.
+
+## Response failures
+
+| Status | Meaning | First check |
+| --- | --- | --- |
+| `400` | Invalid input | Request body, slug, field validation |
+| `401` | Authentication failed | Token value, revocation, expiry |
+| `403` | Authenticated but not allowed | Token scopes, write mode, user role, site |
+| `404` | Resource or disabled surface absent | ID, slug, site context, MCP enabled state |
+| `409` | State conflict | Duplicate slug or conflicting resource state |
+| `413` | Upload too large | Instance upload limit and body size |
+| `429` | Rate limit reached | Retry timing and request volume |
+| `500` | Server failure | Server logs, health, and `vcms doctor` |
+
+Error bodies include a machine-readable error or message where the handler can provide one. Log status, request path, and safe correlation details. Do not log bearer tokens or full request bodies containing secrets.

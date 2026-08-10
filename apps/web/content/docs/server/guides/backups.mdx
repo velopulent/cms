@@ -1,0 +1,25 @@
+---
+title: Design a backup policy
+description: Combine scope, destination, encryption, schedules, retention, and restore testing.
+---
+
+## Choose scope
+
+- **Site** backups move or recover one self-contained site.
+- **Instance** backups protect all sites, users, and roles. Only the owner can create or restore them.
+
+Backup metadata, schedules, restore jobs, sessions, search indexes, and `secrets.toml` stay outside the logical payload.
+
+## Separate artifact and key
+
+Encrypted artifacts use AES-256-GCM with `backup_encryption_key`. Copy `secrets.toml` through a separate protected recovery path. An encrypted backup without its key cannot restore.
+
+## Schedule and retain
+
+Set a cron schedule and retention count. Include files unless another tested system protects storage objects. Send backups to a separate failure domain and monitor failed records.
+
+## Test restoration
+
+Restore a recent site artifact into a disposable installation or use import-as-new. Confirm content, files, users, and frontend queries. Record the server version, artifact location, key location, and test date.
+
+Logical rows use a database-neutral representation, so a supported artifact can move between SQLite and PostgreSQL. The target rejects backups created on a newer schema.

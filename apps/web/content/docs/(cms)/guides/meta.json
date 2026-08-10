@@ -1,0 +1,14 @@
+{
+  "title": "How-to guides",
+  "icon": "Wrench",
+  "defaultOpen": true,
+  "pages": [
+    "content-modeling",
+    "entries",
+    "files",
+    "team",
+    "webhooks-deployments",
+    "backups",
+    "account"
+  ]
+}

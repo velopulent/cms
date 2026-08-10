@@ -1,0 +1,33 @@
+---
+title: Connect an MCP client
+description: Give AI tools scoped access through Streamable HTTP or the stdio proxy.
+---
+
+VCMS Server exposes Streamable HTTP at `/mcp`. MCP must remain enabled in instance settings, and the request host and origin must satisfy the configured allowlists.
+
+## Direct HTTP
+
+Configure an MCP client for `http://127.0.0.1:3000/mcp` and send a bearer site key or personal token with the `mcp.use` scope. During initialization, the server authenticates the caller and echoes the requested protocol version.
+
+## Stdio proxy
+
+Some clients launch a local command instead of connecting to HTTP:
+
+```json
+{
+  "command": "vcms",
+  "args": ["mcp", "stdio"],
+  "env": {
+    "VCMS_MCP_TOKEN": "vcms_site_replace_me",
+    "VCMS_MCP_URL": "http://127.0.0.1:3000"
+  }
+}
+```
+
+The proxy opens no database or search index. It forwards JSON-RPC to the running server. Protocol messages use stdout; logs use stderr.
+
+## Discover capabilities
+
+Use `tools/list` for current tool names and input schemas. Use `resources/list` to discover accessible site-schema resources, then `resources/read` for one schema. Every site-specific tool requires an explicit `site_id`, except `list_sites`.
+
+Tools cover sites, collections, entries, revisions, singletons, files, signed upload URLs, and webhooks. Credential scopes and role policy still apply.

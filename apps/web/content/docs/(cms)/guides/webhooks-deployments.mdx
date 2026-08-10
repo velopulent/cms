@@ -1,0 +1,30 @@
+---
+title: Connect webhooks and deployments
+description: Notify other systems and trigger frontend builds from the dashboard.
+---
+
+## Create a webhook
+
+1. Open **Site settings → Webhooks**.
+2. Add the destination URL and select the events it should receive.
+3. Save, then use the manual trigger to verify the receiver.
+4. Inspect delivery history for response status and failures.
+
+Private network targets are blocked by default. An instance owner can allow them under security settings when the network design requires it.
+
+## Create a deployment trigger
+
+Open **Deploy**, add a label and deployment URL, then configure cooldown and daily quota. Enable the trigger and mark one primary when appropriate.
+
+Editors can run an enabled trigger. Operators create and change trigger definitions. The history view records queued work, status codes, error categories, retry delays, and completion time.
+
+<Callout type="info">
+Use deployment triggers for build hooks. Use webhooks when receivers need event-specific content notifications.
+</Callout>
+
+## Troubleshoot delivery
+
+- Confirm the receiver accepts requests from the VCMS Server host.
+- Inspect status code and retry information.
+- Check cooldown and daily quota for deployment triggers.
+- Ask an owner to review the private-target setting when using an internal address.

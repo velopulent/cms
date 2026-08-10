@@ -1,0 +1,31 @@
+---
+title: Deliver and upload files
+description: Serve originals and thumbnails, or create signed one-use upload URLs.
+---
+
+## Serve a file
+
+Originals and thumbnails use opaque file IDs:
+
+```text
+GET /api/files/{id}
+GET /api/files/{id}/thumbnail
+```
+
+These delivery routes do not require bearer authentication. Do not treat an opaque file URL as access control for confidential media.
+
+## Upload through REST
+
+Send multipart form data to `/api/v1/files` with a write key. Include `file` and the selected `storage_provider`.
+
+## Upload through MCP
+
+Call `create_upload_url` with the site, file name, media type, and size. Send one HTTP `PUT` to the returned URL with raw bytes and the exact `Content-Type`. The signed URL expires and works once.
+
+```bash
+curl -X PUT "$UPLOAD_URL" \
+  -H "Content-Type: image/webp" \
+  --data-binary @cover.webp
+```
+
+The response contains the created file record. Store its ID in a file field through the relevant content operation.

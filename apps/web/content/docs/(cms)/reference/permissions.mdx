@@ -1,0 +1,34 @@
+---
+title: Permission reference
+description: Exact authority boundaries for users, site collaborators, and access tokens.
+---
+
+## Human roles
+
+| Capability | Owner | Admin | Editor | Viewer |
+| --- | :---: | :---: | :---: | :---: |
+| Manage installation and users | ✓ | ✓ |  |  |
+| Grant instance roles | ✓ |  |  |  |
+| Create and delete sites | ✓ | ✓ |  |  |
+| Full access to every site | ✓ | ✓ |  |  |
+| Read assigned site | ✓ | ✓ | ✓ | ✓ |
+| Write content and files | ✓ | ✓ | ✓ |  |
+| Trigger deployments | ✓ | ✓ | ✓ |  |
+| Change schema and site settings | ✓ | ✓ |  |  |
+| Manage webhooks, keys, and members | ✓ | ✓ |  |  |
+| Site backup and restore | ✓ | ✓ |  |  |
+| Instance backup and restore | ✓ |  |  |  |
+
+Owners and admins act as instance operators. They receive site authority without membership.
+
+## Site keys
+
+Read-only keys can read site, settings, content, files, schema, webhooks, and deployments. Write keys can also change those resources and trigger webhooks or deployments. Site keys cannot manage keys, members, instance settings, or backups and cannot delete a site.
+
+## Personal tokens
+
+Personal tokens belong to a user. Effective authority combines the user's roles with the token's scopes. Revoking the user's access or token removes that path independently.
+
+## Dashboard sessions
+
+Browser sessions use secure HTTP-only cookies and CSRF protection for state-changing dashboard requests. Session lifetime and secure-cookie behavior come from instance settings.

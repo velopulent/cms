@@ -1,0 +1,48 @@
+---
+title: Model content
+description: Create collections and singletons that remain useful across channels.
+---
+
+Instance owners and admins can change a site's schema. Editors and viewers can read it but cannot alter it.
+
+<AdaptiveScreenshot
+  light="/docs/screenshots/collections-light.png"
+  dark="/docs/screenshots/collections-dark.png"
+  alt="Collections screen listing Authors, Posts, and the Site Settings singleton"
+  caption="Collections and singletons share one schema workspace and remain distinct in the dashboard sidebar."
+/>
+
+## Choose collection or singleton
+
+Use a **collection** when editors create many records: posts, authors, products, or events. Use a **singleton** when the site owns one record: global settings, navigation, home page, or contact details.
+
+## Create a model
+
+1. Open a site and select **Collections**.
+2. Choose **New collection**.
+3. Enter a human-readable name and stable slug.
+4. Select collection or singleton.
+5. Add fields and validation rules.
+6. Save, then create a sample record before expanding the model.
+
+<Callout type="warn" title="Treat slugs as API identifiers">
+Frontend code and relationships can depend on collection and entry slugs. Plan slug changes with the developers who consume the content.
+</Callout>
+
+## Design useful editorial fields
+
+- Give fields labels that editors recognize.
+- Mark a field required only when every record needs it.
+- Use relationship fields instead of copying shared data.
+- Use file restrictions to keep pickers relevant.
+- Put site-wide values in a singleton instead of repeating them on entries.
+
+## Change an existing model
+
+Open **Collections**, select the model, change its definition, and save. Test the updated form against old and new entries. Existing entry data may predate a newly required field, so schedule editorial cleanup before consumers assume the field exists.
+
+## Delete a model
+
+Confirm that no frontend, relationship, automation, or agent uses the model. Export or back up the site, then delete it. Schema deletion is an operator-only action.
+
+See [Field reference](/docs/reference/fields) for supported controls and [Content model concepts](/docs/explanation/content-model) for design guidance.

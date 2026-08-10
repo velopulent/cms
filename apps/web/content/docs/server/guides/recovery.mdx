@@ -1,0 +1,41 @@
+---
+title: Recover an offline server
+description: Diagnose startup failures and restore data without the HTTP server.
+---
+
+## Diagnose first
+
+```bash
+vcms config show
+vcms service status
+vcms doctor
+```
+
+Preserve the root before changing files. Copy logs and record the first error.
+
+## Missing secrets
+
+If `secrets.toml` is missing beside an existing SQLite database, startup fails. Restore the original secrets file. `vcms secrets reset --yes` creates a new trust root and invalidates credentials; use it only when the original trust root cannot return.
+
+## List known backups
+
+```bash
+vcms backup list
+```
+
+## Restore an instance artifact
+
+```bash
+vcms restore --file PATH --scope instance --yes
+```
+
+## Restore or import a site
+
+```bash
+vcms restore --file PATH --scope site --site SITE_ID --yes
+vcms restore --file PATH --scope site --site SITE_ID --import-as-new --yes
+```
+
+Restore is destructive within its chosen scope. Confirm the root and artifact before adding `--yes`.
+
+After restore, start the service, check readiness, run `vcms doctor`, inspect recovery warnings, and verify search. The restore process rebuilds derived search data when possible.

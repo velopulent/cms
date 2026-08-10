@@ -1,0 +1,6 @@
+{
+  "title": "Reference",
+  "icon": "BookOpenText",
+  "defaultOpen": true,
+  "pages": ["protocols", "queries-errors", "operations"]
+}

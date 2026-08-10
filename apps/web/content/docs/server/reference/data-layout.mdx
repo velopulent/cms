@@ -1,0 +1,35 @@
+---
+title: Runtime modes and data layout
+description: Fixed roots, mode selection, permissions, and directory contents.
+---
+
+## Mode selection
+
+Native service registration selects installed mode. Without a registered service, `vcms serve` uses portable mode. Existing directories, legacy paths, and environment values do not select mode. Detection errors fail closed.
+
+## Roots
+
+| Mode | Root |
+| --- | --- |
+| Portable | `<current directory>/vcms_data` |
+| Installed Linux | `/var/lib/vcms` |
+| Installed macOS | `/Library/Application Support/vcms` |
+| Installed Windows | `C:\ProgramData\vcms` |
+
+## Layout
+
+<Files>
+  <Folder name="root" defaultOpen>
+    <File name="config.toml" />
+    <File name="secrets.toml" />
+    <File name="vcms.db" />
+    <Folder name="storage" />
+    <Folder name="backups" />
+    <Folder name="logs" />
+    <Folder name="search" />
+  </Folder>
+</Files>
+
+`search` contains derived data and does not belong in logical backup payloads. `backups` holds local artifacts when filesystem destination is active.
+
+Fresh Unix roots use mode `0700`; secrets use `0600`. Windows applies explicit ACLs for the current/service identity, SYSTEM, and Administrators.

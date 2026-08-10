@@ -1,0 +1,57 @@
+---
+title: API quickstart
+description: Authenticate and read content from the Editorial site over REST.
+---
+
+## Prerequisites
+
+- A running server at `http://127.0.0.1:3000`
+- The Editorial site from the [product tutorial](/docs/tutorials/editorial-site)
+- A read-only site key copied from **Site settings → API keys**
+
+<Steps>
+
+### Set the token
+
+Use a shell-local variable. Do not commit the token.
+
+```bash
+export VCMS_TOKEN='vcms_site_replace_me'
+```
+
+PowerShell:
+
+```powershell
+$env:VCMS_TOKEN = "vcms_site_replace_me"
+```
+
+### Inspect the current site
+
+```bash
+curl http://127.0.0.1:3000/api/v1/site \
+  -H "Authorization: Bearer $VCMS_TOKEN"
+```
+
+The site key identifies its site, so public REST resource paths do not need a site ID.
+
+### Find the Posts collection
+
+```bash
+curl http://127.0.0.1:3000/api/v1/collections/posts \
+  -H "Authorization: Bearer $VCMS_TOKEN"
+```
+
+### List published posts
+
+```bash
+curl "http://127.0.0.1:3000/api/v1/entries?type=posts&status=published" \
+  -H "Authorization: Bearer $VCMS_TOKEN"
+```
+
+</Steps>
+
+## Next steps
+
+- [Use REST](/docs/api/guides/rest)
+- [Connect a static site](/docs/api/guides/static-sites)
+- [Understand pagination and errors](/docs/api/reference/queries-errors)
