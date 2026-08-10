@@ -3,9 +3,9 @@ use std::time::Instant;
 
 use rmcp::handler::server::wrapper::Parameters;
 use rmcp::model::{
-    CallToolRequestParams, CallToolResult, Implementation, InitializeRequestParams, ListResourcesResult,
-    ListToolsResult, PaginatedRequestParams, ReadResourceRequestParams, ReadResourceResult, ServerCapabilities,
-    ServerInfo,
+    CallToolRequestParams, CallToolResponse, CallToolResult, Implementation, InitializeRequestParams,
+    ListResourcesResult, ListToolsResult, PaginatedRequestParams, ReadResourceRequestParams, ReadResourceResponse,
+    ServerCapabilities, ServerInfo,
 };
 use rmcp::service::RequestContext;
 use rmcp::service::RoleServer;
@@ -426,6 +426,7 @@ impl ServerHandler for CmsServer {
             tools,
             meta: None,
             next_cursor: None,
+            ..Default::default()
         };
         tracing::info!(
             mcp_method = "tools/list",
@@ -440,7 +441,7 @@ impl ServerHandler for CmsServer {
         &self,
         request: CallToolRequestParams,
         mut ctx: RequestContext<RoleServer>,
-    ) -> Result<CallToolResult, McpError> {
+    ) -> Result<CallToolResponse, McpError> {
         let started = Instant::now();
         let tool_name = request.name.to_string();
         self.authenticate_context(&mut ctx).await?;
@@ -477,7 +478,7 @@ impl ServerHandler for CmsServer {
         &self,
         request: ReadResourceRequestParams,
         mut ctx: RequestContext<RoleServer>,
-    ) -> Result<ReadResourceResult, McpError> {
+    ) -> Result<ReadResourceResponse, McpError> {
         let started = Instant::now();
         let actor = self.authenticate_context(&mut ctx).await?;
         let result = site_schema::read_resource(&self.authorizer, &self.services, &actor, &request.uri).await;
@@ -487,7 +488,7 @@ impl ServerHandler for CmsServer {
             outcome = if result.is_ok() { "success" } else { "error" },
             "MCP operation completed"
         );
-        result
+        result.map(Into::into)
     }
 }
 

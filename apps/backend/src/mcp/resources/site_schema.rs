@@ -101,6 +101,7 @@ pub async fn list_resources(
         resources,
         meta: None,
         next_cursor: (page_end < sites.len()).then(|| page_end.to_string()),
+        ..Default::default()
     })
 }
 

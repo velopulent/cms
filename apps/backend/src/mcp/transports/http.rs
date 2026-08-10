@@ -20,7 +20,7 @@ pub fn mcp_router(
     cancellation_token: CancellationToken,
 ) -> Router {
     let server_config = StreamableHttpServerConfig::default()
-        .with_stateful_mode(false)
+        .with_legacy_session_mode(false)
         .with_json_response(true)
         .with_allowed_hosts(config.mcp_allowed_hosts.clone())
         .with_allowed_origins(config.mcp_allowed_origins.clone())
