@@ -1,5 +1,6 @@
 import { Link } from "@tanstack/react-router";
 import type { ColumnDef } from "@tanstack/react-table";
+import type { dataTableFeatures } from "@/components/ui/data-table";
 import { ArrowUpDown, Globe, GlobeLock, Pencil, Trash2 } from "lucide-react";
 
 import {
@@ -56,7 +57,7 @@ export function createColumns({
   isPublishPending,
   isUnpublishPending,
   isDeletePending,
-}: CreateColumnsParams): ColumnDef<Entry>[] {
+}: CreateColumnsParams): ColumnDef<typeof dataTableFeatures, Entry>[] {
   return [
     {
       accessorKey: "data",
@@ -73,7 +74,7 @@ export function createColumns({
         const title = extractTitle(row.original);
         return <span className="font-medium">{title}</span>;
       },
-      sortingFn: (rowA, rowB) => {
+      sortFn: (rowA, rowB) => {
         const titleA = extractTitle(rowA.original).toLowerCase();
         const titleB = extractTitle(rowB.original).toLowerCase();
         return titleA.localeCompare(titleB);

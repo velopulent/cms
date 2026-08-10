@@ -2,16 +2,22 @@
 
 import type {
   ColumnDef,
+  RowData,
+  ReactTable,
   SortingState,
-  Table as TanStackTable,
-  VisibilityState,
+  ColumnVisibilityState,
 } from "@tanstack/react-table";
 import {
+  columnVisibilityFeature,
+  createPaginatedRowModel,
+  createSortedRowModel,
   flexRender,
-  getCoreRowModel,
-  getPaginationRowModel,
-  getSortedRowModel,
-  useReactTable,
+  rowPaginationFeature,
+  rowSelectionFeature,
+  rowSortingFeature,
+  sortFns,
+  tableFeatures,
+  useTable,
 } from "@tanstack/react-table";
 import * as React from "react";
 import {
@@ -40,8 +46,18 @@ import {
 } from "@/components/ui/table";
 import { cn } from "@/lib/utils";
 
-interface DataTableProps<TData, TValue> {
-  columns: ColumnDef<TData, TValue>[];
+export const dataTableFeatures = tableFeatures({
+  columnVisibilityFeature,
+  rowSelectionFeature,
+  rowSortingFeature,
+  sortFns,
+  sortedRowModel: createSortedRowModel(),
+  rowPaginationFeature,
+  paginatedRowModel: createPaginatedRowModel(),
+});
+
+interface DataTableProps<TData extends RowData> {
+  columns: ColumnDef<typeof dataTableFeatures, TData>[];
   data: TData[];
   isLoading?: boolean;
   loadingRowCount?: number;
@@ -54,7 +70,7 @@ interface DataTableProps<TData, TValue> {
   onPageSizeChange?: (pageSize: number) => void;
 }
 
-export function DataTable<TData, TValue>({
+export function DataTable<TData extends RowData>({
   columns,
   data,
   isLoading = false,
@@ -66,17 +82,15 @@ export function DataTable<TData, TValue>({
   pageSize,
   onPageChange,
   onPageSizeChange,
-}: DataTableProps<TData, TValue>) {
+}: DataTableProps<TData>) {
   const [sorting, setSorting] = React.useState<SortingState>([]);
   const [columnVisibility, setColumnVisibility] =
-    React.useState<VisibilityState>({});
+    React.useState<ColumnVisibilityState>({});
 
-  const table = useReactTable({
+  const table = useTable({
+    features: dataTableFeatures,
     data,
     columns,
-    getCoreRowModel: getCoreRowModel(),
-    getPaginationRowModel: getPaginationRowModel(),
-    getSortedRowModel: getSortedRowModel(),
     onSortingChange: setSorting,
     onColumnVisibilityChange: setColumnVisibility,
     state: {
@@ -194,8 +208,8 @@ export function DataTable<TData, TValue>({
 
 // --- Pagination sub-component ---
 
-interface DataTablePaginationProps<TData> {
-  table: TanStackTable<TData>;
+interface DataTablePaginationProps<TData extends RowData> {
+  table: ReactTable<typeof dataTableFeatures, TData>;
   total?: number;
   page?: number;
   pageSize?: number;
@@ -203,7 +217,7 @@ interface DataTablePaginationProps<TData> {
   onPageSizeChange?: (pageSize: number) => void;
 }
 
-function DataTablePagination<TData>({
+function DataTablePagination<TData extends RowData>({
   table,
   total,
   page,
@@ -213,8 +227,8 @@ function DataTablePagination<TData>({
 }: DataTablePaginationProps<TData>) {
   const isServerSide = total !== undefined && onPageChange !== undefined;
   const pageCount = isServerSide ? Math.ceil(total / (pageSize || 20)) : table.getPageCount();
-  const currentPage = isServerSide ? (page || 1) : table.getState().pagination.pageIndex + 1;
-  const currentPageSize = isServerSide ? (pageSize || 20) : table.getState().pagination.pageSize;
+  const currentPage = isServerSide ? (page || 1) : table.state.pagination.pageIndex + 1;
+  const currentPageSize = isServerSide ? (pageSize || 20) : table.state.pagination.pageSize;
 
   const canPreviousPage = currentPage > 1;
   const canNextPage = currentPage < pageCount;
@@ -232,7 +246,7 @@ function DataTablePagination<TData>({
   return (
     <div className="flex items-center justify-between px-2 py-4">
       <div className="flex-1 text-sm text-muted-foreground">
-        {isServerSide ? `${total} item(s) total.` : `${table.getFilteredRowModel().rows.length} row(s) total.`}
+        {isServerSide ? `${total} item(s) total.` : `${table.getPrePaginatedRowModel().rows.length} row(s) total.`}
       </div>
       <div className="flex items-center gap-6">
         <div className="flex items-center gap-2">
