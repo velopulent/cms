@@ -9,40 +9,39 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
-import { Route as RegisterRouteImport } from './routes/register'
-import { Route as LoginRouteImport } from './routes/login'
 import { Route as AdminRouteImport } from './routes/_admin'
-import { Route as AdminSitesRouteImport } from './routes/_admin/sites'
+import { Route as LoginRouteImport } from './routes/login'
+import { Route as RegisterRouteImport } from './routes/register'
 import { Route as AdminShellRouteImport } from './routes/_admin/_shell'
+import { Route as AdminSitesRouteImport } from './routes/_admin/sites'
 import { Route as AdminShellIndexRouteImport } from './routes/_admin/_shell/index'
-import { Route as AdminSitesSiteIdRouteImport } from './routes/_admin/sites.$siteId'
-import { Route as AdminShellSettingsRouteImport } from './routes/_admin/_shell/settings'
 import { Route as AdminShellAccountRouteImport } from './routes/_admin/_shell/account'
-import { Route as AdminSitesSiteIdIndexRouteImport } from './routes/_admin/sites.$siteId/index'
+import { Route as AdminShellSettingsRouteImport } from './routes/_admin/_shell/settings'
+import { Route as AdminSitesSiteIdRouteImport } from './routes/_admin/sites.$siteId'
 import { Route as AdminShellSettingsIndexRouteImport } from './routes/_admin/_shell/settings/index'
-import { Route as AdminSitesSiteIdSettingsRouteImport } from './routes/_admin/sites.$siteId/settings'
-import { Route as AdminSitesSiteIdFilesRouteImport } from './routes/_admin/sites.$siteId/files'
-import { Route as AdminSitesSiteIdDeploymentsRouteImport } from './routes/_admin/sites.$siteId/deployments'
-import { Route as AdminSitesSiteIdCollectionsRouteImport } from './routes/_admin/sites.$siteId/collections'
-import { Route as AdminShellSettingsUsersRouteImport } from './routes/_admin/_shell/settings/users'
-import { Route as AdminShellSettingsStorageRouteImport } from './routes/_admin/_shell/settings/storage'
-import { Route as AdminShellSettingsSecurityRouteImport } from './routes/_admin/_shell/settings/security'
 import { Route as AdminShellSettingsBackupsRouteImport } from './routes/_admin/_shell/settings/backups'
-import { Route as AdminSitesSiteIdSettingsIndexRouteImport } from './routes/_admin/sites.$siteId/settings/index'
-import { Route as AdminSitesSiteIdSingletonsSlugRouteImport } from './routes/_admin/sites.$siteId/singletons.$slug'
-import { Route as AdminSitesSiteIdSettingsWebhooksRouteImport } from './routes/_admin/sites.$siteId/settings/webhooks'
-import { Route as AdminSitesSiteIdSettingsMembersRouteImport } from './routes/_admin/sites.$siteId/settings/members'
-import { Route as AdminSitesSiteIdSettingsMcpRouteImport } from './routes/_admin/sites.$siteId/settings/mcp'
-import { Route as AdminSitesSiteIdSettingsBackupsRouteImport } from './routes/_admin/sites.$siteId/settings/backups'
-import { Route as AdminSitesSiteIdSettingsApiKeysRouteImport } from './routes/_admin/sites.$siteId/settings/api-keys'
+import { Route as AdminShellSettingsSecurityRouteImport } from './routes/_admin/_shell/settings/security'
+import { Route as AdminShellSettingsStorageRouteImport } from './routes/_admin/_shell/settings/storage'
+import { Route as AdminShellSettingsUsersRouteImport } from './routes/_admin/_shell/settings/users'
+import { Route as AdminSitesSiteIdIndexRouteImport } from './routes/_admin/sites.$siteId/index'
+import { Route as AdminSitesSiteIdCollectionsRouteImport } from './routes/_admin/sites.$siteId/collections'
+import { Route as AdminSitesSiteIdDeploymentsRouteImport } from './routes/_admin/sites.$siteId/deployments'
+import { Route as AdminSitesSiteIdFilesRouteImport } from './routes/_admin/sites.$siteId/files'
+import { Route as AdminSitesSiteIdSettingsRouteImport } from './routes/_admin/sites.$siteId/settings'
 import { Route as AdminSitesSiteIdEntriesCollectionSlugRouteImport } from './routes/_admin/sites.$siteId/entries.$collectionSlug'
+import { Route as AdminSitesSiteIdSettingsIndexRouteImport } from './routes/_admin/sites.$siteId/settings/index'
+import { Route as AdminSitesSiteIdSettingsApiKeysRouteImport } from './routes/_admin/sites.$siteId/settings/api-keys'
+import { Route as AdminSitesSiteIdSettingsBackupsRouteImport } from './routes/_admin/sites.$siteId/settings/backups'
+import { Route as AdminSitesSiteIdSettingsMcpRouteImport } from './routes/_admin/sites.$siteId/settings/mcp'
+import { Route as AdminSitesSiteIdSettingsMembersRouteImport } from './routes/_admin/sites.$siteId/settings/members'
+import { Route as AdminSitesSiteIdSettingsWebhooksRouteImport } from './routes/_admin/sites.$siteId/settings/webhooks'
+import { Route as AdminSitesSiteIdSingletonsSlugRouteImport } from './routes/_admin/sites.$siteId/singletons.$slug'
 import { Route as AdminSitesSiteIdEntriesCollectionSlugIndexRouteImport } from './routes/_admin/sites.$siteId/entries.$collectionSlug/index'
 import { Route as AdminSitesSiteIdEntriesCollectionSlugNewRouteImport } from './routes/_admin/sites.$siteId/entries.$collectionSlug/new'
 import { Route as AdminSitesSiteIdEntriesCollectionSlugIdEditRouteImport } from './routes/_admin/sites.$siteId/entries.$collectionSlug/$id.edit'
 
-const RegisterRoute = RegisterRouteImport.update({
-  id: '/register',
-  path: '/register',
+const AdminRoute = AdminRouteImport.update({
+  id: '/_admin',
   getParentRoute: () => rootRouteImport,
 } as any)
 const LoginRoute = LoginRouteImport.update({
@@ -50,17 +49,18 @@ const LoginRoute = LoginRouteImport.update({
   path: '/login',
   getParentRoute: () => rootRouteImport,
 } as any)
-const AdminRoute = AdminRouteImport.update({
-  id: '/_admin',
+const RegisterRoute = RegisterRouteImport.update({
+  id: '/register',
+  path: '/register',
   getParentRoute: () => rootRouteImport,
+} as any)
+const AdminShellRoute = AdminShellRouteImport.update({
+  id: '/_shell',
+  getParentRoute: () => AdminRoute,
 } as any)
 const AdminSitesRoute = AdminSitesRouteImport.update({
   id: '/sites',
   path: '/sites',
-  getParentRoute: () => AdminRoute,
-} as any)
-const AdminShellRoute = AdminShellRouteImport.update({
-  id: '/_shell',
   getParentRoute: () => AdminRoute,
 } as any)
 const AdminShellIndexRoute = AdminShellIndexRouteImport.update({
@@ -68,63 +68,30 @@ const AdminShellIndexRoute = AdminShellIndexRouteImport.update({
   path: '/',
   getParentRoute: () => AdminShellRoute,
 } as any)
-const AdminSitesSiteIdRoute = AdminSitesSiteIdRouteImport.update({
-  id: '/$siteId',
-  path: '/$siteId',
-  getParentRoute: () => AdminSitesRoute,
+const AdminShellAccountRoute = AdminShellAccountRouteImport.update({
+  id: '/account',
+  path: '/account',
+  getParentRoute: () => AdminShellRoute,
 } as any)
 const AdminShellSettingsRoute = AdminShellSettingsRouteImport.update({
   id: '/settings',
   path: '/settings',
   getParentRoute: () => AdminShellRoute,
 } as any)
-const AdminShellAccountRoute = AdminShellAccountRouteImport.update({
-  id: '/account',
-  path: '/account',
-  getParentRoute: () => AdminShellRoute,
-} as any)
-const AdminSitesSiteIdIndexRoute = AdminSitesSiteIdIndexRouteImport.update({
-  id: '/',
-  path: '/',
-  getParentRoute: () => AdminSitesSiteIdRoute,
+const AdminSitesSiteIdRoute = AdminSitesSiteIdRouteImport.update({
+  id: '/$siteId',
+  path: '/$siteId',
+  getParentRoute: () => AdminSitesRoute,
 } as any)
 const AdminShellSettingsIndexRoute = AdminShellSettingsIndexRouteImport.update({
   id: '/',
   path: '/',
   getParentRoute: () => AdminShellSettingsRoute,
 } as any)
-const AdminSitesSiteIdSettingsRoute =
-  AdminSitesSiteIdSettingsRouteImport.update({
-    id: '/settings',
-    path: '/settings',
-    getParentRoute: () => AdminSitesSiteIdRoute,
-  } as any)
-const AdminSitesSiteIdFilesRoute = AdminSitesSiteIdFilesRouteImport.update({
-  id: '/files',
-  path: '/files',
-  getParentRoute: () => AdminSitesSiteIdRoute,
-} as any)
-const AdminSitesSiteIdDeploymentsRoute =
-  AdminSitesSiteIdDeploymentsRouteImport.update({
-    id: '/deployments',
-    path: '/deployments',
-    getParentRoute: () => AdminSitesSiteIdRoute,
-  } as any)
-const AdminSitesSiteIdCollectionsRoute =
-  AdminSitesSiteIdCollectionsRouteImport.update({
-    id: '/collections',
-    path: '/collections',
-    getParentRoute: () => AdminSitesSiteIdRoute,
-  } as any)
-const AdminShellSettingsUsersRoute = AdminShellSettingsUsersRouteImport.update({
-  id: '/users',
-  path: '/users',
-  getParentRoute: () => AdminShellSettingsRoute,
-} as any)
-const AdminShellSettingsStorageRoute =
-  AdminShellSettingsStorageRouteImport.update({
-    id: '/storage',
-    path: '/storage',
+const AdminShellSettingsBackupsRoute =
+  AdminShellSettingsBackupsRouteImport.update({
+    id: '/backups',
+    path: '/backups',
     getParentRoute: () => AdminShellSettingsRoute,
   } as any)
 const AdminShellSettingsSecurityRoute =
@@ -133,46 +100,55 @@ const AdminShellSettingsSecurityRoute =
     path: '/security',
     getParentRoute: () => AdminShellSettingsRoute,
   } as any)
-const AdminShellSettingsBackupsRoute =
-  AdminShellSettingsBackupsRouteImport.update({
-    id: '/backups',
-    path: '/backups',
+const AdminShellSettingsStorageRoute =
+  AdminShellSettingsStorageRouteImport.update({
+    id: '/storage',
+    path: '/storage',
     getParentRoute: () => AdminShellSettingsRoute,
+  } as any)
+const AdminShellSettingsUsersRoute = AdminShellSettingsUsersRouteImport.update({
+  id: '/users',
+  path: '/users',
+  getParentRoute: () => AdminShellSettingsRoute,
+} as any)
+const AdminSitesSiteIdIndexRoute = AdminSitesSiteIdIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => AdminSitesSiteIdRoute,
+} as any)
+const AdminSitesSiteIdCollectionsRoute =
+  AdminSitesSiteIdCollectionsRouteImport.update({
+    id: '/collections',
+    path: '/collections',
+    getParentRoute: () => AdminSitesSiteIdRoute,
+  } as any)
+const AdminSitesSiteIdDeploymentsRoute =
+  AdminSitesSiteIdDeploymentsRouteImport.update({
+    id: '/deployments',
+    path: '/deployments',
+    getParentRoute: () => AdminSitesSiteIdRoute,
+  } as any)
+const AdminSitesSiteIdFilesRoute = AdminSitesSiteIdFilesRouteImport.update({
+  id: '/files',
+  path: '/files',
+  getParentRoute: () => AdminSitesSiteIdRoute,
+} as any)
+const AdminSitesSiteIdSettingsRoute =
+  AdminSitesSiteIdSettingsRouteImport.update({
+    id: '/settings',
+    path: '/settings',
+    getParentRoute: () => AdminSitesSiteIdRoute,
+  } as any)
+const AdminSitesSiteIdEntriesCollectionSlugRoute =
+  AdminSitesSiteIdEntriesCollectionSlugRouteImport.update({
+    id: '/entries/$collectionSlug',
+    path: '/entries/$collectionSlug',
+    getParentRoute: () => AdminSitesSiteIdRoute,
   } as any)
 const AdminSitesSiteIdSettingsIndexRoute =
   AdminSitesSiteIdSettingsIndexRouteImport.update({
     id: '/',
     path: '/',
-    getParentRoute: () => AdminSitesSiteIdSettingsRoute,
-  } as any)
-const AdminSitesSiteIdSingletonsSlugRoute =
-  AdminSitesSiteIdSingletonsSlugRouteImport.update({
-    id: '/singletons/$slug',
-    path: '/singletons/$slug',
-    getParentRoute: () => AdminSitesSiteIdRoute,
-  } as any)
-const AdminSitesSiteIdSettingsWebhooksRoute =
-  AdminSitesSiteIdSettingsWebhooksRouteImport.update({
-    id: '/webhooks',
-    path: '/webhooks',
-    getParentRoute: () => AdminSitesSiteIdSettingsRoute,
-  } as any)
-const AdminSitesSiteIdSettingsMembersRoute =
-  AdminSitesSiteIdSettingsMembersRouteImport.update({
-    id: '/members',
-    path: '/members',
-    getParentRoute: () => AdminSitesSiteIdSettingsRoute,
-  } as any)
-const AdminSitesSiteIdSettingsMcpRoute =
-  AdminSitesSiteIdSettingsMcpRouteImport.update({
-    id: '/mcp',
-    path: '/mcp',
-    getParentRoute: () => AdminSitesSiteIdSettingsRoute,
-  } as any)
-const AdminSitesSiteIdSettingsBackupsRoute =
-  AdminSitesSiteIdSettingsBackupsRouteImport.update({
-    id: '/backups',
-    path: '/backups',
     getParentRoute: () => AdminSitesSiteIdSettingsRoute,
   } as any)
 const AdminSitesSiteIdSettingsApiKeysRoute =
@@ -181,10 +157,34 @@ const AdminSitesSiteIdSettingsApiKeysRoute =
     path: '/api-keys',
     getParentRoute: () => AdminSitesSiteIdSettingsRoute,
   } as any)
-const AdminSitesSiteIdEntriesCollectionSlugRoute =
-  AdminSitesSiteIdEntriesCollectionSlugRouteImport.update({
-    id: '/entries/$collectionSlug',
-    path: '/entries/$collectionSlug',
+const AdminSitesSiteIdSettingsBackupsRoute =
+  AdminSitesSiteIdSettingsBackupsRouteImport.update({
+    id: '/backups',
+    path: '/backups',
+    getParentRoute: () => AdminSitesSiteIdSettingsRoute,
+  } as any)
+const AdminSitesSiteIdSettingsMcpRoute =
+  AdminSitesSiteIdSettingsMcpRouteImport.update({
+    id: '/mcp',
+    path: '/mcp',
+    getParentRoute: () => AdminSitesSiteIdSettingsRoute,
+  } as any)
+const AdminSitesSiteIdSettingsMembersRoute =
+  AdminSitesSiteIdSettingsMembersRouteImport.update({
+    id: '/members',
+    path: '/members',
+    getParentRoute: () => AdminSitesSiteIdSettingsRoute,
+  } as any)
+const AdminSitesSiteIdSettingsWebhooksRoute =
+  AdminSitesSiteIdSettingsWebhooksRouteImport.update({
+    id: '/webhooks',
+    path: '/webhooks',
+    getParentRoute: () => AdminSitesSiteIdSettingsRoute,
+  } as any)
+const AdminSitesSiteIdSingletonsSlugRoute =
+  AdminSitesSiteIdSingletonsSlugRouteImport.update({
+    id: '/singletons/$slug',
+    path: '/singletons/$slug',
     getParentRoute: () => AdminSitesSiteIdRoute,
   } as any)
 const AdminSitesSiteIdEntriesCollectionSlugIndexRoute =
@@ -394,11 +394,11 @@ export interface RootRouteChildren {
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
-    '/register': {
-      id: '/register'
-      path: '/register'
-      fullPath: '/register'
-      preLoaderRoute: typeof RegisterRouteImport
+    '/_admin': {
+      id: '/_admin'
+      path: ''
+      fullPath: '/'
+      preLoaderRoute: typeof AdminRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/login': {
@@ -408,25 +408,25 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof LoginRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/_admin': {
-      id: '/_admin'
-      path: ''
-      fullPath: '/'
-      preLoaderRoute: typeof AdminRouteImport
+    '/register': {
+      id: '/register'
+      path: '/register'
+      fullPath: '/register'
+      preLoaderRoute: typeof RegisterRouteImport
       parentRoute: typeof rootRouteImport
-    }
-    '/_admin/sites': {
-      id: '/_admin/sites'
-      path: '/sites'
-      fullPath: '/sites'
-      preLoaderRoute: typeof AdminSitesRouteImport
-      parentRoute: typeof AdminRoute
     }
     '/_admin/_shell': {
       id: '/_admin/_shell'
       path: ''
       fullPath: '/'
       preLoaderRoute: typeof AdminShellRouteImport
+      parentRoute: typeof AdminRoute
+    }
+    '/_admin/sites': {
+      id: '/_admin/sites'
+      path: '/sites'
+      fullPath: '/sites'
+      preLoaderRoute: typeof AdminSitesRouteImport
       parentRoute: typeof AdminRoute
     }
     '/_admin/_shell/': {
@@ -436,12 +436,12 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AdminShellIndexRouteImport
       parentRoute: typeof AdminShellRoute
     }
-    '/_admin/sites/$siteId': {
-      id: '/_admin/sites/$siteId'
-      path: '/$siteId'
-      fullPath: '/sites/$siteId'
-      preLoaderRoute: typeof AdminSitesSiteIdRouteImport
-      parentRoute: typeof AdminSitesRoute
+    '/_admin/_shell/account': {
+      id: '/_admin/_shell/account'
+      path: '/account'
+      fullPath: '/account'
+      preLoaderRoute: typeof AdminShellAccountRouteImport
+      parentRoute: typeof AdminShellRoute
     }
     '/_admin/_shell/settings': {
       id: '/_admin/_shell/settings'
@@ -450,74 +450,18 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AdminShellSettingsRouteImport
       parentRoute: typeof AdminShellRoute
     }
-    '/_admin/_shell/account': {
-      id: '/_admin/_shell/account'
-      path: '/account'
-      fullPath: '/account'
-      preLoaderRoute: typeof AdminShellAccountRouteImport
-      parentRoute: typeof AdminShellRoute
-    }
-    '/_admin/sites/$siteId/': {
-      id: '/_admin/sites/$siteId/'
-      path: '/'
-      fullPath: '/sites/$siteId/'
-      preLoaderRoute: typeof AdminSitesSiteIdIndexRouteImport
-      parentRoute: typeof AdminSitesSiteIdRoute
+    '/_admin/sites/$siteId': {
+      id: '/_admin/sites/$siteId'
+      path: '/$siteId'
+      fullPath: '/sites/$siteId'
+      preLoaderRoute: typeof AdminSitesSiteIdRouteImport
+      parentRoute: typeof AdminSitesRoute
     }
     '/_admin/_shell/settings/': {
       id: '/_admin/_shell/settings/'
       path: '/'
       fullPath: '/settings/'
       preLoaderRoute: typeof AdminShellSettingsIndexRouteImport
-      parentRoute: typeof AdminShellSettingsRoute
-    }
-    '/_admin/sites/$siteId/settings': {
-      id: '/_admin/sites/$siteId/settings'
-      path: '/settings'
-      fullPath: '/sites/$siteId/settings'
-      preLoaderRoute: typeof AdminSitesSiteIdSettingsRouteImport
-      parentRoute: typeof AdminSitesSiteIdRoute
-    }
-    '/_admin/sites/$siteId/files': {
-      id: '/_admin/sites/$siteId/files'
-      path: '/files'
-      fullPath: '/sites/$siteId/files'
-      preLoaderRoute: typeof AdminSitesSiteIdFilesRouteImport
-      parentRoute: typeof AdminSitesSiteIdRoute
-    }
-    '/_admin/sites/$siteId/deployments': {
-      id: '/_admin/sites/$siteId/deployments'
-      path: '/deployments'
-      fullPath: '/sites/$siteId/deployments'
-      preLoaderRoute: typeof AdminSitesSiteIdDeploymentsRouteImport
-      parentRoute: typeof AdminSitesSiteIdRoute
-    }
-    '/_admin/sites/$siteId/collections': {
-      id: '/_admin/sites/$siteId/collections'
-      path: '/collections'
-      fullPath: '/sites/$siteId/collections'
-      preLoaderRoute: typeof AdminSitesSiteIdCollectionsRouteImport
-      parentRoute: typeof AdminSitesSiteIdRoute
-    }
-    '/_admin/_shell/settings/users': {
-      id: '/_admin/_shell/settings/users'
-      path: '/users'
-      fullPath: '/settings/users'
-      preLoaderRoute: typeof AdminShellSettingsUsersRouteImport
-      parentRoute: typeof AdminShellSettingsRoute
-    }
-    '/_admin/_shell/settings/storage': {
-      id: '/_admin/_shell/settings/storage'
-      path: '/storage'
-      fullPath: '/settings/storage'
-      preLoaderRoute: typeof AdminShellSettingsStorageRouteImport
-      parentRoute: typeof AdminShellSettingsRoute
-    }
-    '/_admin/_shell/settings/security': {
-      id: '/_admin/_shell/settings/security'
-      path: '/security'
-      fullPath: '/settings/security'
-      preLoaderRoute: typeof AdminShellSettingsSecurityRouteImport
       parentRoute: typeof AdminShellSettingsRoute
     }
     '/_admin/_shell/settings/backups': {
@@ -527,46 +471,74 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AdminShellSettingsBackupsRouteImport
       parentRoute: typeof AdminShellSettingsRoute
     }
+    '/_admin/_shell/settings/security': {
+      id: '/_admin/_shell/settings/security'
+      path: '/security'
+      fullPath: '/settings/security'
+      preLoaderRoute: typeof AdminShellSettingsSecurityRouteImport
+      parentRoute: typeof AdminShellSettingsRoute
+    }
+    '/_admin/_shell/settings/storage': {
+      id: '/_admin/_shell/settings/storage'
+      path: '/storage'
+      fullPath: '/settings/storage'
+      preLoaderRoute: typeof AdminShellSettingsStorageRouteImport
+      parentRoute: typeof AdminShellSettingsRoute
+    }
+    '/_admin/_shell/settings/users': {
+      id: '/_admin/_shell/settings/users'
+      path: '/users'
+      fullPath: '/settings/users'
+      preLoaderRoute: typeof AdminShellSettingsUsersRouteImport
+      parentRoute: typeof AdminShellSettingsRoute
+    }
+    '/_admin/sites/$siteId/': {
+      id: '/_admin/sites/$siteId/'
+      path: '/'
+      fullPath: '/sites/$siteId/'
+      preLoaderRoute: typeof AdminSitesSiteIdIndexRouteImport
+      parentRoute: typeof AdminSitesSiteIdRoute
+    }
+    '/_admin/sites/$siteId/collections': {
+      id: '/_admin/sites/$siteId/collections'
+      path: '/collections'
+      fullPath: '/sites/$siteId/collections'
+      preLoaderRoute: typeof AdminSitesSiteIdCollectionsRouteImport
+      parentRoute: typeof AdminSitesSiteIdRoute
+    }
+    '/_admin/sites/$siteId/deployments': {
+      id: '/_admin/sites/$siteId/deployments'
+      path: '/deployments'
+      fullPath: '/sites/$siteId/deployments'
+      preLoaderRoute: typeof AdminSitesSiteIdDeploymentsRouteImport
+      parentRoute: typeof AdminSitesSiteIdRoute
+    }
+    '/_admin/sites/$siteId/files': {
+      id: '/_admin/sites/$siteId/files'
+      path: '/files'
+      fullPath: '/sites/$siteId/files'
+      preLoaderRoute: typeof AdminSitesSiteIdFilesRouteImport
+      parentRoute: typeof AdminSitesSiteIdRoute
+    }
+    '/_admin/sites/$siteId/settings': {
+      id: '/_admin/sites/$siteId/settings'
+      path: '/settings'
+      fullPath: '/sites/$siteId/settings'
+      preLoaderRoute: typeof AdminSitesSiteIdSettingsRouteImport
+      parentRoute: typeof AdminSitesSiteIdRoute
+    }
+    '/_admin/sites/$siteId/entries/$collectionSlug': {
+      id: '/_admin/sites/$siteId/entries/$collectionSlug'
+      path: '/entries/$collectionSlug'
+      fullPath: '/sites/$siteId/entries/$collectionSlug'
+      preLoaderRoute: typeof AdminSitesSiteIdEntriesCollectionSlugRouteImport
+      parentRoute: typeof AdminSitesSiteIdRoute
+    }
     '/_admin/sites/$siteId/settings/': {
       id: '/_admin/sites/$siteId/settings/'
       path: '/'
       fullPath: '/sites/$siteId/settings/'
       preLoaderRoute: typeof AdminSitesSiteIdSettingsIndexRouteImport
-      parentRoute: typeof AdminSitesSiteIdSettingsRoute
-    }
-    '/_admin/sites/$siteId/singletons/$slug': {
-      id: '/_admin/sites/$siteId/singletons/$slug'
-      path: '/singletons/$slug'
-      fullPath: '/sites/$siteId/singletons/$slug'
-      preLoaderRoute: typeof AdminSitesSiteIdSingletonsSlugRouteImport
-      parentRoute: typeof AdminSitesSiteIdRoute
-    }
-    '/_admin/sites/$siteId/settings/webhooks': {
-      id: '/_admin/sites/$siteId/settings/webhooks'
-      path: '/webhooks'
-      fullPath: '/sites/$siteId/settings/webhooks'
-      preLoaderRoute: typeof AdminSitesSiteIdSettingsWebhooksRouteImport
-      parentRoute: typeof AdminSitesSiteIdSettingsRoute
-    }
-    '/_admin/sites/$siteId/settings/members': {
-      id: '/_admin/sites/$siteId/settings/members'
-      path: '/members'
-      fullPath: '/sites/$siteId/settings/members'
-      preLoaderRoute: typeof AdminSitesSiteIdSettingsMembersRouteImport
-      parentRoute: typeof AdminSitesSiteIdSettingsRoute
-    }
-    '/_admin/sites/$siteId/settings/mcp': {
-      id: '/_admin/sites/$siteId/settings/mcp'
-      path: '/mcp'
-      fullPath: '/sites/$siteId/settings/mcp'
-      preLoaderRoute: typeof AdminSitesSiteIdSettingsMcpRouteImport
-      parentRoute: typeof AdminSitesSiteIdSettingsRoute
-    }
-    '/_admin/sites/$siteId/settings/backups': {
-      id: '/_admin/sites/$siteId/settings/backups'
-      path: '/backups'
-      fullPath: '/sites/$siteId/settings/backups'
-      preLoaderRoute: typeof AdminSitesSiteIdSettingsBackupsRouteImport
       parentRoute: typeof AdminSitesSiteIdSettingsRoute
     }
     '/_admin/sites/$siteId/settings/api-keys': {
@@ -576,11 +548,39 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AdminSitesSiteIdSettingsApiKeysRouteImport
       parentRoute: typeof AdminSitesSiteIdSettingsRoute
     }
-    '/_admin/sites/$siteId/entries/$collectionSlug': {
-      id: '/_admin/sites/$siteId/entries/$collectionSlug'
-      path: '/entries/$collectionSlug'
-      fullPath: '/sites/$siteId/entries/$collectionSlug'
-      preLoaderRoute: typeof AdminSitesSiteIdEntriesCollectionSlugRouteImport
+    '/_admin/sites/$siteId/settings/backups': {
+      id: '/_admin/sites/$siteId/settings/backups'
+      path: '/backups'
+      fullPath: '/sites/$siteId/settings/backups'
+      preLoaderRoute: typeof AdminSitesSiteIdSettingsBackupsRouteImport
+      parentRoute: typeof AdminSitesSiteIdSettingsRoute
+    }
+    '/_admin/sites/$siteId/settings/mcp': {
+      id: '/_admin/sites/$siteId/settings/mcp'
+      path: '/mcp'
+      fullPath: '/sites/$siteId/settings/mcp'
+      preLoaderRoute: typeof AdminSitesSiteIdSettingsMcpRouteImport
+      parentRoute: typeof AdminSitesSiteIdSettingsRoute
+    }
+    '/_admin/sites/$siteId/settings/members': {
+      id: '/_admin/sites/$siteId/settings/members'
+      path: '/members'
+      fullPath: '/sites/$siteId/settings/members'
+      preLoaderRoute: typeof AdminSitesSiteIdSettingsMembersRouteImport
+      parentRoute: typeof AdminSitesSiteIdSettingsRoute
+    }
+    '/_admin/sites/$siteId/settings/webhooks': {
+      id: '/_admin/sites/$siteId/settings/webhooks'
+      path: '/webhooks'
+      fullPath: '/sites/$siteId/settings/webhooks'
+      preLoaderRoute: typeof AdminSitesSiteIdSettingsWebhooksRouteImport
+      parentRoute: typeof AdminSitesSiteIdSettingsRoute
+    }
+    '/_admin/sites/$siteId/singletons/$slug': {
+      id: '/_admin/sites/$siteId/singletons/$slug'
+      path: '/singletons/$slug'
+      fullPath: '/sites/$siteId/singletons/$slug'
+      preLoaderRoute: typeof AdminSitesSiteIdSingletonsSlugRouteImport
       parentRoute: typeof AdminSitesSiteIdRoute
     }
     '/_admin/sites/$siteId/entries/$collectionSlug/': {
