@@ -163,7 +163,7 @@ export function HowItWorksSection() {
         {/* Code Preview - Large terminal */}
       </div>
 
-      <style jsx>{`
+      <style>{`
         @keyframes progress {
           from {
             width: 0%;
