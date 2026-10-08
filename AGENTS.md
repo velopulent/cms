@@ -102,7 +102,7 @@ The server applies migrations on every startup; there is no separate migrate com
 - Keep the release workflow thin: build the dashboard, run native build/package jobs, assemble artifacts, attest, and publish.
 - Ordinary CI validates packaging templates, `xtask` tests, and deterministic dry-runs. It must not install or mutate host services.
 - Release artifacts include portable archives, Debian, RPM, MSI, and macOS PKG packages. Arch is maintained as a package recipe consuming published Linux archives; render it with `xtask arch-render`, not as a fake release archive.
-- The package version comes from the release tag with its leading `v` removed. Package formats differ in what they accept, so check prerelease versions against each format before tagging one.
+- Release tags are `v` plus the `apps/backend/Cargo.toml` version, a plain `MAJOR.MINOR.PATCH` (no prerelease suffix). Bump `Cargo.toml` first; `xtask` rejects any other tag before packaging starts.
 - The stable native service identifier is `vcms`; its human-facing display name is **Velopulent CMS**. Fresh Linux and macOS package installs register/enable the service but do not auto-start it; the Windows MSI installs the service for automatic startup and starts it immediately.
 
 ## Configuration

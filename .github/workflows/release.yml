@@ -1,6 +1,6 @@
 name: Release
 
-# Tag-driven. Push a tag like `v1.2.3` to build per-OS/arch binaries and attach them
+# Tag-driven. Bump apps/backend/Cargo.toml, then push the matching tag (e.g. `v1.2.3`) to build per-OS/arch binaries and attach them
 # to a GitHub Release. The release binary embeds apps/dashboard/dist via rust-embed,
 # so the dashboard MUST be built before `cargo build --release`.
 #

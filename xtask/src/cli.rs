@@ -76,10 +76,7 @@ impl Args {
         let mut output = Self {
             command,
             kind: PackageKind::Host,
-            version: match env::var("GITHUB_REF_NAME").ok() {
-                Some(value) => value.strip_prefix('v').unwrap_or(&value).to_owned(),
-                None => backend_version()?,
-            },
+            version: default_version()?,
             target_os: TargetOs::parse(env::consts::OS)?,
             arch: Architecture::parse(env::consts::ARCH)?,
             dry_run: false,
@@ -118,6 +115,36 @@ fn need_value(name: &str, value: Option<String>) -> Result<String> {
     value.ok_or_else(|| format!("{name} needs a value").into())
 }
 
+/// Version to package when `--version` is not given: the release tag on tag
+/// builds, otherwise the backend crate version.
+fn default_version() -> Result<String> {
+    let crate_version = backend_version()?;
+    if env::var("GITHUB_REF_TYPE").as_deref() == Ok("tag") {
+        let tag = env::var("GITHUB_REF_NAME").map_err(|_| "GITHUB_REF_NAME is not set for a tag build")?;
+        return release_version(&tag, &crate_version);
+    }
+    Ok(crate_version)
+}
+
+/// A release tag must be `v` followed by the backend crate version, which must
+/// be a plain `MAJOR.MINOR.PATCH`: every package format accepts that form.
+fn release_version(tag: &str, crate_version: &str) -> Result<String> {
+    let plain = |version: &str| {
+        let parts = version.split('.').collect::<Vec<_>>();
+        parts.len() == 3
+            && parts
+                .iter()
+                .all(|part| !part.is_empty() && part.bytes().all(|b| b.is_ascii_digit()))
+    };
+    if !plain(crate_version) {
+        return Err(format!("apps/backend/Cargo.toml version {crate_version} is not MAJOR.MINOR.PATCH").into());
+    }
+    match tag.strip_prefix('v') {
+        Some(version) if version == crate_version => Ok(version.to_owned()),
+        _ => Err(format!("release tag {tag} must be v{crate_version} to match apps/backend/Cargo.toml").into()),
+    }
+}
+
 fn backend_version() -> Result<String> {
     let root = package::repo_root()?;
     let cargo = fs::read_to_string(root.join("apps/backend/Cargo.toml"))?;
@@ -152,5 +179,14 @@ mod tests {
         assert_eq!(args.target_os, TargetOs::Macos);
         assert_eq!(args.arch, Architecture::Arm64);
         assert!(args.dry_run);
+    }
+
+    #[test]
+    fn release_tags_must_match_the_plain_crate_version() {
+        assert_eq!(release_version("v0.1.0", "0.1.0").unwrap(), "0.1.0");
+        for tag in ["0.1.0", "v0.1.1", "v0.1.0-beta.1"] {
+            assert!(release_version(tag, "0.1.0").is_err(), "{tag}");
+        }
+        assert!(release_version("v0.1.0-beta.1", "0.1.0-beta.1").is_err());
     }
 }
