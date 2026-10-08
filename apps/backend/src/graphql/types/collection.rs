@@ -69,6 +69,8 @@ pub struct SingletonGraphql {
     pub entry_id: Option<String>,
     pub created_at: String,
     pub updated_at: String,
+    /// Opaque version of the singleton's content; pass it as `expectedVersion`.
+    pub version: Option<String>,
 }
 
 pub fn singleton_to_gql(value: crate::models::collection::SingletonResponse) -> SingletonGraphql {
@@ -82,6 +84,7 @@ pub fn singleton_to_gql(value: crate::models::collection::SingletonResponse) -> 
         entry_id: value.entry_id,
         created_at: value.created_at,
         updated_at: value.updated_at,
+        version: value.version,
     }
 }
 
