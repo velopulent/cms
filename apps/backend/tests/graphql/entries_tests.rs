@@ -133,9 +133,10 @@ async fn test_entries_query() {
         pub_body["errors"]
     );
 
-    let body = gql(&server, &token, "{ entries { id slug status } }").await;
+    let query = format!(r#"{{ site(id: "{site_id}") {{ entries {{ nodes {{ id slug status }} }} }} }}"#);
+    let body = gql(&server, &token, &query).await;
     assert!(body["errors"].is_null(), "errors: {:?}", body["errors"]);
-    let entries = body["data"]["entries"].as_array().unwrap();
+    let entries = body["data"]["site"]["entries"]["nodes"].as_array().unwrap();
     assert!(!entries.is_empty());
 }
 
@@ -155,9 +156,12 @@ async fn test_entries_with_status_filter() {
     )
     .await;
 
-    let body = gql(&server, &token, r#"{ entries(status: "draft") { id slug status } }"#).await;
+    let query = format!(
+        r#"{{ site(id: "{site_id}") {{ entries(status: "draft", includeDrafts: true) {{ nodes {{ id slug status }} }} }} }}"#
+    );
+    let body = gql(&server, &token, &query).await;
     assert!(body["errors"].is_null());
-    let entries = body["data"]["entries"].as_array().unwrap();
+    let entries = body["data"]["site"]["entries"]["nodes"].as_array().unwrap();
     assert_eq!(entries.len(), 1);
     assert!(entries.iter().all(|e| e["status"].as_str().unwrap() == "draft"));
 }
@@ -179,12 +183,11 @@ async fn test_entries_with_collection_id_filter() {
     .await;
 
     let query = format!(
-        r#"{{ entries(includeDrafts: true, collectionId: "{}") {{ id slug collectionId }} }}"#,
-        col_id
+        r#"{{ site(id: "{site_id}") {{ entries(includeDrafts: true, collectionSlug: "posts") {{ nodes {{ id slug collectionId }} }} }} }}"#
     );
     let body = gql(&server, &token, &query).await;
     assert!(body["errors"].is_null());
-    let entries = body["data"]["entries"].as_array().unwrap();
+    let entries = body["data"]["site"]["entries"]["nodes"].as_array().unwrap();
     assert_eq!(entries.len(), 1);
     assert!(entries.iter().all(|e| e["collectionId"].as_str().unwrap() == col_id));
 }
@@ -218,9 +221,10 @@ async fn test_entries_with_search() {
         pub_body["errors"]
     );
 
-    let body = gql(&server, &token, r#"{ entries(search: "Unique") { id slug } }"#).await;
+    let query = format!(r#"{{ site(id: "{site_id}") {{ entries(search: "Unique") {{ nodes {{ id slug }} }} }} }}"#);
+    let body = gql(&server, &token, &query).await;
     assert!(body["errors"].is_null(), "errors: {:?}", body["errors"]);
-    let entries = body["data"]["entries"].as_array().unwrap();
+    let entries = body["data"]["site"]["entries"]["nodes"].as_array().unwrap();
     let slugs: Vec<&str> = entries.iter().filter_map(|e| e["slug"].as_str()).collect();
     assert!(
         slugs.contains(&"searchable"),
@@ -250,12 +254,16 @@ async fn test_entries_with_pagination() {
     let body = gql(
         &server,
         &token,
-        "{ entries(includeDrafts: true, page: 1, perPage: 2) { id } }",
+        &format!(
+            r#"{{ site(id: "{site_id}") {{ entries(includeDrafts: true, page: 1, perPage: 2) {{ nodes {{ id }} totalCount pageInfo {{ hasNextPage }} }} }} }}"#
+        ),
     )
     .await;
     assert!(body["errors"].is_null());
-    let entries = body["data"]["entries"].as_array().unwrap();
-    assert_eq!(entries.len(), 2);
+    let connection = &body["data"]["site"]["entries"];
+    assert_eq!(connection["nodes"].as_array().unwrap().len(), 2);
+    assert_eq!(connection["totalCount"], 5);
+    assert_eq!(connection["pageInfo"]["hasNextPage"], true);
 }
 
 #[tokio::test]
@@ -267,21 +275,20 @@ async fn test_entry_by_id() {
     let created = create_entry(&server, &token, &site_id, &col_id, "get-me", json!({"title": "Get Me"})).await;
     let entry_id = created["data"]["createEntry"]["id"].as_str().unwrap();
 
-    let query = format!(
-        r#"{{ entry(id: "{}", includeDrafts: true) {{ id slug data }} }}"#,
-        entry_id
-    );
+    let query =
+        format!(r#"{{ site(id: "{site_id}") {{ entry(id: "{entry_id}", includeDrafts: true) {{ id slug data }} }} }}"#);
     let body = gql(&server, &token, &query).await;
     assert!(body["errors"].is_null());
-    assert_eq!(body["data"]["entry"]["slug"].as_str().unwrap(), "get-me");
+    assert_eq!(body["data"]["site"]["entry"]["slug"].as_str().unwrap(), "get-me");
 }
 
 #[tokio::test]
 async fn test_entry_not_found() {
     let server = TestServer::start().await;
-    let (_, token) = setup(&server).await;
+    let (site_id, token) = setup(&server).await;
 
-    let body = gql(&server, &token, r#"{ entry(id: "nonexistent") { id } }"#).await;
+    let query = format!(r#"{{ site(id: "{site_id}") {{ entry(id: "nonexistent") {{ id }} }} }}"#);
+    let body = gql(&server, &token, &query).await;
     assert!(body["errors"].is_array());
     let msg = body["errors"][0]["message"].as_str().unwrap();
     assert!(msg.contains("not found"));
@@ -456,12 +463,11 @@ async fn test_entry_revisions_query() {
     );
 
     let query = format!(
-        r#"{{ entryRevisions(entryId: "{}") {{ items {{ revisionNumber data }} total }} }}"#,
-        entry_id
+        r#"{{ site(id: "{site_id}") {{ entryRevisions(entryId: "{entry_id}") {{ items {{ revisionNumber data }} total }} }} }}"#
     );
     let body = gql(&server, &token, &query).await;
     assert!(body["errors"].is_null(), "errors: {:?}", body["errors"]);
-    let items = body["data"]["entryRevisions"]["items"].as_array().unwrap();
+    let items = body["data"]["site"]["entryRevisions"]["items"].as_array().unwrap();
     assert!(items.len() >= 2, "expected >= 2 revisions, got {}", items.len());
 }
 
@@ -475,12 +481,16 @@ async fn test_entry_revision_query() {
     let entry_id = created["data"]["createEntry"]["id"].as_str().unwrap();
 
     let query = format!(
-        r#"{{ entryRevision(entryId: "{}", revisionNumber: 1) {{ revisionNumber data }} }}"#,
-        entry_id
+        r#"{{ site(id: "{site_id}") {{ entryRevision(entryId: "{entry_id}", revisionNumber: 1) {{ revisionNumber data }} }} }}"#
     );
     let body = gql(&server, &token, &query).await;
     assert!(body["errors"].is_null());
-    assert_eq!(body["data"]["entryRevision"]["revisionNumber"].as_i64().unwrap(), 1);
+    assert_eq!(
+        body["data"]["site"]["entryRevision"]["revisionNumber"]
+            .as_i64()
+            .unwrap(),
+        1
+    );
 }
 
 #[tokio::test]
@@ -502,12 +512,16 @@ async fn test_entry_revision_with_diff() {
     );
 
     let query = format!(
-        r#"{{ entryRevision(entryId: "{}", revisionNumber: 2, diff: true) {{ revisionNumber diffFromPrevious }} }}"#,
-        entry_id
+        r#"{{ site(id: "{site_id}") {{ entryRevision(entryId: "{entry_id}", revisionNumber: 2, diff: true) {{ revisionNumber diffFromPrevious }} }} }}"#
     );
     let body = gql(&server, &token, &query).await;
     assert!(body["errors"].is_null(), "errors: {:?}", body["errors"]);
-    assert_eq!(body["data"]["entryRevision"]["revisionNumber"].as_i64().unwrap(), 2);
+    assert_eq!(
+        body["data"]["site"]["entryRevision"]["revisionNumber"]
+            .as_i64()
+            .unwrap(),
+        2
+    );
 }
 
 #[tokio::test]

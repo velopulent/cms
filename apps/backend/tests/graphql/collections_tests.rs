@@ -88,9 +88,10 @@ async fn test_collections_query() {
 
     create_collection(&server, &site_id, "Posts", "posts").await;
 
-    let body = gql(&server, &token, "{ collections { id name slug } }").await;
+    let query = format!(r#"{{ site(id: "{site_id}") {{ collections {{ id name slug }} }} }}"#);
+    let body = gql(&server, &token, &query).await;
     assert!(body["errors"].is_null());
-    let cols = body["data"]["collections"].as_array().unwrap();
+    let cols = body["data"]["site"]["collections"].as_array().unwrap();
     assert!(!cols.is_empty());
 }
 
@@ -101,17 +102,19 @@ async fn test_collection_by_slug() {
 
     create_collection(&server, &site_id, "Pages", "pages").await;
 
-    let body = gql(&server, &token, r#"{ collection(slug: "pages") { id name slug } }"#).await;
+    let query = format!(r#"{{ site(id: "{site_id}") {{ collection(slug: "pages") {{ id name slug }} }} }}"#);
+    let body = gql(&server, &token, &query).await;
     assert!(body["errors"].is_null());
-    assert_eq!(body["data"]["collection"]["name"].as_str().unwrap(), "Pages");
+    assert_eq!(body["data"]["site"]["collection"]["name"].as_str().unwrap(), "Pages");
 }
 
 #[tokio::test]
 async fn test_collection_not_found() {
     let server = TestServer::start().await;
-    let (_, token) = setup(&server).await;
+    let (site_id, token) = setup(&server).await;
 
-    let body = gql(&server, &token, r#"{ collection(slug: "nonexistent") { id } }"#).await;
+    let query = format!(r#"{{ site(id: "{site_id}") {{ collection(slug: "nonexistent") {{ id }} }} }}"#);
+    let body = gql(&server, &token, &query).await;
     assert!(body["errors"].is_array());
     let msg = body["errors"][0]["message"].as_str().unwrap();
     assert!(msg.contains("not found"));

@@ -248,7 +248,7 @@ fn cors_response(mut response: Response<Body>, origin: Option<HeaderValue>) -> R
         );
         response.headers_mut().insert(
             header::ACCESS_CONTROL_ALLOW_HEADERS,
-            HeaderValue::from_static("authorization, content-type, accept, x-csrf-token, x-vcms-site, if-match, mcp-protocol-version, mcp-method, mcp-name"),
+            HeaderValue::from_static("authorization, content-type, accept, x-csrf-token, if-match, mcp-protocol-version, mcp-method, mcp-name"),
         );
         response
             .headers_mut()

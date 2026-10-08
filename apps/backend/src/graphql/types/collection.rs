@@ -18,8 +18,9 @@ pub struct Collection {
 
 #[ComplexObject]
 impl Collection {
+    /// Up to 200 most recent entries; page through `site.entries` for more.
     #[graphql(complexity = "200 * child_complexity")]
-    async fn entry(
+    async fn entries(
         &self,
         ctx: &async_graphql::Context<'_>,
         status: Option<String>,

@@ -96,11 +96,11 @@ async fn test_files_query() {
     let body = gql(
         &server,
         &token,
-        "{ files { id filename originalName mimeType size url } }",
+        &format!(r#"{{ site(id: "{site_id}") {{ files {{ id filename originalName mimeType size url }} }} }}"#),
     )
     .await;
     assert!(body["errors"].is_null());
-    let files = body["data"]["files"].as_array().unwrap();
+    let files = body["data"]["site"]["files"].as_array().unwrap();
     assert!(!files.is_empty());
 }
 
@@ -111,19 +111,26 @@ async fn test_file_by_id() {
 
     let file_id = upload_file_via_rest(&server, &token, &site_id).await;
 
-    let query = format!(r#"{{ file(id: "{}") {{ id filename url thumbnailUrl }} }}"#, file_id);
+    let query =
+        format!(r#"{{ site(id: "{site_id}") {{ file(id: "{file_id}") {{ id filename url thumbnailUrl }} }} }}"#);
     let body = gql(&server, &token, &query).await;
     assert!(body["errors"].is_null());
-    assert_eq!(body["data"]["file"]["id"].as_str().unwrap(), file_id);
-    assert!(body["data"]["file"]["url"].as_str().unwrap().contains("/api/files/"));
+    assert_eq!(body["data"]["site"]["file"]["id"].as_str().unwrap(), file_id);
+    assert!(
+        body["data"]["site"]["file"]["url"]
+            .as_str()
+            .unwrap()
+            .contains("/api/files/")
+    );
 }
 
 #[tokio::test]
 async fn test_file_not_found() {
     let server = TestServer::start().await;
-    let (_, token) = setup(&server).await;
+    let (site_id, token) = setup(&server).await;
 
-    let body = gql(&server, &token, r#"{ file(id: "nonexistent") { id } }"#).await;
+    let query = format!(r#"{{ site(id: "{site_id}") {{ file(id: "nonexistent") {{ id }} }} }}"#);
+    let body = gql(&server, &token, &query).await;
     assert!(body["errors"].is_array());
     let msg = body["errors"][0]["message"].as_str().unwrap();
     assert!(msg.contains("not found"));
@@ -151,12 +158,11 @@ async fn test_file_references_query() {
     assert_eq!(response.status(), 201, "duplicate file references must validate");
     let entry: Value = response.json().await.unwrap();
     let query = format!(
-        r#"{{ fileReferences(fileId: "{}") {{ entryId collectionName fieldName }} }}"#,
-        file_id
+        r#"{{ site(id: "{site_id}") {{ fileReferences(fileId: "{file_id}") {{ entryId collectionName fieldName }} }} }}"#
     );
     let body = gql(&server, &token, &query).await;
     assert!(body["errors"].is_null());
-    let refs = body["data"]["fileReferences"].as_array().unwrap();
+    let refs = body["data"]["site"]["fileReferences"].as_array().unwrap();
     assert_eq!(refs.len(), 2);
     assert!(refs.iter().all(|reference| reference["entryId"] == entry["id"]));
     let mut fields = refs

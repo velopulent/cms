@@ -122,17 +122,17 @@ async fn setup_read_token(server: &TestServer) -> String {
 #[tokio::test]
 async fn test_unauthenticated_query() {
     let server = TestServer::start().await;
-    let resp = gql(&server, None, "{ currentSite { id name } }").await;
+    let resp = gql(&server, None, "{ sites { id name } }").await;
     let body: Value = resp.json().await.unwrap();
     assert!(body["errors"].is_array());
-    let msg = body["errors"][0]["message"].as_str().unwrap();
-    assert!(msg.contains("authentication") || msg.contains("token"));
+    let msg = body["errors"][0]["message"].as_str().unwrap().to_lowercase();
+    assert!(msg.contains("authentication") || msg.contains("token"), "{msg}");
 }
 
 #[tokio::test]
 async fn test_invalid_token() {
     let server = TestServer::start().await;
-    let resp = gql(&server, Some("cms_invalid_token"), "{ currentSite { id name } }").await;
+    let resp = gql(&server, Some("cms_invalid_token"), "{ sites { id name } }").await;
     let body: Value = resp.json().await.unwrap();
     assert!(body["errors"].is_array());
 }
@@ -259,9 +259,9 @@ async fn test_valid_read_token_query() {
     let server = TestServer::start().await;
     let token = setup_read_token(&server).await;
 
-    let resp = gql(&server, Some(&token), "{ currentSite { id name } }").await;
+    let resp = gql(&server, Some(&token), "{ sites { id name } }").await;
     let body: Value = resp.json().await.unwrap();
-    assert!(body["data"].is_object());
+    assert_eq!(body["data"]["sites"].as_array().unwrap().len(), 1, "{body}");
     assert!(body["errors"].is_null() || body["errors"].as_array().unwrap().is_empty());
 }
 
@@ -360,7 +360,6 @@ async fn test_viewer_personal_token_cannot_write() {
     let response = client
         .post(format!("{}/api/graphql", server.base_url))
         .header("Authorization", format!("Bearer {personal_token}"))
-        .header("X-VCMS-Site", site_id)
         .json(&json!({
             "query": format!("mutation {{ createEntry(siteId:\"{site_id}\",input:{{collectionId:\"unavailable\",slug:\"forbidden\",data:{{title:\"Test\"}}}}) {{ id }} }}")
         }))

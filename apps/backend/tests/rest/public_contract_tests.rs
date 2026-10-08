@@ -587,13 +587,13 @@ async fn expiring_tokens_and_bearer_scheme_case_work_across_http_protocols() {
     let response = client
         .post(format!("{}/api/graphql", server.base_url))
         .header("Authorization", &authorization)
-        .json(&json!({"query":"{ currentSite { id } }"}))
+        .json(&json!({"query":"{ sites { id } }"}))
         .send()
         .await
         .unwrap();
     let body: Value = response.json().await.unwrap();
     assert!(body["errors"].is_null(), "Future token rejected by GraphQL: {body}");
-    assert_eq!(body["data"]["currentSite"]["id"], site);
+    assert_eq!(body["data"]["sites"][0]["id"], site);
     let response = client
         .post(format!("{}/mcp", server.base_url))
         .header("Authorization", &authorization)

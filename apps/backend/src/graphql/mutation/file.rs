@@ -87,36 +87,4 @@ impl FileMutation {
 
         Ok(true)
     }
-
-    pub async fn batch_delete_files(&self, ctx: &Context<'_>, site_id: String, ids: Vec<String>) -> Result<i64> {
-        let gql_ctx = ctx.data::<GqlContext>()?;
-        gql_ctx
-            .require_site_action_for(&site_id, crate::models::authorization::Action::FilesWrite)
-            .await?;
-
-        let count = gql_ctx
-            .services
-            .file
-            .batch_soft_delete(&site_id, &ids)
-            .await
-            .map_err(|e| crate::graphql::service_error("mutation.batch_delete_files", e))?;
-
-        Ok(count as i64)
-    }
-
-    pub async fn batch_restore_files(&self, ctx: &Context<'_>, site_id: String, ids: Vec<String>) -> Result<i64> {
-        let gql_ctx = ctx.data::<GqlContext>()?;
-        gql_ctx
-            .require_site_action_for(&site_id, crate::models::authorization::Action::FilesWrite)
-            .await?;
-
-        let count = gql_ctx
-            .services
-            .file
-            .batch_restore(&site_id, &ids)
-            .await
-            .map_err(|e| crate::graphql::service_error("mutation.batch_restore_files", e))?;
-
-        Ok(count as i64)
-    }
 }

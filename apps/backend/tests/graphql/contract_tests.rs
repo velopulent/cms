@@ -131,12 +131,9 @@ async fn draft_status_cannot_override_visibility_and_writers_cannot_publish() {
         .as_str()
         .unwrap()
         .to_owned();
-    for query in [
-        "{ entries(status: \"draft\", includeDrafts:false) { id data } }".to_owned(),
-        format!(
-            "{{ site(id:\"{site}\") {{ entries(filter:{{status:\"draft\"}},includeDrafts:false) {{ nodes {{ id data }} }} }} }}"
-        ),
-    ] {
+    for query in [format!(
+        "{{ site(id:\"{site}\") {{ entries(status:\"draft\",includeDrafts:false) {{ nodes {{ id data }} }} }} }}"
+    )] {
         let body = gql(&server, &limited, &query, json!({})).await;
         assert!(body["errors"].is_null(), "{body}");
         assert!(!body.to_string().contains("Secret"), "draft leaked: {body}");
@@ -153,11 +150,11 @@ async fn draft_status_cannot_override_visibility_and_writers_cannot_publish() {
     let body = gql(
         &server,
         &writer,
-        &format!("{{ entry(id:\"{id}\",includeDrafts:true) {{ status }} }}"),
+        &format!("{{ site(id:\"{site}\") {{ entry(id:\"{id}\",includeDrafts:true) {{ status }} }} }}"),
         json!({}),
     )
     .await;
-    assert_eq!(body["data"]["entry"]["status"], "draft");
+    assert_eq!(body["data"]["site"]["entry"]["status"], "draft");
 }
 
 #[tokio::test]
@@ -190,7 +187,7 @@ async fn namespaced_nested_collections_use_explicit_pat_site() {
     let body = gql(
         &server,
         &pat,
-        &format!("{{ site(id:\"{site}\") {{ collections {{ entry(status:\"draft\") {{ slug }} }} }} }}"),
+        &format!("{{ site(id:\"{site}\") {{ collections {{ entries(status:\"draft\") {{ slug }} }} }} }}"),
         json!({}),
     )
     .await;
@@ -198,7 +195,7 @@ async fn namespaced_nested_collections_use_explicit_pat_site() {
         body["errors"].is_null(),
         "Nested resolver ignored explicit site: {body}"
     );
-    assert_eq!(body["data"]["site"]["collections"][0]["entry"][0]["slug"], "private");
+    assert_eq!(body["data"]["site"]["collections"][0]["entries"][0]["slug"], "private");
 }
 
 #[tokio::test]
@@ -261,8 +258,7 @@ async fn content_only_personal_tokens_read_with_explicit_site_context() {
     let response = client
         .post(format!("{}/api/graphql", server.base_url))
         .bearer_auth(&pat)
-        .header("X-VCMS-Site", &site)
-        .json(&json!({"query":format!("{{ entry(id:\"{id}\") {{ id data }} }}")}))
+        .json(&json!({"query":format!("{{ site(id:\"{site}\") {{ entry(id:\"{id}\") {{ id data }} }} }}")}))
         .send()
         .await
         .unwrap();
@@ -271,7 +267,13 @@ async fn content_only_personal_tokens_read_with_explicit_site_context() {
         body["errors"].is_null(),
         "Context selection required unrelated site.read scope: {body}"
     );
-    assert_eq!(body["data"]["entry"]["data"]["title"], "Public");
-    let missing = gql(&server, &pat, &format!("{{ entry(id:\"{id}\") {{ id }} }}"), json!({})).await;
-    assert!(missing["errors"].is_array(), "PAT implicitly selected a site");
+    assert_eq!(body["data"]["site"]["entry"]["data"]["title"], "Public");
+    let other_site = gql(
+        &server,
+        &pat,
+        &format!("{{ site(id:\"not-a-member\") {{ entry(id:\"{id}\") {{ id }} }} }}"),
+        json!({}),
+    )
+    .await;
+    assert!(other_site["errors"].is_array(), "PAT read a site it does not belong to");
 }

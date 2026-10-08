@@ -57,8 +57,6 @@ pub struct RevisionsListResult {
 pub struct PageInfo {
     pub has_next_page: bool,
     pub has_previous_page: bool,
-    pub start_cursor: Option<String>,
-    pub end_cursor: Option<String>,
 }
 
 #[derive(SimpleObject)]
@@ -66,19 +64,6 @@ pub struct EntryConnection {
     pub nodes: Vec<Entry>,
     pub page_info: PageInfo,
     pub total_count: i64,
-}
-
-#[derive(InputObject, Default)]
-pub struct EntryFilterInput {
-    pub status: Option<String>,
-    pub slug: Option<String>,
-    pub search: Option<String>,
-}
-
-#[derive(InputObject, Default)]
-pub struct EntryOrderInput {
-    pub field: Option<String>,
-    pub direction: Option<String>,
 }
 
 pub fn db_entry_to_gql(e: crate::models::entry::Entry) -> Entry {
