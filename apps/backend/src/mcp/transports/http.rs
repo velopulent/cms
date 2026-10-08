@@ -21,7 +21,10 @@ pub fn mcp_router(
 ) -> Router {
     let server_config = StreamableHttpServerConfig::default()
         .with_legacy_session_mode(false)
-        .with_stateless_protocol_metadata_required(true)
+        // Per-request metadata is validated by the handler whenever a request
+        // declares 2026-07-28+, so session-lifecycle clients (2025-06-18,
+        // 2025-11-25) that initialize and then send only the version header work.
+        .with_stateless_protocol_metadata_required(false)
         .with_json_response(true)
         .with_allowed_hosts(config.mcp_allowed_hosts.clone())
         .with_allowed_origins(config.mcp_allowed_origins.clone())

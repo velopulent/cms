@@ -555,7 +555,11 @@ mod tests {
             assert!(site_role_allows_token_scope(SiteRole::Editor, scope), "{scope:?}");
         }
 
-        for scope in [TokenScope::ContentPreviewRead, TokenScope::ContentWrite, TokenScope::ContentPublish] {
+        for scope in [
+            TokenScope::ContentPreviewRead,
+            TokenScope::ContentWrite,
+            TokenScope::ContentPublish,
+        ] {
             assert!(!site_role_allows_token_scope(SiteRole::Viewer, scope), "{scope:?}");
         }
     }

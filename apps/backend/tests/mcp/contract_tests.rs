@@ -45,7 +45,7 @@ async fn site_discovery_and_schema_resources_are_available() {
     let server = start_mcp_server().await;
     let (site_id, token) = setup_site_token(&server).await;
     let sites = mcp_tool_json(&mcp_call_tool(&server.base_url, &token, "list_sites", serde_json::json!({})).await);
-    assert_eq!(sites[0]["id"], site_id);
+    assert_eq!(sites["sites"][0]["id"], site_id);
     let schema = mcp_read_resource(&server.base_url, &token, &format!("cms://{site_id}/schema")).await;
     assert!(schema["contents"].is_array());
 }

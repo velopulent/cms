@@ -20,8 +20,7 @@ async fn test_list_singletons_empty() {
     .await;
     let data = mcp_tool_json(&result);
 
-    assert!(data.is_array());
-    assert!(data.as_array().unwrap().is_empty());
+    assert!(data["singletons"].as_array().unwrap().is_empty());
 }
 
 #[tokio::test]
@@ -79,5 +78,5 @@ async fn test_list_singletons_after_create() {
     )
     .await;
     let data = mcp_tool_json(&result);
-    assert_eq!(data.as_array().unwrap().len(), 1);
+    assert_eq!(data["singletons"].as_array().unwrap().len(), 1);
 }

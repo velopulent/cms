@@ -1618,7 +1618,11 @@ mod restore_version_tests {
     #[test]
     fn restore_never_reuses_archived_entry_versions() {
         let entries = schema::table_spec("entries").unwrap();
-        let version_index = entries.columns.iter().position(|column| column.name == "version").unwrap();
+        let version_index = entries
+            .columns
+            .iter()
+            .position(|column| column.name == "version")
+            .unwrap();
         let archived = serde_json::json!({"id": "entry", "data": "{}", "version": "7"})
             .as_object()
             .unwrap()

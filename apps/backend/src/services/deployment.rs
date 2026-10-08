@@ -177,7 +177,10 @@ impl DeploymentService {
         let id = Uuid::now_v7().to_string();
         match &self.pool {
             DbPool::Sqlite(pool) => {
-                let mut tx = pool.begin_with("BEGIN IMMEDIATE").await.map_err(|error| error.to_string())?;
+                let mut tx = pool
+                    .begin_with("BEGIN IMMEDIATE")
+                    .await
+                    .map_err(|error| error.to_string())?;
                 if value.is_primary {
                     sqlx::query("UPDATE deployment_triggers SET is_primary=0 WHERE site_id=?")
                         .bind(site_id)
@@ -257,7 +260,10 @@ impl DeploymentService {
             .map_err(|error| error.to_string())?;
         match &self.pool {
             DbPool::Sqlite(pool) => {
-                let mut tx = pool.begin_with("BEGIN IMMEDIATE").await.map_err(|error| error.to_string())?;
+                let mut tx = pool
+                    .begin_with("BEGIN IMMEDIATE")
+                    .await
+                    .map_err(|error| error.to_string())?;
                 if value.is_primary {
                     sqlx::query("UPDATE deployment_triggers SET is_primary=0 WHERE site_id=?")
                         .bind(site_id)

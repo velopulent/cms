@@ -30,7 +30,12 @@ pub async fn setup(server: &TestServer) -> (String, String, String) {
 pub fn site_key_scopes(access: &str) -> Vec<&'static str> {
     let mut scopes = vec!["site.read", "schema.read", "content.read", "files.read", "mcp.use"];
     if access == "write" {
-        scopes.extend(["content.preview.read", "content.write", "content.publish", "files.write"]);
+        scopes.extend([
+            "content.preview.read",
+            "content.write",
+            "content.publish",
+            "files.write",
+        ]);
     }
     scopes
 }

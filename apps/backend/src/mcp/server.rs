@@ -82,7 +82,7 @@ impl CmsServer {
                         })
                     })
                     .collect();
-                crate::mcp::auth::ok_result(&sites)
+                crate::mcp::auth::ok_result(&serde_json::json!({ "sites": sites }))
             }
             Err(e) => Err(crate::mcp::auth::map_err(e)),
         }
@@ -289,7 +289,13 @@ impl ServerHandler for CmsServer {
     }
 
     fn supported_protocol_versions(&self) -> Cow<'static, [ProtocolVersion]> {
-        Cow::Borrowed(&[ProtocolVersion::V_2026_07_28])
+        // 2025-06-18 is the oldest revision with structured tool output and the
+        // MCP-Protocol-Version header, both of which this server relies on.
+        Cow::Borrowed(&[
+            ProtocolVersion::V_2025_06_18,
+            ProtocolVersion::V_2025_11_25,
+            ProtocolVersion::V_2026_07_28,
+        ])
     }
 
     async fn list_prompts(
@@ -326,19 +332,8 @@ impl ServerHandler for CmsServer {
             .expect("object schema"),
         );
         for tool in &mut tools {
-            tool.output_schema = Some(if matches!(tool.name.as_ref(), "list_sites" | "list_singletons") {
-                Arc::new(
-                    serde_json::json!({"anyOf": [
-                        {"type": "array", "items": {"type": "object"}},
-                        {"type": "object", "required": ["error"], "properties": {"error": {"type": "object"}}}
-                    ]})
-                    .as_object()
-                    .cloned()
-                    .expect("object schema"),
-                )
-            } else {
-                output_schema.clone()
-            });
+            tool.input_schema = crate::mcp::schema::clean_input_schema(tool.input_schema.clone());
+            tool.output_schema = Some(output_schema.clone());
             let read_only = matches!(
                 tool.name.as_ref(),
                 "list_sites"

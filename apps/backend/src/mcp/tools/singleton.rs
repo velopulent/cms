@@ -45,7 +45,7 @@ pub async fn list_singletons(
         .list_singletons_visible(&site_id, !params.0.include_drafts.unwrap_or(false))
         .await
     {
-        Ok(singletons) => ok_result(&singletons),
+        Ok(singletons) => ok_result(&serde_json::json!({ "singletons": singletons })),
         Err(e) => Ok(tool_error(e)),
     }
 }

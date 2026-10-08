@@ -24,7 +24,54 @@ async fn test_discover_advertises_modern_protocol() {
     let (_, token) = setup_site_token(&server).await;
 
     let result = mcp_initialize(&server.base_url, &token).await;
-    assert_eq!(result["supportedVersions"][0], "2026-07-28");
+    let versions = result["supportedVersions"].as_array().unwrap();
+    for version in ["2025-06-18", "2025-11-25", "2026-07-28"] {
+        assert!(
+            versions.contains(&serde_json::json!(version)),
+            "{version} not advertised"
+        );
+    }
+}
+
+#[tokio::test]
+async fn session_lifecycle_clients_initialize_and_call_tools() {
+    let server = start_mcp_server().await;
+    let (_, token) = setup_site_token(&server).await;
+    let client = crate::common::client::http_client();
+    let post = |version: &'static str, body: serde_json::Value| {
+        client
+            .post(format!("{}/mcp", server.base_url))
+            .bearer_auth(&token)
+            .header("accept", "application/json, text/event-stream")
+            .header("MCP-Protocol-Version", version)
+            .json(&body)
+            .send()
+    };
+    for version in ["2025-06-18", "2025-11-25"] {
+        let initialized: serde_json::Value = post(
+            version,
+            serde_json::json!({"jsonrpc":"2.0","id":1,"method":"initialize","params":{
+                "protocolVersion": version, "capabilities": {}, "clientInfo": {"name":"test","version":"1"}}}),
+        )
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+        assert_eq!(initialized["result"]["protocolVersion"], version);
+        let tools: serde_json::Value = post(
+            version,
+            serde_json::json!({"jsonrpc":"2.0","id":2,"method":"tools/list"}),
+        )
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+        let tools = tools["result"]["tools"].as_array().expect("tools/list result");
+        assert!(tools.iter().all(|tool| tool["inputSchema"].get("$schema").is_none()));
+        assert!(tools.iter().all(|tool| tool["outputSchema"]["type"] == "object"));
+    }
 }
 
 #[tokio::test]
