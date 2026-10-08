@@ -478,7 +478,7 @@ pub async fn get_public_entry(
     }
 }
 
-#[instrument(skip(repository, services, ctx, payload))]
+#[instrument(skip(repository, services, ctx, headers, payload))]
 #[utoipa::path(
     patch,
     path = "/api/v1/sites/{site_id}/entries/{id}",

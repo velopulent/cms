@@ -158,7 +158,7 @@ pub async fn get_singleton(
     security(("bearer" = []), ("access_token" = [])),
     tag = "singletons"
 )]
-#[instrument(skip(repository, services, ctx, payload))]
+#[instrument(skip(repository, services, ctx, headers, payload))]
 pub async fn update_singleton(
     ctx: RequestContext,
     headers: HeaderMap,
