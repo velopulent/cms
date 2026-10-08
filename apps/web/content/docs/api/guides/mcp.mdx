@@ -3,11 +3,15 @@ title: Connect an MCP client
 description: Give AI tools scoped access through Streamable HTTP or the stdio proxy.
 ---
 
-VCMS Server exposes Streamable HTTP at `/mcp`. MCP must remain enabled in instance settings, and the request host and origin must satisfy the configured allowlists.
+VCMS Server exposes MCP over Streamable HTTP at `/mcp`. MCP must be enabled in instance settings, and the request host and origin must satisfy the configured allowlists.
+
+Every MCP credential needs the `mcp.use` scope plus the scopes for the work it does. See [Authentication](/docs/api/authentication#scopes).
 
 ## Direct HTTP
 
-Configure an MCP client for `http://127.0.0.1:3000/mcp` and send a bearer site key or personal token with the `mcp.use` scope. Use `server/discover`; this server supports only MCP `2026-07-28` and does not create sessions.
+Point the client at `http://127.0.0.1:3000/mcp` and send a site key or personal token as a bearer token.
+
+The server supports MCP `2025-06-18`, `2025-11-25`, and `2026-07-28`. Clients on the session-based revisions call `initialize` as usual; `2026-07-28` clients call `server/discover` and send per-request metadata. The server is stateless and does not issue session IDs.
 
 ## Stdio proxy
 
@@ -24,10 +28,22 @@ Some clients launch a local command instead of connecting to HTTP:
 }
 ```
 
-The proxy opens no database or search index. It forwards JSON-RPC to the running server. Protocol messages use stdout; logs use stderr.
+The proxy forwards JSON-RPC to the running server and passes the client's protocol version through. It opens no database or search index of its own. Protocol messages use stdout; logs use stderr.
 
-## Discover capabilities
+## Tools and resources
 
-Use `tools/list` for current tool names and input schemas. Use `resources/list` to discover accessible site-schema resources, then `resources/read` for one schema. Every site-specific tool requires an explicit `site_id`, except `list_sites`.
+Call `tools/list` for tool names and input schemas. Every tool except `list_sites` takes an explicit `site_id`.
 
-Tools cover sites, entries, revisions, singletons, files, signed upload URLs, and publication lifecycle. Collection and singleton schemas are resources, not CRUD tools. Credential scopes and role policy still apply. OAuth metadata is intentionally not advertised; provision a VCMS bearer token explicitly.
+| Area | Tools |
+| --- | --- |
+| Sites | `list_sites`, `get_site` |
+| Entries | `list_entries`, `get_entry`, `create_entry`, `update_entry`, `delete_entry`, `set_entry_publication` |
+| Revisions | `list_revisions`, `get_revision`, `restore_revision` |
+| Singletons | `list_singletons`, `get_singleton`, `update_singleton` |
+| Files | `list_files`, `get_file`, `create_file_upload`, `delete_file`, `restore_file` |
+
+Tools return structured JSON objects. Reads return published content unless the call sets `include_drafts: true`, which needs `content.preview.read`.
+
+Collection and singleton schemas are resources, not tools. Use `resources/list` and `resources/templates/list` to find them; `cms://{site_id}/schema` returns a site's full schema.
+
+The server advertises tools and resources only. It does not offer OAuth discovery, prompts, sampling, or elicitation; provision a VCMS token explicitly.

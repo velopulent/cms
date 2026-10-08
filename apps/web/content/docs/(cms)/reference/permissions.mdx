@@ -21,13 +21,27 @@ description: Exact authority boundaries for users, site collaborators, and acces
 
 Owners and admins act as instance operators. They receive site authority without membership.
 
-## Site keys
+## Access tokens
 
-Read-only keys can read site, settings, content, files, schema, webhooks, and deployments. Write keys can also change those resources and trigger webhooks or deployments. Site keys cannot manage keys, members, instance settings, or backups and cannot delete a site.
+Site keys and personal tokens reach content through the public APIs only. Their scopes decide what they can do:
+
+| Scope | Allows |
+| --- | --- |
+| `site.read` | List sites and read site details |
+| `schema.read` | Read collection and singleton definitions |
+| `content.read` | Read published entries and singletons |
+| `content.preview.read` | Read drafts and revision history |
+| `content.write` | Create, update, and delete entries; update singletons; restore revisions |
+| `content.publish` | Publish and unpublish entries |
+| `files.read` | Read file metadata and references |
+| `files.write` | Upload, trash, and restore files |
+| `mcp.use` | Connect to the MCP endpoint |
+
+A **Read only** site key carries the read scopes and `mcp.use`. A **Read & write** key carries every scope. No token can change schemas, webhooks, deployments, members, keys, instance settings, or backups, or delete a site.
 
 ## Personal tokens
 
-Personal tokens belong to a user. Effective authority combines the user's roles with the token's scopes. Revoking the user's access or token removes that path independently.
+Personal tokens belong to a user. Each request needs both the token scope and the user's current role on the target site, so a viewer's token cannot read drafts or write even if it carries those scopes. Revoking the user's access or the token removes that path independently.
 
 ## Dashboard sessions
 

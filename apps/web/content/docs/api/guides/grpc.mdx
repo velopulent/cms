@@ -3,36 +3,61 @@ title: Use gRPC
 description: Connect typed service clients to the VCMS gRPC listener.
 ---
 
-VCMS Server listens on `127.0.0.1:50051` by default. Generate a client from `libs/proto/cms.proto` or the proto file bundled with your source release.
+VCMS Server listens for gRPC on `127.0.0.1:50051` by default. Generate a client from `libs/proto/cms.proto`; it imports the standard `google/protobuf/struct.proto` and `timestamp.proto`.
 
 ## Services
 
-The schema defines Collection, Entry, Singleton, File, and Site services. Collection and Site services expose discovery only; management remains dashboard-only. Entry operations include publishing, unpublishing, and revisions. File operations include trash and restore.
+| Service | Operations |
+| --- | --- |
+| `SiteService` | `ListSites`, `GetSite` |
+| `CollectionService` | `ListCollections`, `GetCollection` |
+| `EntryService` | List, get, create, update, delete, publish, unpublish, and revisions |
+| `SingletonService` | `ListSingletons`, `GetSingleton`, `UpdateSingleton` |
+| `FileService` | List, get, references, streaming upload, trash, restore |
 
-## Authentication
+Schema, webhook, and member management stay in the dashboard.
 
-Attach the bearer credential as gRPC metadata:
+## Authentication and site selection
+
+Attach a site key or personal token as metadata:
 
 ```text
 authorization: Bearer vcms_site_…
-# Personal tokens (vcms_pat_…) are also accepted.
 ```
 
-Include `site_id` on site-scoped requests. Typed `Struct` fields carry dynamic content; legacy JSON text fields remain during migration. Draft reads require `include_drafts` and `content.preview.read`.
+Every site-scoped request carries `site_id`. A request without it fails with `INVALID_ARGUMENT`. A site key sent with another site's ID fails with `PERMISSION_DENIED`, as does a missing scope; the message names the scope.
+
+## Content and timestamps
+
+Entry data, singleton data, and collection definitions use `google.protobuf.Struct`. Timestamps use `google.protobuf.Timestamp`. Struct numbers are doubles, so integers above 2^53 lose precision.
+
+Reads return published content unless the request sets `include_drafts`, which needs `content.preview.read`. Revisions always need it.
+
+## Paging
+
+List RPCs take `page_size` (default 50, maximum 200) and `page_token`. Pass each response's `next_page_token` back unchanged with the same filters; an empty token means the last page. `total_size` reports the total match count.
+
+## Conditional updates
+
+`Entry.version` and `Singleton.version` change on every write. Set `expected_version` on `UpdateEntry` or `UpdateSingleton` to make the write conditional. A stale version fails with `FAILED_PRECONDITION` and nothing is written.
+
+## Upload a file
+
+`UploadFile` is client-streaming. The first message carries `site_id`, `filename`, `content_type`, and the first chunk. Later messages carry only chunks. The instance upload limit applies to the whole stream.
 
 ## Inspect with grpcurl
 
-When your environment supports server reflection, list services with:
+The server supports reflection:
 
 ```bash
 grpcurl -plaintext -H "authorization: Bearer $VCMS_TOKEN" \
   127.0.0.1:50051 list
-```
 
-Otherwise pass the proto file explicitly. Treat that file as the field-level reference for your installed version.
+grpcurl -plaintext -H "authorization: Bearer $VCMS_TOKEN" \
+  -d "{\"site_id\": \"$VCMS_SITE_ID\"}" \
+  127.0.0.1:50051 cms.v1.CollectionService/ListCollections
+```
 
 ## Network placement
 
-The default listener accepts local connections only. Change `[server].grpc_address` in `config.toml` or place a compatible proxy in front of it when remote clients need access. Protect remote gRPC traffic with TLS at the service or proxy boundary.
-
-Health and reflection endpoints are unauthenticated. Keep the listener within a controlled network boundary. Content responses currently populate both legacy JSON and typed fields; large responses may require a higher client decoding limit than the generated client's 4 MiB default.
+The default listener accepts local connections only. To accept remote clients, change `[server].grpc_address` in `config.toml` or put a gRPC-capable proxy in front of it, and terminate TLS there. The health and reflection services do not require authentication, so keep the listener inside a controlled network.
