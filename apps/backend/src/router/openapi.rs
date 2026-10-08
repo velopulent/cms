@@ -87,17 +87,18 @@ impl utoipa::Modify for SecurityAddon {
             }
             if path.contains("{site_id}") {
                 let parameters = item.parameters.get_or_insert_with(Vec::new);
-                parameters.push(
+                parameters.push(utoipa::openapi::RefOr::T(
                     utoipa::openapi::path::ParameterBuilder::new()
                         .name("site_id")
                         .parameter_in(utoipa::openapi::path::ParameterIn::Path)
+                        .required(utoipa::openapi::Required::True)
                         .schema(Some(
                             utoipa::openapi::schema::ObjectBuilder::new()
                                 .schema_type(utoipa::openapi::schema::Type::String),
                         ))
                         .description(Some("Explicit target site; must be authorized by the token"))
                         .build(),
-                );
+                ));
             }
         }
         let components = openapi.components.get_or_insert_with(Default::default);
