@@ -1,0 +1,26 @@
+---
+title: Prepare a production server
+description: Configure network, identity, cookies, storage, monitoring, and backups.
+---
+
+1. Install a native package so the service runs under its restricted account.
+2. Keep the HTTP and gRPC listeners on loopback when a reverse proxy shares the host.
+3. Terminate TLS at the reverse proxy and set the public URL in instance settings.
+4. Enable secure cookies after the public dashboard uses HTTPS.
+5. Add exact frontend origins that need cross-origin API access.
+6. Trust proxy headers only when requests can reach VCMS Server through a trusted proxy.
+7. Select durable storage profiles and test their connection.
+8. Configure encrypted scheduled backups to a separate failure domain.
+9. Monitor `/health/live`, `/health/ready`, native service state, disk space, and logs.
+10. Change the first-run password and create named accounts instead of sharing the owner login.
+
+## Reverse proxy boundary
+
+Forward HTTP to `127.0.0.1:3000`. Preserve the host. Send `X-Forwarded-Proto` and `X-Forwarded-Host` only from the trusted proxy. Configure request-body limits at or above the VCMS upload limit when uploads pass through the proxy.
+
+## Exposure review
+
+- The file delivery routes are unauthenticated and use opaque IDs.
+- Scalar and GraphQL endpoints share the HTTP listener.
+- MCP checks allowed hosts and origins in addition to bearer authentication.
+- gRPC uses a separate listener and needs its own TLS or protected network path.

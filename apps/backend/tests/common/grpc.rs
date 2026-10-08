@@ -10,7 +10,6 @@ use cms::config::Config;
 use cms::database::init_db_with_config;
 use cms::grpc::interceptor::AuthInterceptor;
 use cms::grpc::services::admin_site::SiteServiceImpl;
-use cms::grpc::services::admin_webhook::WebhookServiceImpl;
 use cms::grpc::services::collection::CollectionServiceImpl;
 use cms::grpc::services::entry::EntryServiceImpl;
 use cms::grpc::services::file::FileServiceImpl;
@@ -132,7 +131,7 @@ impl GrpcTestContext {
             storage_registry.clone(),
             services.clone(),
             backup_service,
-            settings,
+            settings.clone(),
         );
 
         let (axum_shutdown_tx, axum_shutdown_rx) = tokio::sync::oneshot::channel::<()>();
@@ -153,15 +152,20 @@ impl GrpcTestContext {
         let incoming = TcpListenerStream::new(grpc_listener);
 
         let collection_svc = CollectionServiceImpl::new(services.collection.clone(), repository_arc.clone());
-        let entry_svc = EntryServiceImpl::new(services.entry.clone(), repository_arc.clone());
+        let entry_svc = EntryServiceImpl::new(services.entry.clone(), repository_arc.clone(), config.clone());
         let singleton_svc = SingletonServiceImpl::new(
             services.singleton.clone(),
             storage_registry.clone(),
             repository_arc.clone(),
         );
-        let file_svc = FileServiceImpl::new(services.file.clone(), repository_arc.clone());
+        let file_svc = FileServiceImpl::new(
+            services.file.clone(),
+            repository_arc.clone(),
+            storage_registry.clone(),
+            config.clone(),
+            settings,
+        );
         let site_svc = SiteServiceImpl::new(services.site.clone(), repository_arc.clone());
-        let webhook_svc = WebhookServiceImpl::new(services.webhook.clone(), repository_arc);
 
         let interceptor = AuthInterceptor::new(config.clone());
 
@@ -182,10 +186,6 @@ impl GrpcTestContext {
             cms::grpc::cms::v1::file_service_server::FileServiceServer::with_interceptor(file_svc, interceptor.clone());
         let site_server =
             cms::grpc::cms::v1::site_service_server::SiteServiceServer::with_interceptor(site_svc, interceptor.clone());
-        let webhook_server = cms::grpc::cms::v1::webhook_service_server::WebhookServiceServer::with_interceptor(
-            webhook_svc,
-            interceptor,
-        );
 
         let (grpc_shutdown_tx, grpc_shutdown_rx) = tokio::sync::oneshot::channel::<()>();
         tokio::spawn(async move {
@@ -195,7 +195,6 @@ impl GrpcTestContext {
                 .add_service(singleton_server)
                 .add_service(file_server)
                 .add_service(site_server)
-                .add_service(webhook_server)
                 .serve_with_incoming_shutdown(incoming, async move {
                     let _ = grpc_shutdown_rx.await;
                 })
@@ -308,6 +307,43 @@ impl GrpcTestContext {
 
         resp.json().await.unwrap()
     }
+
+    pub async fn create_collection(
+        &self,
+        site_id: &str,
+        name: &str,
+        slug: &str,
+        definition: serde_json::Value,
+        is_singleton: bool,
+    ) -> serde_json::Value {
+        let client = http_client();
+        let resp = client
+            .post(format!("{}/api/auth/login", self.rest_base_url))
+            .json(&serde_json::json!({"email": "admin@cms.local", "password": "admin"}))
+            .send()
+            .await
+            .expect("Failed to login");
+        let (token, csrf) = extract_cookies(&resp);
+        client
+            .post(format!(
+                "{}/api/dashboard/sites/{}/collections",
+                self.rest_base_url, site_id
+            ))
+            .header("Cookie", format!("token={token}; csrf={csrf}"))
+            .header("X-CSRF-Token", &csrf)
+            .json(&serde_json::json!({
+                "name": name,
+                "slug": slug,
+                "definition": definition,
+                "is_singleton": is_singleton,
+            }))
+            .send()
+            .await
+            .expect("Failed to create collection")
+            .json()
+            .await
+            .expect("Invalid collection response")
+    }
 }
 
 pub fn auth_interceptor(token: &str) -> impl tonic::service::Interceptor + Clone + use<> {
@@ -319,4 +355,15 @@ pub fn auth_interceptor(token: &str) -> impl tonic::service::Interceptor + Clone
         );
         Ok(req)
     }
+}
+
+/// Parse a JSON object literal into the protobuf Struct used for content data.
+pub fn content(json: &str) -> Option<prost_types::Struct> {
+    let value: serde_json::Value = serde_json::from_str(json).expect("valid JSON object");
+    cms::grpc::json_to_struct(&value)
+}
+
+/// Content Struct back to JSON for assertions.
+pub fn content_json(value: &Option<prost_types::Struct>) -> serde_json::Value {
+    cms::grpc::struct_to_json(value.as_ref().expect("content present")).expect("valid content")
 }

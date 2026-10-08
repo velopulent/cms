@@ -60,7 +60,7 @@ impl SiteRepository for SqliteSiteRepository {
         storage_profile_id: &str,
         created_by: &str,
     ) -> Result<Site, RepositoryError> {
-        let mut transaction = self.pool.begin().await?;
+        let mut transaction = self.pool.begin_with("BEGIN IMMEDIATE").await?;
         let storage_provider: Option<String> =
             sqlx::query_scalar("SELECT kind FROM storage_profiles WHERE id = ? AND enabled = 1")
                 .bind(storage_profile_id)

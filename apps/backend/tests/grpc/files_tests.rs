@@ -1,8 +1,5 @@
 use cms::grpc::cms::v1::file_service_client::FileServiceClient;
-use cms::grpc::cms::v1::{
-    BatchDeleteFilesRequest, BatchRestoreFilesRequest, DeleteFileRequest, GetFileRequest, ListFilesRequest,
-    RestoreFileRequest,
-};
+use cms::grpc::cms::v1::{DeleteFileRequest, GetFileRequest, ListFilesRequest, RestoreFileRequest};
 
 use crate::common::{GrpcTestContext, grpc::auth_interceptor};
 
@@ -54,17 +51,18 @@ async fn test_list_files() {
 
     let resp = client
         .list_files(tonic::Request::new(ListFilesRequest {
+            site_id: site_id.clone(),
             search: None,
             file_type: None,
-            page: 1,
-            per_page: 10,
+            page_size: 10,
+            ..Default::default()
         }))
         .await
         .unwrap()
         .into_inner();
 
     assert_eq!(resp.files.len(), 2);
-    assert_eq!(resp.total, 2);
+    assert_eq!(resp.total_size, 2);
 }
 
 #[tokio::test]
@@ -78,19 +76,18 @@ async fn test_list_files_default_pagination() {
 
     let resp = client
         .list_files(tonic::Request::new(ListFilesRequest {
+            site_id: site_id.clone(),
             search: None,
             file_type: None,
-            page: 0,
-            per_page: 0,
+            page_size: 0,
+            ..Default::default()
         }))
         .await
         .unwrap()
         .into_inner();
 
     assert_eq!(resp.files.len(), 2);
-    assert_eq!(resp.total, 2);
-    assert!(resp.page >= 1);
-    assert!(resp.per_page >= 1);
+    assert_eq!(resp.total_size, 2);
 }
 
 #[tokio::test]
@@ -105,17 +102,18 @@ async fn test_list_files_filter_by_category() {
 
     let resp = client
         .list_files(tonic::Request::new(ListFilesRequest {
+            site_id: site_id.clone(),
             search: None,
             file_type: Some("image".into()),
-            page: 1,
-            per_page: 10,
+            page_size: 10,
+            ..Default::default()
         }))
         .await
         .unwrap()
         .into_inner();
 
     assert_eq!(resp.files.len(), 2);
-    assert_eq!(resp.total, 2);
+    assert_eq!(resp.total_size, 2);
     let types: Vec<&str> = resp.files.iter().map(|f| f.mime_type.as_str()).collect();
     assert!(types.iter().all(|t| t.starts_with("image/")));
 }
@@ -132,17 +130,18 @@ async fn test_list_files_filter_by_exact_mime_type() {
 
     let resp = client
         .list_files(tonic::Request::new(ListFilesRequest {
+            site_id: site_id.clone(),
             search: None,
             file_type: Some("image/png".into()),
-            page: 1,
-            per_page: 10,
+            page_size: 10,
+            ..Default::default()
         }))
         .await
         .unwrap()
         .into_inner();
 
     assert_eq!(resp.files.len(), 1);
-    assert_eq!(resp.total, 1);
+    assert_eq!(resp.total_size, 1);
     assert_eq!(resp.files[0].mime_type, "image/png");
 }
 
@@ -155,7 +154,10 @@ async fn test_get_file() {
     let file_id = seed_file(&ctx, &site_id, "get-me").await;
 
     let resp = client
-        .get_file(tonic::Request::new(GetFileRequest { id: file_id.clone() }))
+        .get_file(tonic::Request::new(GetFileRequest {
+            site_id: site_id.clone(),
+            id: file_id.clone(),
+        }))
         .await
         .unwrap()
         .into_inner();
@@ -174,19 +176,23 @@ async fn test_delete_file() {
     let file_id = seed_file(&ctx, &site_id, "delete-me").await;
 
     let resp = client
-        .delete_file(tonic::Request::new(DeleteFileRequest { id: file_id.clone() }))
+        .delete_file(tonic::Request::new(DeleteFileRequest {
+            site_id: site_id.clone(),
+            id: file_id.clone(),
+        }))
         .await
         .unwrap()
         .into_inner();
 
-    assert!(resp.success);
+    assert!(resp.deleted);
 
     let list_resp = client
         .list_files(tonic::Request::new(ListFilesRequest {
+            site_id: site_id.clone(),
             search: None,
             file_type: None,
-            page: 1,
-            per_page: 100,
+            page_size: 100,
+            ..Default::default()
         }))
         .await
         .unwrap()
@@ -208,12 +214,18 @@ async fn test_restore_file() {
     let file_id = seed_file(&ctx, &site_id, "restore-me").await;
 
     let _deleted = client
-        .delete_file(tonic::Request::new(DeleteFileRequest { id: file_id.clone() }))
+        .delete_file(tonic::Request::new(DeleteFileRequest {
+            site_id: site_id.clone(),
+            id: file_id.clone(),
+        }))
         .await
         .unwrap();
 
     let resp = client
-        .restore_file(tonic::Request::new(RestoreFileRequest { id: file_id.clone() }))
+        .restore_file(tonic::Request::new(RestoreFileRequest {
+            site_id: site_id.clone(),
+            id: file_id.clone(),
+        }))
         .await
         .unwrap()
         .into_inner();
@@ -223,44 +235,52 @@ async fn test_restore_file() {
 }
 
 #[tokio::test]
-async fn test_batch_delete_files() {
+async fn streaming_upload_preserves_bytes_and_rejects_changed_metadata() {
+    use cms::grpc::cms::v1::UploadFileRequest;
     let (ctx, site_id, token) = setup().await;
-    let channel = ctx.connect().await;
-    let mut client = FileServiceClient::with_interceptor(channel, auth_interceptor(&token));
-
-    let id1 = seed_file(&ctx, &site_id, "batch1").await;
-    let id2 = seed_file(&ctx, &site_id, "batch2").await;
-
-    let resp = client
-        .batch_delete_files(tonic::Request::new(BatchDeleteFilesRequest { ids: vec![id1, id2] }))
+    let mut client = FileServiceClient::with_interceptor(ctx.connect().await, auth_interceptor(&token));
+    let metadata = UploadFileRequest {
+        site_id: site_id.clone(),
+        filename: "test.txt".into(),
+        content_type: "text/plain".into(),
+        chunk: b"hello ".to_vec(),
+    };
+    let file = client
+        .upload_file(tokio_stream::iter(vec![
+            metadata.clone(),
+            UploadFileRequest {
+                chunk: b"world".to_vec(),
+                ..Default::default()
+            },
+        ]))
         .await
         .unwrap()
         .into_inner();
-
-    assert_eq!(resp.affected, 2);
-}
-
-#[tokio::test]
-async fn test_batch_restore_files() {
-    let (ctx, site_id, token) = setup().await;
-    let channel = ctx.connect().await;
-    let mut client = FileServiceClient::with_interceptor(channel, auth_interceptor(&token));
-
-    let id1 = seed_file(&ctx, &site_id, "batch-r1").await;
-    let id2 = seed_file(&ctx, &site_id, "batch-r2").await;
-
-    let _deleted = client
-        .batch_delete_files(tonic::Request::new(BatchDeleteFilesRequest {
-            ids: vec![id1.clone(), id2.clone()],
-        }))
+    assert_eq!(file.size, 11);
+    let response = reqwest::get(format!("{}/api/files/{}", ctx.rest_base_url, file.id))
         .await
         .unwrap();
-
-    let resp = client
-        .batch_restore_files(tonic::Request::new(BatchRestoreFilesRequest { ids: vec![id1, id2] }))
+    assert_eq!(response.status(), 200);
+    assert_eq!(response.text().await.unwrap(), "hello world");
+    let error = client
+        .upload_file(tokio_stream::iter(vec![
+            metadata,
+            UploadFileRequest {
+                site_id: "another-site".into(),
+                chunk: b"bad".to_vec(),
+                ..Default::default()
+            },
+        ]))
+        .await
+        .unwrap_err();
+    assert_eq!(error.code(), tonic::Code::InvalidArgument);
+    let files = client
+        .list_files(ListFilesRequest {
+            site_id,
+            ..Default::default()
+        })
         .await
         .unwrap()
         .into_inner();
-
-    assert_eq!(resp.affected, 2);
+    assert_eq!(files.total_size, 1, "Rejected upload left a file record");
 }

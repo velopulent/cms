@@ -987,41 +987,16 @@ export async function createApiKey(
     accessMode === "write"
       ? [
           "site.read",
-          "site.settings.read",
-          "site.settings.write",
+          "schema.read",
           "content.read",
+          "content.preview.read",
           "content.write",
+          "content.publish",
           "files.read",
           "files.write",
-          "schema.read",
-          "schema.write",
-          "webhooks.read",
-          "webhooks.write",
-          "webhooks.trigger",
-          "deployments.read",
-          "deployments.write",
-          "deployments.trigger",
           "mcp.use",
         ]
-      : accessMode === "read"
-        ? [
-            "site.read",
-            "site.settings.read",
-            "content.read",
-            "files.read",
-            "schema.read",
-            "webhooks.read",
-            "deployments.read",
-          ]
-        : [
-            "site.read",
-            "site.settings.read",
-            "content.read",
-            "files.read",
-            "schema.read",
-            "webhooks.read",
-            "deployments.read",
-          ];
+      : ["site.read", "schema.read", "content.read", "files.read", "mcp.use"];
   const token = await api<AccessTokenResponse>(`/sites/${siteId}/tokens`, {
     method: "POST",
     body: JSON.stringify({ name, scopes }),

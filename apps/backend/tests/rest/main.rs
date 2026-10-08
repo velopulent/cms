@@ -14,3 +14,5 @@ mod singletons_tests;
 mod sites_tests;
 mod storage_profiles_tests;
 mod webhooks_tests;
+
+mod public_contract_tests;

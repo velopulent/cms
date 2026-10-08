@@ -102,7 +102,7 @@ pub async fn run(
         storage_registry.clone(),
         services.clone(),
         backup_service.clone(),
-        settings,
+        settings.clone(),
     );
 
     // Reconcile backups/restore jobs left mid-flight by a previous process: any
@@ -218,6 +218,7 @@ pub async fn run(
         repository_arc.clone(),
         config_arc.clone(),
         storage_registry.clone(),
+        settings.clone(),
         grpc_listener,
         Box::pin(wait_for_shutdown(shutdown_rx)),
     ));

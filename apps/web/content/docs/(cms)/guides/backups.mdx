@@ -1,0 +1,35 @@
+---
+title: Back up and restore from the dashboard
+description: Protect one site or the full installation with on-demand and scheduled backups.
+---
+
+Site backups contain one self-contained site. Instance backups include all sites plus users and roles. Sessions, `secrets.toml`, and backup metadata stay outside backup payloads.
+
+<AdaptiveScreenshot
+  light="/docs/screenshots/backups-light.png"
+  dark="/docs/screenshots/backups-dark.png"
+  alt="Site backup settings with on-demand backup, scheduled backups, retention, encryption, and search reindex controls"
+  caption="Site backups support on-demand artifacts, schedules, retention, encryption, restore, and search maintenance."
+/>
+
+## Create a backup
+
+Open **Backups** under site or instance settings. Choose whether to include files, enable encryption when required, select a destination profile, then create the backup.
+
+Instance-wide backup and restore require the instance owner. Instance admins can operate site backups.
+
+## Schedule backups
+
+Choose a daily, weekly, monthly, or custom cron schedule. Set retention, file inclusion, encryption, destination, and enabled state. Use **Run now** to test it.
+
+## Restore
+
+Inspect the artifact, choose in-place restore or import-as-new where available, and enter the exact typed confirmation. Restore replaces data within the selected scope in one transaction.
+
+<Callout type="warn" title="Restore changes live data">
+Create and verify a separate backup before restoration. Keep the encryption key apart from encrypted artifacts.
+</Callout>
+
+Backups normalize data for SQLite/PostgreSQL portability. A server refuses artifacts created on a newer database schema.
+
+For a server that cannot start, use [offline recovery](/docs/server/guides/recovery).

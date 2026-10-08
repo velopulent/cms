@@ -13,25 +13,53 @@
 //! newline-delimited JSON-RPC message from stdin, POST it, write the JSON reply back.
 
 use serde_json::Value;
+use std::time::Duration;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
+
+const LATEST_PROTOCOL_VERSION: &str = "2026-07-28";
+const PROTOCOL_VERSION_META: &str = "io.modelcontextprotocol/protocolVersion";
+
+/// Protocol version the client negotiated through `initialize`, if it used the
+/// session lifecycle. Requests then carry that version in `MCP-Protocol-Version`.
+#[derive(Default)]
+struct ProxyState {
+    negotiated_version: Option<String>,
+}
 
 /// Run the proxy loop until stdin closes (EOF → clean exit).
 ///
 /// `endpoint` is the fully-qualified MCP URL (e.g. `http://127.0.0.1:3000/mcp`) and
 /// `token` is the VCMS access token forwarded as the bearer credential.
 pub async fn serve(endpoint: String, token: String) -> Result<(), Box<dyn std::error::Error>> {
-    let client = reqwest::Client::new();
-    let mut lines = BufReader::new(tokio::io::stdin()).lines();
+    let parsed_endpoint = reqwest::Url::parse(&endpoint)?;
+    if !matches!(parsed_endpoint.scheme(), "http" | "https")
+        || !parsed_endpoint.username().is_empty()
+        || parsed_endpoint.password().is_some()
+        || parsed_endpoint.query().is_some()
+        || parsed_endpoint.fragment().is_some()
+    {
+        return Err("MCP endpoint must use HTTP(S) without embedded credentials, query, or fragment".into());
+    }
+    let client = reqwest::Client::builder().timeout(Duration::from_secs(30)).build()?;
+    let mut input = BufReader::new(tokio::io::stdin());
     let mut stdout = tokio::io::stdout();
+    let mut state = ProxyState::default();
 
     tracing::info!(%endpoint, "MCP stdio proxy active");
 
-    while let Some(line) = lines.next_line().await? {
+    while let Some(line) = read_message(&mut input).await? {
+        let Some(line) = line else {
+            let response = error_line(true, &None, "MCP stdio message exceeds the 8 MiB limit".into()).unwrap();
+            stdout.write_all(response.as_bytes()).await?;
+            stdout.write_all(b"\n").await?;
+            stdout.flush().await?;
+            continue;
+        };
         let message = line.trim();
         if message.is_empty() {
             continue;
         }
-        if let Some(response) = forward(&client, &endpoint, &token, message).await {
+        if let Some(response) = forward(&client, &endpoint, &token, &mut state, message).await {
             stdout.write_all(response.as_bytes()).await?;
             stdout.write_all(b"\n").await?;
             stdout.flush().await?;
@@ -42,11 +70,62 @@ pub async fn serve(endpoint: String, token: String) -> Result<(), Box<dyn std::e
     Ok(())
 }
 
+/// Drain oversized lines without ever allocating their full length.
+async fn read_message<R: tokio::io::AsyncBufRead + Unpin>(input: &mut R) -> std::io::Result<Option<Option<String>>> {
+    const LIMIT: usize = 8 * 1024 * 1024;
+    let mut bytes = Vec::new();
+    let mut oversized = false;
+    loop {
+        let available = input.fill_buf().await?;
+        if available.is_empty() {
+            return if bytes.is_empty() && !oversized {
+                Ok(None)
+            } else {
+                Ok(Some(if oversized {
+                    None
+                } else {
+                    Some(
+                        String::from_utf8(bytes)
+                            .map_err(|error| std::io::Error::new(std::io::ErrorKind::InvalidData, error))?,
+                    )
+                }))
+            };
+        }
+        let newline = available.iter().position(|byte| *byte == b'\n');
+        let count = newline.map_or(available.len(), |index| index + 1);
+        if !oversized {
+            if bytes.len() + count > LIMIT {
+                oversized = true;
+                bytes.clear();
+            } else {
+                bytes.extend_from_slice(&available[..count]);
+            }
+        }
+        input.consume(count);
+        if newline.is_some() {
+            return Ok(Some(if oversized {
+                None
+            } else {
+                Some(
+                    String::from_utf8(bytes)
+                        .map_err(|error| std::io::Error::new(std::io::ErrorKind::InvalidData, error))?,
+                )
+            }));
+        }
+    }
+}
+
 /// Forward one JSON-RPC message to the server and return the line to write to stdout,
 /// or `None` when nothing should be written (a notification, which carries no `id`
 /// and expects no reply). On a transport failure for a request we synthesize a
 /// JSON-RPC error so the client sees a clean failure and the proxy keeps running.
-async fn forward(client: &reqwest::Client, endpoint: &str, token: &str, message: &str) -> Option<String> {
+async fn forward(
+    client: &reqwest::Client,
+    endpoint: &str,
+    token: &str,
+    state: &mut ProxyState,
+    message: &str,
+) -> Option<String> {
     let parsed = serde_json::from_str::<Value>(message).ok();
     // Requests and batches expect a response; a lone notification object (no `id`)
     // does not. Unparseable input is forwarded so the server returns a proper
@@ -57,12 +136,76 @@ async fn forward(client: &reqwest::Client, endpoint: &str, token: &str, message:
         _ => (true, None),                     // unparseable → let the server reject it
     };
 
+    let method = parsed
+        .as_ref()
+        .and_then(|value| value.get("method"))
+        .and_then(Value::as_str)
+        .unwrap_or_default();
+    let tool_name = if method == "tools/call" {
+        parsed
+            .as_ref()
+            .and_then(|value| value.get("params"))
+            .and_then(|value| value.get("name"))
+            .and_then(Value::as_str)
+            .unwrap_or(method)
+    } else if method == "resources/read" {
+        parsed
+            .as_ref()
+            .and_then(|value| value.get("params"))
+            .and_then(|value| value.get("uri"))
+            .and_then(Value::as_str)
+            .unwrap_or(method)
+    } else {
+        method
+    };
+
+    // Forward the client's own protocol version: from `initialize`, from inline
+    // request metadata, or from an earlier `initialize`. A client that sends none
+    // is treated as a latest-revision client and gets the required metadata.
+    let params = parsed.as_ref().and_then(|value| value.get("params"));
+    let version_from = |value: Option<&Value>| value.and_then(Value::as_str).map(str::to_owned);
+    let initialize_version = (method == "initialize")
+        .then(|| version_from(params.and_then(|params| params.get("protocolVersion"))))
+        .flatten();
+    let declared_version = initialize_version
+        .clone()
+        .or_else(|| version_from(params.and_then(|params| params.get("_meta")?.get(PROTOCOL_VERSION_META))))
+        .or_else(|| state.negotiated_version.clone());
+    let outbound_message = match (&declared_version, parsed.clone()) {
+        (None, Some(Value::Object(mut object))) => {
+            let mut params = object.remove("params").unwrap_or_else(|| serde_json::json!({}));
+            if let Some(meta) = params.as_object_mut().and_then(|params| {
+                params
+                    .entry("_meta")
+                    .or_insert_with(|| serde_json::json!({}))
+                    .as_object_mut()
+            }) {
+                meta.insert(PROTOCOL_VERSION_META.into(), LATEST_PROTOCOL_VERSION.into());
+                meta.insert(
+                    "io.modelcontextprotocol/clientInfo".into(),
+                    serde_json::json!({"name": "vcms-stdio-proxy", "version": env!("CARGO_PKG_VERSION")}),
+                );
+                meta.insert(
+                    "io.modelcontextprotocol/clientCapabilities".into(),
+                    serde_json::json!({}),
+                );
+            }
+            object.insert("params".into(), params);
+            Value::Object(object).to_string()
+        }
+        _ => message.to_string(),
+    };
+    let protocol_version = declared_version.as_deref().unwrap_or(LATEST_PROTOCOL_VERSION);
+
     let result = client
         .post(endpoint)
         .header(reqwest::header::AUTHORIZATION, format!("Bearer {token}"))
         .header(reqwest::header::CONTENT_TYPE, "application/json")
         .header(reqwest::header::ACCEPT, "application/json, text/event-stream")
-        .body(message.to_string())
+        .header("MCP-Protocol-Version", protocol_version)
+        .header("Mcp-Method", method)
+        .header("Mcp-Name", tool_name)
+        .body(outbound_message)
         .send()
         .await;
 
@@ -103,6 +246,15 @@ async fn forward(client: &reqwest::Client, endpoint: &str, token: &str, message:
     // A non-2xx is an auth/host/transport failure (e.g. 401 for a bad token), not a
     // JSON-RPC reply. Wrap it so the client sees a proper JSON-RPC error envelope.
     if !status.is_success() {
+        // Modern HTTP errors can be valid JSON-RPC replies. Preserve their
+        // protocol code instead of replacing every 400/404 with -32603.
+        if let Ok(value) = serde_json::from_str::<Value>(&body)
+            && value["jsonrpc"] == "2.0"
+            && value["error"].is_object()
+            && value["id"] == id.clone().unwrap_or(Value::Null)
+        {
+            return Some(value.to_string());
+        }
         let detail = http_error_detail(&body);
         return error_line(needs_response, &id, format!("vcms server returned {status}: {detail}"));
     }
@@ -125,11 +277,17 @@ async fn forward(client: &reqwest::Client, endpoint: &str, token: &str, message:
 
     // Re-serialize compactly so the line carries no embedded newlines (MCP stdio
     // framing is one message per line). Fall back to the raw payload if it isn't JSON.
-    Some(
-        serde_json::from_str::<Value>(payload)
-            .map(|value| value.to_string())
-            .unwrap_or_else(|_| payload.replace('\n', " ")),
-    )
+    match serde_json::from_str::<Value>(payload) {
+        Ok(value) => {
+            if initialize_version.is_some()
+                && let Some(version) = value.pointer("/result/protocolVersion").and_then(Value::as_str)
+            {
+                state.negotiated_version = Some(version.to_owned());
+            }
+            Some(value.to_string())
+        }
+        Err(_) => error_line(needs_response, &id, "vcms server returned invalid JSON".into()),
+    }
 }
 
 /// Build a JSON-RPC error line for a failed request, or `None` for a notification
@@ -196,10 +354,16 @@ mod tests {
                 match parsed.get("id") {
                     None => (StatusCode::ACCEPTED, response_headers, String::new()),
                     Some(id) => {
+                        let protocol = header("mcp-protocol-version");
                         let reply = serde_json::json!({
                             "jsonrpc": "2.0",
                             "id": id,
-                            "result": { "auth": auth, "accept": accept },
+                            "result": {
+                                "auth": auth,
+                                "accept": accept,
+                                "protocol": protocol,
+                                "protocolVersion": parsed.pointer("/params/protocolVersion"),
+                            },
                         });
                         (StatusCode::OK, response_headers, reply.to_string())
                     }
@@ -220,6 +384,7 @@ mod tests {
             &reqwest::Client::new(),
             &endpoint,
             "vcms_site_test",
+            &mut ProxyState::default(),
             r#"{"jsonrpc":"2.0","id":1,"method":"tools/list"}"#,
         )
         .await
@@ -238,6 +403,7 @@ mod tests {
             &reqwest::Client::new(),
             &endpoint,
             "t",
+            &mut ProxyState::default(),
             r#"{"jsonrpc":"2.0","method":"notifications/initialized"}"#,
         )
         .await;
@@ -251,6 +417,7 @@ mod tests {
             &reqwest::Client::new(),
             "http://127.0.0.1:1/mcp",
             "t",
+            &mut ProxyState::default(),
             r#"{"jsonrpc":"2.0","id":7,"method":"tools/list"}"#,
         )
         .await
@@ -266,9 +433,35 @@ mod tests {
             &reqwest::Client::new(),
             "http://127.0.0.1:1/mcp",
             "t",
+            &mut ProxyState::default(),
             r#"{"jsonrpc":"2.0","method":"ping"}"#,
         )
         .await;
         assert!(out.is_none());
+    }
+
+    #[tokio::test]
+    async fn session_clients_keep_their_negotiated_protocol_version() {
+        let addr = spawn_stub().await;
+        let endpoint = format!("http://{addr}/mcp");
+        let client = reqwest::Client::new();
+        let mut state = ProxyState::default();
+        let initialize = r#"{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"t","version":"1"}}}"#;
+        let out = forward(&client, &endpoint, "vcms_site_test", &mut state, initialize)
+            .await
+            .unwrap();
+        let value: Value = serde_json::from_str(&out).unwrap();
+        assert_eq!(value["result"]["protocol"], "2025-06-18");
+        let out = forward(
+            &client,
+            &endpoint,
+            "vcms_site_test",
+            &mut state,
+            r#"{"jsonrpc":"2.0","id":2,"method":"tools/list"}"#,
+        )
+        .await
+        .unwrap();
+        let value: Value = serde_json::from_str(&out).unwrap();
+        assert_eq!(value["result"]["protocol"], "2025-06-18");
     }
 }

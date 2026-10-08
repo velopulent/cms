@@ -38,6 +38,7 @@ pub struct UpdateEntryInput<'a> {
     pub status: Option<&'a str>,
     pub created_by: Option<&'a str>,
     pub change_summary: Option<&'a str>,
+    pub expected_version: Option<&'a str>,
 }
 
 #[derive(Error, Debug)]
@@ -50,6 +51,9 @@ pub enum EntryError {
 
     #[error("Entry with this slug already exists for this collection")]
     AlreadyExists,
+
+    #[error("Version precondition failed")]
+    PreconditionFailed,
 
     #[error("Validation failed: {0}")]
     ValidationFailed(String),
@@ -67,8 +71,15 @@ impl EntryError {
                 StatusCode::CONFLICT,
                 Json(json!({"error": "Entry with this slug already exists for this collection"})),
             ),
+            EntryError::PreconditionFailed => (
+                StatusCode::PRECONDITION_FAILED,
+                Json(json!({"error": "precondition_failed", "message": "The entry changed since it was read"})),
+            ),
             EntryError::ValidationFailed(msg) => (StatusCode::BAD_REQUEST, Json(json!({"error": msg}))),
-            EntryError::DatabaseError(msg) => (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": msg}))),
+            EntryError::DatabaseError(_) => (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({"error": "internal_error", "message": "Internal server error"})),
+            ),
         };
         (status, body).into_response()
     }
@@ -189,6 +200,24 @@ impl EntryService {
         Ok(())
     }
 
+    async fn validate_file_references(&self, site_id: &str, data: &Value) -> Result<(), EntryError> {
+        let ids = self.extract_file_ids_from_value(data);
+        if ids.is_empty() {
+            return Ok(());
+        }
+        let files = self
+            .file_repo
+            .get_by_ids(site_id, &ids)
+            .await
+            .map_err(|error| EntryError::DatabaseError(error.to_string()))?;
+        if files.len() != ids.len() || files.iter().any(|file| file.deleted_at.is_some()) {
+            return Err(EntryError::ValidationFailed(
+                "Entry references a missing, deleted, or cross-site file".into(),
+            ));
+        }
+        Ok(())
+    }
+
     /// After an entry is deleted, delete any entries that reference it through a
     /// relation field marked `cascade_delete`. Best-effort and recursive (chains
     /// of cascades). Failures are logged, not propagated — the primary delete has
@@ -260,6 +289,11 @@ impl EntryService {
         {
             match self.search_via_index(search, &params, query).await {
                 Ok(result) => return Ok(result),
+                Err(SearchError::PaginationLimit) => {
+                    return Err(EntryError::ValidationFailed(
+                        "Search pagination exceeds the 10000-result window".into(),
+                    ));
+                }
                 Err(e) => warn!("Search index query failed; falling back to SQL: {}", e),
             }
         }
@@ -308,17 +342,19 @@ impl EntryService {
             per_page: params.per_page,
         })?;
 
-        let mut items = Vec::with_capacity(hits.ids.len());
-        for id in &hits.ids {
-            // Re-check site + publish scope at the DB; the index may briefly lag.
-            if let Ok(Some(entry)) = self
-                .entry_repo
-                .get_by_id(id, params.site_id, params.published_only)
-                .await
-            {
-                items.push(entry);
-            }
-        }
+        // Batch-hydrate ranks and recheck current visibility/status against the
+        // source of truth: index rows may lag writes or refer to deleted entries.
+        let rows = self
+            .entry_repo
+            .get_by_ids(params.site_id, &hits.ids, params.published_only)
+            .await
+            .map_err(|error| SearchError::Repository(error.to_string()))?;
+        let mut rows = rows
+            .into_iter()
+            .filter(|entry| params.status.is_none_or(|status| entry.status == status))
+            .map(|entry| (entry.id.clone(), entry))
+            .collect::<std::collections::HashMap<_, _>>();
+        let items = hits.ids.iter().filter_map(|id| rows.remove(id)).collect();
 
         Ok(EntriesListResult {
             items,
@@ -359,20 +395,29 @@ impl EntryService {
             .await
             .map_err(|e| EntryError::DatabaseError(e.to_string()))?;
 
-        if let Some(ref c) = collection
-            && c.is_singleton
+        if collection
+            .as_ref()
+            .is_none_or(|collection| collection.site_id != site_id)
         {
+            return Err(EntryError::NotFound);
+        }
+
+        if collection.as_ref().is_some_and(|collection| collection.is_singleton) {
             warn!(
                 "Attempted to create entry for singleton collection: id={}, slug={}",
-                collection_id, c.slug
+                collection_id,
+                collection
+                    .as_ref()
+                    .map(|collection| collection.slug.as_str())
+                    .unwrap_or_default()
             );
             return Err(EntryError::ValidationFailed(
                 "Cannot create entries for singleton collections via /entries; use /singletons/{slug}".into(),
             ));
         }
 
-        if let Some(ref c) = collection
-            && let Ok(definition) = serde_json::from_str::<Value>(&c.definition)
+        if let Some(collection) = collection.as_ref()
+            && let Ok(definition) = serde_json::from_str::<Value>(&collection.definition)
             && let Some(fields) = definition.get("fields").and_then(|f| f.as_array())
         {
             if let Some(err) = super::definition_validation::validate_entry_data(data, fields) {
@@ -380,11 +425,21 @@ impl EntryService {
             }
             self.validate_relations(site_id, fields, data).await?;
         }
+        self.validate_file_references(site_id, data).await?;
 
         let data_str = data.to_string();
 
-        self.entry_repo
-            .create(&id, site_id, collection_id, &data_str, slug, created_by)
+        let entry = self
+            .entry_repo
+            .create(crate::repository::traits::CreateEntryParams {
+                id: &id,
+                site_id,
+                collection_id,
+                data: &data_str,
+                slug,
+                created_by,
+                expected_definition: collection.as_ref().map(|collection| collection.definition.as_str()),
+            })
             .await
             .map_err(|e| {
                 error!(
@@ -393,36 +448,16 @@ impl EntryService {
                 );
                 match e {
                     RepositoryError::UniqueViolation(_) => EntryError::AlreadyExists,
+                    RepositoryError::PreconditionFailed => EntryError::PreconditionFailed,
+                    RepositoryError::NotFound => EntryError::NotFound,
                     _ => EntryError::DatabaseError(e.to_string()),
                 }
             })?;
 
         debug!("Entry created in repository: id={}", id);
 
-        // Sync file references
-        if let Err(e) = self.entry_repo.sync_file_references(&id, site_id, data).await {
-            warn!("Failed to sync file references for entry {}: {}", id, e);
-            // Continue anyway as this is not critical
-        }
-
-        match self.entry_repo.get_by_id(&id, site_id, false).await {
-            Ok(Some(entry)) => {
-                info!(
-                    "Entry created successfully: id={}, site_id={}, slug={}",
-                    id, site_id, slug
-                );
-                self.enqueue_upsert(&entry).await;
-                Ok(entry)
-            }
-            Ok(None) => {
-                error!("Entry not found after creation: id={}", id);
-                Err(EntryError::NotFound)
-            }
-            Err(e) => {
-                error!("Failed to fetch entry after creation: id={}, error={}", id, e);
-                Err(EntryError::DatabaseError(e.to_string()))
-            }
-        }
+        self.enqueue_upsert(&entry).await;
+        Ok(entry)
     }
 
     pub async fn update_entry(&self, input: UpdateEntryInput<'_>) -> Result<Entry, EntryError> {
@@ -434,6 +469,7 @@ impl EntryService {
             status,
             created_by,
             change_summary,
+            expected_version,
         } = input;
         debug!("Updating entry: id={}, site_id={}", id, site_id);
 
@@ -450,6 +486,10 @@ impl EntryService {
             })?
             .ok_or(EntryError::NotFound)?;
 
+        if expected_version.is_some_and(|version| version != existing.version) {
+            return Err(EntryError::PreconditionFailed);
+        }
+
         debug!("Fetched existing entry: id={}, site_id={}", id, site_id);
 
         let resolved_data = match data {
@@ -458,7 +498,18 @@ impl EntryService {
         };
 
         // Validate entry data against collection definition
-        if let Ok(Some(collection)) = self.collection_repo.get_by_id(&existing.collection_id).await
+        let collection = self
+            .collection_repo
+            .get_by_id(&existing.collection_id)
+            .await
+            .map_err(|e| EntryError::DatabaseError(e.to_string()))?;
+        if collection
+            .as_ref()
+            .is_none_or(|collection| collection.site_id != site_id)
+        {
+            return Err(EntryError::NotFound);
+        }
+        if let Some(collection) = collection.as_ref()
             && let Ok(definition) = serde_json::from_str::<Value>(&collection.definition)
             && let Some(fields) = definition.get("fields").and_then(|f| f.as_array())
         {
@@ -467,10 +518,17 @@ impl EntryService {
             }
             self.validate_relations(site_id, fields, &resolved_data).await?;
         }
+        self.validate_file_references(site_id, &resolved_data).await?;
 
         let data_str = resolved_data.to_string();
         let final_slug = slug.unwrap_or(&existing.slug);
         let final_status = status.unwrap_or(&existing.status);
+
+        if !matches!(final_status, "draft" | "published") {
+            return Err(EntryError::ValidationFailed(
+                "status must be either 'draft' or 'published'".into(),
+            ));
+        }
 
         debug!(
             "Updating entry fields: data_changed={}, slug_changed={}, status_changed={}",
@@ -479,8 +537,11 @@ impl EntryService {
             status.is_some()
         );
 
-        self.entry_repo
+        let entry = self
+            .entry_repo
             .update(UpdateEntryParams {
+                expected_definition: collection.as_ref().map(|collection| collection.definition.as_str()),
+                expected_version: Some(expected_version.unwrap_or(&existing.version)),
                 id,
                 site_id,
                 data: &data_str,
@@ -497,33 +558,16 @@ impl EntryService {
                 );
                 match e {
                     RepositoryError::UniqueViolation(_) => EntryError::AlreadyExists,
+                    RepositoryError::PreconditionFailed => EntryError::PreconditionFailed,
+                    RepositoryError::NotFound => EntryError::NotFound,
                     _ => EntryError::DatabaseError(e.to_string()),
                 }
             })?;
 
         debug!("Entry updated in repository: id={}", id);
 
-        // Sync file references
-        if let Err(e) = self.entry_repo.sync_file_references(id, site_id, &resolved_data).await {
-            warn!("Failed to sync file references for entry {}: {}", id, e);
-            // Continue anyway as this is not critical
-        }
-
-        match self.entry_repo.get_by_id(id, site_id, false).await {
-            Ok(Some(entry)) => {
-                info!("Entry updated successfully: id={}, site_id={}", id, site_id);
-                self.enqueue_upsert(&entry).await;
-                Ok(entry)
-            }
-            Ok(None) => {
-                error!("Entry not found after update: id={}", id);
-                Err(EntryError::NotFound)
-            }
-            Err(e) => {
-                error!("Failed to fetch entry after update: id={}, error={}", id, e);
-                Err(EntryError::DatabaseError(e.to_string()))
-            }
-        }
+        self.enqueue_upsert(&entry).await;
+        Ok(entry)
     }
 
     pub async fn delete_entry(&self, id: &str, site_id: &str) -> Result<u64, EntryError> {
@@ -628,22 +672,24 @@ impl EntryService {
         revision_number: i64,
         created_by: Option<&str>,
     ) -> Result<Entry, EntryError> {
-        self.entry_repo
-            .get_by_id(entry_id, site_id, false)
-            .await
-            .map_err(|e| EntryError::DatabaseError(e.to_string()))?
-            .ok_or(EntryError::NotFound)?;
-
-        let entry = self
-            .entry_repo
-            .restore_revision(entry_id, revision_number, created_by)
-            .await
-            .map_err(|e| match e {
-                RepositoryError::NotFound => EntryError::RevisionNotFound,
-                _ => EntryError::DatabaseError(e.to_string()),
-            })?;
-        self.enqueue_upsert(&entry).await;
-        Ok(entry)
+        let revision = self
+            .get_revision(entry_id, site_id, revision_number)
+            .await?
+            .ok_or(EntryError::RevisionNotFound)?;
+        let summary = format!("Restored from revision {revision_number}");
+        // Apply current schema, relation and file validation; historical content
+        // must not bypass invariants established since its revision was saved.
+        self.update_entry(UpdateEntryInput {
+            id: entry_id,
+            site_id,
+            data: Some(&revision.data.0),
+            slug: None,
+            status: None,
+            created_by,
+            change_summary: Some(&summary),
+            expected_version: None,
+        })
+        .await
     }
 
     pub async fn resolve_entry_files(
@@ -680,7 +726,7 @@ impl EntryService {
         if !file_ids.is_empty()
             && let Ok(file_items) = self.file_repo.get_by_ids(site_id, &file_ids).await
         {
-            for f in file_items {
+            for f in file_items.into_iter().filter(|file| file.deleted_at.is_none()) {
                 let url = storage.url(&f.storage_key, &f.id);
 
                 file_map.insert(
@@ -708,11 +754,7 @@ impl EntryService {
     }
 
     fn extract_file_ids_from_value(&self, data: &Value) -> Vec<String> {
-        let re = regex::Regex::new(r"/api/files/([a-f0-9-]+)").unwrap();
-        let json_str = data.to_string();
-        re.captures_iter(&json_str)
-            .filter_map(|cap| cap.get(1).map(|m| m.as_str().to_string()))
-            .collect()
+        crate::utils::file_references::extract_file_ids_from_value(data)
     }
 }
 
@@ -734,7 +776,18 @@ mod tests {
     }
 
     fn test_collection_repo() -> Arc<InMemoryCollectionRepository> {
-        Arc::new(InMemoryCollectionRepository::new())
+        let repository = Arc::new(InMemoryCollectionRepository::new());
+        repository.add_collection(crate::models::collection::Collection {
+            id: "col-123".into(),
+            site_id: "site-123".into(),
+            name: "Posts".into(),
+            slug: "posts".into(),
+            definition: r#"{"fields":[{"name":"title","type":"text"}]}"#.into(),
+            is_singleton: false,
+            created_at: "2024-01-01 00:00:00".into(),
+            updated_at: "2024-01-01 00:00:00".into(),
+        });
+        repository
     }
 
     fn create_test_entry() -> Entry {
@@ -748,6 +801,7 @@ mod tests {
             singleton_collection_id: None,
             created_at: "2024-01-01 00:00:00".to_string(),
             updated_at: "2024-01-01 00:00:00".to_string(),
+            version: "2024-01-01 00:00:00".to_string(),
             published_at: None,
         }
     }
@@ -830,6 +884,7 @@ mod tests {
                 status: None,
                 created_by: None,
                 change_summary: None,
+                expected_version: None,
             })
             .await;
         assert!(result.is_ok());
@@ -852,6 +907,7 @@ mod tests {
                 status: None,
                 created_by: None,
                 change_summary: None,
+                expected_version: None,
             })
             .await;
         assert!(matches!(result, Err(EntryError::NotFound)));
@@ -873,6 +929,7 @@ mod tests {
                 status: Some("published"),
                 created_by: None,
                 change_summary: None,
+                expected_version: None,
             })
             .await;
         assert!(result.is_ok());
@@ -995,7 +1052,7 @@ mod tests {
             "images": ["/api/files/abc-123-def/image.png", "/api/files/456-789-abc/image.png"]
         });
         let ids = service.extract_file_ids_from_value(&data);
-        assert_eq!(ids, vec!["abc-123-def", "456-789-abc"]);
+        assert_eq!(ids, vec!["456-789-abc", "abc-123-def"]);
     }
 
     #[test]
@@ -1130,6 +1187,7 @@ mod tests {
                 status: None,
                 created_by: None,
                 change_summary: None,
+                expected_version: None,
             })
             .await
             .unwrap();
@@ -1167,7 +1225,7 @@ mod tests {
     async fn test_create_entry_validation_failed() {
         let entry_repo = test_entry_repo();
         let file_repo = test_file_repo();
-        let col_repo = test_collection_repo();
+        let col_repo = Arc::new(InMemoryCollectionRepository::new());
 
         let collection = crate::models::collection::Collection {
             id: "col-123".to_string(),
@@ -1194,7 +1252,7 @@ mod tests {
         let entry_repo = test_entry_repo();
         entry_repo.add_entry(create_test_entry());
         let file_repo = test_file_repo();
-        let col_repo = test_collection_repo();
+        let col_repo = Arc::new(InMemoryCollectionRepository::new());
 
         let collection = crate::models::collection::Collection {
             id: "col-123".to_string(),
@@ -1219,6 +1277,7 @@ mod tests {
                 status: None,
                 created_by: None,
                 change_summary: None,
+                expected_version: None,
             })
             .await;
         assert!(matches!(result, Err(EntryError::ValidationFailed(_))));

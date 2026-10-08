@@ -68,15 +68,12 @@ async fn gql(server: &TestServer, token: &str, query: &str) -> Value {
 }
 
 #[tokio::test]
-async fn test_current_site() {
+async fn test_site_by_id() {
     let server = TestServer::start().await;
-    let (_, _, token) = setup(&server).await;
+    let (_, site_id, token) = setup(&server).await;
 
-    let body = gql(&server, &token, "{ currentSite { id name storageProvider } }").await;
-    assert!(body["errors"].is_null());
-    assert_eq!(body["data"]["currentSite"]["name"].as_str().unwrap(), "GQL Site");
-    assert_eq!(
-        body["data"]["currentSite"]["storageProvider"].as_str().unwrap(),
-        "filesystem"
-    );
+    let query = format!(r#"{{ site(id: "{site_id}") {{ id name createdAt }} }}"#);
+    let body = gql(&server, &token, &query).await;
+    assert!(body["errors"].is_null(), "{body}");
+    assert_eq!(body["data"]["site"]["name"].as_str().unwrap(), "GQL Site");
 }

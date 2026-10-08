@@ -122,7 +122,7 @@ async fn test_token_can_authenticate_public_api() {
     let api_key = token_val["token"].as_str().unwrap();
 
     let resp = client
-        .get(format!("{}/api/v1/site", server.base_url))
+        .get(format!("{}/api/v1/sites/{}", server.base_url, site_id))
         .header("Authorization", format!("Bearer {}", api_key))
         .send()
         .await

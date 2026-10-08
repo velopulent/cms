@@ -1,0 +1,65 @@
+---
+title: Queries and errors
+description: Pagination, filtering, search, versions, status codes, and rate limits.
+---
+
+## Entry queries
+
+The REST entry list (`GET /api/v1/sites/{site_id}/collections/{slug}/entries`) accepts:
+
+| Parameter | Meaning |
+| --- | --- |
+| `status` | `draft` or `published` |
+| `search` | Full-text search text |
+| `include_drafts` | Include drafts; requires `content.preview.read` |
+| `per_page` | Results per page, 1–200, default 50 |
+| `cursor` | Continuation token from `page_info.next_cursor` |
+| `include_total` | Add the total match count as `total` |
+
+An unknown collection slug returns `404`. Responses contain `items` and `page_info` with `has_next_page` and `next_cursor`. A cursor is signed and bound to the query that produced it; changing any other parameter makes it invalid.
+
+The public file list (`GET /api/v1/sites/{site_id}/files`) returns pages of 50 and accepts `cursor`, `search`, `type`, and `include_total`.
+
+GraphQL `site.entries` pages with `page` and `perPage`. gRPC lists use `page_size` and `page_token`.
+
+Continuation currently uses offsets internally, so inserts and deletes between requests can shift items across pages. Ranked search covers the first 10,000 results; narrow the query to go deeper.
+
+## Versions
+
+Every entry has an opaque `version` that changes on each write, including publication. REST reads return it as an `ETag`. Pass it back as `If-Match` (REST), `expectedVersion` (GraphQL), or `expected_version` (REST body, gRPC, MCP) to make an update conditional. A stale version returns `412` (gRPC `FAILED_PRECONDITION`) and writes nothing. Singletons work the same way.
+
+## Errors
+
+Public REST failures use `application/problem+json`:
+
+```json
+{
+  "type": "about:blank",
+  "title": "Forbidden",
+  "status": 403,
+  "code": "forbidden",
+  "detail": "Token requires the 'content.preview.read' scope.",
+  "request_id": "01a11a30-2413-7742-b4b4-6f0b62d706d9"
+}
+```
+
+| Status | Meaning | First check |
+| --- | --- | --- |
+| `400` | Invalid input | Request body, field validation, cursor |
+| `401` | Authentication failed | Token value, revocation, expiry |
+| `403` | Authenticated but not allowed | The scope named in `detail`, user role, site ID |
+| `404` | Resource or disabled surface absent | ID, slug, site ID, MCP enabled state |
+| `409` | State conflict | Duplicate slug |
+| `412` | Stale expected version | Re-read the entry and retry the change |
+| `413` | Upload too large | Instance upload limit |
+| `422` | Invalid JSON shape | Request field types |
+| `429` | Rate limit reached | Request volume |
+| `500` | Server failure | Server logs, health, and `vcms doctor` |
+
+Log the status, path, and `request_id`. Do not log bearer tokens or request bodies that contain secrets.
+
+## Rate limits
+
+Content APIs allow 1,200 requests per minute per client address. REST, GraphQL, and MCP share that budget; gRPC counts separately. Sign-in has its own, stricter limit, so heavy API traffic never locks users out.
+
+Behind a reverse proxy, enable trusted proxy headers in the instance security settings. Otherwise every request appears to come from the proxy and shares one budget.

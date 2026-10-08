@@ -1,0 +1,40 @@
+---
+title: Field reference
+description: Supported content controls and common validation settings.
+---
+
+Collection definitions store named fields with a type and type-specific options. The dashboard builds entry forms from that definition.
+
+| Field | Use it for | Common settings |
+| --- | --- | --- |
+| Text | Titles, names, slugs, short labels | Required, minimum/maximum length, pattern |
+| Long text | Summaries and plain multi-line copy | Required, length limits |
+| Rich text | Formatted editorial body content | Required |
+| Number | Counts, prices, rankings | Required, minimum, maximum |
+| Boolean | On/off editorial choices | Default value |
+| Email | Email addresses | Required |
+| URL | Web addresses | Required, allowed or excluded domains |
+| Date/time | Publication and event times | Required |
+| Select | One value from a controlled list | Options, required |
+| JSON | Structured values without a dedicated control | Required, valid JSON |
+| File | Images, documents, audio, or video | Accepted MIME types, single/multiple, selection bounds |
+| Relationship | A reference to another collection entry | Target collection, single/multiple, selection bounds, cascade deletion |
+
+<Callout type="info">
+The live collection editor shows the options supported by the running release. Test any schema change against an existing entry before treating a new field as universally present.
+</Callout>
+
+## Naming
+
+- **Label** appears to editors.
+- **Key** appears in stored entry data and API payloads.
+- **Collection slug** identifies the model in URLs and queries.
+- **Entry slug** identifies one content record within its collection.
+
+Keep keys and slugs stable after integrations begin consuming them.
+
+## Shared field options
+
+Fields can provide editor help text and mark one value as the presentable label for relationship pickers. Text supports length bounds; plain text also supports a validation pattern. Rich text and JSON support a maximum stored size. Select, file, and relationship fields can hold one value or an array with minimum and maximum selection counts.
+
+Options marked as stored-only in the collection editor do not change runtime behavior yet. Do not depend on hidden, protected-file, or rich-text URL-stripping flags until the running product exposes their behavior.

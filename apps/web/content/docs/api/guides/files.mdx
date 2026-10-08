@@ -1,0 +1,46 @@
+---
+title: Deliver and upload files
+description: Serve originals and thumbnails, upload through any protocol, and reference files from entries.
+---
+
+## Serve a file
+
+Originals and thumbnails use opaque file IDs:
+
+```text
+GET /api/files/{id}
+GET /api/files/{id}/thumbnail
+```
+
+These delivery routes do not require bearer authentication. An opaque file URL is not access control; do not store confidential media in VCMS.
+
+File records carry `url` and `thumbnail_url`. With S3 storage and a public bucket URL configured, `url` points at the bucket; otherwise it is the `/api/files/{id}` route above.
+
+## Upload
+
+All uploads need `files.write`. Filenames must be nonempty, contain no control characters, and fit within 255 UTF-8 bytes. The instance upload limit applies to every route.
+
+| Protocol | How |
+| --- | --- |
+| REST | `POST /api/v1/sites/{site_id}/files` with multipart field `file`, or create a signed URL with `POST /api/v1/sites/{site_id}/files/upload-url` |
+| GraphQL | `createFileUpload(siteId, filename, contentType)` returns a signed URL |
+| gRPC | Client-streaming `FileService.UploadFile` |
+| MCP | `create_file_upload` returns a signed URL |
+
+### Signed upload URLs
+
+Send one HTTP `PUT` to the signed URL with the raw bytes and the exact `Content-Type` used to create it:
+
+```bash
+curl -X PUT "$UPLOAD_URL" \
+  -H "Content-Type: image/webp" \
+  --data-binary @cover.webp
+```
+
+The response contains the new file record. A signed URL expires and allows one upload attempt. Request a fresh URL after a failed or interrupted attempt; deleting the file does not make its URL reusable.
+
+## Reference a file from an entry
+
+Store the relative URL `/api/files/{id}` in a file field, or anywhere in rich text. VCMS records these references per field, rejects entries that point at missing, trashed, or another site's files, and lists them through `GET /api/v1/sites/{site_id}/files/{id}/references`.
+
+Absolute `http(s)://` URLs are treated as external links and are not tracked.

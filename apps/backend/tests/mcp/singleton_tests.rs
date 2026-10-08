@@ -1,24 +1,8 @@
 use crate::common::mcp::*;
 
-async fn setup_singleton(base_url: &str, token: &str, site_id: &str, slug: &str) {
-    let result = mcp_call_site_tool(
-        base_url,
-        token,
-        site_id,
-        "create_collection",
-        serde_json::json!({
-            "name": "Settings",
-            "slug": slug,
-            "definition": {"fields": [{"name": "site_title", "type": "text"}]},
-            "is_singleton": true,
-        }),
-    )
-    .await;
-    assert!(
-        !mcp_is_error(&result),
-        "setup_singleton: create_collection failed: {}",
-        mcp_tool_text(&result)
-    );
+async fn setup_singleton(base_url: &str, _token: &str, site_id: &str, slug: &str) {
+    let result = create_test_singleton(base_url, site_id, "Settings", slug).await;
+    assert!(result["id"].as_str().is_some());
 }
 
 #[tokio::test]
@@ -36,8 +20,7 @@ async fn test_list_singletons_empty() {
     .await;
     let data = mcp_tool_json(&result);
 
-    assert!(data.is_array());
-    assert!(data.as_array().unwrap().is_empty());
+    assert!(data["singletons"].as_array().unwrap().is_empty());
 }
 
 #[tokio::test]
@@ -52,7 +35,7 @@ async fn test_get_singleton() {
         &token,
         &site_id,
         "get_singleton",
-        serde_json::json!({"slug": "settings"}),
+        serde_json::json!({"include_drafts": true, "slug": "settings"}),
     )
     .await;
     assert!(!mcp_is_error(&result), "get_singleton should succeed");
@@ -76,7 +59,7 @@ async fn test_update_singleton_data() {
         }),
     )
     .await;
-    assert!(!mcp_is_error(&result), "update_singleton should succeed");
+    assert!(!mcp_is_error(&result), "update_singleton should succeed: {result}");
 }
 
 #[tokio::test]
@@ -95,5 +78,5 @@ async fn test_list_singletons_after_create() {
     )
     .await;
     let data = mcp_tool_json(&result);
-    assert_eq!(data.as_array().unwrap().len(), 1);
+    assert_eq!(data["singletons"].as_array().unwrap().len(), 1);
 }

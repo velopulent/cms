@@ -68,16 +68,72 @@ pub async fn trace_request(req: Request, next: Next) -> Response {
         .map(String::from)
         .unwrap_or_else(|| Uuid::now_v7().to_string());
 
+    let public_api = req.uri().path().starts_with("/api/v1/");
     let span = info_span!(
         "http_request",
         request_id = %request_id,
         method = %req.method(),
-        uri = %req.uri(),
+        uri = %safe_request_uri(req.uri()),
     );
 
     let mut response = next.run(req).instrument(span).await;
+    if public_api && (response.status().is_client_error() || response.status().is_server_error()) {
+        response = public_problem(response, &request_id).await;
+    }
     let _ = response
         .headers_mut()
         .insert(REQUEST_ID_HEADER.clone(), request_id.parse().unwrap());
     response
+}
+
+/// Signed upload URLs contain bearer credentials in their path.
+pub fn safe_request_uri(uri: &axum::http::Uri) -> String {
+    if uri.path().starts_with("/api/v1/files/upload/") {
+        "/api/v1/files/upload/[redacted]".into()
+    } else {
+        uri.path().to_owned()
+    }
+}
+
+async fn public_problem(response: Response, request_id: &str) -> Response {
+    use axum::response::IntoResponse;
+    let (mut parts, body) = response.into_parts();
+    let status = parts.status;
+    let bytes = axum::body::to_bytes(body, 64 * 1024).await.unwrap_or_default();
+    let value = serde_json::from_slice::<serde_json::Value>(&bytes).unwrap_or_default();
+    let code = value
+        .get("code")
+        .and_then(serde_json::Value::as_str)
+        .unwrap_or(match status.as_u16() {
+            400 | 422 => "invalid_request",
+            401 => "unauthorized",
+            403 => "forbidden",
+            404 => "not_found",
+            405 => "method_not_allowed",
+            409 => "conflict",
+            412 => "precondition_failed",
+            413 => "payload_too_large",
+            429 => "rate_limited",
+            500..=599 => "internal_error",
+            _ => "request_failed",
+        });
+    let detail = if status.is_server_error() {
+        "Internal server error".to_owned()
+    } else {
+        value
+            .get("detail")
+            .or_else(|| value.get("message"))
+            .or_else(|| value.get("error"))
+            .and_then(serde_json::Value::as_str)
+            .map(str::to_owned)
+            .unwrap_or_else(|| status.canonical_reason().unwrap_or("Request failed").to_owned())
+    };
+    let body = serde_json::json!({"type":"about:blank", "title":status.canonical_reason().unwrap_or("Request failed"),
+        "status":status.as_u16(), "code":code, "detail":detail, "error":detail, "request_id":request_id});
+    parts.headers.remove(axum::http::header::CONTENT_LENGTH);
+    parts.headers.insert(
+        axum::http::header::CONTENT_TYPE,
+        axum::http::HeaderValue::from_static("application/problem+json"),
+    );
+    Response::from_parts(parts, axum::Json(body).into_response().into_body())
 }

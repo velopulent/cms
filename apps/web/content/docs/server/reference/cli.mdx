@@ -1,0 +1,51 @@
+---
+title: CLI reference
+description: Public `vcms` commands, arguments, defaults, and safety properties.
+---
+
+Running `vcms` without a subcommand prints help.
+
+## Server and diagnostics
+
+| Command | Purpose |
+| --- | --- |
+| `vcms serve` | Run a portable server from `./vcms_data` |
+| `vcms config show` | Print resolved mode, root, listeners, logging, database kind, and redacted secret presence |
+| `vcms service status` | Print normalized native-service and manager status |
+| `vcms doctor` | Validate config, storage, database, ports, permissions, and service identity |
+
+## Account and trust recovery
+
+```text
+vcms admin reset-password --email EMAIL --password PASSWORD
+vcms secrets reset --yes
+```
+
+Secret reset replaces the trust root and invalidates credentials. It preserves the configured database URL but can make values encrypted under the old key unusable.
+
+## Backup
+
+```text
+vcms backup create [--scope instance|site] [--site SITE_ID]
+                   [--out PATH] [--no-files] [--encrypt]
+vcms backup list
+```
+
+`--scope` defaults to `instance`. Site scope requires the site identifier. Without `--out`, the configured backup destination chooses the artifact location.
+
+## Restore
+
+```text
+vcms restore --file PATH [--scope instance|site] [--site SITE_ID]
+             [--storage-profile-id PROFILE_ID] [--import-as-new] --yes
+```
+
+Scope defaults to `instance`. Restore refuses to run without `--yes` because it replaces data inside the chosen scope.
+
+## MCP stdio
+
+```text
+vcms mcp stdio
+```
+
+This command reads `VCMS_MCP_TOKEN` and optional `VCMS_MCP_URL`. The URL defaults to `http://127.0.0.1:3000`. These are client variables; the server itself ignores environment configuration.

@@ -12,33 +12,10 @@ pub struct Json(pub serde_json::Value);
 #[Scalar(name = "JSON")]
 impl ScalarType for Json {
     fn parse(value: Value) -> InputValueResult<Self> {
-        match value {
-            Value::String(s) => {
-                let v: serde_json::Value =
-                    serde_json::from_str(&s).map_err(|e| InputValueError::custom(format!("Invalid JSON: {}", e)))?;
-                Ok(Json(v))
-            }
-            Value::Null => Ok(Json(serde_json::Value::Null)),
-            Value::Number(n) => {
-                if let Some(i) = n.as_i64() {
-                    Ok(Json(serde_json::Value::Number(i.into())))
-                } else if let Some(f) = n.as_f64() {
-                    Ok(Json(
-                        serde_json::Number::from_f64(f)
-                            .map(serde_json::Value::Number)
-                            .unwrap_or(serde_json::Value::Null),
-                    ))
-                } else {
-                    Ok(Json(serde_json::Value::Null))
-                }
-            }
-            Value::Boolean(b) => Ok(Json(serde_json::Value::Bool(b))),
-            Value::Enum(s) => Ok(Json(serde_json::Value::String(s.to_string()))),
-            _ => {
-                let json_val = serde_json::to_value(&value).map_err(|e| InputValueError::custom(e.to_string()))?;
-                Ok(Json(json_val))
-            }
-        }
+        value
+            .into_json()
+            .map(Json)
+            .map_err(|error| InputValueError::custom(error.to_string()))
     }
 
     fn to_value(&self) -> Value {
@@ -61,5 +38,23 @@ impl From<serde_json::Value> for Json {
 impl From<Json> for serde_json::Value {
     fn from(j: Json) -> Self {
         j.0
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn json_scalar_preserves_values_without_double_decoding_or_precision_loss() {
+        for original in [
+            serde_json::json!("{\"x\":1}"),
+            serde_json::json!(u64::MAX),
+            serde_json::json!({"nested":[null, true, 1.5, "hello"]}),
+        ] {
+            let parsed = Json::parse(Value::from_json(original.clone()).unwrap()).unwrap();
+            assert_eq!(parsed.0, original);
+            assert_eq!(parsed.to_value().into_json().unwrap(), original);
+        }
     }
 }

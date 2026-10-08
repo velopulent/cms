@@ -1,0 +1,60 @@
+---
+title: Configuration reference
+description: Bootstrap files, secrets, and database-backed instance settings.
+---
+
+VCMS Server uses three configuration layers. It does not load `.env`, server environment overrides, config search paths, or CLI overrides.
+
+## `config.toml`
+
+The strict bootstrap file accepts only server addresses and logging:
+
+```toml
+[server]
+http_address = "127.0.0.1:3000"
+grpc_address = "127.0.0.1:50051"
+
+[log]
+level = "cms=info,vcms=info"
+output = "file"
+```
+
+`http_address` and `grpc_address` must parse as socket addresses. `log.level` must be a valid tracing filter. `log.output` accepts `file` or `stdout`. Unknown keys stop startup.
+
+## `secrets.toml`
+
+```toml
+master_key = "64 hexadecimal characters"
+backup_encryption_key = "64 hexadecimal characters"
+database_url = "postgres://user:password@host/database" # optional
+```
+
+The two keys each encode 32 bytes. `master_key` derives independent keys for sessions, token lookup, signed uploads, webhooks, and encrypted integration credentials. `backup_encryption_key` protects encrypted backup artifacts. Omit `database_url` to use root-local SQLite.
+
+Restrict this file to the service identity. Losing it can invalidate credentials and encrypted data.
+
+## Instance settings
+
+Owners manage these values through the dashboard. They live in the database:
+
+### General
+
+| Setting | Fresh value |
+| --- | --- |
+| Public URL | unset |
+| Public registration | disabled |
+| Session lifetime | 24 hours |
+| Upload limit | 50 MB |
+| MCP | enabled |
+
+### Security
+
+Secure cookies and trusted proxy headers start disabled. Allowed origins and MCP origins start empty. MCP allowed hosts start with localhost and `127.0.0.1`. Private webhook targets start disabled.
+
+### Storage and backups
+
+Primary storage and backup destination start as filesystem. S3-compatible settings include bucket, region, endpoint, public URL where applicable, and separately encrypted credentials. Default backup retention is seven.
+
+<Callout type="warn">
+Edit bootstrap files while coordinating a service restart. Use the dashboard for database-backed settings so validation and credential encryption run correctly.
+</Callout>

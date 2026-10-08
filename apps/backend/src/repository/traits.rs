@@ -97,18 +97,42 @@ pub trait CollectionRepository: Send + Sync {
         definition: &str,
         is_singleton: bool,
     ) -> Result<Collection, RepositoryError>;
-    async fn update(&self, id: &str, name: &str, slug: &str, definition: &str) -> Result<Collection, RepositoryError>;
-    async fn delete(&self, site_id: &str, slug: &str) -> Result<u64, RepositoryError>;
-    async fn get_content_for_migration(&self, collection_id: &str) -> Result<Vec<Entry>, RepositoryError>;
-    async fn migrate_content_field_renames(
+    async fn update(
         &self,
-        content_items: &[Entry],
+        id: &str,
+        name: &str,
+        slug: &str,
+        definition: &str,
         rename_map: &std::collections::HashMap<String, String>,
-    ) -> Result<(), RepositoryError>;
+        expected_definition: &str,
+    ) -> Result<Collection, RepositoryError>;
+    async fn delete(&self, site_id: &str, slug: &str) -> Result<u64, RepositoryError>;
+}
+
+pub struct CreateEntryParams<'a> {
+    pub id: &'a str,
+    pub site_id: &'a str,
+    pub collection_id: &'a str,
+    pub data: &'a str,
+    pub slug: &'a str,
+    pub created_by: Option<&'a str>,
+    pub expected_definition: Option<&'a str>,
+}
+
+pub struct UpsertSingletonParams<'a> {
+    pub site_id: &'a str,
+    pub collection_id: &'a str,
+    pub slug: &'a str,
+    pub data: &'a str,
+    pub created_by: Option<&'a str>,
+    pub change_summary: Option<&'a str>,
+    pub expected_definition: Option<&'a str>,
 }
 
 /// Fields for an entry update (see [`EntryRepository::update`]).
 pub struct UpdateEntryParams<'a> {
+    pub expected_definition: Option<&'a str>,
+    pub expected_version: Option<&'a str>,
     pub id: &'a str,
     pub site_id: &'a str,
     pub data: &'a str,
@@ -121,6 +145,22 @@ pub struct UpdateEntryParams<'a> {
 #[async_trait]
 pub trait EntryRepository: Send + Sync {
     async fn get_by_id(&self, id: &str, site_id: &str, published_only: bool) -> Result<Option<Entry>, RepositoryError>;
+    /// Hydrate a bounded set of ranked IDs. Database implementations batch this
+    /// read; the default supports trusted in-memory test repositories.
+    async fn get_by_ids(
+        &self,
+        site_id: &str,
+        ids: &[String],
+        published_only: bool,
+    ) -> Result<Vec<Entry>, RepositoryError> {
+        let mut entries = Vec::new();
+        for id in ids {
+            if let Some(entry) = self.get_by_id(id, site_id, published_only).await? {
+                entries.push(entry);
+            }
+        }
+        Ok(entries)
+    }
     async fn get_by_id_any_site(&self, id: &str) -> Result<Option<Entry>, RepositoryError>;
     async fn list(&self, params: ListEntriesParams<'_>) -> Result<EntriesListResult, RepositoryError>;
     async fn get_by_collection_id(
@@ -131,32 +171,18 @@ pub trait EntryRepository: Send + Sync {
     ) -> Result<Vec<Entry>, RepositoryError>;
     /// Batched variant of [`get_by_collection_id`] for many collections in one
     /// query (used by the GraphQL DataLoader to avoid N+1). Each returned entry
-    /// carries its `collection_id` so callers can group the flat result.
+    /// carries its `collection_id` so callers can group the flat result. Database
+    /// implementations cap this nested read at 200 rows per collection; complete
+    /// traversal uses the paginated list API.
     async fn get_by_collection_ids(
         &self,
         collection_ids: &[String],
         status: Option<&str>,
         published_only: bool,
     ) -> Result<Vec<Entry>, RepositoryError>;
-    async fn create(
-        &self,
-        id: &str,
-        site_id: &str,
-        collection_id: &str,
-        data: &str,
-        slug: &str,
-        created_by: Option<&str>,
-    ) -> Result<Entry, RepositoryError>;
+    async fn create(&self, params: CreateEntryParams<'_>) -> Result<Entry, RepositoryError>;
     async fn get_singleton_entry(&self, site_id: &str, slug: &str) -> Result<Option<Entry>, RepositoryError>;
-    async fn upsert_singleton_entry(
-        &self,
-        site_id: &str,
-        collection_id: &str,
-        slug: &str,
-        data: &str,
-        created_by: Option<&str>,
-        change_summary: Option<&str>,
-    ) -> Result<Entry, RepositoryError>;
+    async fn upsert_singleton_entry(&self, params: UpsertSingletonParams<'_>) -> Result<Entry, RepositoryError>;
     async fn update(&self, params: UpdateEntryParams<'_>) -> Result<Entry, RepositoryError>;
     async fn delete(&self, id: &str, site_id: &str) -> Result<u64, RepositoryError>;
     async fn publish(&self, id: &str, site_id: &str) -> Result<Entry, RepositoryError>;
@@ -181,12 +207,6 @@ pub trait EntryRepository: Send + Sync {
         revision_number: i64,
         created_by: Option<&str>,
     ) -> Result<Entry, RepositoryError>;
-    async fn migrate_singleton_field_renames(
-        &self,
-        site_id: &str,
-        collection_id: &str,
-        rename_map: &std::collections::HashMap<String, String>,
-    ) -> Result<(), RepositoryError>;
 }
 
 #[derive(Clone)]
@@ -250,6 +270,8 @@ pub struct NewFile<'a> {
 
 #[async_trait]
 pub trait FileRepository: Send + Sync {
+    /// Atomically consume a signed URL once, independently of the files row.
+    async fn claim_signed_upload(&self, file_id: &str, expires_at: i64) -> Result<bool, RepositoryError>;
     async fn get_by_id(&self, id: &str, site_id: &str) -> Result<Option<File>, RepositoryError>;
     async fn get_by_id_any(&self, id: &str) -> Result<Option<File>, RepositoryError>;
     async fn list(&self, params: ListFilesParams<'_>) -> Result<FileListResult, RepositoryError>;
@@ -261,7 +283,6 @@ pub trait FileRepository: Send + Sync {
     async fn get_by_ids(&self, site_id: &str, ids: &[String]) -> Result<Vec<File>, RepositoryError>;
     async fn get_deleted_by_ids(&self, site_id: &str, ids: &[String]) -> Result<Vec<File>, RepositoryError>;
     async fn batch_permanent_delete(&self, site_id: &str, ids: &[String]) -> Result<u64, RepositoryError>;
-    async fn get_references(&self, file_id: &str) -> Result<Vec<FileReference>, RepositoryError>;
     async fn get_references_for_site(
         &self,
         file_id: &str,
@@ -361,6 +382,7 @@ pub trait WebhookRepository: Send + Sync {
     async fn update(
         &self,
         id: &str,
+        site_id: &str,
         label: Option<&str>,
         url: Option<&str>,
         headers_encrypted: Option<&str>,

@@ -1,0 +1,27 @@
+{
+  "title": "Velopulent CMS",
+  "description": "Create and manage structured content",
+  "icon": "PanelsTopLeft",
+  "root": true,
+  "pages": [
+    "index",
+    "---[GraduationCap]Learn---",
+    "tutorials/editorial-site",
+    "---[Wrench]Workflows---",
+    "guides/content-modeling",
+    "guides/entries",
+    "guides/files",
+    "guides/team",
+    "guides/webhooks-deployments",
+    "guides/backups",
+    "guides/account",
+    "---[BookOpenText]Reference---",
+    "reference/fields",
+    "reference/permissions",
+    "reference/dashboard",
+    "---[Lightbulb]Concepts---",
+    "explanation/content-model",
+    "explanation/content-lifecycle",
+    "explanation/sites-and-roles"
+  ]
+}

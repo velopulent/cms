@@ -74,6 +74,19 @@ impl StorageProvider for FileSystemStorage {
         self.get(key).await
     }
 
+    async fn get_stream(
+        &self,
+        key: &str,
+    ) -> Result<(u64, crate::storage::StorageStream), Box<dyn std::error::Error + Send + Sync>> {
+        use futures_util::StreamExt;
+        let object = self.store.get(&ObjectPath::from(key)).await?;
+        let size = object.meta.size;
+        let stream = object
+            .into_stream()
+            .map(|chunk| chunk.map_err(|error| Box::new(error) as Box<dyn std::error::Error + Send + Sync>));
+        Ok((size, Box::pin(stream)))
+    }
+
     async fn delete(&self, key: &str) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         self.delete(key).await
     }
@@ -95,6 +108,30 @@ impl StorageProvider for FileSystemStorage {
 mod tests {
     use super::*;
     use tempfile::TempDir;
+
+    #[tokio::test]
+    async fn delivery_streams_large_files_in_bounded_chunks() {
+        use futures_util::StreamExt;
+        let directory = TempDir::new().unwrap();
+        let storage = FileSystemStorage::new(directory.path().to_str().unwrap()).unwrap();
+        let size = 9 * 1024 * 1024;
+        storage
+            .put("large.txt", Bytes::from(vec![42u8; size]), "text/plain")
+            .await
+            .unwrap();
+        let (length, mut stream) = StorageProvider::get_stream(&storage, "large.txt").await.unwrap();
+        assert_eq!(length, size as u64);
+        let first = stream.next().await.unwrap().unwrap();
+        assert!(first.len() < size, "Delivery buffered the complete file");
+        let mut received = first.len();
+        assert!(first.iter().all(|byte| *byte == 42));
+        while let Some(chunk) = stream.next().await {
+            let chunk = chunk.unwrap();
+            assert!(chunk.iter().all(|byte| *byte == 42));
+            received += chunk.len();
+        }
+        assert_eq!(received, size);
+    }
 
     #[tokio::test]
     async fn test_filesystem_storage_put_and_get() {

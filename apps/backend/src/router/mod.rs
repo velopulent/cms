@@ -33,11 +33,11 @@ use tower_http::trace::TraceLayer;
 
 use crate::config::Config;
 use crate::database::pool::DbPool;
-use crate::handlers::site_handler::get_current_site;
+use crate::handlers::site_handler::{get_current_site, list_public_sites};
 use crate::middleware::api_auth::api_auth_middleware;
 use crate::middleware::authz::authz_middleware;
 use crate::middleware::dashboard_auth::dashboard_auth_middleware;
-use crate::middleware::rate_limit::RateLimiter;
+use crate::middleware::rate_limit::{ApiRateLimiter, RateLimiter, api_rate_limit_middleware};
 use crate::middleware::site_resolver::{api_site_resolver, dashboard_site_resolver};
 use crate::repository::Repository;
 use crate::services::Services;
@@ -52,17 +52,33 @@ fn public_api_v1_routes(max_upload_bytes: usize) -> Router {
         .merge(collections::public_routes())
         .merge(entry::public_routes())
         .merge(singleton::public_routes())
-        .merge(webhooks::public_routes())
         .merge(files::public_routes(max_upload_bytes));
 
-    Router::new()
-        .merge(resource_routes)
+    let site_routes = resource_routes
         // Inner — runs third (after site resolver sets RequestContext)
         .layer(from_fn(authz_middleware))
         // Middle — runs second (after api_auth sets Actor)
         .layer(from_fn(api_site_resolver))
         // Outer — runs first (validates Bearer vcms_site_* token)
         .layer(from_fn(api_auth_middleware))
+        .layer(from_fn(api_rate_limit_middleware));
+
+    Router::new()
+        .nest("/api/v1/sites/{site_id}", site_routes)
+        .route(
+            "/api/v1/sites/{site_id}",
+            get(get_current_site)
+                .layer(from_fn(authz_middleware))
+                .layer(from_fn(api_site_resolver))
+                .layer(from_fn(api_auth_middleware))
+                .layer(from_fn(api_rate_limit_middleware)),
+        )
+        .route(
+            "/api/v1/sites",
+            get(list_public_sites)
+                .layer(from_fn(api_auth_middleware))
+                .layer(from_fn(api_rate_limit_middleware)),
+        )
 }
 
 /// Site-scoped dashboard routes: Auth → SiteResolver → AuthZ.
@@ -113,12 +129,6 @@ pub fn create_router(
         .merge(auth::auth_routes())
         // ── Public API (/api/v1/*) ──
         .merge(public_api_v1_routes(max_upload_bytes))
-        .route(
-            "/api/v1/site",
-            get(get_current_site)
-                .layer(from_fn(api_site_resolver))
-                .layer(from_fn(api_auth_middleware)),
-        )
         // ── File serving (no auth — file IDs are effectively opaque) ──
         .merge(files::file_serve_routes())
         // ── Signed-URL upload (no auth — the HMAC token is the credential) ──
@@ -135,34 +145,46 @@ pub fn create_router(
                 .layer(from_fn(dashboard_auth_middleware)),
         )
         // ── GraphQL (custom auth in handler) ──
-        .merge(graphql::graphql_routes(config.production))
+        .merge(graphql::graphql_routes(config.production).layer(from_fn(api_rate_limit_middleware)))
         // ── Docs ──
         .merge(docs::docs_routes())
         // ── Dashboard SPA ──
         .merge(dashboard::dashboard_routes())
         // ── Global layers ──
-        .layer(from_fn(trace_request))
-        .layer(TraceLayer::new_for_http())
-        .layer(from_fn_with_state(settings.clone(), dynamic_runtime_policy))
-        .layer(DefaultBodyLimit::max(1024 * 1024 * 1024))
+        .layer(TraceLayer::new_for_http().make_span_with(|request: &Request| {
+            tracing::debug_span!("http", method = %request.method(), uri = %crate::tracing::safe_request_uri(request.uri()))
+        }))
+        // JSON and GraphQL requests are bounded. Multipart and signed uploads
+        // explicitly disable this layer and enforce their own streaming limits.
+        .layer(DefaultBodyLimit::max(8 * 1024 * 1024))
         .layer(Extension(repository.clone()))
         .layer(Extension(config.clone()))
         .layer(Extension(storage_registry.clone()))
         .layer(Extension(services))
         .layer(Extension(backup))
         .layer(Extension(settings.clone()))
-        .layer(Extension(pool))
-        .layer(Extension(rate_limiter));
+        .layer(Extension(pool));
 
     let mcp_ct = CancellationToken::new();
+    let mcp_repository = Arc::new(repository.clone());
+    let mcp_config = Arc::new(config.clone());
     let mcp_router = mcp::mcp_routes(
         mcp_services,
-        Arc::new(repository),
-        Arc::new(config),
+        mcp_repository.clone(),
+        mcp_config.clone(),
         storage_registry,
         mcp_ct,
     );
-    router = router.merge(mcp_router.layer(from_fn_with_state(settings, dynamic_runtime_policy)));
+    router = router.merge(mcp_router);
+    router = router.layer(from_fn(crate::mcp::auth::authenticate_mcp_request));
+    router = router.layer(from_fn(crate::mcp::auth::mcp_rate_limit_middleware));
+    router = router
+        .layer(Extension(mcp_repository))
+        .layer(Extension(mcp_config))
+        .layer(Extension(rate_limiter))
+        .layer(Extension(ApiRateLimiter::from_config(&config)))
+        .layer(from_fn_with_state(settings, dynamic_runtime_policy))
+        .layer(from_fn(trace_request));
 
     router
 }
@@ -214,6 +236,10 @@ fn cors_response(mut response: Response<Body>, origin: Option<HeaderValue>) -> R
             .headers_mut()
             .insert(header::ACCESS_CONTROL_ALLOW_ORIGIN, origin);
         response.headers_mut().insert(
+            header::ACCESS_CONTROL_EXPOSE_HEADERS,
+            HeaderValue::from_static("etag, x-request-id"),
+        );
+        response.headers_mut().insert(
             header::ACCESS_CONTROL_ALLOW_CREDENTIALS,
             HeaderValue::from_static("true"),
         );
@@ -223,7 +249,7 @@ fn cors_response(mut response: Response<Body>, origin: Option<HeaderValue>) -> R
         );
         response.headers_mut().insert(
             header::ACCESS_CONTROL_ALLOW_HEADERS,
-            HeaderValue::from_static("authorization, content-type, accept, x-csrf-token"),
+            HeaderValue::from_static("authorization, content-type, accept, x-csrf-token, if-match, mcp-protocol-version, mcp-method, mcp-name"),
         );
         response
             .headers_mut()

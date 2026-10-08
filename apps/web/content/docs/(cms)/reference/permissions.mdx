@@ -1,0 +1,48 @@
+---
+title: Permission reference
+description: Exact authority boundaries for users, site collaborators, and access tokens.
+---
+
+## Human roles
+
+| Capability | Owner | Admin | Editor | Viewer |
+| --- | :---: | :---: | :---: | :---: |
+| Manage installation and users | ✓ | ✓ |  |  |
+| Grant instance roles | ✓ |  |  |  |
+| Create and delete sites | ✓ | ✓ |  |  |
+| Full access to every site | ✓ | ✓ |  |  |
+| Read assigned site | ✓ | ✓ | ✓ | ✓ |
+| Write content and files | ✓ | ✓ | ✓ |  |
+| Trigger deployments | ✓ | ✓ | ✓ |  |
+| Change schema and site settings | ✓ | ✓ |  |  |
+| Manage webhooks, keys, and members | ✓ | ✓ |  |  |
+| Site backup and restore | ✓ | ✓ |  |  |
+| Instance backup and restore | ✓ |  |  |  |
+
+Owners and admins act as instance operators. They receive site authority without membership.
+
+## Access tokens
+
+Site keys and personal tokens reach content through the public APIs only. Their scopes decide what they can do:
+
+| Scope | Allows |
+| --- | --- |
+| `site.read` | List sites and read site details |
+| `schema.read` | Read collection and singleton definitions |
+| `content.read` | Read published entries and singletons |
+| `content.preview.read` | Read drafts and revision history |
+| `content.write` | Create, update, and delete entries; update singletons; restore revisions |
+| `content.publish` | Publish and unpublish entries |
+| `files.read` | Read file metadata and references |
+| `files.write` | Upload, trash, and restore files |
+| `mcp.use` | Connect to the MCP endpoint |
+
+A **Read only** site key carries the read scopes and `mcp.use`. A **Read & write** key carries every scope. No token can change schemas, webhooks, deployments, members, keys, instance settings, or backups, or delete a site.
+
+## Personal tokens
+
+Personal tokens belong to a user. Each request needs both the token scope and the user's current role on the target site, so a viewer's token cannot read drafts or write even if it carries those scopes. Revoking the user's access or the token removes that path independently.
+
+## Dashboard sessions
+
+Browser sessions use secure HTTP-only cookies and CSRF protection for state-changing dashboard requests. Session lifetime and secure-cookie behavior come from instance settings.

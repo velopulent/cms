@@ -91,7 +91,7 @@ impl SignedUploadToken {
         let token: SignedUploadTokenInternal =
             serde_json::from_str(&json_str).map_err(|_| SignedUploadError::InvalidFormat)?;
 
-        if token.expires_at < chrono::Utc::now().timestamp() {
+        if token.expires_at <= chrono::Utc::now().timestamp() {
             return Err(SignedUploadError::Expired);
         }
 
@@ -170,6 +170,16 @@ fn constant_time_eq(a: &[u8], b: &[u8]) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn expiry_deadline_is_exclusive() {
+        let (_, encoded) =
+            SignedUploadToken::generate_with_storage_profile("site", "file.txt", "text/plain", "profile", "secret", 0);
+        assert!(matches!(
+            SignedUploadToken::verify(&encoded, "secret"),
+            Err(SignedUploadError::Expired)
+        ));
+    }
 
     #[test]
     fn test_generate_and_verify() {

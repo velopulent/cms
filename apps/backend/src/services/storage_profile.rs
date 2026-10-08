@@ -76,7 +76,10 @@ impl StorageProfileService {
         )?;
         let profile = match &self.pool {
             DbPool::Sqlite(pool) => {
-                let mut transaction = pool.begin().await.map_err(|error| error.to_string())?;
+                let mut transaction = pool
+                    .begin_with("BEGIN IMMEDIATE")
+                    .await
+                    .map_err(|error| error.to_string())?;
                 let profile = sqlx::query_as(
                     "INSERT INTO storage_profiles(id,name,kind,endpoint,region,bucket,public_url,credentials_encrypted,created_by) \
                      VALUES(?,?,'s3',?,?,?,?,?,?) \
@@ -188,7 +191,10 @@ impl StorageProfileService {
         };
         let profile = match &self.pool {
             DbPool::Sqlite(pool) => {
-                let mut transaction = pool.begin().await.map_err(|error| error.to_string())?;
+                let mut transaction = pool
+                    .begin_with("BEGIN IMMEDIATE")
+                    .await
+                    .map_err(|error| error.to_string())?;
                 let profile = sqlx::query_as(
                     "UPDATE storage_profiles SET name=?,endpoint=?,region=?,bucket=?,public_url=?,enabled=?, \
                      credentials_encrypted=COALESCE(?,credentials_encrypted),updated_at=datetime('now') WHERE id=? \
@@ -319,35 +325,6 @@ impl StorageProfileService {
                 .await
                 .map(|_| ())
                 .map_err(|e| e.to_string()),
-        }?;
-        Ok(())
-    }
-    pub async fn assign_site(&self, site: &str, profile: &str) -> Result<(), String> {
-        let p = self
-            .list()
-            .await?
-            .into_iter()
-            .find(|v| v.id == profile && v.enabled)
-            .ok_or("storage_profile_not_found")?;
-        match &self.pool {
-            DbPool::Sqlite(db) => sqlx::query("UPDATE sites SET storage_profile_id=?,storage_provider=? WHERE id=?")
-                .bind(profile)
-                .bind(&p.kind)
-                .bind(site)
-                .execute(db)
-                .await
-                .map(|_| ())
-                .map_err(|e| e.to_string()),
-            DbPool::Postgres(db) => {
-                sqlx::query("UPDATE sites SET storage_profile_id=$1,storage_provider=$2 WHERE id=$3")
-                    .bind(profile)
-                    .bind(&p.kind)
-                    .bind(site)
-                    .execute(db)
-                    .await
-                    .map(|_| ())
-                    .map_err(|e| e.to_string())
-            }
         }?;
         Ok(())
     }

@@ -35,31 +35,45 @@ pub async fn mcp_request(base_url: &str, token: &str, method: &str, params: Opti
         "id": id,
         "method": method,
     });
-    if let Some(p) = params {
-        body["params"] = p;
+    let mut params = params.unwrap_or_else(|| serde_json::json!({}));
+    if !params.is_object() {
+        panic!("MCP params must be an object");
     }
+    params["_meta"] = serde_json::json!({
+        "io.modelcontextprotocol/protocolVersion": "2026-07-28",
+        "io.modelcontextprotocol/clientInfo": {"name": "vcms-test-client", "version": "1.0.0"},
+        "io.modelcontextprotocol/clientCapabilities": {}
+    });
+    body["params"] = params;
 
-    let resp = client
+    let mcp_name = if method == "tools/call" {
+        body["params"]["name"].as_str().unwrap_or(method)
+    } else if method == "resources/read" {
+        body["params"]["uri"].as_str().unwrap_or(method)
+    } else {
+        method
+    };
+    let request = client
         .post(format!("{}/mcp", base_url))
         .header("Content-Type", "application/json")
         .header("Accept", "application/json, text/event-stream")
-        .header("Authorization", format!("Bearer {}", token))
-        .json(&body)
-        .send()
-        .await
-        .expect("Failed to send MCP request");
+        .header("MCP-Protocol-Version", "2026-07-28")
+        .header("Mcp-Method", method)
+        .header("Mcp-Name", mcp_name)
+        .header("Authorization", format!("Bearer {}", token));
+    let resp = request.json(&body).send().await.expect("Failed to send MCP request");
 
     if !resp.status().is_success() {
-        let status = resp.status().as_u16();
-        let text = resp.text().await.unwrap_or_default();
-        return serde_json::json!({
-            "jsonrpc": "2.0",
-            "id": id,
-            "error": {
-                "code": -32000 + status as i64,
-                "message": text,
-            }
-        });
+        let status = resp.status();
+        let text = resp.text().await.unwrap();
+        let response: Value = serde_json::from_str(&text)
+            .unwrap_or_else(|error| panic!("Non-JSON MCP error response ({status}): {error}: {text}"));
+        if response["jsonrpc"] == "2.0" {
+            assert_eq!(response["id"], id, "MCP error changed request id");
+            return response;
+        }
+        // Authentication is a transport response, not a JSON-RPC error.
+        return serde_json::json!({"http_status": status.as_u16(), "transport_error": response});
     }
 
     let content_type = resp
@@ -116,7 +130,7 @@ pub fn mcp_tool_text(result: &Value) -> String {
     let content = result
         .get("content")
         .and_then(|c| c.as_array())
-        .expect("result missing 'content' array");
+        .unwrap_or_else(|| panic!("result missing 'content' array: {result}"));
     assert!(!content.is_empty(), "result content is empty");
     content[0]
         .get("text")
@@ -126,6 +140,9 @@ pub fn mcp_tool_text(result: &Value) -> String {
 }
 
 pub fn mcp_tool_json(result: &Value) -> Value {
+    if let Some(value) = result.get("structuredContent") {
+        return value.clone();
+    }
     let text = mcp_tool_text(result);
     serde_json::from_str(&text).unwrap_or_else(|e| {
         panic!("Failed to parse tool result as JSON: {}\nText: {}", e, text);
@@ -133,17 +150,7 @@ pub fn mcp_tool_json(result: &Value) -> Value {
 }
 
 pub async fn mcp_initialize(base_url: &str, token: &str) -> Value {
-    let resp = mcp_request(
-        base_url,
-        token,
-        "initialize",
-        Some(serde_json::json!({
-            "protocolVersion": "2024-11-05",
-            "capabilities": {},
-            "clientInfo": {"name": "test-client", "version": "1.0.0"}
-        })),
-    )
-    .await;
+    let resp = mcp_request(base_url, token, "server/discover", Some(serde_json::json!({}))).await;
     mcp_result(&resp).clone()
 }
 
@@ -196,25 +203,52 @@ pub async fn mcp_read_resource(base_url: &str, token: &str, uri: &str) -> Value 
     mcp_result(&resp).clone()
 }
 
-pub async fn create_test_collection(base_url: &str, token: &str, site_id: &str, name: &str, slug: &str) -> Value {
-    let result = mcp_call_site_tool(
-        base_url,
-        token,
-        site_id,
-        "create_collection",
-        serde_json::json!({
+pub async fn create_test_collection(base_url: &str, _token: &str, site_id: &str, name: &str, slug: &str) -> Value {
+    let value = dashboard_create_collection(base_url, site_id, name, slug, false).await;
+    serde_json::json!({
+        "content": [{"type": "text", "text": value.to_string()}],
+        "structuredContent": value,
+        "isError": false,
+    })
+}
+
+pub async fn create_test_singleton(base_url: &str, site_id: &str, name: &str, slug: &str) -> Value {
+    dashboard_create_collection(base_url, site_id, name, slug, true).await
+}
+
+async fn dashboard_create_collection(
+    base_url: &str,
+    site_id: &str,
+    name: &str,
+    slug: &str,
+    is_singleton: bool,
+) -> Value {
+    let client = http_client();
+    let login = client
+        .post(format!("{base_url}/api/auth/login"))
+        .json(&serde_json::json!({"email": "admin@cms.local", "password": "admin"}))
+        .send()
+        .await
+        .expect("login failed");
+    let (session, csrf) = super::auth::extract_cookies(&login);
+    let response = client
+        .post(format!("{base_url}/api/dashboard/sites/{site_id}/collections"))
+        .headers(super::auth::auth_header(&session, &csrf))
+        .json(&serde_json::json!({
             "name": name,
             "slug": slug,
-            "definition": {"fields": [{"name": "title", "type": "text", "required": true}]},
-        }),
-    )
-    .await;
+            "definition": {"fields": [{"name": if is_singleton { "site_title" } else { "title" }, "type": "text", "required": true}]},
+            "is_singleton": is_singleton,
+        }))
+        .send()
+        .await
+        .expect("collection creation failed");
     assert!(
-        !mcp_is_error(&result),
-        "create_collection failed: {}",
-        mcp_tool_text(&result)
+        response.status().is_success(),
+        "dashboard collection creation failed: {}",
+        response.status()
     );
-    result
+    response.json().await.expect("invalid collection response")
 }
 
 pub async fn create_test_entry(

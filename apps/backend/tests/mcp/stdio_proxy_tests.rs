@@ -58,15 +58,6 @@ impl StdioClient {
         serde_json::from_str(&line).unwrap_or_else(|error| panic!("stdout was not pure MCP JSON: {line:?}: {error}"))
     }
 
-    async fn notify(&mut self, method: &str) {
-        let request = json!({"jsonrpc": "2.0", "method": method});
-        self.stdin
-            .write_all(format!("{request}\n").as_bytes())
-            .await
-            .expect("write MCP notification");
-        self.stdin.flush().await.expect("flush MCP notification");
-    }
-
     async fn close(mut self) -> std::process::ExitStatus {
         drop(self.stdin);
         let mut stderr = self.child.stderr.take().expect("child stderr");
@@ -78,19 +69,7 @@ impl StdioClient {
 }
 
 async fn initialize(client: &mut StdioClient) -> Value {
-    let response = client
-        .request(
-            1,
-            "initialize",
-            Some(json!({
-                "protocolVersion": "2024-11-05",
-                "capabilities": {},
-                "clientInfo": {"name": "stdio-proxy-test", "version": "1.0"}
-            })),
-        )
-        .await;
-    client.notify("notifications/initialized").await;
-    response
+    client.request(1, "server/discover", Some(json!({}))).await
 }
 
 #[tokio::test]
@@ -100,7 +79,11 @@ async fn stdio_proxy_round_trips_tools_and_calls_through_the_server() {
 
     let mut client = StdioClient::start(&server.base_url, &token).await;
     let init = initialize(&mut client).await;
-    assert_eq!(init["result"]["serverInfo"]["name"], "cms");
+    assert!(
+        init["result"]["_meta"]["io.modelcontextprotocol/serverInfo"]["name"] == "velopulent-cms"
+            || init["result"]["serverInfo"]["name"] == "velopulent-cms",
+        "unexpected initialize response: {init}"
+    );
 
     let tools = client.request(2, "tools/list", None).await;
     assert!(
@@ -137,8 +120,8 @@ async fn stdio_proxy_enforces_token_permission() {
             2,
             "tools/call",
             Some(json!({
-                "name": "update_site",
-                "arguments": {"site_id": site_id, "name": "Forbidden"}
+                "name": "delete_entry",
+                "arguments": {"site_id": site_id, "id": "forbidden-entry"}
             })),
         )
         .await;

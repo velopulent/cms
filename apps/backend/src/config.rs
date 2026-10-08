@@ -98,8 +98,11 @@ pub struct Config {
     pub db_min_connections: u32,
     pub db_acquire_timeout_secs: u64,
     pub db_idle_timeout_secs: u64,
+    /// Login and registration attempts per client per window.
     pub rate_limit_max_requests: u32,
     pub rate_limit_window_secs: u64,
+    /// Content API requests (REST, GraphQL, gRPC, MCP) per client per minute.
+    pub api_rate_limit_max_requests: u32,
     pub bcrypt_cost: u32,
     pub trust_proxy_headers: bool,
     pub webhook_allow_private_targets: bool,
@@ -162,6 +165,7 @@ impl Config {
             db_idle_timeout_secs: 600,
             rate_limit_max_requests: 100,
             rate_limit_window_secs: 60,
+            api_rate_limit_max_requests: 1200,
             bcrypt_cost: bcrypt::DEFAULT_COST,
             trust_proxy_headers: false,
             webhook_allow_private_targets: false,
@@ -258,6 +262,7 @@ impl Default for Config {
             db_idle_timeout_secs: 600,
             rate_limit_max_requests: 100,
             rate_limit_window_secs: 60,
+            api_rate_limit_max_requests: 1200,
             bcrypt_cost: bcrypt::DEFAULT_COST,
             trust_proxy_headers: false,
             webhook_allow_private_targets: false,

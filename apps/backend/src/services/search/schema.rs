@@ -67,19 +67,6 @@ pub fn build_schema() -> (Schema, EntryFields) {
     )
 }
 
-/// Resolve field handles from an already-open index's schema (used when opening
-/// an existing index read-only, where we don't rebuild the schema ourselves).
-pub fn fields_from(schema: &Schema) -> tantivy::Result<EntryFields> {
-    Ok(EntryFields {
-        id: schema.get_field("id")?,
-        site_id: schema.get_field("site_id")?,
-        collection_id: schema.get_field("collection_id")?,
-        status: schema.get_field("status")?,
-        slug: schema.get_field("slug")?,
-        body: schema.get_field("body")?,
-    })
-}
-
 /// Register the English-stemming tokenizer used by the `body`/`slug` fields.
 pub fn register_tokenizers(index: &Index) {
     let en_stem = TextAnalyzer::builder(SimpleTokenizer::default())

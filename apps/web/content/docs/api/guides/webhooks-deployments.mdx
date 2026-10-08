@@ -1,0 +1,24 @@
+---
+title: Automate webhooks and deployments
+description: Integrate event receivers and frontend build hooks.
+---
+
+Webhooks and deployment triggers are configured in the dashboard. The public REST, GraphQL, gRPC, and MCP APIs do not expose them, and access tokens cannot manage them.
+
+## Webhooks
+
+Site operators add webhooks under **Site settings → Webhooks**. Each webhook stores a receiver URL and optional headers, which are encrypted at rest. Operators can send a test delivery and review delivery history.
+
+Private-address receiver URLs need the instance security setting. Leave it off unless the server must call a trusted internal receiver.
+
+## Deployment triggers
+
+Deployment triggers live under **Deploy**. Each trigger stores a provider build-hook URL, a cooldown, a daily quota, an enabled state, and an optional primary marker. Editors and operators can run a trigger after publishing a batch of changes.
+
+## Receiver checklist
+
+- Return a success status promptly.
+- Queue heavy work in the receiver.
+- Make repeated events safe.
+- Keep receiver credentials out of URLs when the provider supports headers.
+- Review delivery history after changing receiver behavior.

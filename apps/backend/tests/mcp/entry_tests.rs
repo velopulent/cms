@@ -71,8 +71,8 @@ async fn test_get_entry() {
         &server.base_url,
         &token,
         &site_id,
-        "publish_entry",
-        serde_json::json!({"id": entry_id}),
+        "set_entry_publication",
+        serde_json::json!({"id": entry_id, "published": true}),
     )
     .await;
     let wrapped = serde_json::json!({"result": result});
@@ -187,8 +187,8 @@ async fn test_publish_entry() {
         &server.base_url,
         &token,
         &site_id,
-        "publish_entry",
-        serde_json::json!({"id": entry_id}),
+        "set_entry_publication",
+        serde_json::json!({"id": entry_id, "published": true}),
     )
     .await;
     let entry = mcp_tool_json(&result);
@@ -216,8 +216,8 @@ async fn test_unpublish_entry() {
         &server.base_url,
         &token,
         &site_id,
-        "publish_entry",
-        serde_json::json!({"id": entry_id}),
+        "set_entry_publication",
+        serde_json::json!({"id": entry_id, "published": true}),
     )
     .await;
     let wrapped = serde_json::json!({"result": result});
@@ -227,8 +227,8 @@ async fn test_unpublish_entry() {
         &server.base_url,
         &token,
         &site_id,
-        "unpublish_entry",
-        serde_json::json!({"id": entry_id}),
+        "set_entry_publication",
+        serde_json::json!({"id": entry_id, "published": false}),
     )
     .await;
     let entry = mcp_tool_json(&result);
@@ -317,8 +317,8 @@ async fn test_entry_full_lifecycle() {
         &server.base_url,
         &token,
         &site_id,
-        "publish_entry",
-        serde_json::json!({"id": entry_id}),
+        "set_entry_publication",
+        serde_json::json!({"id": entry_id, "published": true}),
     )
     .await;
     let wrapped = serde_json::json!({"result": result});
@@ -351,8 +351,8 @@ async fn test_entry_full_lifecycle() {
         &server.base_url,
         &token,
         &site_id,
-        "unpublish_entry",
-        serde_json::json!({"id": entry_id}),
+        "set_entry_publication",
+        serde_json::json!({"id": entry_id, "published": false}),
     )
     .await;
     let wrapped = serde_json::json!({"result": result});
@@ -405,7 +405,7 @@ async fn test_list_entries_filter_by_collection() {
         &token,
         &site_id,
         "list_entries",
-        serde_json::json!({"collection_slug": "posts", "published_only": false}),
+        serde_json::json!({"collection_slug": "posts", "include_drafts": true}),
     )
     .await;
     let data = mcp_tool_json(&result);
@@ -434,8 +434,8 @@ async fn test_list_entries_with_search() {
         &server.base_url,
         &token,
         &site_id,
-        "publish_entry",
-        serde_json::json!({"id": entry_id}),
+        "set_entry_publication",
+        serde_json::json!({"id": entry_id, "published": true}),
     )
     .await;
     let wrapped = serde_json::json!({"result": publish_result});
@@ -446,7 +446,7 @@ async fn test_list_entries_with_search() {
         &token,
         &site_id,
         "list_entries",
-        serde_json::json!({"search": "Unique", "published_only": false}),
+        serde_json::json!({"search": "Unique", "include_drafts": true}),
     )
     .await;
     let data = mcp_tool_json(&result);

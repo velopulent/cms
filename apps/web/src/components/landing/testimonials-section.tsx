@@ -248,7 +248,7 @@ export function TestimonialsSection() {
         </div>
       </div>
 
-      <style jsx>{`
+      <style>{`
         @keyframes fadeSlideIn {
           from {
             opacity: 0;

@@ -8,55 +8,42 @@ use utoipa::ToSchema;
 pub enum TokenScope {
     #[serde(rename = "site.read")]
     SiteRead,
-    #[serde(rename = "site.settings.read")]
-    SiteSettingsRead,
-    #[serde(rename = "site.settings.write")]
-    SiteSettingsWrite,
     #[serde(rename = "content.read")]
     ContentRead,
+    #[serde(rename = "content.preview.read")]
+    ContentPreviewRead,
     #[serde(rename = "content.write")]
     ContentWrite,
+    #[serde(rename = "content.publish")]
+    ContentPublish,
     #[serde(rename = "files.read")]
     FilesRead,
     #[serde(rename = "files.write")]
     FilesWrite,
     #[serde(rename = "schema.read")]
     SchemaRead,
-    #[serde(rename = "schema.write")]
-    SchemaWrite,
-    #[serde(rename = "webhooks.read")]
-    WebhooksRead,
-    #[serde(rename = "webhooks.write")]
-    WebhooksWrite,
-    #[serde(rename = "webhooks.trigger")]
-    WebhooksTrigger,
-    #[serde(rename = "deployments.read")]
-    DeploymentsRead,
-    #[serde(rename = "deployments.write")]
-    DeploymentsWrite,
-    #[serde(rename = "deployments.trigger")]
-    DeploymentsTrigger,
     #[serde(rename = "mcp.use")]
     McpUse,
 }
 
-pub type TokenScopes = BTreeSet<TokenScope>;
-pub fn scopes_can_write(scopes: &TokenScopes) -> bool {
-    scopes.iter().any(|scope| {
-        matches!(
-            scope,
-            TokenScope::SiteSettingsWrite
-                | TokenScope::ContentWrite
-                | TokenScope::FilesWrite
-                | TokenScope::SchemaWrite
-                | TokenScope::WebhooksWrite
-                | TokenScope::WebhooksTrigger
-                | TokenScope::DeploymentsWrite
-                | TokenScope::DeploymentsTrigger
-        )
-    })
+impl TokenScope {
+    /// Wire name, identical to the serde representation.
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            TokenScope::SiteRead => "site.read",
+            TokenScope::ContentRead => "content.read",
+            TokenScope::ContentPreviewRead => "content.preview.read",
+            TokenScope::ContentWrite => "content.write",
+            TokenScope::ContentPublish => "content.publish",
+            TokenScope::FilesRead => "files.read",
+            TokenScope::FilesWrite => "files.write",
+            TokenScope::SchemaRead => "schema.read",
+            TokenScope::McpUse => "mcp.use",
+        }
+    }
 }
 
+pub type TokenScopes = BTreeSet<TokenScope>;
 pub fn encode_scopes(scopes: &TokenScopes) -> Result<String, serde_json::Error> {
     serde_json::to_string(scopes)
 }
@@ -149,4 +136,26 @@ pub struct PersonalAccessTokenResponse {
     #[serde(flatten)]
     pub token_info: PersonalAccessTokenView,
     pub token: String,
+}
+
+#[cfg(test)]
+mod scope_name_tests {
+    use super::TokenScope;
+
+    #[test]
+    fn scope_names_match_their_wire_format() {
+        for scope in [
+            TokenScope::SiteRead,
+            TokenScope::ContentRead,
+            TokenScope::ContentPreviewRead,
+            TokenScope::ContentWrite,
+            TokenScope::ContentPublish,
+            TokenScope::FilesRead,
+            TokenScope::FilesWrite,
+            TokenScope::SchemaRead,
+            TokenScope::McpUse,
+        ] {
+            assert_eq!(serde_json::to_value(scope).unwrap(), scope.as_str());
+        }
+    }
 }

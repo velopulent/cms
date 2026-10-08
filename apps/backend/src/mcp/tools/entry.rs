@@ -10,16 +10,23 @@ use crate::mcp::auth::{ok_result, tool_error};
 use crate::mcp::schema::ArbitraryJson;
 use crate::middleware::auth::Actor;
 use crate::models::authorization::Action;
+use crate::models::entry::PublicEntry;
 use crate::repository::traits::ListEntriesParams as RepoListEntriesParams;
 use crate::services::entry::UpdateEntryInput;
 use crate::services::{Services, authorization::AuthorizationService};
 use crate::storage::StorageRegistry;
 
+fn public_entry(entry: crate::models::entry::Entry) -> Result<PublicEntry, McpError> {
+    PublicEntry::try_from(entry).map_err(|_| McpError::internal_error("Stored entry data is invalid JSON", None))
+}
+
 #[derive(Debug, Deserialize, JsonSchema)]
 pub struct ListEntriesParams {
     pub site_id: String,
     pub collection_slug: Option<String>,
-    pub published_only: Option<bool>,
+    /// Include drafts; requires content.preview.read.
+    pub include_drafts: Option<bool>,
+    pub status: Option<String>,
     pub page: Option<i64>,
     pub per_page: Option<i64>,
     pub search: Option<String>,
@@ -32,20 +39,28 @@ pub async fn list_entries(
     params: Parameters<ListEntriesParams>,
 ) -> Result<CallToolResult, McpError> {
     let site_id = params.0.site_id.clone();
+    let published_only = !params.0.include_drafts.unwrap_or(false);
     if let Err(e) = authorization
-        .require_site_action(actor, &site_id, Action::ContentRead)
+        .require_site_action(
+            actor,
+            &site_id,
+            if published_only {
+                Action::ContentRead
+            } else {
+                Action::ContentPreviewRead
+            },
+        )
         .await
     {
         return Ok(tool_error(e));
     }
-    let published_only = params.0.published_only.unwrap_or(true);
     let page = params.0.page.unwrap_or(1).max(1);
     let per_page = params.0.per_page.unwrap_or(25).clamp(1, 100);
     let list_params = RepoListEntriesParams {
         site_id: &site_id,
         collection_slug: params.0.collection_slug.as_deref(),
         collection_id: None,
-        status: None,
+        status: params.0.status.as_deref(),
         search: params.0.search.as_deref(),
         published_only,
         page,
@@ -53,8 +68,9 @@ pub async fn list_entries(
     };
     match services.entry.list_entries(list_params).await {
         Ok(result) => {
+            let items: Result<Vec<_>, _> = result.items.into_iter().map(public_entry).collect();
             let response = serde_json::json!({
-                "items": result.items,
+                "items": items?,
                 "total": result.total,
                 "page": result.page,
                 "per_page": result.per_page,
@@ -69,6 +85,7 @@ pub async fn list_entries(
 pub struct GetEntryParams {
     pub site_id: String,
     pub id: String,
+    pub include_drafts: Option<bool>,
 }
 
 pub async fn get_entry(
@@ -79,14 +96,23 @@ pub async fn get_entry(
     params: Parameters<GetEntryParams>,
 ) -> Result<CallToolResult, McpError> {
     let site_id = params.0.site_id.clone();
+    let include_drafts = params.0.include_drafts.unwrap_or(false);
     if let Err(e) = authorization
-        .require_site_action(actor, &site_id, Action::ContentRead)
+        .require_site_action(
+            actor,
+            &site_id,
+            if include_drafts {
+                Action::ContentPreviewRead
+            } else {
+                Action::ContentRead
+            },
+        )
         .await
     {
         return Ok(tool_error(e));
     }
-    match services.entry.get_entry(&params.0.id, &site_id, true).await {
-        Ok(Some(entry)) => ok_result(&entry),
+    match services.entry.get_entry(&params.0.id, &site_id, !include_drafts).await {
+        Ok(Some(entry)) => ok_result(&public_entry(entry)?),
         Ok(None) => Ok(tool_error(crate::services::error::ServiceError::NotFound(
             "Entry not found".into(),
         ))),
@@ -118,22 +144,26 @@ pub async fn create_entry(
         return Ok(tool_error(e));
     }
 
-    // Validate entry data against collection definition
-    if let Ok(Some(collection)) = services.collection.get_by_id(&params.0.collection_id).await
-        && let Ok(definition) = serde_json::from_str::<serde_json::Value>(&collection.definition)
-        && let Some(fields) = definition.get("fields").and_then(|f| f.as_array())
-        && let Some(err) = crate::services::definition_validation::validate_entry_data(&params.0.values, fields)
-    {
-        return Ok(tool_error(crate::services::error::ServiceError::BadRequest(err)));
+    if params.0.published == Some(true) {
+        return Err(McpError::invalid_params(
+            "Create entries as drafts, then use set_entry_publication",
+            None,
+        ));
     }
 
     let slug = params.0.slug.unwrap_or_else(|| uuid::Uuid::now_v7().to_string());
     match services
         .entry
-        .create_entry(&site_id, &params.0.collection_id, &params.0.values, &slug, None)
+        .create_entry(
+            &site_id,
+            &params.0.collection_id,
+            &params.0.values,
+            &slug,
+            actor.user_id(),
+        )
         .await
     {
-        Ok(entry) => ok_result(&entry),
+        Ok(entry) => ok_result(&public_entry(entry)?),
         Err(e) => Ok(tool_error(e)),
     }
 }
@@ -147,6 +177,7 @@ pub struct UpdateEntryParams {
     pub slug: Option<String>,
     pub published: Option<bool>,
     pub change_summary: Option<String>,
+    pub expected_version: Option<String>,
 }
 
 pub async fn update_entry(
@@ -162,6 +193,13 @@ pub async fn update_entry(
     {
         return Ok(tool_error(e));
     }
+    if params.0.published.is_some()
+        && let Err(error) = authorization
+            .require_site_action(actor, &site_id, Action::ContentPublish)
+            .await
+    {
+        return Ok(tool_error(error));
+    }
     match services
         .entry
         .update_entry(UpdateEntryInput {
@@ -170,12 +208,13 @@ pub async fn update_entry(
             data: params.0.values.as_ref(),
             slug: params.0.slug.as_deref(),
             status: params.0.published.map(|b| if b { "published" } else { "draft" }),
-            created_by: None,
+            created_by: actor.user_id(),
             change_summary: params.0.change_summary.as_deref(),
+            expected_version: params.0.expected_version.as_deref(),
         })
         .await
     {
-        Ok(entry) => ok_result(&entry),
+        Ok(entry) => ok_result(&public_entry(entry)?),
         Err(e) => Ok(tool_error(e)),
     }
 }
@@ -214,52 +253,33 @@ pub async fn delete_entry(
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
-pub struct PublishEntryParams {
+pub struct SetPublicationParams {
     pub site_id: String,
     pub id: String,
+    pub published: bool,
 }
 
-pub async fn publish_entry(
+pub async fn set_publication(
     authorization: &Arc<AuthorizationService>,
     services: &Arc<Services>,
     actor: &Actor,
-    params: Parameters<PublishEntryParams>,
+    params: Parameters<SetPublicationParams>,
 ) -> Result<CallToolResult, McpError> {
     let site_id = params.0.site_id.clone();
     if let Err(e) = authorization
-        .require_site_action(actor, &site_id, Action::ContentWrite)
+        .require_site_action(actor, &site_id, Action::ContentPublish)
         .await
     {
         return Ok(tool_error(e));
     }
-    match services.entry.publish_entry(&params.0.id, &site_id).await {
-        Ok(entry) => ok_result(&entry),
-        Err(e) => Ok(tool_error(e)),
-    }
-}
-
-#[derive(Debug, Deserialize, JsonSchema)]
-pub struct UnpublishEntryParams {
-    pub site_id: String,
-    pub id: String,
-}
-
-pub async fn unpublish_entry(
-    authorization: &Arc<AuthorizationService>,
-    services: &Arc<Services>,
-    actor: &Actor,
-    params: Parameters<UnpublishEntryParams>,
-) -> Result<CallToolResult, McpError> {
-    let site_id = params.0.site_id.clone();
-    if let Err(e) = authorization
-        .require_site_action(actor, &site_id, Action::ContentWrite)
-        .await
-    {
-        return Ok(tool_error(e));
-    }
-    match services.entry.unpublish_entry(&params.0.id, &site_id).await {
-        Ok(entry) => ok_result(&entry),
-        Err(e) => Ok(tool_error(e)),
+    let result = if params.0.published {
+        services.entry.publish_entry(&params.0.id, &site_id).await
+    } else {
+        services.entry.unpublish_entry(&params.0.id, &site_id).await
+    };
+    match result {
+        Ok(entry) => ok_result(&public_entry(entry)?),
+        Err(error) => Ok(tool_error(error)),
     }
 }
 
@@ -279,7 +299,7 @@ pub async fn list_revisions(
 ) -> Result<CallToolResult, McpError> {
     let site_id = params.0.site_id.clone();
     if let Err(e) = authorization
-        .require_site_action(actor, &site_id, Action::ContentRead)
+        .require_site_action(actor, &site_id, Action::ContentPreviewRead)
         .await
     {
         return Ok(tool_error(e));
@@ -305,6 +325,39 @@ pub async fn list_revisions(
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
+pub struct GetRevisionParams {
+    pub site_id: String,
+    pub entry_id: String,
+    pub revision_number: i64,
+}
+
+pub async fn get_revision(
+    authorization: &Arc<AuthorizationService>,
+    services: &Arc<Services>,
+    actor: &Actor,
+    params: Parameters<GetRevisionParams>,
+) -> Result<CallToolResult, McpError> {
+    let site_id = params.0.site_id.clone();
+    if let Err(e) = authorization
+        .require_site_action(actor, &site_id, Action::ContentPreviewRead)
+        .await
+    {
+        return Ok(tool_error(e));
+    }
+    match services
+        .entry
+        .get_revision(&params.0.entry_id, &site_id, params.0.revision_number)
+        .await
+    {
+        Ok(Some(revision)) => ok_result(&revision),
+        Ok(None) => Ok(tool_error(crate::services::error::ServiceError::NotFound(
+            "Revision not found".into(),
+        ))),
+        Err(error) => Ok(tool_error(error)),
+    }
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
 pub struct RestoreRevisionParams {
     pub site_id: String,
     pub entry_id: String,
@@ -326,10 +379,10 @@ pub async fn restore_revision(
     }
     match services
         .entry
-        .restore_revision(&params.0.entry_id, &site_id, params.0.revision_number, None)
+        .restore_revision(&params.0.entry_id, &site_id, params.0.revision_number, actor.user_id())
         .await
     {
-        Ok(entry) => ok_result(&entry),
+        Ok(entry) => ok_result(&public_entry(entry)?),
         Err(e) => Ok(tool_error(e)),
     }
 }

@@ -1,0 +1,42 @@
+---
+title: Work with entries
+description: Create, publish, unpublish, revise, restore, search, and remove content.
+---
+
+## Create a draft
+
+<AdaptiveScreenshot
+  light="/docs/screenshots/posts-light.png"
+  dark="/docs/screenshots/posts-dark.png"
+  alt="Posts table with search, publication status, edit, publish, and delete actions"
+  caption="The entry table keeps drafts and published records visible together."
+/>
+
+Open a collection from the site sidebar, choose **New entry**, fill its required fields, assign a unique slug, and save. Velopulent CMS validates entry data against the current collection definition.
+
+## Publish or unpublish
+
+A draft stays out of published-content workflows until you choose **Publish**. Choose **Unpublish** to return published content to draft state. Coordinate unpublishing with frontend owners because links may stop resolving.
+
+## Record a useful revision
+
+When editing an entry, add a change summary such as `Correct author attribution`. The revisions panel lists numbered snapshots. Open a revision to inspect it or restore it as the current entry state.
+
+Restoring creates a new current state; it does not erase revision history.
+
+## Find content
+
+Use collection filters for status and search. The API accepts page and per-page controls; the dashboard applies them while browsing larger collections.
+
+## Delete content
+
+Check relationships and frontend usage first. Entry deletion removes the record rather than moving it to the file trash. Create a site backup before a bulk cleanup.
+
+### Common validation failures
+
+| Symptom | Check |
+| --- | --- |
+| Save button returns an error | Required fields, field types, and relationship target |
+| Slug rejected | Use a unique slug valid for the collection |
+| File missing from picker | File media type and field restriction |
+| Relationship target absent | Target collection and your site access |

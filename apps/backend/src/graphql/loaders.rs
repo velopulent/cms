@@ -12,6 +12,7 @@ use crate::repository::Repository;
 /// the whole GraphQL request, eliminating the N+1.
 #[derive(Clone, PartialEq, Eq, Hash)]
 pub struct EntriesByCollection {
+    pub site_id: String,
     pub collection_id: String,
     pub status: Option<String>,
     pub published_only: bool,
@@ -31,17 +32,17 @@ impl Loader<EntriesByCollection> for EntryLoader {
     ) -> Result<HashMap<EntriesByCollection, Self::Value>, Self::Error> {
         // Group collection ids by their (status, published_only) filter so each
         // group maps to exactly one batched query.
-        let mut groups: HashMap<(Option<String>, bool), Vec<String>> = HashMap::new();
+        let mut groups: HashMap<(String, Option<String>, bool), Vec<String>> = HashMap::new();
         for k in keys {
             groups
-                .entry((k.status.clone(), k.published_only))
+                .entry((k.site_id.clone(), k.status.clone(), k.published_only))
                 .or_default()
                 .push(k.collection_id.clone());
         }
 
         let mut out: HashMap<EntriesByCollection, Vec<DbEntry>> = HashMap::new();
 
-        for ((status, published_only), ids) in groups {
+        for ((site_id, status, published_only), ids) in groups {
             let entries = self
                 .repository
                 .entry
@@ -56,11 +57,18 @@ impl Loader<EntriesByCollection> for EntryLoader {
 
             for cid in ids {
                 let key = EntriesByCollection {
+                    site_id: site_id.clone(),
                     collection_id: cid.clone(),
                     status: status.clone(),
                     published_only,
                 };
-                out.insert(key, by_cid.remove(&cid).unwrap_or_default());
+                let items = by_cid
+                    .remove(&cid)
+                    .unwrap_or_default()
+                    .into_iter()
+                    .filter(|entry| entry.site_id == site_id)
+                    .collect();
+                out.insert(key, items);
             }
         }
 

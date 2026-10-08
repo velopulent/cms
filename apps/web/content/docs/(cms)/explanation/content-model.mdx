@@ -1,0 +1,22 @@
+---
+title: How content modeling works
+description: Understand schemas, entries, singletons, relationships, and channel-neutral content.
+---
+
+Velopulent CMS separates content structure from presentation. A collection definition describes fields. Entries provide values. Frontends decide how to render those values.
+
+## Collections describe repeatable ideas
+
+An Authors collection can hold Maya, Arun, and Lena. A Posts collection can hold hundreds of articles. Each collection gives every entry the same editorial form and validation rules.
+
+## Singletons describe one site-wide idea
+
+Site Settings has one value set. Editors update that record instead of creating another. This makes singleton models useful for navigation, contact details, or a home page.
+
+## Relationships preserve shared meaning
+
+A Post relationship points to an Author entry. Updating the author changes the shared record instead of copied author data across posts. Consumers choose whether to fetch or resolve related content.
+
+## Sites form isolation boundaries
+
+Each site owns its schemas, entries, singletons, files, webhooks, deployment triggers, keys, members, and backups. Use separate sites when content, credentials, or teams need separate lifecycles.

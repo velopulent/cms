@@ -29,7 +29,7 @@ async fn test_get_file_not_found() {
 }
 
 #[tokio::test]
-async fn test_create_upload_url() {
+async fn test_create_file_upload() {
     let server = start_mcp_server().await;
     let (site_id, token) = setup_site_token(&server).await;
 
@@ -37,7 +37,7 @@ async fn test_create_upload_url() {
         &server.base_url,
         &token,
         &site_id,
-        "create_upload_url",
+        "create_file_upload",
         serde_json::json!({
             "filename": "test.txt",
             "content_type": "text/plain",
@@ -58,7 +58,7 @@ async fn test_create_upload_url() {
 /// End-to-end: mint an upload URL via MCP, PUT the bytes to it, and verify the
 /// file exists (both via the MCP get_file tool and the returned record).
 #[tokio::test]
-async fn test_create_upload_url_then_put_uploads_file() {
+async fn test_create_file_upload_then_put_uploads_file() {
     let server = start_mcp_server().await;
     let (site_id, token) = setup_site_token(&server).await;
 
@@ -66,7 +66,7 @@ async fn test_create_upload_url_then_put_uploads_file() {
         &server.base_url,
         &token,
         &site_id,
-        "create_upload_url",
+        "create_file_upload",
         serde_json::json!({
             "filename": "e2e.txt",
             "content_type": "text/plain",
@@ -109,7 +109,7 @@ async fn test_create_upload_url_then_put_uploads_file() {
 }
 
 #[tokio::test]
-async fn test_create_upload_url_requires_editor() {
+async fn test_create_file_upload_requires_editor() {
     let server = start_mcp_server().await;
     let (site_id, token) = setup_site_read_token(&server).await;
 
@@ -117,7 +117,7 @@ async fn test_create_upload_url_requires_editor() {
         &server.base_url,
         &token,
         &site_id,
-        "create_upload_url",
+        "create_file_upload",
         serde_json::json!({"filename": "x.txt", "content_type": "text/plain"}),
     )
     .await;
@@ -125,7 +125,7 @@ async fn test_create_upload_url_requires_editor() {
 }
 
 #[tokio::test]
-async fn test_create_upload_url_rejects_disallowed_content_type() {
+async fn test_create_file_upload_rejects_disallowed_content_type() {
     let server = start_mcp_server().await;
     let (site_id, token) = setup_site_token(&server).await;
 
@@ -133,7 +133,7 @@ async fn test_create_upload_url_rejects_disallowed_content_type() {
         &server.base_url,
         &token,
         &site_id,
-        "create_upload_url",
+        "create_file_upload",
         serde_json::json!({"filename": "x.exe", "content_type": "application/x-executable"}),
     )
     .await;

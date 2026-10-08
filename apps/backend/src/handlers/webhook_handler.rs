@@ -25,17 +25,6 @@ pub struct ListDeliveriesParams {
     pub per_page: Option<i64>,
 }
 
-#[utoipa::path(
-    get,
-    path = "/api/v1/webhooks",
-    responses(
-        (status = 200, description = "List webhooks for a site"),
-        (status = 401, description = "Unauthorized"),
-        (status = 403, description = "Insufficient permissions"),
-    ),
-    security(("bearer" = []), ("access_token" = [])),
-    tag = "webhooks"
-)]
 #[instrument(skip(repository, services, ctx))]
 pub async fn list_webhooks(
     ctx: RequestContext,
@@ -68,19 +57,6 @@ pub async fn list_webhooks(
     }
 }
 
-#[utoipa::path(
-    post,
-    path = "/api/v1/webhooks",
-    request_body = CreateWebhook,
-    responses(
-        (status = 201, description = "Webhook created"),
-        (status = 400, description = "Invalid request"),
-        (status = 401, description = "Unauthorized"),
-        (status = 403, description = "Insufficient permissions"),
-    ),
-    security(("bearer" = []), ("access_token" = [])),
-    tag = "webhooks"
-)]
 #[instrument(skip(repository, services, ctx, payload))]
 pub async fn create_webhook(
     ctx: RequestContext,
@@ -103,18 +79,6 @@ pub async fn create_webhook(
     }
 }
 
-#[utoipa::path(
-    get,
-    path = "/api/v1/webhooks/{webhook_id}",
-    params(("webhook_id" = String, Path, description = "Webhook ID")),
-    responses(
-        (status = 200, description = "Webhook details"),
-        (status = 401, description = "Unauthorized"),
-        (status = 404, description = "Webhook not found"),
-    ),
-    security(("bearer" = []), ("access_token" = [])),
-    tag = "webhooks"
-)]
 #[instrument(skip(repository, services, ctx))]
 pub async fn get_webhook(
     ctx: RequestContext,
@@ -133,20 +97,6 @@ pub async fn get_webhook(
     }
 }
 
-#[utoipa::path(
-    put,
-    path = "/api/v1/webhooks/{webhook_id}",
-    params(("webhook_id" = String, Path, description = "Webhook ID")),
-    request_body = UpdateWebhook,
-    responses(
-        (status = 200, description = "Webhook updated"),
-        (status = 400, description = "Invalid request"),
-        (status = 401, description = "Unauthorized"),
-        (status = 403, description = "Insufficient permissions"),
-    ),
-    security(("bearer" = []), ("access_token" = [])),
-    tag = "webhooks"
-)]
 #[instrument(skip(repository, services, ctx, payload))]
 pub async fn update_webhook(
     ctx: RequestContext,
@@ -175,18 +125,6 @@ pub async fn update_webhook(
     }
 }
 
-#[utoipa::path(
-    delete,
-    path = "/api/v1/webhooks/{webhook_id}",
-    params(("webhook_id" = String, Path, description = "Webhook ID")),
-    responses(
-        (status = 204, description = "Webhook deleted"),
-        (status = 401, description = "Unauthorized"),
-        (status = 403, description = "Insufficient permissions"),
-    ),
-    security(("bearer" = []), ("access_token" = [])),
-    tag = "webhooks"
-)]
 #[instrument(skip(repository, services, ctx))]
 pub async fn delete_webhook(
     ctx: RequestContext,
@@ -205,19 +143,6 @@ pub async fn delete_webhook(
     }
 }
 
-#[utoipa::path(
-    post,
-    path = "/api/v1/webhooks/{webhook_id}/trigger",
-    params(("webhook_id" = String, Path, description = "Webhook ID")),
-    responses(
-        (status = 200, description = "Webhook triggered"),
-        (status = 401, description = "Unauthorized"),
-        (status = 403, description = "Insufficient permissions"),
-        (status = 404, description = "Webhook not found"),
-    ),
-    security(("bearer" = []), ("access_token" = [])),
-    tag = "webhooks"
-)]
 #[instrument(skip(repository, services, ctx))]
 pub async fn trigger_webhook(
     ctx: RequestContext,
@@ -240,22 +165,6 @@ pub async fn trigger_webhook(
     }
 }
 
-#[utoipa::path(
-    get,
-    path = "/api/v1/webhooks/{webhook_id}/deliveries",
-    params(
-        ("webhook_id" = String, Path, description = "Webhook ID"),
-        ListDeliveriesParams,
-    ),
-    responses(
-        (status = 200, description = "List of webhook deliveries"),
-        (status = 401, description = "Unauthorized"),
-        (status = 403, description = "Insufficient permissions"),
-        (status = 404, description = "Webhook not found"),
-    ),
-    security(("bearer" = []), ("access_token" = [])),
-    tag = "webhooks"
-)]
 #[instrument(skip(repository, services, ctx))]
 pub async fn list_deliveries(
     ctx: RequestContext,

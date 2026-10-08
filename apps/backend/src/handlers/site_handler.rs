@@ -9,7 +9,7 @@ use serde_json::json;
 use tracing::instrument;
 
 use crate::middleware::auth::{
-    AuthContext, RequestContext, require_instance_action, require_site_action, require_user_action,
+    AuthContext, RequestContext, require_instance_action, require_site_action, require_user_action, scopes_allow_action,
 };
 use crate::models::authorization::Action;
 use crate::models::site::{CreateSite, InviteMember, UpdateMemberRole, UpdateSite};
@@ -22,11 +22,65 @@ pub struct MemberPath {
     member_user_id: String,
 }
 
-// ── Public API: /api/v1/site ──
+#[derive(serde::Serialize, utoipa::ToSchema)]
+pub struct PublicSite {
+    pub id: String,
+    pub name: String,
+    pub created_at: String,
+    pub updated_at: String,
+}
+
+fn public_site(site: crate::models::site::Site) -> PublicSite {
+    PublicSite {
+        id: site.id,
+        name: site.name,
+        created_at: site.created_at,
+        updated_at: site.updated_at,
+    }
+}
+
+// ── Public API: /api/v1/sites ──
 
 #[utoipa::path(
     get,
-    path = "/api/v1/site",
+    path = "/api/v1/sites",
+    responses((status = 200, description = "Sites accessible to the token", body = Vec<PublicSite>)),
+    security(("access_token" = [])),
+    tag = "sites"
+)]
+#[instrument(skip(services, ctx))]
+pub async fn list_public_sites(ctx: AuthContext, Extension(services): Extension<Services>) -> Response {
+    let allowed = match &ctx.actor {
+        crate::middleware::auth::Actor::ApiKey(key) => scopes_allow_action(&key.scopes, Action::SiteRead),
+        crate::middleware::auth::Actor::PersonalToken(token) => scopes_allow_action(&token.scopes, Action::SiteRead),
+        crate::middleware::auth::Actor::User(_) => false,
+    };
+    if !allowed {
+        return crate::middleware::error::AuthError::insufficient_permission("site.read").into_response();
+    }
+
+    match services.site.list_sites_for_actor(&ctx.actor).await {
+        Ok(sites) => {
+            let public = sites
+                .into_iter()
+                .filter_map(|site| {
+                    Some(PublicSite {
+                        id: site.get("id")?.as_str()?.to_owned(),
+                        name: site.get("name")?.as_str()?.to_owned(),
+                        created_at: site.get("created_at")?.as_str()?.to_owned(),
+                        updated_at: site.get("updated_at")?.as_str()?.to_owned(),
+                    })
+                })
+                .collect::<Vec<_>>();
+            (StatusCode::OK, Json(public)).into_response()
+        }
+        Err(error) => error.into_response(),
+    }
+}
+
+#[utoipa::path(
+    get,
+    path = "/api/v1/sites/{site_id}",
     responses(
         (status = 200, description = "Current site information"),
         (status = 401, description = "Unauthorized"),
@@ -35,10 +89,17 @@ pub struct MemberPath {
     security(("bearer" = []), ("access_token" = [])),
     tag = "site"
 )]
-#[instrument(skip(services, ctx))]
-pub async fn get_current_site(ctx: RequestContext, Extension(services): Extension<Services>) -> Response {
+#[instrument(skip(repository, services, ctx))]
+pub async fn get_current_site(
+    ctx: RequestContext,
+    Extension(repository): Extension<Repository>,
+    Extension(services): Extension<Services>,
+) -> Response {
+    if let Err((status, err)) = require_site_action(&ctx, &repository, Action::SiteRead).await {
+        return (status, err).into_response();
+    }
     match services.site.get_site(&ctx.site_id).await {
-        Ok(Some(site)) => (StatusCode::OK, Json(site)).into_response(),
+        Ok(Some(site)) => (StatusCode::OK, Json(public_site(site))).into_response(),
         Ok(None) => (StatusCode::NOT_FOUND, Json(json!({"error": "Site not found"}))).into_response(),
         Err(e) => e.into_response(),
     }

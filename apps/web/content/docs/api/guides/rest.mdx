@@ -1,0 +1,84 @@
+---
+title: Use the REST API
+description: Read and change site content through `/api/v1`.
+---
+
+REST serves site content under `/api/v1/sites/{site_id}`. Site keys and personal tokens both use this explicit site path. `GET /api/v1/sites` lists the sites a credential can read.
+
+The examples assume these shell variables:
+
+```bash
+export VCMS_URL='http://127.0.0.1:3000'
+export VCMS_SITE_ID='replace_site_id'
+export VCMS_TOKEN='vcms_site_replace_me'
+```
+
+## Read published content
+
+```bash
+# One collection's published entries
+curl "$VCMS_URL/api/v1/sites/$VCMS_SITE_ID/collections/posts/entries" \
+  -H "Authorization: Bearer $VCMS_TOKEN"
+
+# One entry
+curl "$VCMS_URL/api/v1/sites/$VCMS_SITE_ID/entries/ENTRY_ID" \
+  -H "Authorization: Bearer $VCMS_TOKEN"
+
+# One singleton
+curl "$VCMS_URL/api/v1/sites/$VCMS_SITE_ID/singletons/site-settings" \
+  -H "Authorization: Bearer $VCMS_TOKEN"
+```
+
+Reads return published content by default. Add `include_drafts=true` to read drafts; that needs `content.preview.read`.
+
+## Page through a list
+
+List responses contain `items` and `page_info`. While `page_info.has_next_page` is true, send `page_info.next_cursor` back as `cursor` with the same query:
+
+```bash
+curl "$VCMS_URL/api/v1/sites/$VCMS_SITE_ID/collections/posts/entries?per_page=100&cursor=NEXT_CURSOR" \
+  -H "Authorization: Bearer $VCMS_TOKEN"
+```
+
+A cursor only works with the query that produced it. See [Queries and errors](/docs/api/reference/queries-errors) for every parameter.
+
+## Create an entry
+
+Creating an entry needs `content.write`. New entries start as drafts.
+
+```bash
+curl -X POST "$VCMS_URL/api/v1/sites/$VCMS_SITE_ID/collections/posts/entries" \
+  -H "Authorization: Bearer $VCMS_WRITE_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "slug": "api-created-post",
+    "data": {"title": "Created through REST"}
+  }'
+```
+
+## Update without overwriting someone else's edit
+
+Entry and singleton reads return an `ETag` holding the entry's version. Send it back in `If-Match` with a `PATCH`. If the entry changed in between, the update fails with `412 Precondition Failed` and nothing is written:
+
+```bash
+curl -X PATCH "$VCMS_URL/api/v1/sites/$VCMS_SITE_ID/entries/ENTRY_ID" \
+  -H "Authorization: Bearer $VCMS_WRITE_TOKEN" \
+  -H 'If-Match: "VERSION"' \
+  -H "Content-Type: application/json" \
+  -d '{"data": {"title": "Edited"}}'
+```
+
+A JSON body field `expected_version` works the same way. Omit both to update unconditionally. Changing `status` in a `PATCH` also needs `content.publish`.
+
+## Publish an entry
+
+Publishing needs `content.publish`:
+
+```bash
+curl -X POST "$VCMS_URL/api/v1/sites/$VCMS_SITE_ID/entries/ENTRY_ID/publish" \
+  -H "Authorization: Bearer $VCMS_WRITE_TOKEN"
+```
+
+`POST …/unpublish` returns the entry to draft.
+
+Open `/api/v1/docs` on your server for every request body and response schema.

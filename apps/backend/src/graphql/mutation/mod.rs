@@ -1,180 +1,86 @@
-pub mod collection;
 pub mod entry;
 pub mod file;
-pub mod webhook;
+pub mod singleton;
 
 use async_graphql::{Context, Object, Result};
-use std::collections::HashMap;
 
-use crate::graphql::context::GqlContext;
-use crate::graphql::types::collection::*;
 use crate::graphql::types::entry::{CreateEntryInput, Entry, UpdateEntryInput};
-use crate::graphql::types::webhook::{db_delivery_to_gql, db_webhook_to_gql};
 
 pub struct MutationRoot;
 
 #[Object]
 impl MutationRoot {
-    async fn create_collection(&self, ctx: &Context<'_>, input: CreateCollectionInput) -> Result<Collection> {
-        collection::CollectionMutation.create_collection(ctx, input).await
+    async fn create_entry(&self, ctx: &Context<'_>, site_id: String, input: CreateEntryInput) -> Result<Entry> {
+        entry::EntryMutation.create_entry(ctx, site_id, input).await
     }
 
-    async fn update_collection(
+    async fn update_entry(
         &self,
         ctx: &Context<'_>,
-        slug: String,
-        input: UpdateCollectionInput,
-    ) -> Result<Collection> {
-        collection::CollectionMutation.update_collection(ctx, slug, input).await
+        site_id: String,
+        id: String,
+        input: UpdateEntryInput,
+    ) -> Result<Entry> {
+        entry::EntryMutation.update_entry(ctx, site_id, id, input).await
     }
 
-    async fn delete_collection(&self, ctx: &Context<'_>, slug: String) -> Result<bool> {
-        collection::CollectionMutation.delete_collection(ctx, slug).await
+    async fn delete_entry(&self, ctx: &Context<'_>, site_id: String, id: String) -> Result<bool> {
+        entry::EntryMutation.delete_entry(ctx, site_id, id).await
     }
 
-    async fn create_entry(&self, ctx: &Context<'_>, input: CreateEntryInput) -> Result<Entry> {
-        entry::EntryMutation.create_entry(ctx, input).await
+    async fn set_entry_publication(
+        &self,
+        ctx: &Context<'_>,
+        site_id: String,
+        id: String,
+        published: bool,
+    ) -> Result<Entry> {
+        entry::EntryMutation.set_publication(ctx, site_id, id, published).await
     }
 
-    async fn update_entry(&self, ctx: &Context<'_>, id: String, input: UpdateEntryInput) -> Result<Entry> {
-        entry::EntryMutation.update_entry(ctx, id, input).await
-    }
-
-    async fn delete_entry(&self, ctx: &Context<'_>, id: String) -> Result<bool> {
-        entry::EntryMutation.delete_entry(ctx, id).await
-    }
-
-    async fn publish_entry(&self, ctx: &Context<'_>, id: String) -> Result<Entry> {
-        entry::EntryMutation.publish_entry(ctx, id).await
-    }
-
-    async fn unpublish_entry(&self, ctx: &Context<'_>, id: String) -> Result<Entry> {
-        entry::EntryMutation.unpublish_entry(ctx, id).await
-    }
-
-    async fn restore_revision(&self, ctx: &Context<'_>, entry_id: String, revision_number: i64) -> Result<Entry> {
+    async fn restore_revision(
+        &self,
+        ctx: &Context<'_>,
+        site_id: String,
+        entry_id: String,
+        revision_number: i64,
+    ) -> Result<Entry> {
         entry::EntryMutation
-            .restore_revision(ctx, entry_id, revision_number)
+            .restore_revision(ctx, site_id, entry_id, revision_number)
             .await
     }
 
-    async fn delete_file(&self, ctx: &Context<'_>, id: String) -> Result<bool> {
-        file::FileMutation.delete_file(ctx, id).await
-    }
-
-    async fn restore_file(&self, ctx: &Context<'_>, id: String) -> Result<bool> {
-        file::FileMutation.restore_file(ctx, id).await
-    }
-
-    async fn batch_delete_files(&self, ctx: &Context<'_>, ids: Vec<String>) -> Result<i64> {
-        file::FileMutation.batch_delete_files(ctx, ids).await
-    }
-
-    async fn batch_restore_files(&self, ctx: &Context<'_>, ids: Vec<String>) -> Result<i64> {
-        file::FileMutation.batch_restore_files(ctx, ids).await
-    }
-
-    async fn create_webhook(
+    async fn update_singleton(
         &self,
         ctx: &Context<'_>,
         site_id: String,
-        label: String,
-        url: String,
-        headers: Option<String>,
-    ) -> Result<crate::graphql::types::webhook::SiteWebhook> {
-        let gql_ctx = ctx.data::<GqlContext>()?;
-        gql_ctx.require_site_match(&site_id)?;
-        gql_ctx
-            .require_write(crate::models::authorization::Action::WebhooksWrite)
-            .await?;
-
-        let parsed_headers: HashMap<String, String> = match headers {
-            Some(ref h) if !h.is_empty() => serde_json::from_str(h).unwrap_or_default(),
-            _ => HashMap::new(),
-        };
-
-        let webhook = gql_ctx
-            .services
-            .webhook
-            .create_webhook(&site_id, &label, &url, &parsed_headers, None)
+        slug: String,
+        data: crate::graphql::types::json::Json,
+        change_summary: Option<String>,
+        expected_version: Option<String>,
+    ) -> Result<crate::graphql::types::collection::SingletonGraphql> {
+        singleton::SingletonMutation
+            .update_singleton(ctx, site_id, slug, data, change_summary, expected_version)
             .await
-            .map_err(|e| async_graphql::Error::new(format!("Error: {}", e)))?;
-
-        let decrypted = gql_ctx.services.webhook.decrypt_webhook_headers(&webhook);
-        Ok(db_webhook_to_gql(webhook, decrypted))
     }
 
-    async fn update_webhook(
+    async fn delete_file(&self, ctx: &Context<'_>, site_id: String, id: String) -> Result<bool> {
+        file::FileMutation.delete_file(ctx, site_id, id).await
+    }
+
+    async fn create_file_upload(
         &self,
         ctx: &Context<'_>,
         site_id: String,
-        webhook_id: String,
-        label: Option<String>,
-        url: Option<String>,
-        headers: Option<String>,
-    ) -> Result<crate::graphql::types::webhook::SiteWebhook> {
-        let gql_ctx = ctx.data::<GqlContext>()?;
-        gql_ctx.require_site_match(&site_id)?;
-        gql_ctx
-            .require_write(crate::models::authorization::Action::WebhooksWrite)
-            .await?;
-
-        let parsed_headers: Option<HashMap<String, String>> =
-            headers.map(|h| serde_json::from_str(&h).unwrap_or_default());
-
-        let webhook = gql_ctx
-            .services
-            .webhook
-            .update_webhook(
-                &webhook_id,
-                &site_id,
-                label.as_deref(),
-                url.as_deref(),
-                parsed_headers.as_ref(),
-            )
+        filename: String,
+        content_type: String,
+    ) -> Result<crate::graphql::types::file::FileUploadUrl> {
+        file::FileMutation
+            .create_file_upload(ctx, site_id, filename, content_type)
             .await
-            .map_err(|e| async_graphql::Error::new(format!("Error: {}", e)))?;
-
-        let decrypted = gql_ctx.services.webhook.decrypt_webhook_headers(&webhook);
-        Ok(db_webhook_to_gql(webhook, decrypted))
     }
 
-    async fn delete_webhook(&self, ctx: &Context<'_>, site_id: String, webhook_id: String) -> Result<bool> {
-        let gql_ctx = ctx.data::<GqlContext>()?;
-        gql_ctx.require_site_match(&site_id)?;
-        gql_ctx
-            .require_write(crate::models::authorization::Action::WebhooksWrite)
-            .await?;
-
-        let deleted = gql_ctx
-            .services
-            .webhook
-            .delete_webhook(&webhook_id, &site_id)
-            .await
-            .map_err(|e| async_graphql::Error::new(format!("Error: {}", e)))?;
-
-        Ok(deleted > 0)
-    }
-
-    async fn trigger_webhook(
-        &self,
-        ctx: &Context<'_>,
-        site_id: String,
-        webhook_id: String,
-    ) -> Result<crate::graphql::types::webhook::WebhookDelivery> {
-        let gql_ctx = ctx.data::<GqlContext>()?;
-        gql_ctx.require_site_match(&site_id)?;
-        gql_ctx
-            .require_write(crate::models::authorization::Action::WebhooksTrigger)
-            .await?;
-
-        let delivery = gql_ctx
-            .services
-            .webhook
-            .trigger_webhook(&webhook_id, &site_id, None)
-            .await
-            .map_err(|e| async_graphql::Error::new(format!("Error: {}", e)))?;
-
-        Ok(db_delivery_to_gql(delivery))
+    async fn restore_file(&self, ctx: &Context<'_>, site_id: String, id: String) -> Result<bool> {
+        file::FileMutation.restore_file(ctx, site_id, id).await
     }
 }

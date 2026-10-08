@@ -70,7 +70,7 @@ impl RateLimiter {
     /// otherwise the TCP peer IP (via `ConnectInfo`) is used so clients cannot
     /// spoof their bucket. Never keys on the `Authorization` header, which would
     /// leak bearer tokens into server state and let a stolen token grief its owner.
-    fn extract_client_key(&self, req: &Request) -> String {
+    pub(crate) fn client_key(&self, req: &Request) -> String {
         if self.trust_proxy_headers {
             if let Some(ip) = req
                 .headers()
@@ -99,6 +99,41 @@ impl RateLimiter {
 
         "unknown".to_string()
     }
+
+    /// Bucket key for a gRPC call, following the same proxy-trust rule as HTTP.
+    pub(crate) fn grpc_client_key<T>(&self, request: &tonic::Request<T>) -> String {
+        if self.trust_proxy_headers
+            && let Some(ip) = ["x-forwarded-for", "x-real-ip"].iter().find_map(|name| {
+                request
+                    .metadata()
+                    .get(*name)
+                    .and_then(|value| value.to_str().ok())
+                    .and_then(|value| value.split(',').next())
+                    .map(|value| value.trim().to_owned())
+                    .filter(|value| !value.is_empty())
+            })
+        {
+            return ip;
+        }
+        request
+            .remote_addr()
+            .map_or_else(|| "unknown".to_owned(), |addr| addr.ip().to_string())
+    }
+}
+
+/// Content API limiter, kept apart from the login limiter so API traffic and
+/// sign-in attempts never share a budget.
+#[derive(Clone)]
+pub struct ApiRateLimiter(pub RateLimiter);
+
+impl ApiRateLimiter {
+    pub fn from_config(config: &crate::config::Config) -> Self {
+        Self(RateLimiter::new(
+            config.api_rate_limit_max_requests,
+            60,
+            config.trust_proxy_headers,
+        ))
+    }
 }
 
 pub async fn rate_limit_middleware(
@@ -106,9 +141,19 @@ pub async fn rate_limit_middleware(
     req: Request,
     next: Next,
 ) -> Response {
-    let key = limiter.extract_client_key(&req);
+    limited(&limiter, req, next).await
+}
 
-    if limiter.check(&key) {
+pub async fn api_rate_limit_middleware(
+    axum::extract::Extension(ApiRateLimiter(limiter)): axum::extract::Extension<ApiRateLimiter>,
+    req: Request,
+    next: Next,
+) -> Response {
+    limited(&limiter, req, next).await
+}
+
+async fn limited(limiter: &RateLimiter, req: Request, next: Next) -> Response {
+    if limiter.check(&limiter.client_key(&req)) {
         next.run(req).await
     } else {
         (

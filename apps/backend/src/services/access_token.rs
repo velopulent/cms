@@ -38,7 +38,10 @@ impl TokenError {
         let (status, body) = match self {
             TokenError::NotFound => (StatusCode::NOT_FOUND, Json(json!({"error": "Token not found"}))),
             TokenError::NameRequired => (StatusCode::BAD_REQUEST, Json(json!({"error": "Name is required"}))),
-            TokenError::DatabaseError(msg) => (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": msg}))),
+            TokenError::DatabaseError(_) => (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({"error": "internal_error", "message": "Internal server error"})),
+            ),
         };
         (status, body).into_response()
     }
@@ -303,7 +306,7 @@ mod tests {
             .create_site_token(
                 "site-123",
                 "To Delete".to_string(),
-                [TokenScope::SiteSettingsWrite, TokenScope::ContentWrite]
+                [TokenScope::ContentPublish, TokenScope::ContentWrite]
                     .into_iter()
                     .collect::<TokenScopes>(),
                 None,

@@ -1,0 +1,24 @@
+{
+  "title": "VCMS API",
+  "description": "Deliver content to applications and agents",
+  "icon": "Braces",
+  "root": true,
+  "pages": [
+    "index",
+    "---[Rocket]Start---",
+    "quickstart",
+    "authentication",
+    "---[Cable]Protocol guides---",
+    "guides/rest",
+    "guides/graphql",
+    "guides/grpc",
+    "guides/mcp",
+    "guides/files",
+    "guides/webhooks-deployments",
+    "guides/static-sites",
+    "---[BookOpenText]Reference---",
+    "reference/protocols",
+    "reference/queries-errors",
+    "reference/operations"
+  ]
+}

@@ -616,16 +616,16 @@
 /* Floating overlays: fully OPAQUE tinted surface (`--popover`), no blur —
    they cover arbitrary content, so nothing may bleed through. */
 :is(.theme-dark, .theme-light)
-  :is(
-    [data-slot="popover-content"],
-    [data-slot="dropdown-menu-content"],
-    [data-slot="select-content"],
-    [data-slot="dialog-content"],
-    [data-slot="alert-dialog-content"],
-    [data-slot="sheet-content"],
-    [data-slot="drawer-content"],
-    [data-slot="tooltip-content"]
-  ) {
+:is(
+  [data-slot="popover-content"],
+  [data-slot="dropdown-menu-content"],
+  [data-slot="select-content"],
+  [data-slot="dialog-content"],
+  [data-slot="alert-dialog-content"],
+  [data-slot="sheet-content"],
+  [data-slot="drawer-content"],
+  [data-slot="tooltip-content"]
+) {
   background: var(--popover);
 }
 
@@ -715,15 +715,15 @@
 
 /* Premium hover timing (150–180ms) on the surfaces users actually touch. */
 :is(.theme-dark, .theme-light)
-  :is(
-    a,
-    [data-slot="button"],
-    [data-slot="table-row"],
-    [data-slot="sidebar-menu-button"],
-    [data-slot="input"],
-    [data-slot="textarea"],
-    [data-slot="card"]
-  ) {
+:is(
+  a,
+  [data-slot="button"],
+  [data-slot="table-row"],
+  [data-slot="sidebar-menu-button"],
+  [data-slot="input"],
+  [data-slot="textarea"],
+  [data-slot="card"]
+) {
   transition-property:
     color, background-color, border-color, box-shadow, transform, opacity;
   transition-duration: 165ms;
@@ -733,15 +733,15 @@
   /* Mirror the selector above so specificity ties and this later rule wins —
      neutralizes the added motion without needing !important. */
   :is(.theme-dark, .theme-light)
-    :is(
-      a,
-      [data-slot="button"],
-      [data-slot="table-row"],
-      [data-slot="sidebar-menu-button"],
-      [data-slot="input"],
-      [data-slot="textarea"],
-      [data-slot="card"]
-    ) {
+  :is(
+    a,
+    [data-slot="button"],
+    [data-slot="table-row"],
+    [data-slot="sidebar-menu-button"],
+    [data-slot="input"],
+    [data-slot="textarea"],
+    [data-slot="card"]
+  ) {
     transition-duration: 0.01ms;
   }
 }
@@ -749,12 +749,12 @@
 /* Layered shadows on the shadow-bearing slots (lg menus, xl modals; the card
    shadow lives in the card rule above, merged with its hairline ring). */
 :is(.theme-dark, .theme-light)
-  :is(
-    [data-slot="popover-content"],
-    [data-slot="dropdown-menu-content"],
-    [data-slot="select-content"],
-    [data-slot="tooltip-content"]
-  ) {
+:is(
+  [data-slot="popover-content"],
+  [data-slot="dropdown-menu-content"],
+  [data-slot="select-content"],
+  [data-slot="tooltip-content"]
+) {
   box-shadow: var(--cm-shadow-lg);
 }
 :is(.theme-dark, .theme-light)
@@ -797,7 +797,7 @@
 
 /* Inputs: recessed translucent fill, themed focus glow. */
 :is(.theme-dark, .theme-light)
-  :is([data-slot="input"], [data-slot="textarea"]) {
+:is([data-slot="input"], [data-slot="textarea"]) {
   background: var(--input);
 }
 :is(.theme-dark, .theme-light)

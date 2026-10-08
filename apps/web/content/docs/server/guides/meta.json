@@ -1,0 +1,14 @@
+{
+  "title": "Operations guides",
+  "icon": "Settings2",
+  "defaultOpen": true,
+  "pages": [
+    "production",
+    "services",
+    "storage",
+    "backups",
+    "upgrades",
+    "recovery",
+    "troubleshooting"
+  ]
+}

@@ -1,0 +1,25 @@
+---
+title: VCMS Server
+description: Install and operate the self-hosted service behind Velopulent CMS.
+---
+
+VCMS Server runs the dashboard, REST, GraphQL, gRPC, MCP, health endpoints, search, scheduler, and static application from one executable.
+
+<Cards>
+  <Card icon={<PackageOpen className="docs-card-icon docs-icon-violet" />} title="Install" href="/docs/server/install" description="Choose portable or native package operation." />
+  <Card icon={<Rocket className="docs-card-icon docs-icon-blue" />} title="First start" href="/docs/server/first-start" description="Create a root, sign in, and secure the instance." />
+  <Card icon={<ShieldCheck className="docs-card-icon docs-icon-green" />} title="Production checklist" href="/docs/server/guides/production" description="Set public URL, TLS, cookies, storage, and backups." />
+  <Card icon={<SlidersHorizontal className="docs-card-icon docs-icon-amber" />} title="Configuration" href="/docs/server/reference/configuration" description="Review every disk and database-backed setting." />
+</Cards>
+
+## Runtime surfaces
+
+| Surface | Default |
+| --- | --- |
+| Dashboard and HTTP APIs | `127.0.0.1:3000` |
+| gRPC | `127.0.0.1:50051` |
+| Liveness | `/health/live` |
+| Readiness | `/health/ready` |
+| Portable data | `<current directory>/vcms_data` |
+
+Native service registration selects installed mode. Directory existence and old paths never select a runtime mode.

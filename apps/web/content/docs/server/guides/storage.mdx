@@ -1,0 +1,20 @@
+---
+title: Configure file storage
+description: Use the built-in filesystem or an S3-compatible storage profile.
+---
+
+Fresh installations create an immutable default filesystem profile backed by `<root>/storage`.
+
+## Add an S3 profile
+
+Open **Instance settings → Storage**, create a profile, and provide its bucket, region, endpoint when required, public URL when applicable, and credentials. Probe the profile before assigning it to a new site.
+
+Credentials are encrypted in the database with a key derived from `master_key`. They do not appear in `config.toml`.
+
+## Assign storage to a site
+
+Choose a storage profile while creating the site. Files uploaded to that site use its profile. Plan migration before changing storage strategy for an established site because database records and stored objects must remain aligned.
+
+## Separate backup storage
+
+Backup destinations use independent configuration and credentials. Prefer a different bucket, account, or system from primary files so one storage incident cannot remove both data and recovery artifacts.

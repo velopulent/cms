@@ -34,6 +34,55 @@ pub struct FileService {
     in_flight: Arc<DashMap<String, ()>>,
 }
 
+/// Object-store multipart uploads need explicit abort even if their driving
+/// future is cancelled before it can take a normal error-return path.
+struct AbortOnDropUpload {
+    inner: Option<Box<dyn object_store::MultipartUpload>>,
+    completed: bool,
+}
+
+impl std::fmt::Debug for AbortOnDropUpload {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str("AbortOnDropUpload")
+    }
+}
+
+#[async_trait::async_trait]
+impl object_store::MultipartUpload for AbortOnDropUpload {
+    fn put_part(&mut self, data: object_store::PutPayload) -> object_store::UploadPart {
+        self.inner.as_mut().expect("active multipart upload").put_part(data)
+    }
+
+    async fn complete(&mut self) -> object_store::Result<object_store::PutResult> {
+        let result = self.inner.as_mut().expect("active multipart upload").complete().await?;
+        self.completed = true;
+        Ok(result)
+    }
+
+    async fn abort(&mut self) -> object_store::Result<()> {
+        if let Some(mut inner) = self.inner.take() {
+            inner.abort().await
+        } else {
+            Ok(())
+        }
+    }
+}
+
+impl Drop for AbortOnDropUpload {
+    fn drop(&mut self) {
+        if !self.completed
+            && let Some(mut inner) = self.inner.take()
+            && let Ok(runtime) = tokio::runtime::Handle::try_current()
+        {
+            runtime.spawn(async move {
+                if let Err(error) = inner.abort().await {
+                    tracing::warn!(error = ?error, "Cancelled multipart upload cleanup failed");
+                }
+            });
+        }
+    }
+}
+
 /// Inputs for [`FileService::upload_file`].
 pub struct UploadFileRequest<'a> {
     pub site_id: &'a str,
@@ -103,6 +152,9 @@ pub enum FileError {
     #[error("Invalid content type: {0}")]
     InvalidContentType(String),
 
+    #[error("Invalid filename: {0}")]
+    InvalidFilename(String),
+
     #[error("Storage error: {0}")]
     StorageError(String),
 
@@ -129,16 +181,21 @@ impl FileError {
             ),
             FileError::NoFileProvided => (StatusCode::BAD_REQUEST, Json(json!({"error": "No file provided"}))),
             FileError::FileTooLarge(msg) => (StatusCode::PAYLOAD_TOO_LARGE, Json(json!({"error": msg}))),
-            FileError::StorageError(msg) => (
+            FileError::StorageError(_) => (
                 StatusCode::INTERNAL_SERVER_ERROR,
-                Json(json!({"error": format!("Failed to store file: {}", msg)})),
+                Json(json!({"error": "storage_error", "message": "File storage failed"})),
             ),
             FileError::NoStorageConfigured => (
                 StatusCode::INTERNAL_SERVER_ERROR,
                 Json(json!({"error": "No storage providers configured"})),
             ),
-            FileError::DatabaseError(msg) => (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": msg}))),
-            FileError::InvalidContentType(msg) => (StatusCode::BAD_REQUEST, Json(json!({"error": msg}))),
+            FileError::DatabaseError(_) => (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({"error": "internal_error", "message": "Internal server error"})),
+            ),
+            FileError::InvalidContentType(msg) | FileError::InvalidFilename(msg) => {
+                (StatusCode::BAD_REQUEST, Json(json!({"error": msg})))
+            }
             FileError::AlreadyExists => (
                 StatusCode::CONFLICT,
                 Json(json!({"error": "File already exists (upload URL already used)"})),
@@ -161,6 +218,28 @@ impl FileService {
         }
     }
 
+    pub fn validate_filename(filename: &str) -> Result<(), FileError> {
+        if filename.trim().is_empty() || filename.len() > 255 || filename.chars().any(char::is_control) {
+            return Err(FileError::InvalidFilename(
+                "Use a nonempty filename of at most 255 UTF-8 bytes without control characters".into(),
+            ));
+        }
+        Ok(())
+    }
+
+    pub async fn claim_signed_upload(&self, file_id: &str, expires_at: i64) -> Result<(), FileError> {
+        if self
+            .file_repo
+            .claim_signed_upload(file_id, expires_at)
+            .await
+            .map_err(|error| FileError::DatabaseError(error.to_string()))?
+        {
+            Ok(())
+        } else {
+            Err(FileError::AlreadyExists)
+        }
+    }
+
     pub async fn list_files(&self, params: ListFilesParams<'_>) -> Result<FileListResult, FileError> {
         self.file_repo
             .list(params)
@@ -169,6 +248,12 @@ impl FileService {
     }
 
     pub async fn get_file(&self, id: &str, site_id: &str) -> Result<Option<File>, FileError> {
+        self.get_file_including_deleted(id, site_id)
+            .await
+            .map(|file| file.filter(|file| file.deleted_at.is_none()))
+    }
+
+    pub async fn get_file_including_deleted(&self, id: &str, site_id: &str) -> Result<Option<File>, FileError> {
         self.file_repo
             .get_by_id(id, site_id)
             .await
@@ -220,10 +305,10 @@ impl FileService {
     pub async fn upload_file_streaming<S>(
         &self,
         req: StreamingUploadRequest<'_>,
-        mut stream: S,
+        stream: S,
     ) -> Result<FileWithUrl, FileError>
     where
-        S: Stream<Item = Result<Bytes, Box<dyn std::error::Error + Send + Sync>>> + Unpin + Send,
+        S: Stream<Item = Result<Bytes, Box<dyn std::error::Error + Send + Sync>>> + Send,
     {
         let StreamingUploadRequest {
             site_id,
@@ -235,6 +320,8 @@ impl FileService {
             storage_provider,
             max_bytes,
         } = req;
+        futures_util::pin_mut!(stream);
+        Self::validate_filename(filename)?;
 
         info!(
             "Uploading file (streaming): site_id={}, content_type={}",
@@ -275,12 +362,15 @@ impl FileService {
             .extension()
             .and_then(|e| e.to_str())
             .unwrap_or("");
-        let generated_filename = if ext.is_empty() {
-            format!("{}.{}", &file_id[..8], self.mime_to_ext(content_type))
-        } else {
-            format!("{}.{}", &file_id[..8], ext)
-        };
-        let storage_key = format!("s_{}/f_{}/{}", site_id, file_id, generated_filename);
+        let generated_filename =
+            if ext.is_empty() || ext.len() > 16 || !ext.bytes().all(|byte| byte.is_ascii_alphanumeric()) {
+                format!("{}.{}", &file_id[..8], self.mime_to_ext(content_type))
+            } else {
+                format!("{}.{}", &file_id[..8], ext)
+            };
+        // Attempts must never overwrite the object belonging to another process
+        // that wins the durable files primary-key claim for the same signed URL.
+        let storage_key = format!("s_{}/f_{}/{}/{}", site_id, file_id, Uuid::now_v7(), generated_filename);
         let mime_type = content_type.to_string();
         let max = max_bytes;
 
@@ -288,6 +378,10 @@ impl FileService {
             error!("Failed to start multipart upload: key={}, error={}", storage_key, e);
             FileError::StorageError(e.to_string())
         })?;
+        let upload = Box::new(AbortOnDropUpload {
+            inner: Some(upload),
+            completed: false,
+        });
         let mut writer = WriteMultipart::new_with_chunk_size(upload, MULTIPART_CHUNK_SIZE);
 
         let too_large =
@@ -309,7 +403,7 @@ impl FileService {
                 None => break,
             };
 
-            total += chunk.len();
+            total = total.saturating_add(chunk.len());
             if total > max {
                 let _ = writer.abort().await;
                 warn!("File too large: site_id={}, size>{} bytes, max={}", site_id, total, max);
@@ -377,9 +471,10 @@ impl FileService {
         {
             Ok(file) => file,
             Err(RepositoryError::UniqueViolation(_)) => {
-                // A concurrent upload with the same pre-generated id won the
-                // insert. Do NOT delete the blob — the winner shares the key.
-                warn!("Duplicate file id on insert (upload URL reused): id={}", file_id);
+                // Each attempt owns a distinct key; clean only this losing blob.
+                if let Err(error) = storage.delete(&storage_key).await {
+                    warn!(error = ?error, "Failed to clean duplicate upload blob");
+                }
                 return Err(FileError::AlreadyExists);
             }
             Err(e) => {
@@ -571,6 +666,20 @@ impl FileService {
         use_thumbnail: bool,
         storage: Arc<dyn StorageProvider>,
     ) -> Result<(Bytes, String, String), FileError> {
+        let (_, mut stream, content_type, filename) = self.serve_file_streaming(id, use_thumbnail, storage).await?;
+        let mut bytes = bytes::BytesMut::new();
+        while let Some(chunk) = stream.next().await {
+            bytes.extend_from_slice(&chunk.map_err(|error| FileError::StorageError(error.to_string()))?);
+        }
+        Ok((bytes.freeze(), content_type, filename))
+    }
+
+    pub async fn serve_file_streaming(
+        &self,
+        id: &str,
+        use_thumbnail: bool,
+        storage: Arc<dyn StorageProvider>,
+    ) -> Result<(u64, crate::storage::StorageStream, String, String), FileError> {
         debug!("Serving file: id={}, use_thumbnail={}", id, use_thumbnail);
 
         let file = self
@@ -616,26 +725,11 @@ impl FileService {
             (file.storage_key.as_str(), file.mime_type.as_str())
         };
 
-        let bytes = match storage.get(key).await {
-            Ok(data) => {
-                debug!(
-                    "File served successfully: id={}, size={} bytes, storage_key={}",
-                    id,
-                    data.len(),
-                    key
-                );
-                data
-            }
-            Err(e) => {
-                error!(
-                    "Failed to retrieve file from storage: id={}, key={}, error={}",
-                    id, key, e
-                );
-                return Err(FileError::StorageError(e.to_string()));
-            }
-        };
-
-        Ok((bytes, content_type.to_string(), file.original_name))
+        let (size, stream) = storage.get_stream(key).await.map_err(|error| {
+            tracing::error!(error = ?error, "File delivery failed");
+            FileError::StorageError(error.to_string())
+        })?;
+        Ok((size, stream, content_type.to_string(), file.original_name))
     }
 
     pub(crate) fn file_to_with_url(&self, file: &File, storage: &dyn StorageProvider) -> FileWithUrl {
@@ -745,6 +839,46 @@ mod tests {
             created_by: Some("user-123".to_string()),
             created_at: "2024-01-01 00:00:00".to_string(),
         }
+    }
+
+    #[tokio::test]
+    async fn cancelling_upload_future_aborts_its_external_multipart_resource() {
+        #[derive(Debug)]
+        struct RecordingUpload(Arc<std::sync::atomic::AtomicBool>);
+        #[async_trait::async_trait]
+        impl object_store::MultipartUpload for RecordingUpload {
+            fn put_part(&mut self, _: object_store::PutPayload) -> object_store::UploadPart {
+                Box::pin(async { Ok(()) })
+            }
+            async fn complete(&mut self) -> object_store::Result<object_store::PutResult> {
+                unreachable!()
+            }
+            async fn abort(&mut self) -> object_store::Result<()> {
+                self.0.store(true, std::sync::atomic::Ordering::SeqCst);
+                Ok(())
+            }
+        }
+        let aborted = Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let flag = aborted.clone();
+        let (started, ready) = tokio::sync::oneshot::channel();
+        let task = tokio::spawn(async move {
+            let _writer = WriteMultipart::new(Box::new(AbortOnDropUpload {
+                inner: Some(Box::new(RecordingUpload(flag))),
+                completed: false,
+            }));
+            started.send(()).unwrap();
+            std::future::pending::<()>().await;
+        });
+        ready.await.unwrap();
+        task.abort();
+        assert!(task.await.unwrap_err().is_cancelled());
+        tokio::time::timeout(std::time::Duration::from_secs(1), async {
+            while !aborted.load(std::sync::atomic::Ordering::SeqCst) {
+                tokio::task::yield_now().await;
+            }
+        })
+        .await
+        .expect("Cancelled upload leaked its multipart resource");
     }
 
     #[tokio::test]

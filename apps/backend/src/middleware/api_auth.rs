@@ -7,7 +7,7 @@ use axum::{
 };
 
 use crate::config::Config;
-use crate::middleware::auth::verify_access_token;
+use crate::middleware::auth::{Actor, AuthContext, AuthMethod, verify_access_token};
 use crate::repository::Repository;
 
 pub async fn api_auth_middleware(mut request: Request, next: Next) -> Response {
@@ -15,7 +15,7 @@ pub async fn api_auth_middleware(mut request: Request, next: Next) -> Response {
         .headers()
         .get("Authorization")
         .and_then(|v| v.to_str().ok())
-        .and_then(|v| v.strip_prefix("Bearer "))
+        .and_then(crate::middleware::auth::parse_bearer_header)
         .map(|v| v.trim().to_string());
 
     let token = match auth_header {
@@ -56,6 +56,15 @@ pub async fn api_auth_middleware(mut request: Request, next: Next) -> Response {
         Err((status, err)) => return (status, err).into_response(),
     };
 
+    let auth_method = match &actor {
+        Actor::ApiKey(_) => AuthMethod::ApiKey,
+        Actor::PersonalToken(_) => AuthMethod::PersonalToken,
+        Actor::User(_) => AuthMethod::Session,
+    };
+    request.extensions_mut().insert(AuthContext {
+        actor: actor.clone(),
+        auth_method,
+    });
     request.extensions_mut().insert(actor);
     next.run(request).await
 }

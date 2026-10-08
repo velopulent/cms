@@ -1,0 +1,20 @@
+---
+title: Sites and two-tier roles
+description: Understand installation authority and site collaboration.
+---
+
+Velopulent CMS separates installation operations from site collaboration.
+
+## Instance roles
+
+The owner controls the trust boundary: role grants and instance-wide backup or restore. Admins manage users and sites. Both operator roles receive full authority inside every site without membership records.
+
+## Site roles
+
+Editors create content, manage files, and trigger deployments for assigned sites. Viewers read. Site roles cannot change schemas, integrations, keys, members, or site identity.
+
+This boundary keeps editorial work available without giving collaborators control over credentials or infrastructure-facing hooks.
+
+## Credentials follow the same boundary
+
+Site keys stay scoped to one site and can never manage membership, other keys, instance settings, or backups. Personal tokens carry one user's identity and scopes. Dashboard sessions represent interactive sign-ins.

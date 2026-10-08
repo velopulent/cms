@@ -77,6 +77,9 @@ impl Default for StorageRegistry {
     }
 }
 
+pub type StorageStream =
+    std::pin::Pin<Box<dyn futures_util::Stream<Item = Result<Bytes, Box<dyn std::error::Error + Send + Sync>>> + Send>>;
+
 #[async_trait]
 pub trait StorageProvider: Send + Sync {
     async fn put(
@@ -86,6 +89,15 @@ pub trait StorageProvider: Send + Sync {
         content_type: &str,
     ) -> Result<(), Box<dyn std::error::Error + Send + Sync>>;
     async fn get(&self, key: &str) -> Result<Bytes, Box<dyn std::error::Error + Send + Sync>>;
+    /// Native providers stream delivery without buffering a complete object.
+    /// The default supports existing trusted in-memory/test implementations.
+    async fn get_stream(&self, key: &str) -> Result<(u64, StorageStream), Box<dyn std::error::Error + Send + Sync>> {
+        let bytes = self.get(key).await?;
+        Ok((
+            bytes.len() as u64,
+            Box::pin(futures_util::stream::once(async { Ok(bytes) })),
+        ))
+    }
     async fn delete(&self, key: &str) -> Result<(), Box<dyn std::error::Error + Send + Sync>>;
     fn url(&self, key: &str, file_id: &str) -> String;
     /// Begin a streaming (multipart) upload to `key`. Drive it with

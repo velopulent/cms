@@ -1275,6 +1275,11 @@ fn map_to_values(spec: &schema::TableSpec, m: &Row) -> Vec<Option<String>> {
     spec.columns
         .iter()
         .map(|c| match m.get(c.name) {
+            // Versions are operational, not content: restored rows start in a fresh
+            // random range so ETags issued before the restore never match again.
+            _ if spec.name == "entries" && c.name == "version" => {
+                Some(rand::random_range((1i64 << 60)..(1i64 << 62)).to_string())
+            }
             Some(serde_json::Value::String(s)) => Some(s.clone()),
             Some(serde_json::Value::Null) | None => None,
             Some(other) => Some(other.to_string()),
@@ -1603,5 +1608,30 @@ mod tests {
         let mut tables = Tables::new();
         tables.insert("instance_settings".into(), vec![row]);
         assert!(validate_restored_settings(&tables).is_err());
+    }
+}
+
+#[cfg(test)]
+mod restore_version_tests {
+    use super::*;
+
+    #[test]
+    fn restore_never_reuses_archived_entry_versions() {
+        let entries = schema::table_spec("entries").unwrap();
+        let version_index = entries
+            .columns
+            .iter()
+            .position(|column| column.name == "version")
+            .unwrap();
+        let archived = serde_json::json!({"id": "entry", "data": "{}", "version": "7"})
+            .as_object()
+            .unwrap()
+            .clone();
+        let version = map_to_values(entries, &archived)[version_index]
+            .as_deref()
+            .unwrap()
+            .parse::<i64>()
+            .unwrap();
+        assert!(((1i64 << 60)..(1i64 << 62)).contains(&version));
     }
 }

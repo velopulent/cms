@@ -4,16 +4,14 @@ use axum::{
 };
 
 use crate::handlers::collection_handler::{
-    create_collection, delete_collection, get_collection, list_collections, update_collection,
+    create_collection, delete_collection, get_collection, get_public_collection, list_collections,
+    list_public_collections, update_collection,
 };
 
 pub fn public_routes() -> Router {
     Router::new()
-        .route("/collections", get(list_collections))
-        .route("/collections", post(create_collection))
-        .route("/collections/{collection_slug}", get(get_collection))
-        .route("/collections/{collection_slug}", put(update_collection))
-        .route("/collections/{collection_slug}", delete(delete_collection))
+        .route("/collections", get(list_public_collections))
+        .route("/collections/{collection_slug}", get(get_public_collection))
 }
 
 pub fn dashboard_routes() -> Router {

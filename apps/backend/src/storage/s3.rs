@@ -68,7 +68,10 @@ impl S3Storage {
     pub fn url(&self, key: &str, _file_id: &str) -> String {
         match &self.public_url {
             Some(base) => format!("{}/{}", base.trim_end_matches('/'), key),
-            None => format!("/api/files?key={}", key),
+            // Keep delivery behind VCMS when no public bucket URL exists. The
+            // `/api/files/{id}` handler resolves the storage key from the
+            // database and prevents exposing arbitrary object keys.
+            None => format!("/api/files/{}", _file_id),
         }
     }
 }
@@ -86,6 +89,19 @@ impl StorageProvider for S3Storage {
 
     async fn get(&self, key: &str) -> Result<Bytes, Box<dyn std::error::Error + Send + Sync>> {
         self.get(key).await
+    }
+
+    async fn get_stream(
+        &self,
+        key: &str,
+    ) -> Result<(u64, crate::storage::StorageStream), Box<dyn std::error::Error + Send + Sync>> {
+        use futures_util::StreamExt;
+        let object = self.store.get(&ObjectPath::from(key)).await?;
+        let size = object.meta.size;
+        let stream = object
+            .into_stream()
+            .map(|chunk| chunk.map_err(|error| Box::new(error) as Box<dyn std::error::Error + Send + Sync>));
+        Ok((size, Box::pin(stream)))
     }
 
     async fn delete(&self, key: &str) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {

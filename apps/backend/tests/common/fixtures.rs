@@ -28,26 +28,13 @@ pub async fn setup(server: &TestServer) -> (String, String, String) {
 
 /// Test-only scope presets for scoped machine site keys.
 pub fn site_key_scopes(access: &str) -> Vec<&'static str> {
-    let mut scopes = vec![
-        "site.read",
-        "site.settings.read",
-        "content.read",
-        "files.read",
-        "schema.read",
-        "webhooks.read",
-        "deployments.read",
-        "mcp.use",
-    ];
+    let mut scopes = vec!["site.read", "schema.read", "content.read", "files.read", "mcp.use"];
     if access == "write" {
         scopes.extend([
-            "site.settings.write",
+            "content.preview.read",
             "content.write",
+            "content.publish",
             "files.write",
-            "schema.write",
-            "webhooks.write",
-            "webhooks.trigger",
-            "deployments.write",
-            "deployments.trigger",
         ]);
     }
     scopes

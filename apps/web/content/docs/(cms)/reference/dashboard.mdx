@@ -1,0 +1,23 @@
+---
+title: Dashboard reference
+description: Routes, areas, and controls in the Velopulent CMS dashboard.
+---
+
+| Location | Contents |
+| --- | --- |
+| Sites | Accessible sites and site creation for operators |
+| Site overview | Collection counts, published and draft totals, recent content |
+| Collections | Schema list and model editor for operators |
+| Collection name | Entry list, filters, create and edit actions |
+| Singleton name | The site's one record for that model |
+| Files | Media grid, search, categories, trash, batch actions |
+| Deploy | Build triggers and run history |
+| Site settings | General, webhooks, API keys, MCP, members, backups |
+| Account | Profile, password, sessions, personal tokens |
+| Instance settings | General, security, storage, users, backups |
+
+The dashboard lives at `/dashboard`. Authentication routes live under `/api/auth`; dashboard resource requests use `/api/dashboard/v1`.
+
+## Troubleshooting navigation
+
+If a menu item is absent, compare your role with the [permission reference](./permissions). If the whole site is absent, ask an operator to verify membership. Operators should verify that the requested site still exists and that the user is not already an instance operator before inviting them.

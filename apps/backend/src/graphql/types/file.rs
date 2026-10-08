@@ -25,6 +25,15 @@ pub struct FileReference {
     pub field_name: String,
 }
 
+#[derive(SimpleObject)]
+pub struct FileUploadUrl {
+    pub upload_url: String,
+    pub file_id: String,
+    pub expires_at: String,
+    pub method: String,
+    pub content_type: String,
+}
+
 pub fn db_file_to_gql(f: crate::models::file::File, _gql_ctx: &GqlContext) -> File {
     let url = format!("/api/files/{}", f.id);
     let thumbnail_url = f

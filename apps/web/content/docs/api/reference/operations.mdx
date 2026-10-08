@@ -1,0 +1,47 @@
+---
+title: Operation catalog
+description: Find supported operations in each protocol and their live field-level references.
+---
+
+## Coverage
+
+| Capability | REST | GraphQL | gRPC | MCP |
+| --- | --- | --- | --- | --- |
+| Site discovery | Yes | Yes | Yes | Yes |
+| Collection and singleton schemas | Yes | Yes | Yes | Resources |
+| Entry list, search, read | Yes | Yes | Yes | Yes |
+| Entry create, update, delete | Yes | Yes | Yes | Yes |
+| Publish and unpublish | Yes | Yes | Yes | Yes |
+| Revisions and restore | Yes | Yes | Yes | Yes |
+| Singleton read and update | Yes | Yes | Yes | Yes |
+| File metadata and references | Yes | Yes | Yes | Metadata |
+| File upload | Multipart or signed URL | Signed URL | Client streaming | Signed URL |
+| File trash and restore | Yes | Yes | Yes | Yes |
+
+Schema changes, webhooks, deployments, members, API keys, and backups are dashboard-only.
+
+## REST
+
+Content routes live under `/api/v1/sites/{site_id}`; `GET /api/v1/sites` lists accessible sites. Entry and singleton updates use `PATCH`, and publication uses separate `POST …/publish` and `POST …/unpublish` operations. Binary delivery uses `/api/files/{id}`; signed uploads use `PUT /api/v1/files/upload/{token}`.
+
+`/api/v1/docs` serves interactive documentation and `/api/v1/openapi.json` the installed OpenAPI contract.
+
+## GraphQL
+
+The query root holds `sites` and `site(id:)`; all content reads sit under `site`. Mutations take an explicit `siteId`. Authenticated introspection is the field-level reference. Production mode turns off GraphiQL.
+
+## gRPC
+
+| Service | Operations |
+| --- | --- |
+| `SiteService` | List and get |
+| `CollectionService` | List and get schema |
+| `EntryService` | List, get, create, update, delete, publish, unpublish, revisions |
+| `SingletonService` | List, get, update |
+| `FileService` | List, get, references, streaming upload, trash, restore |
+
+`cms.proto` and server reflection describe every message.
+
+## MCP
+
+Tools cover sites, entries, publication, revisions, singletons, files, and signed upload URLs. Collection and singleton schemas are resources. Call `tools/list`, `resources/list`, and `resources/templates/list` for the installed surface.

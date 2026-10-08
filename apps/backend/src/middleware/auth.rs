@@ -172,11 +172,16 @@ fn extract_cookie_value(parts: &Parts, name: &str) -> Option<String> {
     None
 }
 
+pub(crate) fn parse_bearer_header(value: &str) -> Option<&str> {
+    let (scheme, credential) = value.split_once(' ')?;
+    let credential = credential.trim();
+    (scheme.eq_ignore_ascii_case("Bearer") && !credential.is_empty() && !credential.chars().any(char::is_whitespace))
+        .then_some(credential)
+}
+
 fn extract_bearer_token(parts: &Parts) -> Option<String> {
     let auth_header = parts.headers.get("Authorization")?.to_str().ok()?;
-    auth_header
-        .strip_prefix("Bearer ")
-        .map(|token| token.trim().to_string())
+    parse_bearer_header(auth_header).map(str::to_owned)
 }
 
 fn extract_csrf_token(parts: &Parts) -> Option<String> {
@@ -191,19 +196,7 @@ fn extract_csrf_token(parts: &Parts) -> Option<String> {
 /// read-only for most requests.
 pub(crate) const TOUCH_INTERVAL_SECS: i64 = 60;
 
-/// Lenient parse of the backend-specific timestamp texts: RFC3339, Postgres
-/// `::text` (`YYYY-MM-DD HH:MM:SS[.fff]+00`), or naive UTC (SQLite).
-pub(crate) fn parse_db_timestamp(s: &str) -> Option<chrono::DateTime<chrono::Utc>> {
-    if let Ok(dt) = chrono::DateTime::parse_from_rfc3339(s) {
-        return Some(dt.with_timezone(&chrono::Utc));
-    }
-    if let Ok(dt) = chrono::DateTime::parse_from_str(s, "%Y-%m-%d %H:%M:%S%.f%#z") {
-        return Some(dt.with_timezone(&chrono::Utc));
-    }
-    chrono::NaiveDateTime::parse_from_str(s, "%Y-%m-%d %H:%M:%S%.f")
-        .ok()
-        .map(|naive| naive.and_utc())
-}
+pub(crate) use crate::utils::timestamp::parse_db_timestamp;
 
 /// True when a "last seen/used" timestamp is missing, unparseable, or older
 /// than [`TOUCH_INTERVAL_SECS`] — i.e. it should be rewritten (safe fallback).
@@ -253,7 +246,10 @@ pub(crate) async fn verify_access_token(
             .access_token
             .find_personal_by_hmac(&token_hmac)
             .await
-            .map_err(|_| AuthError::unauthorized("Internal server error"))?;
+            .map_err(|error| {
+                tracing::error!(error = ?error, "Token authentication lookup failed");
+                AuthError::internal()
+            })?;
         let Some((id, user_id, _stored_hmac, expires_at, revoked_at, scopes_json, last_used_at)) = row else {
             return Err(AuthError::unauthorized("Invalid personal access token"));
         };
@@ -280,7 +276,10 @@ pub(crate) async fn verify_access_token(
         .access_token
         .find_by_hmac(&token_hmac)
         .await
-        .map_err(|_| AuthError::unauthorized("Internal server error"))?;
+        .map_err(|error| {
+            tracing::error!(error = ?error, "Token authentication lookup failed");
+            AuthError::internal()
+        })?;
     let Some((token_id, site_id, _stored_hmac, expires_at, revoked_at, scopes_json, last_used_at)) = row else {
         tracing::warn!("Invalid access token attempt");
         return Err(AuthError::unauthorized("Invalid access token"));
@@ -329,10 +328,10 @@ pub fn is_token_not_expired(expires_at: Option<&str>) -> bool {
 
     let now = chrono::Utc::now();
 
-    match chrono::DateTime::parse_from_rfc3339(exp) {
-        Ok(dt) => dt >= now,
-        Err(e) => {
-            tracing::warn!(error = %e, expires_at = %exp, "Invalid expiry format");
+    match parse_db_timestamp(exp) {
+        Some(datetime) => datetime > now,
+        None => {
+            tracing::warn!(expires_at = %exp, "Invalid expiry format");
             false
         }
     }
@@ -350,12 +349,12 @@ pub async fn require_site_action(
             if !Authorizer::token_hard_denied(action) && scopes_allow_action(&key.scopes, action) {
                 Ok(())
             } else {
-                Err(AuthError::insufficient_permission("token scope"))
+                Err(token_scope_denied(action))
             }
         }
         Actor::PersonalToken(token) => {
             if Authorizer::token_hard_denied(action) || !scopes_allow_action(&token.scopes, action) {
-                return Err(AuthError::insufficient_permission("token scope"));
+                return Err(token_scope_denied(action));
             }
             check_site_action_repo(repository, &token.user_id, &ctx.site_id, action).await
         }
@@ -363,49 +362,41 @@ pub async fn require_site_action(
     }
 }
 
+fn token_scope_denied(action: Action) -> (StatusCode, Json<AuthError>) {
+    match scope_for_action(action) {
+        Some(scope) if !Authorizer::token_hard_denied(action) => AuthError::insufficient_permission(scope.as_str()),
+        _ => AuthError::site_token_denied(),
+    }
+}
+
 pub const fn scope_for_action(action: Action) -> Option<TokenScope> {
     Some(match action {
         Action::SiteRead => TokenScope::SiteRead,
-        Action::SiteManage => TokenScope::SiteSettingsWrite,
         Action::ContentRead => TokenScope::ContentRead,
+        Action::ContentPreviewRead => TokenScope::ContentPreviewRead,
         Action::ContentWrite => TokenScope::ContentWrite,
+        Action::ContentPublish => TokenScope::ContentPublish,
         Action::SchemaRead => TokenScope::SchemaRead,
-        Action::SchemaWrite => TokenScope::SchemaWrite,
         Action::FilesRead => TokenScope::FilesRead,
         Action::FilesWrite => TokenScope::FilesWrite,
-        Action::WebhooksRead => TokenScope::WebhooksRead,
-        Action::WebhooksWrite => TokenScope::WebhooksWrite,
-        Action::WebhooksTrigger => TokenScope::WebhooksTrigger,
-        Action::DeploymentsRead => TokenScope::DeploymentsRead,
-        Action::DeploymentsWrite => TokenScope::DeploymentsWrite,
-        Action::DeploymentsTrigger => TokenScope::DeploymentsTrigger,
         _ => return None,
     })
 }
 
 pub fn scopes_allow_action(scopes: &TokenScopes, action: Action) -> bool {
-    match action {
-        Action::SiteRead => scopes.contains(&TokenScope::SiteRead) || scopes.contains(&TokenScope::SiteSettingsRead),
-        _ => scope_for_action(action).is_some_and(|scope| scopes.contains(&scope)),
-    }
+    scope_for_action(action).is_some_and(|scope| scopes.contains(&scope))
 }
 
 pub const fn action_for_scope(scope: TokenScope) -> Option<Action> {
     Some(match scope {
-        TokenScope::SiteRead | TokenScope::SiteSettingsRead => Action::SiteRead,
-        TokenScope::SiteSettingsWrite => Action::SiteManage,
+        TokenScope::SiteRead => Action::SiteRead,
         TokenScope::ContentRead => Action::ContentRead,
+        TokenScope::ContentPreviewRead => Action::ContentPreviewRead,
         TokenScope::ContentWrite => Action::ContentWrite,
+        TokenScope::ContentPublish => Action::ContentPublish,
         TokenScope::SchemaRead => Action::SchemaRead,
-        TokenScope::SchemaWrite => Action::SchemaWrite,
         TokenScope::FilesRead => Action::FilesRead,
         TokenScope::FilesWrite => Action::FilesWrite,
-        TokenScope::WebhooksRead => Action::WebhooksRead,
-        TokenScope::WebhooksWrite => Action::WebhooksWrite,
-        TokenScope::WebhooksTrigger => Action::WebhooksTrigger,
-        TokenScope::DeploymentsRead => Action::DeploymentsRead,
-        TokenScope::DeploymentsWrite => Action::DeploymentsWrite,
-        TokenScope::DeploymentsTrigger => Action::DeploymentsTrigger,
         TokenScope::McpUse => return None,
     })
 }
@@ -562,10 +553,9 @@ mod tests {
     #[test]
     fn editor_token_scope_ceiling_follows_site_rbac() {
         for scope in [
-            TokenScope::WebhooksRead,
-            TokenScope::DeploymentsRead,
-            TokenScope::DeploymentsTrigger,
+            TokenScope::ContentPreviewRead,
             TokenScope::ContentWrite,
+            TokenScope::ContentPublish,
             TokenScope::FilesWrite,
             TokenScope::McpUse,
         ] {
@@ -573,13 +563,11 @@ mod tests {
         }
 
         for scope in [
-            TokenScope::SiteSettingsWrite,
-            TokenScope::SchemaWrite,
-            TokenScope::WebhooksWrite,
-            TokenScope::WebhooksTrigger,
-            TokenScope::DeploymentsWrite,
+            TokenScope::ContentPreviewRead,
+            TokenScope::ContentWrite,
+            TokenScope::ContentPublish,
         ] {
-            assert!(!site_role_allows_token_scope(SiteRole::Editor, scope), "{scope:?}");
+            assert!(!site_role_allows_token_scope(SiteRole::Viewer, scope), "{scope:?}");
         }
     }
 }

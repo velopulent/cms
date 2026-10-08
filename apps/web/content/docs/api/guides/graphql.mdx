@@ -1,0 +1,70 @@
+---
+title: Use GraphQL
+description: Query and change site content through the GraphQL endpoint.
+---
+
+GraphQL uses `/api/graphql` for the API. Outside production mode, opening the same URL in a browser serves the GraphiQL explorer.
+
+## Shape of the schema
+
+The query root has two fields:
+
+- `sites` lists the sites the credential can read (needs `site.read`).
+- `site(id:)` selects one site. Everything about that site's content lives beneath it.
+
+```graphql
+{
+  site(id: "SITE_ID") {
+    collections { slug name }
+    entries(collectionSlug: "posts", perPage: 20) {
+      nodes { id slug data publishedAt }
+      totalCount
+      pageInfo { hasNextPage }
+    }
+    singletons { slug data }
+  }
+}
+```
+
+Each field under `site` checks its own scope, so a token with only `content.read` can read entries without `site.read`. The `name`, `createdAt`, and `updatedAt` fields of a site need `site.read`.
+
+`Site` also exposes `collection(slug:)`, `entry(id:)`, `entryRevisions(entryId:)`, `entryRevision(entryId:, revisionNumber:)`, `files`, `file(id:)`, and `fileReferences(fileId:)`. Reads return published content unless you pass `includeDrafts: true`, which needs `content.preview.read`. Revision fields always need it.
+
+## Send a request
+
+```bash
+curl http://127.0.0.1:3000/api/graphql \
+  -H "Authorization: Bearer $VCMS_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d "{\"query\":\"{ site(id: \\\"$VCMS_SITE_ID\\\") { entries(collectionSlug: \\\"posts\\\") { nodes { slug data } } } }\"}"
+```
+
+## Mutations
+
+Mutations take an explicit `siteId`:
+
+| Mutation | Scope |
+| --- | --- |
+| `createEntry`, `updateEntry`, `deleteEntry`, `restoreRevision` | `content.write` |
+| `setEntryPublication`, or `updateEntry` with a `status` | `content.publish` |
+| `updateSingleton` | `content.write` |
+| `createFileUpload`, `deleteFile`, `restoreFile` | `files.write` |
+
+`updateEntry` and `updateSingleton` accept `expectedVersion`. When it no longer matches the stored version, the mutation fails and writes nothing.
+
+```graphql
+mutation {
+  setEntryPublication(siteId: "SITE_ID", id: "ENTRY_ID", published: true) {
+    id
+    status
+  }
+}
+```
+
+## Limits
+
+Queries are limited to depth 15, complexity 2000, and 256 aliases. `Collection.entries` returns at most 200 entries; page through `site.entries` for more. Introspection needs an authenticated request.
+
+<Callout type="info">
+GraphQL authorization matches REST authorization. A query cannot expand a token's site or action permissions.
+</Callout>

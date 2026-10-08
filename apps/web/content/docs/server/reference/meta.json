@@ -1,0 +1,6 @@
+{
+  "title": "Reference",
+  "icon": "BookOpenText",
+  "defaultOpen": true,
+  "pages": ["configuration", "data-layout", "cli", "health-security"]
+}

@@ -1,0 +1,40 @@
+---
+title: Operate the native service
+description: Start, stop, inspect, and diagnose systemd, launchd, and Windows services.
+---
+
+## Normal inspection
+
+Run these product-level checks first:
+
+```bash
+vcms service status
+vcms config show
+vcms doctor
+```
+
+`service status` normalizes manager state. `doctor` checks configuration, root permissions, database schema, storage, listener availability, and service identity without creating or migrating a database.
+
+## Linux
+
+```bash
+sudo systemctl start vcms
+sudo systemctl stop vcms
+sudo systemctl restart vcms
+systemctl status vcms
+journalctl -u vcms
+```
+
+The unit runs `/usr/bin/vcms service run` as user and group `vcms`.
+
+## macOS
+
+The package registers label `com.velopulent.vcms` and runs under `_vcms`. Use `launchctl` with the installed plist. Package logs also target `/Library/Logs/vcms`.
+
+## Windows
+
+Use the Services console or `sc.exe` to inspect and control the `vcms` service. The MSI configures automatic startup.
+
+<Callout type="warn">
+`vcms service run` is a hidden package entry point. Do not launch it manually. Use `vcms serve` for portable operation or the native manager for installed operation.
+</Callout>

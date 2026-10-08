@@ -8,13 +8,13 @@ use tonic::transport::Server;
 use crate::config::Config;
 use crate::grpc::interceptor::AuthInterceptor;
 use crate::grpc::services::admin_site::SiteServiceImpl;
-use crate::grpc::services::admin_webhook::WebhookServiceImpl;
 use crate::grpc::services::collection::CollectionServiceImpl;
 use crate::grpc::services::entry::EntryServiceImpl;
 use crate::grpc::services::file::FileServiceImpl;
 use crate::grpc::services::singleton::SingletonServiceImpl;
 use crate::repository::Repository;
 use crate::services::Services;
+use crate::services::settings::SettingsService;
 use crate::storage::StorageRegistry;
 
 /// Boxed, pinned future returned by [`spawn_grpc_server`] (the gRPC server task).
@@ -25,15 +25,22 @@ pub async fn start_grpc_server(
     repository: Arc<Repository>,
     config: Arc<Config>,
     storage_registry: Arc<StorageRegistry>,
+    settings: SettingsService,
     listener: tokio::net::TcpListener,
     shutdown: impl Future<Output = ()> + Send + 'static,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let collection_svc = CollectionServiceImpl::new(services.collection.clone(), repository.clone());
-    let entry_svc = EntryServiceImpl::new(services.entry.clone(), repository.clone());
-    let singleton_svc = SingletonServiceImpl::new(services.singleton.clone(), storage_registry, repository.clone());
-    let file_svc = FileServiceImpl::new(services.file.clone(), repository.clone());
+    let entry_svc = EntryServiceImpl::new(services.entry.clone(), repository.clone(), config.clone());
+    let singleton_svc =
+        SingletonServiceImpl::new(services.singleton.clone(), storage_registry.clone(), repository.clone());
+    let file_svc = FileServiceImpl::new(
+        services.file.clone(),
+        repository.clone(),
+        storage_registry,
+        config.clone(),
+        settings,
+    );
     let site_svc = SiteServiceImpl::new(services.site.clone(), repository.clone());
-    let webhook_svc = WebhookServiceImpl::new(services.webhook.clone(), repository.clone());
 
     let interceptor = AuthInterceptor::new(config.clone());
 
@@ -53,8 +60,6 @@ pub async fn start_grpc_server(
         crate::grpc::cms::v1::file_service_server::FileServiceServer::with_interceptor(file_svc, interceptor.clone());
     let site_svc =
         crate::grpc::cms::v1::site_service_server::SiteServiceServer::with_interceptor(site_svc, interceptor.clone());
-    let webhook_svc =
-        crate::grpc::cms::v1::webhook_service_server::WebhookServiceServer::with_interceptor(webhook_svc, interceptor);
 
     let reflection_service = tonic_reflection::server::Builder::configure()
         .register_encoded_file_descriptor_set(tonic::include_file_descriptor_set!("cms_descriptor"))
@@ -78,9 +83,6 @@ pub async fn start_grpc_server(
     health_reporter
         .set_serving::<crate::grpc::cms::v1::site_service_server::SiteServiceServer<SiteServiceImpl>>()
         .await;
-    health_reporter
-        .set_serving::<crate::grpc::cms::v1::webhook_service_server::WebhookServiceServer<WebhookServiceImpl>>()
-        .await;
 
     Server::builder()
         .add_service(reflection_service)
@@ -90,7 +92,6 @@ pub async fn start_grpc_server(
         .add_service(singleton_svc)
         .add_service(file_svc)
         .add_service(site_svc)
-        .add_service(webhook_svc)
         .serve_with_incoming_shutdown(TcpListenerStream::new(listener), shutdown)
         .await?;
 
@@ -102,6 +103,7 @@ pub fn spawn_grpc_server(
     repository: Arc<Repository>,
     config: Arc<Config>,
     storage_registry: Arc<StorageRegistry>,
+    settings: SettingsService,
     listener: tokio::net::TcpListener,
     shutdown: Pin<Box<dyn Future<Output = ()> + Send>>,
 ) -> GrpcServerFuture {
@@ -110,6 +112,7 @@ pub fn spawn_grpc_server(
         repository,
         config,
         storage_registry,
+        settings,
         listener,
         shutdown,
     ))

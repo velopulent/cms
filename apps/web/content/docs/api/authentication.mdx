@@ -1,0 +1,78 @@
+---
+title: Authentication
+description: Choose, send, scope, rotate, and revoke VCMS API credentials.
+---
+
+Send API credentials as a bearer token:
+
+```http
+Authorization: Bearer vcms_site_…
+```
+
+## Credential types
+
+| Credential | Prefix | Acts as | Sites |
+| --- | --- | --- | --- |
+| Site key | `vcms_site_` | The site itself | Only the site that issued it |
+| Personal token | `vcms_pat_` | One user, limited by the token's scopes | Any site where that user currently has a role |
+
+Create site keys under **Site settings → API keys**. Create personal tokens under **Account → Personal tokens**. Use site keys for applications and build pipelines. Use personal tokens for tools that act for one person, such as a local MCP client.
+
+A personal token never exceeds its user's live role. When the user loses access to a site, the token loses it too.
+
+## Scopes
+
+Every request needs the scope for its action:
+
+| Scope | Allows |
+| --- | --- |
+| `site.read` | List sites and read site details |
+| `schema.read` | Read collection and singleton definitions |
+| `content.read` | Read published entries and singletons |
+| `content.preview.read` | Read drafts and revision history |
+| `content.write` | Create, update, and delete entries; update singletons; restore revisions |
+| `content.publish` | Publish and unpublish entries, or change an entry's status |
+| `files.read` | Read file metadata and references |
+| `files.write` | Upload, trash, and restore files |
+| `mcp.use` | Connect to the MCP endpoint |
+
+A **Read only** site key gets `site.read`, `schema.read`, `content.read`, `files.read`, and `mcp.use`. A **Read & write** key adds `content.preview.read`, `content.write`, `content.publish`, and `files.write`.
+
+A personal token can carry any of these scopes, but each request still checks the user's role on the target site. Drafts, revisions, writes, and publication need the editor role or an instance role there, so a viewer's write-scoped token is refused.
+
+A `403` response names the missing scope:
+
+```json
+{ "status": 403, "code": "forbidden", "detail": "Token requires the 'content.preview.read' scope." }
+```
+
+Tokens never manage schemas, webhooks, deployments, members, keys, or backups. Those operations stay in the dashboard.
+
+## Choose the site
+
+Every site-scoped request names its site explicitly, for both credential types:
+
+| Protocol | Where the site goes |
+| --- | --- |
+| REST | Path: `/api/v1/sites/{site_id}/…` |
+| GraphQL | Query root: `site(id: "…") { … }`; mutation argument `siteId` |
+| gRPC | `site_id` field on every site-scoped request |
+| MCP | `site_id` argument on every site tool |
+
+A site key sent with another site's ID gets `403`. Discover IDs with `GET /api/v1/sites`, GraphQL `sites`, gRPC `ListSites`, or the MCP `list_sites` tool.
+
+## Dashboard sessions
+
+The dashboard uses a cookie session and CSRF token. Do not automate `/api/dashboard` with a site key. Public integrations should use protocol endpoints and bearer credentials.
+
+## Credential handling
+
+- Store tokens in your deployment platform's secret store.
+- Give each integration its own token and descriptive name.
+- Select the smallest scope set.
+- Copy a new raw token once, then close the dialog.
+- Revoke exposed or unused tokens and replace them at the consumer.
+
+<Callout type="warn">
+URLs, screenshots, logs, and source code are unsafe places for bearer tokens. Never pass a token in a query string.
+</Callout>

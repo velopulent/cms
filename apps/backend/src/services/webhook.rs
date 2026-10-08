@@ -66,7 +66,10 @@ impl WebhookError {
             WebhookError::NotFound => (StatusCode::NOT_FOUND, Json(json!({"error": "Webhook not found"}))),
             WebhookError::InvalidUrl(msg) => (StatusCode::BAD_REQUEST, Json(json!({"error": msg}))),
             WebhookError::InvalidLabel(msg) => (StatusCode::BAD_REQUEST, Json(json!({"error": msg}))),
-            WebhookError::DatabaseError(msg) => (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": msg}))),
+            WebhookError::DatabaseError(_) => (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({"error": "internal_error", "message": "Internal server error"})),
+            ),
             WebhookError::DeliveryFailed(_) => (
                 StatusCode::BAD_GATEWAY,
                 Json(json!({"error": "Webhook delivery failed"})),
@@ -220,7 +223,7 @@ impl WebhookService {
     pub async fn update_webhook(
         &self,
         id: &str,
-        _site_id: &str,
+        site_id: &str,
         label: Option<&str>,
         url: Option<&str>,
         headers: Option<&HashMap<String, String>>,
@@ -259,7 +262,7 @@ impl WebhookService {
         debug!("Updating webhook in repository: id={}", id);
         match self
             .webhook_repo
-            .update(id, label, url, headers_encrypted.as_deref())
+            .update(id, site_id, label, url, headers_encrypted.as_deref())
             .await
         {
             Ok(webhook) => {

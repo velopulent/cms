@@ -86,7 +86,9 @@ pub enum Action {
     SiteManage,
     SiteDelete,
     ContentRead,
+    ContentPreviewRead,
     ContentWrite,
+    ContentPublish,
     SchemaRead,
     SchemaWrite,
     FilesRead,
@@ -152,7 +154,8 @@ impl Authorizer {
             | Action::FilesRead
             | Action::WebhooksRead
             | Action::DeploymentsRead => true,
-            Action::ContentWrite | Action::FilesWrite | Action::DeploymentsTrigger => {
+            Action::ContentPreviewRead => matches!(role, SiteRole::Editor),
+            Action::ContentWrite | Action::ContentPublish | Action::FilesWrite | Action::DeploymentsTrigger => {
                 matches!(role, SiteRole::Editor)
             }
             _ => false,
@@ -181,12 +184,14 @@ impl Authorizer {
         match action {
             Action::SiteRead
             | Action::ContentRead
+            | Action::ContentPreviewRead
             | Action::SchemaRead
             | Action::FilesRead
             | Action::WebhooksRead
             | Action::DeploymentsRead => true,
             Action::SiteManage
             | Action::ContentWrite
+            | Action::ContentPublish
             | Action::SchemaWrite
             | Action::FilesWrite
             | Action::WebhooksWrite

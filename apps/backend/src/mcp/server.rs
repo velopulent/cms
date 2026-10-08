@@ -1,11 +1,12 @@
+use std::borrow::Cow;
 use std::sync::Arc;
 use std::time::Instant;
 
 use rmcp::handler::server::wrapper::Parameters;
 use rmcp::model::{
-    CallToolRequestParams, CallToolResult, Implementation, InitializeRequestParams, ListResourcesResult,
-    ListToolsResult, PaginatedRequestParams, ReadResourceRequestParams, ReadResourceResult, ServerCapabilities,
-    ServerInfo,
+    CallToolRequestParams, CallToolResponse, CallToolResult, Implementation, ListResourceTemplatesResult,
+    ListResourcesResult, ListToolsResult, PaginatedRequestParams, ProtocolVersion, ReadResourceRequestParams,
+    ReadResourceResponse, ServerCapabilities, ServerConfig, ToolAnnotations,
 };
 use rmcp::service::RequestContext;
 use rmcp::service::RoleServer;
@@ -19,7 +20,7 @@ use crate::services::authorization::AuthorizationService;
 use crate::storage::StorageRegistry;
 
 use crate::mcp::resources::site_schema;
-use crate::mcp::tools::{collection, entry, file, singleton, site, webhook};
+use crate::mcp::tools::{entry, file, singleton, site};
 
 #[derive(Clone)]
 pub struct CmsServer {
@@ -51,8 +52,38 @@ impl CmsServer {
     #[tool(description = "List sites accessible to the authenticated user")]
     async fn list_sites(&self, ctx: RequestContext<RoleServer>) -> Result<CallToolResult, McpError> {
         let actor = self.resolve_actor(&ctx)?;
+        let allowed = match &actor {
+            Actor::ApiKey(key) => crate::middleware::auth::scopes_allow_action(
+                &key.scopes,
+                crate::models::authorization::Action::SiteRead,
+            ),
+            Actor::PersonalToken(token) => crate::middleware::auth::scopes_allow_action(
+                &token.scopes,
+                crate::models::authorization::Action::SiteRead,
+            ),
+            Actor::User(_) => true,
+        };
+        if !allowed {
+            return Ok(crate::mcp::auth::tool_error(
+                crate::services::error::ServiceError::InsufficientPermission("site.read".into()),
+            ));
+        }
         match self.services.site.list_sites_for_actor(&actor).await {
-            Ok(v) => crate::mcp::auth::ok_result(&v),
+            Ok(v) => {
+                let sites: Vec<serde_json::Value> = v
+                    .into_iter()
+                    .map(|site| {
+                        serde_json::json!({
+                            "id": site.get("id"),
+                            "name": site.get("name"),
+                            "created_at": site.get("created_at"),
+                            "updated_at": site.get("updated_at"),
+                            "role": site.get("role"),
+                        })
+                    })
+                    .collect();
+                crate::mcp::auth::ok_result(&serde_json::json!({ "sites": sites }))
+            }
             Err(e) => Err(crate::mcp::auth::map_err(e)),
         }
     }
@@ -65,66 +96,6 @@ impl CmsServer {
     ) -> Result<CallToolResult, McpError> {
         let actor = self.resolve_actor(&ctx)?;
         site::get_site(&self.authorizer, &self.services, &actor, params).await
-    }
-
-    #[tool(description = "Update a site's name")]
-    async fn update_site(
-        &self,
-        ctx: RequestContext<RoleServer>,
-        params: Parameters<site::UpdateSiteParams>,
-    ) -> Result<CallToolResult, McpError> {
-        let actor = self.resolve_actor(&ctx)?;
-        site::update_site(&self.authorizer, &self.services, &actor, params).await
-    }
-
-    #[tool(description = "List collections in a site")]
-    async fn list_collections(
-        &self,
-        ctx: RequestContext<RoleServer>,
-        params: Parameters<collection::ListCollectionsParams>,
-    ) -> Result<CallToolResult, McpError> {
-        let actor = self.resolve_actor(&ctx)?;
-        collection::list_collections(&self.authorizer, &self.services, &actor, params).await
-    }
-
-    #[tool(description = "Get a collection by slug")]
-    async fn get_collection(
-        &self,
-        ctx: RequestContext<RoleServer>,
-        params: Parameters<collection::GetCollectionParams>,
-    ) -> Result<CallToolResult, McpError> {
-        let actor = self.resolve_actor(&ctx)?;
-        collection::get_collection(&self.authorizer, &self.services, &actor, params).await
-    }
-
-    #[tool(description = "Create a new collection")]
-    async fn create_collection(
-        &self,
-        ctx: RequestContext<RoleServer>,
-        params: Parameters<collection::CreateCollectionParams>,
-    ) -> Result<CallToolResult, McpError> {
-        let actor = self.resolve_actor(&ctx)?;
-        collection::create_collection(&self.authorizer, &self.services, &actor, params).await
-    }
-
-    #[tool(description = "Update a collection's definition")]
-    async fn update_collection(
-        &self,
-        ctx: RequestContext<RoleServer>,
-        params: Parameters<collection::UpdateCollectionParams>,
-    ) -> Result<CallToolResult, McpError> {
-        let actor = self.resolve_actor(&ctx)?;
-        collection::update_collection(&self.authorizer, &self.services, &actor, params).await
-    }
-
-    #[tool(description = "Delete a collection")]
-    async fn delete_collection(
-        &self,
-        ctx: RequestContext<RoleServer>,
-        params: Parameters<collection::DeleteCollectionParams>,
-    ) -> Result<CallToolResult, McpError> {
-        let actor = self.resolve_actor(&ctx)?;
-        collection::delete_collection(&self.authorizer, &self.services, &actor, params).await
     }
 
     #[tool(description = "List entries in a site, optionally filtered by collection and status")]
@@ -177,24 +148,14 @@ impl CmsServer {
         entry::delete_entry(&self.authorizer, &self.services, &actor, params).await
     }
 
-    #[tool(description = "Publish an entry")]
-    async fn publish_entry(
+    #[tool(description = "Publish or unpublish an entry. Set published explicitly; requires content.publish.")]
+    async fn set_entry_publication(
         &self,
         ctx: RequestContext<RoleServer>,
-        params: Parameters<entry::PublishEntryParams>,
+        params: Parameters<entry::SetPublicationParams>,
     ) -> Result<CallToolResult, McpError> {
         let actor = self.resolve_actor(&ctx)?;
-        entry::publish_entry(&self.authorizer, &self.services, &actor, params).await
-    }
-
-    #[tool(description = "Unpublish an entry")]
-    async fn unpublish_entry(
-        &self,
-        ctx: RequestContext<RoleServer>,
-        params: Parameters<entry::UnpublishEntryParams>,
-    ) -> Result<CallToolResult, McpError> {
-        let actor = self.resolve_actor(&ctx)?;
-        entry::unpublish_entry(&self.authorizer, &self.services, &actor, params).await
+        entry::set_publication(&self.authorizer, &self.services, &actor, params).await
     }
 
     #[tool(description = "List singletons in a site")]
@@ -248,9 +209,9 @@ impl CmsServer {
     }
 
     #[tool(
-        description = "Create a single-use signed upload URL. To upload: send an HTTP PUT to upload_url with the raw file bytes as the request body and a Content-Type header equal to content_type. The URL expires at expires_at and can be used exactly once. The PUT response body is the created file record (JSON, includes the file id and url)."
+        description = "Create a single-use signed upload URL. PUT raw bytes to upload_url with the exact content_type before expires_at; the URL is bound to this site and storage profile."
     )]
-    async fn create_upload_url(
+    async fn create_file_upload(
         &self,
         ctx: RequestContext<RoleServer>,
         params: Parameters<file::CreateUploadUrlParams>,
@@ -278,76 +239,6 @@ impl CmsServer {
         file::delete_file(&self.authorizer, &self.services, &actor, params).await
     }
 
-    #[tool(description = "List webhooks for a site")]
-    async fn list_webhooks(
-        &self,
-        ctx: RequestContext<RoleServer>,
-        params: Parameters<webhook::ListWebhooksParams>,
-    ) -> Result<CallToolResult, McpError> {
-        let actor = self.resolve_actor(&ctx)?;
-        webhook::list_webhooks(&self.authorizer, &self.services, &actor, params).await
-    }
-
-    #[tool(description = "Create a webhook")]
-    async fn create_webhook(
-        &self,
-        ctx: RequestContext<RoleServer>,
-        params: Parameters<webhook::CreateWebhookParams>,
-    ) -> Result<CallToolResult, McpError> {
-        let actor = self.resolve_actor(&ctx)?;
-        webhook::create_webhook(&self.authorizer, &self.services, &actor, params).await
-    }
-
-    #[tool(description = "Trigger a webhook")]
-    async fn trigger_webhook(
-        &self,
-        ctx: RequestContext<RoleServer>,
-        params: Parameters<webhook::TriggerWebhookParams>,
-    ) -> Result<CallToolResult, McpError> {
-        let actor = self.resolve_actor(&ctx)?;
-        webhook::trigger_webhook(&self.authorizer, &self.services, &actor, params).await
-    }
-
-    #[tool(description = "Delete a webhook")]
-    async fn delete_webhook(
-        &self,
-        ctx: RequestContext<RoleServer>,
-        params: Parameters<webhook::DeleteWebhookParams>,
-    ) -> Result<CallToolResult, McpError> {
-        let actor = self.resolve_actor(&ctx)?;
-        webhook::delete_webhook(&self.authorizer, &self.services, &actor, params).await
-    }
-
-    #[tool(description = "Get a webhook by ID")]
-    async fn get_webhook(
-        &self,
-        ctx: RequestContext<RoleServer>,
-        params: Parameters<webhook::GetWebhookParams>,
-    ) -> Result<CallToolResult, McpError> {
-        let actor = self.resolve_actor(&ctx)?;
-        webhook::get_webhook(&self.authorizer, &self.services, &actor, params).await
-    }
-
-    #[tool(description = "Update a webhook")]
-    async fn update_webhook(
-        &self,
-        ctx: RequestContext<RoleServer>,
-        params: Parameters<webhook::UpdateWebhookParams>,
-    ) -> Result<CallToolResult, McpError> {
-        let actor = self.resolve_actor(&ctx)?;
-        webhook::update_webhook(&self.authorizer, &self.services, &actor, params).await
-    }
-
-    #[tool(description = "List delivery attempts for a webhook")]
-    async fn list_webhook_deliveries(
-        &self,
-        ctx: RequestContext<RoleServer>,
-        params: Parameters<webhook::ListWebhookDeliveriesParams>,
-    ) -> Result<CallToolResult, McpError> {
-        let actor = self.resolve_actor(&ctx)?;
-        webhook::list_webhook_deliveries(&self.authorizer, &self.services, &actor, params).await
-    }
-
     #[tool(description = "Restore a soft-deleted file")]
     async fn restore_file(
         &self,
@@ -368,7 +259,17 @@ impl CmsServer {
         entry::list_revisions(&self.authorizer, &self.services, &actor, params).await
     }
 
-    #[tool(description = "Restore an entry to a previous revision")]
+    #[tool(description = "Read one entry revision by number")]
+    async fn get_revision(
+        &self,
+        ctx: RequestContext<RoleServer>,
+        params: Parameters<entry::GetRevisionParams>,
+    ) -> Result<CallToolResult, McpError> {
+        let actor = self.resolve_actor(&ctx)?;
+        entry::get_revision(&self.authorizer, &self.services, &actor, params).await
+    }
+
+    #[tool(description = "Restore an entry to a previous revision; this creates a new current revision")]
     async fn restore_revision(
         &self,
         ctx: RequestContext<RoleServer>,
@@ -379,32 +280,38 @@ impl CmsServer {
     }
 }
 
-use crate::mcp::schema::clean_input_schema;
-
 #[tool_handler]
 impl ServerHandler for CmsServer {
-    fn get_info(&self) -> ServerInfo {
-        ServerInfo::new(ServerCapabilities::builder().enable_tools().enable_resources().build())
-            .with_server_info(Implementation::new("cms", env!("CARGO_PKG_VERSION")))
+    fn get_info(&self) -> ServerConfig {
+        ServerConfig::new(ServerCapabilities::builder().enable_tools().enable_resources().build())
+            .with_protocol_version(ProtocolVersion::V_2026_07_28)
+            .with_server_info(Implementation::new("velopulent-cms", env!("CARGO_PKG_VERSION")))
     }
 
-    async fn initialize(
+    fn supported_protocol_versions(&self) -> Cow<'static, [ProtocolVersion]> {
+        // 2025-06-18 is the oldest revision with structured tool output and the
+        // MCP-Protocol-Version header, both of which this server relies on.
+        Cow::Borrowed(&[
+            ProtocolVersion::V_2025_06_18,
+            ProtocolVersion::V_2025_11_25,
+            ProtocolVersion::V_2026_07_28,
+        ])
+    }
+
+    async fn list_prompts(
         &self,
-        request: InitializeRequestParams,
-        mut context: RequestContext<RoleServer>,
-    ) -> Result<ServerInfo, McpError> {
-        let started = Instant::now();
-        self.authenticate_context(&mut context).await?;
-        if context.peer.peer_info().is_none() {
-            context.peer.set_peer_info(request.clone());
-        }
-        tracing::info!(
-            mcp_method = "initialize",
-            duration_ms = started.elapsed().as_millis(),
-            outcome = "success",
-            "MCP operation completed"
-        );
-        Ok(self.get_info().with_protocol_version(request.protocol_version))
+        _request: Option<PaginatedRequestParams>,
+        _ctx: RequestContext<RoleServer>,
+    ) -> Result<rmcp::model::ListPromptsResult, McpError> {
+        Err(McpError::method_not_found::<rmcp::model::ListPromptsRequestMethod>())
+    }
+
+    async fn complete(
+        &self,
+        _request: rmcp::model::CompleteRequestParams,
+        _ctx: RequestContext<RoleServer>,
+    ) -> Result<rmcp::model::CompleteResult, McpError> {
+        Err(McpError::method_not_found::<rmcp::model::CompleteRequestMethod>())
     }
 
     async fn list_tools(
@@ -414,19 +321,43 @@ impl ServerHandler for CmsServer {
     ) -> Result<ListToolsResult, McpError> {
         let started = Instant::now();
         self.authenticate_context(&mut ctx).await?;
-        let tools = Self::tool_router()
-            .list_all()
-            .into_iter()
-            .map(|mut tool| {
-                tool.input_schema = clean_input_schema(tool.input_schema);
-                tool
+        let mut tools = Self::tool_router().list_all();
+        let output_schema = Arc::new(
+            serde_json::json!({
+                "type": "object",
+                "description": "Structured Velopulent CMS result"
             })
-            .collect();
+            .as_object()
+            .cloned()
+            .expect("object schema"),
+        );
+        for tool in &mut tools {
+            tool.input_schema = crate::mcp::schema::clean_input_schema(tool.input_schema.clone());
+            tool.output_schema = Some(output_schema.clone());
+            let read_only = matches!(
+                tool.name.as_ref(),
+                "list_sites"
+                    | "get_site"
+                    | "list_entries"
+                    | "get_entry"
+                    | "list_revisions"
+                    | "get_revision"
+                    | "list_singletons"
+                    | "get_singleton"
+                    | "list_files"
+                    | "get_file"
+            );
+            let destructive = matches!(tool.name.as_ref(), "delete_entry" | "delete_file" | "restore_revision");
+            tool.annotations = Some(ToolAnnotations::new().read_only(read_only).destructive(destructive));
+        }
         let result = ListToolsResult {
             tools,
             meta: None,
             next_cursor: None,
-        };
+            ..Default::default()
+        }
+        .with_ttl_ms(10_000)
+        .with_cache_scope(rmcp::model::CacheScope::Public);
         tracing::info!(
             mcp_method = "tools/list",
             duration_ms = started.elapsed().as_millis(),
@@ -440,7 +371,7 @@ impl ServerHandler for CmsServer {
         &self,
         request: CallToolRequestParams,
         mut ctx: RequestContext<RoleServer>,
-    ) -> Result<CallToolResult, McpError> {
+    ) -> Result<CallToolResponse, McpError> {
         let started = Instant::now();
         let tool_name = request.name.to_string();
         self.authenticate_context(&mut ctx).await?;
@@ -473,11 +404,28 @@ impl ServerHandler for CmsServer {
         result
     }
 
+    async fn list_resource_templates(
+        &self,
+        _request: Option<PaginatedRequestParams>,
+        mut ctx: RequestContext<RoleServer>,
+    ) -> Result<ListResourceTemplatesResult, McpError> {
+        let started = Instant::now();
+        let actor = self.authenticate_context(&mut ctx).await?;
+        let result = site_schema::list_resource_templates(&self.authorizer, &actor).await;
+        tracing::info!(
+            mcp_method = "resources/templates/list",
+            duration_ms = started.elapsed().as_millis(),
+            outcome = if result.is_ok() { "success" } else { "error" },
+            "MCP operation completed"
+        );
+        result
+    }
+
     async fn read_resource(
         &self,
         request: ReadResourceRequestParams,
         mut ctx: RequestContext<RoleServer>,
-    ) -> Result<ReadResourceResult, McpError> {
+    ) -> Result<ReadResourceResponse, McpError> {
         let started = Instant::now();
         let actor = self.authenticate_context(&mut ctx).await?;
         let result = site_schema::read_resource(&self.authorizer, &self.services, &actor, &request.uri).await;
@@ -487,7 +435,7 @@ impl ServerHandler for CmsServer {
             outcome = if result.is_ok() { "success" } else { "error" },
             "MCP operation completed"
         );
-        result
+        result.map(Into::into)
     }
 }
 
@@ -507,13 +455,19 @@ impl CmsServer {
 
         let parts = ctx.extensions.get::<http::request::Parts>()?;
         let headers = &parts.headers;
-        let host = headers
-            .get("x-forwarded-host")
+        let host = self
+            .config
+            .trust_proxy_headers
+            .then(|| headers.get("x-forwarded-host"))
+            .flatten()
             .or_else(|| headers.get("host"))?
             .to_str()
             .ok()?;
-        let proto = headers
-            .get("x-forwarded-proto")
+        let proto = self
+            .config
+            .trust_proxy_headers
+            .then(|| headers.get("x-forwarded-proto"))
+            .flatten()
             .and_then(|value| value.to_str().ok())
             .unwrap_or("http");
 
@@ -532,9 +486,13 @@ mod tests {
     fn tool_router_lists_registered_tools() {
         let tools = CmsServer::tool_router().list_all();
         assert!(tools.iter().any(|tool| tool.name == "get_site"));
+        assert!(tools.iter().any(|tool| tool.name == "set_entry_publication"));
+        assert!(tools.iter().any(|tool| tool.name == "get_revision"));
         assert!(!tools.iter().any(|tool| tool.name.contains("token")));
         assert!(tools.iter().any(|tool| tool.name == "list_sites"));
-        assert!(tools.len() > 15);
+        assert!(!tools.iter().any(|tool| tool.name == "list_collections"));
+        assert!(!tools.iter().any(|tool| tool.name == "get_collection"));
+        assert!(tools.len() >= 18);
     }
 
     fn all_tools() -> Vec<rmcp::model::Tool> {

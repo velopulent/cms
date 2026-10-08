@@ -1,0 +1,19 @@
+---
+title: Troubleshoot VCMS Server
+description: Resolve configuration, database, listener, storage, search, and service failures.
+---
+
+| Symptom | Check | Action |
+| --- | --- | --- |
+| Server rejects `config.toml` | Unknown fields, socket addresses, log filter | Remove unsupported keys and correct the reported value |
+| Existing database will not start | `secrets.toml` presence and validity | Restore the matching trust root; do not generate one silently |
+| HTTP or gRPC bind fails | Port owner and configured address | Stop the conflicting process or choose a free address |
+| Dashboard login loops | public URL, secure cookies, proxy headers | Align HTTPS and trusted-proxy settings |
+| Browser API request blocked | exact allowed origin | Add the scheme, host, and port in security settings |
+| Upload returns `413` | app and reverse-proxy body limits | Raise the lower limit or upload a smaller file |
+| S3 action fails | profile probe, endpoint, region, credentials | Correct profile and probe again |
+| MCP returns `404` | enabled setting | Enable MCP, then check host and origin policy |
+| Search misses restored data | restore warnings and search state | Run site or instance reindex from Backups settings |
+| Native service uses unexpected root | registration and service identity | Run `vcms service status`; mode never depends on directory existence |
+
+Start with `vcms doctor`. It reports checks without creating or migrating data.

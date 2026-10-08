@@ -1,10 +1,6 @@
 use axum::{Json, http::StatusCode};
 use serde::Serialize;
 
-pub fn unauthorized_error(message: &str) -> (StatusCode, String) {
-    (StatusCode::UNAUTHORIZED, message.to_string())
-}
-
 #[derive(Debug, Clone, Serialize)]
 pub struct AuthError {
     pub error: String,
@@ -12,6 +8,16 @@ pub struct AuthError {
 }
 
 impl AuthError {
+    pub fn internal() -> (StatusCode, Json<AuthError>) {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(Self {
+                error: "internal_error".into(),
+                message: "Internal server error".into(),
+            }),
+        )
+    }
+
     pub fn site_token_required() -> (StatusCode, Json<AuthError>) {
         (
             StatusCode::UNAUTHORIZED,
@@ -27,7 +33,7 @@ impl AuthError {
             StatusCode::FORBIDDEN,
             Json(Self {
                 error: "insufficient_permission".into(),
-                message: format!("Token requires '{}' permission.", permission),
+                message: format!("Token requires the '{}' scope.", permission),
             }),
         )
     }

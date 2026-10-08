@@ -1,0 +1,40 @@
+---
+title: Install VCMS Server
+description: Choose a portable archive or native Linux, macOS, and Windows package.
+---
+
+## Portable archive
+
+Extract the release for your platform, open a terminal in the directory where you want the data root, and run:
+
+```bash
+vcms serve
+```
+
+The process creates `./vcms_data` and remains attached to the terminal. Portable mode fits evaluation, local development, and manually supervised deployments.
+
+## Debian and Ubuntu
+
+Install the release `.deb` with your package manager. The package registers and enables the `vcms` systemd service but does not start it. Review configuration, then start it through systemd.
+
+## RPM distributions
+
+Install the release `.rpm`. The package registers and enables `vcms` without starting it. Use your distribution's systemd tools for start, stop, restart, status, and logs.
+
+## Arch Linux
+
+Use the maintained Arch package recipe. It consumes published Linux archives and registers the same service identity and data root.
+
+## macOS
+
+Install the signed `.pkg`. It registers the `com.velopulent.vcms` launchd service under the `_vcms` account but does not start it. Review `/Library/Application Support/vcms/config.toml` before loading or starting the service.
+
+## Windows
+
+Run the MSI as an administrator. It installs the `vcms` Windows service for automatic startup and starts it immediately. Installed data lives in `C:\ProgramData\vcms`.
+
+<Callout type="info">
+Package upgrades preserve the fixed service identity and data root. Normal removal preserves configuration, secrets, databases, uploads, backups, logs, and search state.
+</Callout>
+
+Continue with [First start](./first-start).

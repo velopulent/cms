@@ -1,0 +1,30 @@
+---
+title: Protocol comparison
+description: Choose the VCMS interface that fits each consumer.
+---
+
+| Protocol | Endpoint | Best fit | Canonical schema |
+| --- | --- | --- | --- |
+| REST | `/api/v1/*` | Web builds, scripts, broad HTTP tooling | `/api/v1/docs` |
+| GraphQL | `/api/graphql` | Clients choosing response fields | Authenticated schema introspection |
+| gRPC | port `50051` | Typed service-to-service clients | `cms.proto` |
+| MCP | `/mcp` | AI agents and tool clients | `tools/list`, `resources/list` |
+
+All four protocols read and write the same content through the same services and authorization policy. A token gets the same answer for the same operation whichever protocol it uses. See the [operation catalog](/docs/api/reference/operations) for what each protocol covers.
+
+## Selection guidance
+
+- Choose REST for small integrations and static builds.
+- Choose GraphQL when a consumer benefits from GraphQL tooling or selective response shapes.
+- Choose gRPC when generated clients and binary transport fit the service environment.
+- Choose MCP when an agent should discover tools and site schemas at runtime.
+
+One application can use more than one protocol. Give each consumer its own minimal credential.
+
+## Known limits
+
+- Lists continue through offsets internally, so concurrent inserts and deletes can shift items between pages.
+- Entry queries filter by collection, status, and full-text search. Filtering on schema fields and custom sort orders are not available.
+- Publication, deletion, and revision restore do not accept an expected version; only updates are conditional.
+- gRPC content uses `google.protobuf.Struct`, which stores numbers as doubles.
+- File delivery URLs are public to anyone who knows the opaque file ID.

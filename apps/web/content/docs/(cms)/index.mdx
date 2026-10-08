@@ -1,0 +1,39 @@
+---
+title: Velopulent CMS
+description: Model, edit, publish, and protect structured content from one dashboard.
+---
+
+Velopulent CMS gives content teams a dashboard while developers consume the same content through APIs. One installation can host many isolated sites.
+
+<AdaptiveScreenshot
+  light="/docs/screenshots/dashboard-overview-light.png"
+  dark="/docs/screenshots/dashboard-overview-dark.png"
+  alt="Editorial site dashboard showing collections, publication totals, singletons, and recently updated entries"
+  caption="The Editorial overview keeps models, publication state, and recent work in one place."
+/>
+
+## Choose a path
+
+<Cards>
+  <Card icon={<Rocket className="docs-card-icon docs-icon-violet" />} title="Create an editorial site" href="/docs/tutorials/editorial-site" description="Learn the product through a complete working example." />
+  <Card icon={<Blocks className="docs-card-icon docs-icon-blue" />} title="Model content" href="/docs/guides/content-modeling" description="Create collections, singletons, fields, and relationships." />
+  <Card icon={<Newspaper className="docs-card-icon docs-icon-amber" />} title="Manage entries" href="/docs/guides/entries" description="Draft, publish, revise, and restore content." />
+  <Card icon={<ShieldCheck className="docs-card-icon docs-icon-green" />} title="Understand permissions" href="/docs/reference/permissions" description="Compare owners, admins, editors, viewers, and tokens." />
+</Cards>
+
+## Product map
+
+| Area | Purpose |
+| --- | --- |
+| Sites | Isolate schemas, content, files, integrations, and collaborators |
+| Collections | Define repeatable records such as posts and authors |
+| Singletons | Define one record such as site settings or a home page |
+| Files | Upload, browse, reference, trash, restore, and serve media |
+| Deploy | Notify a frontend build service when content changes |
+| Settings | Manage site identity, members, keys, MCP, webhooks, and backups |
+
+Instance operators also receive installation-wide settings for users, security, storage, and backups.
+
+<Callout type="info">
+Menu items depend on your role. A viewer sees readable site resources. An editor can change content and files. Instance operators manage schemas and site settings.
+</Callout>
