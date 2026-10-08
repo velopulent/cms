@@ -6,7 +6,7 @@ use rmcp::handler::server::wrapper::Parameters;
 use rmcp::model::{
     CallToolRequestParams, CallToolResponse, CallToolResult, Implementation, ListResourceTemplatesResult,
     ListResourcesResult, ListToolsResult, PaginatedRequestParams, ProtocolVersion, ReadResourceRequestParams,
-    ReadResourceResponse, ServerCapabilities, ServerInfo, ToolAnnotations,
+    ReadResourceResponse, ServerCapabilities, ServerConfig, ToolAnnotations,
 };
 use rmcp::service::RequestContext;
 use rmcp::service::RoleServer;
@@ -282,8 +282,8 @@ impl CmsServer {
 
 #[tool_handler]
 impl ServerHandler for CmsServer {
-    fn get_info(&self) -> ServerInfo {
-        ServerInfo::new(ServerCapabilities::builder().enable_tools().enable_resources().build())
+    fn get_info(&self) -> ServerConfig {
+        ServerConfig::new(ServerCapabilities::builder().enable_tools().enable_resources().build())
             .with_protocol_version(ProtocolVersion::V_2026_07_28)
             .with_server_info(Implementation::new("velopulent-cms", env!("CARGO_PKG_VERSION")))
     }

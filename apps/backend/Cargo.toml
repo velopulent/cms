@@ -67,7 +67,7 @@ tonic-prost = "0.14.6"
 tonic-reflection = "0.14"
 tonic-health = "0.14"
 http-body-util = "0.1.4"
-rmcp = { version = "3.3.0", features = ["server", "transport-io", "transport-streamable-http-server", "macros", "schemars"] }
+rmcp = { version = "3.5.1", features = ["server", "transport-io", "transport-streamable-http-server", "macros", "schemars"] }
 tokio-util = { version = "0.7", features = ["rt"] }
 tokio-stream = { version = "0.1", features = ["net"] }
 schemars = "1"
