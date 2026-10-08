@@ -58,13 +58,14 @@ CREATE TABLE IF NOT EXISTS collections (
     definition JSONB NOT NULL,
     is_singleton BOOLEAN NOT NULL DEFAULT FALSE,
     created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
-    updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
+    updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+    UNIQUE (id, site_id)
 );
 
 CREATE TABLE IF NOT EXISTS entries (
     id TEXT PRIMARY KEY NOT NULL,
     site_id TEXT NOT NULL REFERENCES sites(id) ON DELETE CASCADE,
-    collection_id TEXT NOT NULL REFERENCES collections(id) ON DELETE CASCADE,
+    collection_id TEXT NOT NULL,
     data JSONB NOT NULL,
     slug TEXT NOT NULL,
     status TEXT NOT NULL DEFAULT 'draft' CHECK(status IN ('draft', 'published')),
@@ -72,6 +73,10 @@ CREATE TABLE IF NOT EXISTS entries (
     created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
     published_at TIMESTAMP WITH TIME ZONE,
+    -- Opaque optimistic-concurrency version; bumped by entries_version on every update.
+    version BIGINT NOT NULL DEFAULT 1,
+    UNIQUE (id, site_id),
+    FOREIGN KEY (collection_id, site_id) REFERENCES collections(id, site_id) ON DELETE CASCADE,
     CONSTRAINT entries_singleton_consistency CHECK (singleton_collection_id IS NULL OR singleton_collection_id = collection_id)
 );
 
@@ -118,17 +123,21 @@ CREATE TABLE IF NOT EXISTS files (
     height INTEGER,
     deleted_at TIMESTAMP WITH TIME ZONE,
     created_by TEXT REFERENCES users(id),
-    created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
+    created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+    UNIQUE (id, site_id)
 );
 
 CREATE INDEX IF NOT EXISTS idx_files_site ON files(site_id);
 CREATE INDEX IF NOT EXISTS idx_files_created_by ON files(created_by);
 
 CREATE TABLE IF NOT EXISTS entry_file_references (
-    entry_id TEXT NOT NULL REFERENCES entries(id) ON DELETE CASCADE,
-    file_id TEXT NOT NULL REFERENCES files(id) ON DELETE CASCADE,
+    entry_id TEXT NOT NULL,
+    file_id TEXT NOT NULL,
     site_id TEXT NOT NULL REFERENCES sites(id) ON DELETE CASCADE,
-    PRIMARY KEY (entry_id, file_id)
+    field_name TEXT NOT NULL DEFAULT '',
+    PRIMARY KEY (entry_id, file_id, field_name),
+    FOREIGN KEY (entry_id, site_id) REFERENCES entries(id, site_id) ON DELETE CASCADE,
+    FOREIGN KEY (file_id, site_id) REFERENCES files(id, site_id) ON DELETE CASCADE
 );
 CREATE INDEX IF NOT EXISTS idx_efr_file ON entry_file_references(file_id);
 CREATE INDEX IF NOT EXISTS idx_efr_entry ON entry_file_references(entry_id);
@@ -359,3 +368,35 @@ CREATE INDEX IF NOT EXISTS idx_deployment_jobs_trigger
 
 CREATE UNIQUE INDEX IF NOT EXISTS idx_deployment_jobs_active_trigger
     ON deployment_jobs(trigger_id) WHERE status IN ('queued', 'running');
+
+CREATE OR REPLACE FUNCTION vcms_entry_version() RETURNS trigger AS $$
+BEGIN
+    NEW.version := OLD.version + 1;
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER entries_version BEFORE UPDATE ON entries
+FOR EACH ROW EXECUTE FUNCTION vcms_entry_version();
+
+CREATE OR REPLACE FUNCTION vcms_entry_singleton() RETURNS trigger AS $$
+BEGIN
+    IF NEW.singleton_collection_id IS NOT NULL AND NOT EXISTS (
+        SELECT 1 FROM collections WHERE id = NEW.singleton_collection_id AND is_singleton
+    ) THEN
+        RAISE EXCEPTION 'invalid singleton collection';
+    END IF;
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER entries_singleton BEFORE INSERT ON entries
+FOR EACH ROW EXECUTE FUNCTION vcms_entry_singleton();
+
+-- Single-use record for signed upload URLs. Security state, not content:
+-- deliberately excluded from logical backups.
+CREATE TABLE IF NOT EXISTS signed_upload_uses (
+    file_id TEXT PRIMARY KEY,
+    expires_at BIGINT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_signed_upload_uses_expiry ON signed_upload_uses(expires_at);

@@ -57,13 +57,14 @@ CREATE TABLE IF NOT EXISTS collections (
     definition JSON NOT NULL,
     is_singleton INTEGER NOT NULL DEFAULT 0,
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
-    updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+    updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+    UNIQUE (id, site_id)
 );
 
 CREATE TABLE IF NOT EXISTS entries (
     id TEXT PRIMARY KEY NOT NULL,
     site_id TEXT NOT NULL REFERENCES sites(id) ON DELETE CASCADE,
-    collection_id TEXT NOT NULL REFERENCES collections(id) ON DELETE CASCADE,
+    collection_id TEXT NOT NULL,
     data JSON NOT NULL,
     slug TEXT NOT NULL,
     status TEXT NOT NULL DEFAULT 'draft' CHECK(status IN ('draft', 'published')),
@@ -71,8 +72,26 @@ CREATE TABLE IF NOT EXISTS entries (
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
     updated_at TEXT NOT NULL DEFAULT (datetime('now')),
     published_at TEXT,
+    -- Opaque optimistic-concurrency version; bumped by entries_version on every update.
+    version INTEGER NOT NULL DEFAULT 1,
+    UNIQUE (id, site_id),
+    FOREIGN KEY (collection_id, site_id) REFERENCES collections(id, site_id) ON DELETE CASCADE,
     CHECK (singleton_collection_id IS NULL OR singleton_collection_id = collection_id)
 );
+
+CREATE TRIGGER IF NOT EXISTS entries_version AFTER UPDATE ON entries
+WHEN NEW.version = OLD.version
+BEGIN
+    UPDATE entries SET version = OLD.version + 1 WHERE id = NEW.id;
+END;
+
+CREATE TRIGGER IF NOT EXISTS entries_singleton_insert BEFORE INSERT ON entries
+WHEN NEW.singleton_collection_id IS NOT NULL AND NOT EXISTS (
+    SELECT 1 FROM collections WHERE id = NEW.singleton_collection_id AND is_singleton = 1
+)
+BEGIN
+    SELECT RAISE(ABORT, 'invalid singleton collection');
+END;
 
 CREATE INDEX IF NOT EXISTS idx_site_members_user ON site_members(user_id);
 CREATE INDEX IF NOT EXISTS idx_site_members_site ON site_members(site_id);
@@ -117,17 +136,21 @@ CREATE TABLE IF NOT EXISTS files (
     height INTEGER,
     deleted_at TEXT,
     created_by TEXT REFERENCES users(id),
-    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    UNIQUE (id, site_id)
 );
 
 CREATE INDEX IF NOT EXISTS idx_files_site ON files(site_id);
 CREATE INDEX IF NOT EXISTS idx_files_created_by ON files(created_by);
 
 CREATE TABLE IF NOT EXISTS entry_file_references (
-    entry_id TEXT NOT NULL REFERENCES entries(id) ON DELETE CASCADE,
-    file_id TEXT NOT NULL REFERENCES files(id) ON DELETE CASCADE,
+    entry_id TEXT NOT NULL,
+    file_id TEXT NOT NULL,
     site_id TEXT NOT NULL REFERENCES sites(id) ON DELETE CASCADE,
-    PRIMARY KEY (entry_id, file_id)
+    field_name TEXT NOT NULL DEFAULT '',
+    PRIMARY KEY (entry_id, file_id, field_name),
+    FOREIGN KEY (entry_id, site_id) REFERENCES entries(id, site_id) ON DELETE CASCADE,
+    FOREIGN KEY (file_id, site_id) REFERENCES files(id, site_id) ON DELETE CASCADE
 );
 CREATE INDEX IF NOT EXISTS idx_efr_file ON entry_file_references(file_id);
 CREATE INDEX IF NOT EXISTS idx_efr_entry ON entry_file_references(entry_id);
@@ -366,3 +389,11 @@ CREATE INDEX IF NOT EXISTS idx_deployment_jobs_trigger
 
 CREATE UNIQUE INDEX IF NOT EXISTS idx_deployment_jobs_active_trigger
     ON deployment_jobs(trigger_id) WHERE status IN ('queued', 'running');
+
+-- Single-use record for signed upload URLs. Security state, not content:
+-- deliberately excluded from logical backups.
+CREATE TABLE IF NOT EXISTS signed_upload_uses (
+    file_id TEXT PRIMARY KEY,
+    expires_at INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_signed_upload_uses_expiry ON signed_upload_uses(expires_at);

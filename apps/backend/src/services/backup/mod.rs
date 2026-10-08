@@ -1275,14 +1275,11 @@ fn map_to_values(spec: &schema::TableSpec, m: &Row) -> Vec<Option<String>> {
     spec.columns
         .iter()
         .map(|c| match m.get(c.name) {
-            // Additive API migration columns were absent in older archives.
-            // Supply their database defaults rather than binding NULL.
+            // Versions are operational, not content: restored rows start in a fresh
+            // random range so ETags issued before the restore never match again.
             _ if spec.name == "entries" && c.name == "version" => {
-                // Operational versions are not content. Start restored rows in a
-                // fresh random range with ample headroom for monotonic updates.
                 Some(rand::random_range((1i64 << 60)..(1i64 << 62)).to_string())
             }
-            None if spec.name == "entry_file_references" && c.name == "field_name" => Some(String::new()),
             Some(serde_json::Value::String(s)) => Some(s.clone()),
             Some(serde_json::Value::Null) | None => None,
             Some(other) => Some(other.to_string()),
@@ -1615,37 +1612,22 @@ mod tests {
 }
 
 #[cfg(test)]
-mod additive_api_backup_tests {
+mod restore_version_tests {
     use super::*;
 
     #[test]
-    fn old_archives_restore_with_additive_column_defaults() {
-        let old_entry = serde_json::json!({"id":"entry", "data":"{}"})
+    fn restore_never_reuses_archived_entry_versions() {
+        let entries = schema::table_spec("entries").unwrap();
+        let version_index = entries.columns.iter().position(|column| column.name == "version").unwrap();
+        let archived = serde_json::json!({"id": "entry", "data": "{}", "version": "7"})
             .as_object()
             .unwrap()
             .clone();
-        let entries = schema::table_spec("entries").unwrap();
-        let values = map_to_values(entries, &old_entry);
-        let version_index = entries
-            .columns
-            .iter()
-            .position(|column| column.name == "version")
+        let version = map_to_values(entries, &archived)[version_index]
+            .as_deref()
+            .unwrap()
+            .parse::<i64>()
             .unwrap();
-        let version = values[version_index].as_deref().unwrap().parse::<i64>().unwrap();
         assert!(((1i64 << 60)..(1i64 << 62)).contains(&version));
-        let mut archived_entry = old_entry.clone();
-        archived_entry.insert("version".into(), serde_json::json!(version.to_string()));
-        let restored = map_to_values(entries, &archived_entry);
-        assert_ne!(
-            restored[version_index], values[version_index],
-            "Restore reused a stale validator"
-        );
-        let references = schema::table_spec("entry_file_references").unwrap();
-        let field_index = references
-            .columns
-            .iter()
-            .position(|column| column.name == "field_name")
-            .unwrap();
-        assert_eq!(map_to_values(references, &Row::new())[field_index].as_deref(), Some(""));
     }
 }

@@ -798,52 +798,6 @@ mod audit_tests {
     }
 
     #[tokio::test]
-    async fn api_upgrade_refuses_legacy_cross_site_content_without_mutating_it() {
-        let pool = sqlx::sqlite::SqlitePoolOptions::new()
-            .max_connections(1)
-            .connect("sqlite::memory:")
-            .await
-            .unwrap();
-        sqlx::raw_sql(include_str!(
-            "../../../migrations/sqlite/20260804000000_initial_schema.sql"
-        ))
-        .execute(&pool)
-        .await
-        .unwrap();
-        sqlx::query("INSERT INTO users(id,name,email,password_hash) VALUES ('u','u','u@example.com','x')")
-            .execute(&pool)
-            .await
-            .unwrap();
-        sqlx::query("INSERT INTO sites(id,name,created_by) VALUES ('s','s','u'),('other','other','u')")
-            .execute(&pool)
-            .await
-            .unwrap();
-        sqlx::query("INSERT INTO collections(id,site_id,name,slug,definition) VALUES ('c','other','c','c','{}')")
-            .execute(&pool)
-            .await
-            .unwrap();
-        sqlx::query("INSERT INTO entries(id,site_id,collection_id,data,slug) VALUES ('e','s','c','{}','e')")
-            .execute(&pool)
-            .await
-            .unwrap();
-        let mut transaction = pool.begin().await.unwrap();
-        let error = sqlx::raw_sql(include_str!(
-            "../../../migrations/sqlite/20260915000000_api_invariants.sql"
-        ))
-        .execute(&mut *transaction)
-        .await
-        .unwrap_err();
-        assert!(error.to_string().contains("api_site_ownership_valid"), "{error}");
-        transaction.rollback().await.unwrap();
-        let entry: (String, String, String) =
-            sqlx::query_as("SELECT site_id,collection_id,data FROM entries WHERE id='e'")
-                .fetch_one(&pool)
-                .await
-                .unwrap();
-        assert_eq!(entry, ("s".into(), "c".into(), "{}".into()));
-    }
-
-    #[tokio::test]
     async fn conditional_updates_reject_stale_versions_without_extra_revisions() {
         let repo = repository().await;
         let original = repo
