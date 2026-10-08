@@ -29,8 +29,15 @@ impl SiteServiceImpl {
 impl SiteService for SiteServiceImpl {
     async fn list_sites(&self, mut request: Request<ListSitesRequest>) -> Result<Response<ListSitesResponse>, Status> {
         let auth = get_auth_context(&mut request, &self.repository).await?;
-        if !auth.scopes.contains(&crate::models::access_token::TokenScope::SiteRead) {
-            return Err(Status::permission_denied("Token scope does not permit this operation"));
+        let scopes = match &auth.actor {
+            crate::middleware::auth::Actor::ApiKey(key) => &key.scopes,
+            crate::middleware::auth::Actor::PersonalToken(token) => &token.scopes,
+            crate::middleware::auth::Actor::User(_) => {
+                return Err(Status::unauthenticated("An access token is required"));
+            }
+        };
+        if !crate::middleware::auth::scopes_allow_action(scopes, Action::SiteRead) {
+            return Err(Status::permission_denied("Token requires the 'site.read' scope."));
         }
         let sites = self
             .app_site_service
@@ -39,29 +46,12 @@ impl SiteService for SiteServiceImpl {
             .map_err(crate::grpc::service_error)?
             .into_iter()
             .filter_map(|site| {
+                let text = |key: &str| site.get(key).and_then(|value| value.as_str());
                 Some(ProtoSite {
-                    id: site.get("id")?.as_str()?.to_owned(),
-                    name: site.get("name")?.as_str()?.to_owned(),
-                    storage_provider: site
-                        .get("storage_provider")
-                        .and_then(|value| value.as_str())
-                        .unwrap_or_default()
-                        .to_owned(),
-                    created_by: site
-                        .get("created_by")
-                        .and_then(|value| value.as_str())
-                        .unwrap_or_default()
-                        .to_owned(),
-                    created_at: site.get("created_at")?.as_str()?.to_owned(),
-                    updated_at: site.get("updated_at")?.as_str()?.to_owned(),
-                    created_at_timestamp: site
-                        .get("created_at")
-                        .and_then(|value| value.as_str())
-                        .and_then(crate::grpc::timestamp_from_text),
-                    updated_at_timestamp: site
-                        .get("updated_at")
-                        .and_then(|value| value.as_str())
-                        .and_then(crate::grpc::timestamp_from_text),
+                    id: text("id")?.to_owned(),
+                    name: text("name")?.to_owned(),
+                    created_at: text("created_at").and_then(crate::grpc::timestamp_from_text),
+                    updated_at: text("updated_at").and_then(crate::grpc::timestamp_from_text),
                 })
             })
             .collect();
@@ -91,12 +81,8 @@ impl From<Site> for ProtoSite {
         Self {
             id: site.id,
             name: site.name,
-            storage_provider: site.storage_provider,
-            created_by: site.created_by,
-            created_at: site.created_at.clone(),
-            updated_at: site.updated_at.clone(),
-            created_at_timestamp: crate::grpc::timestamp_from_text(&site.created_at),
-            updated_at_timestamp: crate::grpc::timestamp_from_text(&site.updated_at),
+            created_at: crate::grpc::timestamp_from_text(&site.created_at),
+            updated_at: crate::grpc::timestamp_from_text(&site.updated_at),
         }
     }
 }

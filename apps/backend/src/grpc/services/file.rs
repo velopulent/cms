@@ -7,16 +7,17 @@ use crate::config::Config;
 use crate::grpc::cms::v1::File as ProtoFile;
 use crate::grpc::cms::v1::file_service_server::FileService;
 use crate::grpc::cms::v1::{
-    DeleteFileRequest, DeleteResponse, FileReference as ProtoFileReference, GetFileReferencesRequest, GetFileRequest,
+    DeleteFileRequest, DeleteResponse, FileReference as ProtoFileReference, GetFileRequest, ListFileReferencesRequest,
     ListFileReferencesResponse, ListFilesRequest, ListFilesResponse, RestoreFileRequest,
 };
 use crate::grpc::interceptor::get_auth_context;
 use crate::models::authorization::Action;
-use crate::models::file::File;
+use crate::models::file::{File, FileWithUrl};
 use crate::repository::Repository;
 use crate::repository::traits::ListFilesParams;
 use crate::services::file::FileService as AppFileService;
 use crate::services::file::StreamingUploadRequest;
+use crate::services::settings::SettingsService;
 use crate::storage::{StorageProvider, StorageRegistry};
 
 #[derive(Clone)]
@@ -25,6 +26,7 @@ pub struct FileServiceImpl {
     repository: Arc<Repository>,
     storage_registry: Arc<StorageRegistry>,
     config: Arc<Config>,
+    settings: SettingsService,
 }
 
 impl FileServiceImpl {
@@ -33,13 +35,32 @@ impl FileServiceImpl {
         repository: Arc<Repository>,
         storage_registry: Arc<StorageRegistry>,
         config: Arc<Config>,
+        settings: SettingsService,
     ) -> Self {
         Self {
             app_file_service: file_service,
             repository,
             storage_registry,
             config,
+            settings,
         }
+    }
+
+    async fn storage(&self, site_id: &str) -> Result<Arc<dyn StorageProvider>, Status> {
+        let profile = self
+            .repository
+            .file
+            .get_storage_provider(site_id)
+            .await
+            .map_err(|_| Status::internal("Storage configuration unavailable"))?;
+        self.storage_registry
+            .get(&profile)
+            .map(|storage| storage as Arc<dyn StorageProvider>)
+            .ok_or_else(|| Status::internal("Storage provider not configured"))
+    }
+
+    fn to_proto(&self, file: &File, storage: &dyn StorageProvider) -> ProtoFile {
+        ProtoFile::from(self.app_file_service.file_to_with_url(file, storage))
     }
 }
 
@@ -52,30 +73,9 @@ impl FileService for FileServiceImpl {
         auth.require_action(&self.repository, &site_id, Action::FilesRead)
             .await?;
 
-        let per_page_val = if req.page_size <= 0 {
-            if req.per_page <= 0 {
-                30
-            } else {
-                req.per_page.clamp(1, 200)
-            }
-        } else {
-            i64::from(req.page_size).clamp(1, 200)
-        };
+        let per_page_val = crate::grpc::page_size(req.page_size);
         let fingerprint = crate::utils::cursor::fingerprint(&(&site_id, &req.search, &req.file_type, per_page_val));
-        let page_val = if req.page_token.is_empty() {
-            if req.page <= 0 { 1 } else { req.page }
-        } else {
-            crate::utils::cursor::decode(&req.page_token, &self.config.token_index_key)
-                .map_err(|_| Status::invalid_argument("Invalid page_token"))
-                .and_then(|cursor| {
-                    if cursor.fingerprint == fingerprint {
-                        Ok(cursor.page)
-                    } else {
-                        Err(Status::invalid_argument("page_token does not match this query"))
-                    }
-                })?
-        };
-
+        let page_val = crate::grpc::resolve_page(&req.page_token, &fingerprint, &self.config.token_index_key)?;
         let params = ListFilesParams {
             site_id: &site_id,
             trashed: false,
@@ -91,26 +91,17 @@ impl FileService for FileServiceImpl {
             .await
             .map_err(crate::grpc::service_error)?;
 
-        let has_next_page = result.page.saturating_mul(result.per_page) < result.total;
-        let next_page_token = if has_next_page {
-            crate::utils::cursor::encode(
-                &crate::utils::cursor::PageCursor {
-                    version: 1,
-                    page: result.page + 1,
-                    fingerprint,
-                },
-                &self.config.token_index_key,
-            )
-        } else {
-            String::new()
-        };
+        let storage = self.storage(&site_id).await?;
         let response = ListFilesResponse {
-            files: result.items.into_iter().map(ProtoFile::from).collect(),
-            total: result.total,
-            page: result.page,
-            per_page: result.per_page,
-            next_page_token,
+            next_page_token: crate::grpc::next_page_token(
+                result.page,
+                result.per_page,
+                result.total,
+                fingerprint,
+                &self.config.token_index_key,
+            ),
             total_size: result.total,
+            files: result.items.iter().map(|file| self.to_proto(file, &*storage)).collect(),
         };
 
         Ok(Response::new(response))
@@ -131,12 +122,13 @@ impl FileService for FileServiceImpl {
             .map_err(crate::grpc::service_error)?
             .ok_or_else(|| Status::not_found("File not found"))?;
 
-        Ok(Response::new(ProtoFile::from(file)))
+        let storage = self.storage(&site_id).await?;
+        Ok(Response::new(self.to_proto(&file, &*storage)))
     }
 
     async fn list_file_references(
         &self,
-        mut request: Request<GetFileReferencesRequest>,
+        mut request: Request<ListFileReferencesRequest>,
     ) -> Result<Response<ListFileReferencesResponse>, Status> {
         let auth = get_auth_context(&mut request, &self.repository).await?;
         let req = request.into_inner();
@@ -185,17 +177,7 @@ impl FileService for FileServiceImpl {
         if !crate::utils::content_types::is_allowed(&first.content_type) {
             return Err(Status::invalid_argument("content_type is not allowed"));
         }
-        let storage_provider = self
-            .repository
-            .file
-            .get_storage_provider(&site_id)
-            .await
-            .map_err(|_| Status::internal("Storage configuration unavailable"))?;
-        let storage = self
-            .storage_registry
-            .get(&storage_provider)
-            .map(|storage| storage as Arc<dyn StorageProvider>)
-            .ok_or_else(|| Status::internal("Storage provider not configured"))?;
+        let storage = self.storage(&site_id).await?;
 
         let storage_kind = self
             .repository
@@ -242,13 +224,13 @@ impl FileService for FileServiceImpl {
                     created_by: auth.actor.user_id(),
                     storage,
                     storage_provider: &storage_kind,
-                    max_bytes: self.config.max_upload_size_bytes,
+                    max_bytes: self.settings.current().general.upload_limit_mb * 1024 * 1024,
                 },
                 chunks,
             )
             .await
             .map_err(crate::grpc::service_error)?;
-        Ok(Response::new(ProtoFile::from(file_without_url(file))))
+        Ok(Response::new(ProtoFile::from(file)))
     }
 
     async fn delete_file(&self, mut request: Request<DeleteFileRequest>) -> Result<Response<DeleteResponse>, Status> {
@@ -265,14 +247,10 @@ impl FileService for FileServiceImpl {
             .await
             .map_err(crate::grpc::service_error)?;
 
-        Ok(Response::new(DeleteResponse {
-            success: deleted > 0,
-            message: if deleted > 0 {
-                "File deleted".to_string()
-            } else {
-                "File not found".to_string()
-            },
-        }))
+        if deleted == 0 {
+            return Err(Status::not_found("File not found"));
+        }
+        Ok(Response::new(DeleteResponse { deleted: true }))
     }
 
     async fn restore_file(&self, mut request: Request<RestoreFileRequest>) -> Result<Response<ProtoFile>, Status> {
@@ -300,47 +278,27 @@ impl FileService for FileServiceImpl {
             .map_err(crate::grpc::service_error)?
             .ok_or_else(|| Status::internal("File not found after restore"))?;
 
-        Ok(Response::new(ProtoFile::from(file)))
+        let storage = self.storage(&site_id).await?;
+        Ok(Response::new(self.to_proto(&file, &*storage)))
     }
 }
 
-fn file_without_url(file: crate::models::file::FileWithUrl) -> File {
-    File {
-        id: file.id,
-        site_id: file.site_id,
-        filename: file.filename,
-        original_name: file.original_name,
-        mime_type: file.mime_type,
-        size: file.size,
-        storage_provider: file.storage_provider,
-        storage_key: file.storage_key,
-        thumbnail_key: file.thumbnail_key,
-        width: file.width,
-        height: file.height,
-        deleted_at: file.deleted_at,
-        created_by: file.created_by,
-        created_at: file.created_at,
-    }
-}
-
-impl From<File> for ProtoFile {
-    fn from(f: File) -> Self {
+impl From<FileWithUrl> for ProtoFile {
+    fn from(f: FileWithUrl) -> Self {
         ProtoFile {
+            deleted_at: f.deleted_at.as_deref().and_then(crate::grpc::timestamp_from_text),
+            created_at: crate::grpc::timestamp_from_text(&f.created_at),
             id: f.id,
             site_id: f.site_id,
             filename: f.filename,
             original_name: f.original_name,
             mime_type: f.mime_type,
             size: f.size,
-            storage_provider: f.storage_provider,
-            storage_key: f.storage_key,
-            thumbnail_key: f.thumbnail_key,
+            url: f.url,
+            thumbnail_url: f.thumbnail_url,
             width: f.width,
             height: f.height,
-            deleted_at: f.deleted_at,
             created_by: f.created_by,
-            created_at: f.created_at.clone(),
-            created_at_timestamp: crate::grpc::timestamp_from_text(&f.created_at),
         }
     }
 }

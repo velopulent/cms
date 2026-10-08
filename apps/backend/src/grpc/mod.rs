@@ -1,11 +1,8 @@
-pub mod auth;
 pub mod cms;
 pub mod interceptor;
 pub mod server;
 
 /// Convert dynamic CMS JSON objects into protobuf's typed Struct representation.
-/// Public gRPC messages keep the legacy JSON text for dashboard-era clients but
-/// populate these fields for typed clients.
 pub fn json_to_struct(value: &serde_json::Value) -> Option<prost_types::Struct> {
     let serde_json::Value::Object(object) = value else {
         return None;
@@ -26,6 +23,47 @@ pub fn struct_to_json(value: &prost_types::Struct) -> Result<serde_json::Value, 
             .map(|(key, value)| Ok((key.clone(), value_to_json(value)?)))
             .collect::<Result<_, tonic::Status>>()?,
     ))
+}
+
+/// Parse stored JSON text (entry data, collection definitions) into a Struct.
+pub fn json_text_to_struct(text: &str) -> Option<prost_types::Struct> {
+    serde_json::from_str::<serde_json::Value>(text)
+        .ok()
+        .and_then(|value| json_to_struct(&value))
+}
+
+pub const DEFAULT_PAGE_SIZE: i64 = 50;
+const MAX_PAGE_SIZE: i64 = 200;
+
+pub fn page_size(requested: i32) -> i64 {
+    if requested <= 0 {
+        DEFAULT_PAGE_SIZE
+    } else {
+        i64::from(requested).min(MAX_PAGE_SIZE)
+    }
+}
+
+/// First page without a token, otherwise the page a token issued for this exact
+/// query (same `fingerprint`) points at.
+pub fn resolve_page(page_token: &str, fingerprint: &str, secret: &str) -> Result<i64, tonic::Status> {
+    if page_token.is_empty() {
+        return Ok(1);
+    }
+    crate::utils::cursor::resolve_page(Some(page_token), fingerprint, secret).map_err(tonic::Status::invalid_argument)
+}
+
+pub fn next_page_token(page: i64, per_page: i64, total: i64, fingerprint: String, secret: &str) -> String {
+    if page.saturating_mul(per_page) >= total {
+        return String::new();
+    }
+    crate::utils::cursor::encode(
+        &crate::utils::cursor::PageCursor {
+            version: 1,
+            page: page + 1,
+            fingerprint,
+        },
+        secret,
+    )
 }
 
 pub fn timestamp_from_text(value: &str) -> Option<prost_types::Timestamp> {

@@ -112,12 +112,11 @@ impl SingletonService for SingletonServiceImpl {
         auth.require_action(&self.repository, &site_id, Action::ContentWrite)
             .await?;
 
-        let data = match req.data_value.as_ref() {
-            Some(value) => crate::grpc::struct_to_json(value)?,
-            None => {
-                serde_json::from_str(&req.data).map_err(|_| Status::invalid_argument("data must contain valid JSON"))?
-            }
-        };
+        let data = crate::grpc::struct_to_json(
+            req.data
+                .as_ref()
+                .ok_or_else(|| Status::invalid_argument("data is required"))?,
+        )?;
 
         let singleton = self
             .app_singleton_service
@@ -138,23 +137,17 @@ impl SingletonService for SingletonServiceImpl {
 
 impl From<crate::models::collection::SingletonResponse> for ProtoSingleton {
     fn from(c: crate::models::collection::SingletonResponse) -> Self {
-        let definition_value = crate::grpc::json_to_struct(&c.definition);
-        let data_value = c.data.as_ref().and_then(crate::grpc::json_to_struct);
         ProtoSingleton {
+            definition: crate::grpc::json_to_struct(&c.definition),
+            data: c.data.as_ref().and_then(crate::grpc::json_to_struct),
+            created_at: crate::grpc::timestamp_from_text(&c.created_at),
+            updated_at: crate::grpc::timestamp_from_text(&c.updated_at),
             id: c.id,
             site_id: c.site_id,
             name: c.name,
             slug: c.slug,
-            definition: c.definition.to_string(),
-            data: c.data.map(|d| d.to_string()),
             entry_id: c.entry_id,
-            created_at: c.created_at.clone(),
-            updated_at: c.updated_at.clone(),
-            definition_value,
-            data_value,
             version: c.version,
-            created_at_timestamp: crate::grpc::timestamp_from_text(&c.created_at),
-            updated_at_timestamp: crate::grpc::timestamp_from_text(&c.updated_at),
         }
     }
 }

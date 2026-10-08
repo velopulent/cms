@@ -5,13 +5,29 @@ package cms.v1;
 import "google/protobuf/struct.proto";
 import "google/protobuf/timestamp.proto";
 
-// Collection Service - Site-scoped operations (requires scoped vcms_site_* or vcms_pat_* token)
+// Velopulent CMS content API.
+//
+// Authenticate every call with `authorization: Bearer <token>` using a scoped
+// `vcms_site_*` site key or `vcms_pat_*` personal token. Every site-scoped
+// request names its site in `site_id`; a site key only accepts its own site.
+//
+// Dynamic content travels as google.protobuf.Struct. Struct numbers are
+// doubles, so integers beyond 2^53 lose precision.
+//
+// List RPCs page with `page_size` (default 50, maximum 200) and the opaque
+// `page_token` returned as `next_page_token`. A token is bound to the query
+// that produced it.
+
+service SiteService {
+  rpc ListSites(ListSitesRequest) returns (ListSitesResponse);
+  rpc GetSite(GetSiteRequest) returns (Site);
+}
+
 service CollectionService {
   rpc ListCollections(ListCollectionsRequest) returns (ListCollectionsResponse);
   rpc GetCollection(GetCollectionRequest) returns (Collection);
 }
 
-// Entry Service - Site-scoped operations (requires scoped vcms_site_* or vcms_pat_* token)
 service EntryService {
   rpc ListEntries(ListEntriesRequest) returns (ListEntriesResponse);
   rpc GetEntry(GetEntryRequest) returns (Entry);
@@ -25,51 +41,57 @@ service EntryService {
   rpc RestoreEntryRevision(RestoreEntryRevisionRequest) returns (Entry);
 }
 
-// Singleton Service - Site-scoped operations (requires scoped vcms_site_* or vcms_pat_* token)
 service SingletonService {
   rpc ListSingletons(ListSingletonsRequest) returns (ListSingletonsResponse);
   rpc GetSingleton(GetSingletonRequest) returns (Singleton);
   rpc UpdateSingleton(UpdateSingletonRequest) returns (Singleton);
 }
 
-// File Service - Site-scoped operations (requires scoped vcms_site_* or vcms_pat_* token)
 service FileService {
   rpc ListFiles(ListFilesRequest) returns (ListFilesResponse);
   rpc GetFile(GetFileRequest) returns (File);
-  rpc ListFileReferences(GetFileReferencesRequest) returns (ListFileReferencesResponse);
+  rpc ListFileReferences(ListFileReferencesRequest) returns (ListFileReferencesResponse);
+  // The first message carries site_id, filename and content_type; later
+  // messages carry only chunks.
   rpc UploadFile(stream UploadFileRequest) returns (File);
   rpc DeleteFile(DeleteFileRequest) returns (DeleteResponse);
   rpc RestoreFile(RestoreFileRequest) returns (File);
 }
 
-// Site Service - Site-scoped operations (requires scoped vcms_site_* or vcms_pat_* token)
-service SiteService {
-  rpc ListSites(ListSitesRequest) returns (ListSitesResponse);
-  rpc GetSite(GetSiteRequest) returns (Site);
-}
-
-// Common Messages
-
 message DeleteResponse {
-  bool success = 1;
-  string message = 2;
+  bool deleted = 1;
 }
 
-// Collection Messages
+// Sites
+
+message Site {
+  string id = 1;
+  string name = 2;
+  google.protobuf.Timestamp created_at = 3;
+  google.protobuf.Timestamp updated_at = 4;
+}
+
+message ListSitesRequest {}
+
+message ListSitesResponse {
+  repeated Site sites = 1;
+}
+
+message GetSiteRequest {
+  string site_id = 1;
+}
+
+// Collections
 
 message Collection {
   string id = 1;
   string site_id = 2;
   string name = 3;
   string slug = 4;
-  // Deprecated JSON text; use definition_value.
-  string definition = 5;
+  google.protobuf.Struct definition = 5;
   bool is_singleton = 6;
-  string created_at = 7;
-  string updated_at = 8;
-  google.protobuf.Struct definition_value = 9;
-  google.protobuf.Timestamp created_at_timestamp = 10;
-  google.protobuf.Timestamp updated_at_timestamp = 11;
+  google.protobuf.Timestamp created_at = 7;
+  google.protobuf.Timestamp updated_at = 8;
 }
 
 message ListCollectionsRequest {
@@ -81,156 +103,136 @@ message ListCollectionsResponse {
 }
 
 message GetCollectionRequest {
-  string slug = 1;
-  string site_id = 2;
+  string site_id = 1;
+  string slug = 2;
 }
 
-// Entry Messages
+// Entries
 
 message Entry {
   string id = 1;
   string site_id = 2;
   string collection_id = 3;
-  // Deprecated JSON text; use data_value.
-  string data = 4;
+  google.protobuf.Struct data = 4;
   string slug = 5;
+  // "draft" or "published".
   string status = 6;
   optional string singleton_collection_id = 7;
-  string created_at = 8;
-  string updated_at = 9;
-  optional string published_at = 10;
-  google.protobuf.Struct data_value = 11;
-  string version = 12;
-  google.protobuf.Timestamp created_at_timestamp = 13;
-  google.protobuf.Timestamp updated_at_timestamp = 14;
-  google.protobuf.Timestamp published_at_timestamp = 15;
+  google.protobuf.Timestamp created_at = 8;
+  google.protobuf.Timestamp updated_at = 9;
+  // Unset while the entry is a draft.
+  google.protobuf.Timestamp published_at = 10;
+  // Opaque optimistic-concurrency version; send it back as expected_version.
+  string version = 11;
 }
 
 message ListEntriesRequest {
-  optional string collection_id = 1;
-  optional string status = 2;
-  optional string search = 3;
-  int64 page = 4;
-  int64 per_page = 5;
-  string site_id = 6;
+  string site_id = 1;
+  optional string collection_id = 2;
+  optional string status = 3;
+  optional string search = 4;
+  // Include drafts; requires content.preview.read.
+  bool include_drafts = 5;
+  int32 page_size = 6;
   string page_token = 7;
-  int32 page_size = 8;
-  bool include_drafts = 9;
 }
 
 message ListEntriesResponse {
   repeated Entry items = 1;
-  int64 total = 2;
-  int64 page = 3;
-  int64 per_page = 4;
-  string next_page_token = 5;
-  int64 total_size = 6;
+  string next_page_token = 2;
+  int64 total_size = 3;
 }
 
 message GetEntryRequest {
-  string id = 1;
-  string site_id = 2;
+  string site_id = 1;
+  string id = 2;
   bool include_drafts = 3;
 }
 
 message CreateEntryRequest {
-  string collection_id = 1;
-  // Deprecated JSON text; use data_value.
-  string data = 2;
+  string site_id = 1;
+  string collection_id = 2;
   string slug = 3;
-  string site_id = 4;
-  google.protobuf.Struct data_value = 5;
+  google.protobuf.Struct data = 4;
 }
 
 message UpdateEntryRequest {
-  string id = 1;
-  // Deprecated JSON text; use data_value.
-  optional string data = 2;
-  optional string slug = 3;
-  optional string status = 4;
-  optional string change_summary = 5;
-  string site_id = 6;
-  google.protobuf.Struct data_value = 7;
-  string expected_version = 8;
+  string site_id = 1;
+  string id = 2;
+  // Unset keeps the current data.
+  google.protobuf.Struct data = 3;
+  optional string slug = 4;
+  // Changing status requires content.publish.
+  optional string status = 5;
+  optional string change_summary = 6;
+  // When set, the update fails with FAILED_PRECONDITION unless it matches.
+  string expected_version = 7;
 }
 
 message DeleteEntryRequest {
-  string id = 1;
-  string site_id = 2;
+  string site_id = 1;
+  string id = 2;
 }
 
 message PublishEntryRequest {
-  string id = 1;
-  string site_id = 2;
+  string site_id = 1;
+  string id = 2;
 }
 
 message UnpublishEntryRequest {
-  string id = 1;
-  string site_id = 2;
+  string site_id = 1;
+  string id = 2;
 }
 
 message EntryRevision {
   string id = 1;
   string entry_id = 2;
   int64 revision_number = 3;
-  // Deprecated JSON text; use data_value.
-  string data = 4;
+  google.protobuf.Struct data = 4;
   optional string created_by = 5;
-  string created_at = 6;
+  google.protobuf.Timestamp created_at = 6;
   optional string change_summary = 7;
-  google.protobuf.Struct data_value = 8;
-  google.protobuf.Timestamp created_at_timestamp = 9;
 }
 
 message ListEntryRevisionsRequest {
-  string entry_id = 1;
-  int64 page = 2;
-  int64 per_page = 3;
-  string site_id = 4;
-  bool include_drafts = 5;
+  string site_id = 1;
+  string entry_id = 2;
+  int32 page_size = 3;
+  string page_token = 4;
 }
 
 message ListEntryRevisionsResponse {
   repeated EntryRevision items = 1;
-  int64 total = 2;
-  int64 page = 3;
-  int64 per_page = 4;
-  string next_page_token = 5;
-  int64 total_size = 6;
+  string next_page_token = 2;
+  int64 total_size = 3;
 }
 
 message GetEntryRevisionRequest {
-  string entry_id = 1;
-  int64 revision_number = 2;
-  string site_id = 3;
-  bool include_drafts = 4;
+  string site_id = 1;
+  string entry_id = 2;
+  int64 revision_number = 3;
 }
 
 message RestoreEntryRevisionRequest {
-  string entry_id = 1;
-  int64 revision_number = 2;
-  string site_id = 3;
+  string site_id = 1;
+  string entry_id = 2;
+  int64 revision_number = 3;
 }
 
-// Singleton Messages
+// Singletons
 
 message Singleton {
   string id = 1;
   string site_id = 2;
   string name = 3;
   string slug = 4;
-  // Deprecated JSON text; use definition_value.
-  string definition = 5;
-  // Deprecated JSON text; use data_value.
-  optional string data = 6;
+  google.protobuf.Struct definition = 5;
+  // Unset until the singleton has content.
+  google.protobuf.Struct data = 6;
   optional string entry_id = 7;
-  string created_at = 8;
-  string updated_at = 9;
-  google.protobuf.Struct definition_value = 10;
-  google.protobuf.Struct data_value = 11;
-  google.protobuf.Timestamp created_at_timestamp = 12;
-  google.protobuf.Timestamp updated_at_timestamp = 13;
-  optional string version = 14;
+  google.protobuf.Timestamp created_at = 8;
+  google.protobuf.Timestamp updated_at = 9;
+  optional string version = 10;
 }
 
 message ListSingletonsRequest {
@@ -243,22 +245,20 @@ message ListSingletonsResponse {
 }
 
 message GetSingletonRequest {
-  string slug = 1;
-  string site_id = 2;
+  string site_id = 1;
+  string slug = 2;
   bool include_drafts = 3;
 }
 
 message UpdateSingletonRequest {
-  string slug = 1;
-  // Deprecated JSON text; use data_value.
-  string data = 2;
-  optional string change_summary = 3;
-  string site_id = 4;
-  google.protobuf.Struct data_value = 5;
-  string expected_version = 6;
+  string site_id = 1;
+  string slug = 2;
+  google.protobuf.Struct data = 3;
+  optional string change_summary = 4;
+  string expected_version = 5;
 }
 
-// File Messages
+// Files
 
 message File {
   string id = 1;
@@ -267,45 +267,50 @@ message File {
   string original_name = 4;
   string mime_type = 5;
   int64 size = 6;
-  string storage_provider = 7;
-  string storage_key = 8;
-  optional string thumbnail_key = 9;
-  optional int32 width = 10;
-  optional int32 height = 11;
-  optional string deleted_at = 12;
-  optional string created_by = 13;
-  string created_at = 14;
-  google.protobuf.Timestamp created_at_timestamp = 15;
+  // Delivery URL; relative URLs resolve against the server origin.
+  string url = 7;
+  optional string thumbnail_url = 8;
+  optional int32 width = 9;
+  optional int32 height = 10;
+  // Set while the file is in the trash.
+  google.protobuf.Timestamp deleted_at = 11;
+  optional string created_by = 12;
+  google.protobuf.Timestamp created_at = 13;
 }
 
 message ListFilesRequest {
-  optional string search = 1;
-  optional string file_type = 2;
-  int64 page = 3;
-  int64 per_page = 4;
-  string site_id = 5;
-  string page_token = 6;
-  int32 page_size = 7;
+  string site_id = 1;
+  optional string search = 2;
+  // MIME type prefix such as "image".
+  optional string file_type = 3;
+  int32 page_size = 4;
+  string page_token = 5;
 }
 
 message ListFilesResponse {
   repeated File files = 1;
-  int64 total = 2;
-  int64 page = 3;
-  int64 per_page = 4;
-  string next_page_token = 5;
-  int64 total_size = 6;
+  string next_page_token = 2;
+  int64 total_size = 3;
 }
 
 message GetFileRequest {
-  string id = 1;
-  string site_id = 2;
+  string site_id = 1;
+  string id = 2;
 }
 
 message FileReference {
   string entry_id = 1;
   string collection_name = 2;
   string field_name = 3;
+}
+
+message ListFileReferencesRequest {
+  string site_id = 1;
+  string id = 2;
+}
+
+message ListFileReferencesResponse {
+  repeated FileReference references = 1;
 }
 
 message UploadFileRequest {
@@ -315,54 +320,12 @@ message UploadFileRequest {
   bytes chunk = 4;
 }
 
-message GetFileReferencesRequest {
-  string id = 1;
-  string site_id = 2;
-}
-
-message ListFileReferencesResponse {
-  repeated FileReference references = 1;
-}
-
 message DeleteFileRequest {
-  string id = 1;
-  string site_id = 2;
+  string site_id = 1;
+  string id = 2;
 }
 
 message RestoreFileRequest {
-  string id = 1;
-  string site_id = 2;
-}
-
-// Site Messages
-
-message Site {
-  string id = 1;
-  string name = 2;
-  string storage_provider = 3;
-  string created_by = 4;
-  string created_at = 5;
-  string updated_at = 6;
-  google.protobuf.Timestamp created_at_timestamp = 7;
-  google.protobuf.Timestamp updated_at_timestamp = 8;
-}
-
-message SiteMember {
-  string id = 1;
-  string site_id = 2;
-  string user_id = 3;
-  string name = 4;
-  string email = 5;
-  string role = 6;
-  string created_at = 7;
-}
-
-message GetSiteRequest {
   string site_id = 1;
-}
-
-message ListSitesRequest {}
-
-message ListSitesResponse {
-  repeated Site sites = 1;
+  string id = 2;
 }

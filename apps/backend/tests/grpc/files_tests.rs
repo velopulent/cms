@@ -51,10 +51,10 @@ async fn test_list_files() {
 
     let resp = client
         .list_files(tonic::Request::new(ListFilesRequest {
+            site_id: site_id.clone(),
             search: None,
             file_type: None,
-            page: 1,
-            per_page: 10,
+            page_size: 10,
             ..Default::default()
         }))
         .await
@@ -62,7 +62,7 @@ async fn test_list_files() {
         .into_inner();
 
     assert_eq!(resp.files.len(), 2);
-    assert_eq!(resp.total, 2);
+    assert_eq!(resp.total_size, 2);
 }
 
 #[tokio::test]
@@ -76,10 +76,10 @@ async fn test_list_files_default_pagination() {
 
     let resp = client
         .list_files(tonic::Request::new(ListFilesRequest {
+            site_id: site_id.clone(),
             search: None,
             file_type: None,
-            page: 0,
-            per_page: 0,
+            page_size: 0,
             ..Default::default()
         }))
         .await
@@ -87,9 +87,7 @@ async fn test_list_files_default_pagination() {
         .into_inner();
 
     assert_eq!(resp.files.len(), 2);
-    assert_eq!(resp.total, 2);
-    assert!(resp.page >= 1);
-    assert!(resp.per_page >= 1);
+    assert_eq!(resp.total_size, 2);
 }
 
 #[tokio::test]
@@ -104,10 +102,10 @@ async fn test_list_files_filter_by_category() {
 
     let resp = client
         .list_files(tonic::Request::new(ListFilesRequest {
+            site_id: site_id.clone(),
             search: None,
             file_type: Some("image".into()),
-            page: 1,
-            per_page: 10,
+            page_size: 10,
             ..Default::default()
         }))
         .await
@@ -115,7 +113,7 @@ async fn test_list_files_filter_by_category() {
         .into_inner();
 
     assert_eq!(resp.files.len(), 2);
-    assert_eq!(resp.total, 2);
+    assert_eq!(resp.total_size, 2);
     let types: Vec<&str> = resp.files.iter().map(|f| f.mime_type.as_str()).collect();
     assert!(types.iter().all(|t| t.starts_with("image/")));
 }
@@ -132,10 +130,10 @@ async fn test_list_files_filter_by_exact_mime_type() {
 
     let resp = client
         .list_files(tonic::Request::new(ListFilesRequest {
+            site_id: site_id.clone(),
             search: None,
             file_type: Some("image/png".into()),
-            page: 1,
-            per_page: 10,
+            page_size: 10,
             ..Default::default()
         }))
         .await
@@ -143,7 +141,7 @@ async fn test_list_files_filter_by_exact_mime_type() {
         .into_inner();
 
     assert_eq!(resp.files.len(), 1);
-    assert_eq!(resp.total, 1);
+    assert_eq!(resp.total_size, 1);
     assert_eq!(resp.files[0].mime_type, "image/png");
 }
 
@@ -157,8 +155,8 @@ async fn test_get_file() {
 
     let resp = client
         .get_file(tonic::Request::new(GetFileRequest {
+            site_id: site_id.clone(),
             id: file_id.clone(),
-            ..Default::default()
         }))
         .await
         .unwrap()
@@ -179,21 +177,21 @@ async fn test_delete_file() {
 
     let resp = client
         .delete_file(tonic::Request::new(DeleteFileRequest {
+            site_id: site_id.clone(),
             id: file_id.clone(),
-            ..Default::default()
         }))
         .await
         .unwrap()
         .into_inner();
 
-    assert!(resp.success);
+    assert!(resp.deleted);
 
     let list_resp = client
         .list_files(tonic::Request::new(ListFilesRequest {
+            site_id: site_id.clone(),
             search: None,
             file_type: None,
-            page: 1,
-            per_page: 100,
+            page_size: 100,
             ..Default::default()
         }))
         .await
@@ -217,16 +215,16 @@ async fn test_restore_file() {
 
     let _deleted = client
         .delete_file(tonic::Request::new(DeleteFileRequest {
+            site_id: site_id.clone(),
             id: file_id.clone(),
-            ..Default::default()
         }))
         .await
         .unwrap();
 
     let resp = client
         .restore_file(tonic::Request::new(RestoreFileRequest {
+            site_id: site_id.clone(),
             id: file_id.clone(),
-            ..Default::default()
         }))
         .await
         .unwrap()
@@ -284,5 +282,5 @@ async fn streaming_upload_preserves_bytes_and_rejects_changed_metadata() {
         .await
         .unwrap()
         .into_inner();
-    assert_eq!(files.total, 1, "Rejected upload left a file record");
+    assert_eq!(files.total_size, 1, "Rejected upload left a file record");
 }

@@ -38,7 +38,7 @@ async fn schema_discovery_is_read_only_and_site_scoped() {
         .unwrap()
         .into_inner();
     assert_eq!(fetched.slug, "posts");
-    assert!(fetched.definition_value.is_some());
+    assert!(fetched.definition.is_some());
 }
 
 #[tokio::test]

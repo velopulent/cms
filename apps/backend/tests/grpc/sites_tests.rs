@@ -25,7 +25,6 @@ async fn test_get_site() {
 
     assert_eq!(resp.id, site_id);
     assert_eq!(resp.name, "Test Site");
-    assert_eq!(resp.storage_provider, "filesystem");
 }
 
 #[tokio::test]
@@ -69,7 +68,7 @@ async fn future_expiry_and_typed_timestamps_work_with_both_database_backends() {
         .insert("authorization", authorization.parse().unwrap());
     let response = client.get_site(request).await.unwrap().into_inner();
     assert_eq!(response.id, site);
-    let created = response.created_at_timestamp.expect("Database timestamp was omitted");
+    let created = response.created_at.expect("Database timestamp was omitted");
     assert!((chrono::Utc::now().timestamp() - created.seconds).abs() < 60);
-    assert!(response.updated_at_timestamp.is_some());
+    assert!(response.updated_at.is_some());
 }

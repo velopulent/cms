@@ -79,21 +79,15 @@ impl CollectionService for CollectionServiceImpl {
 
 impl CollectionServiceImpl {
     fn collection_to_proto(c: Collection) -> ProtoCollection {
-        let definition_value = serde_json::from_str::<serde_json::Value>(&c.definition)
-            .ok()
-            .and_then(|value| crate::grpc::json_to_struct(&value));
         ProtoCollection {
+            definition: crate::grpc::json_text_to_struct(&c.definition),
+            created_at: crate::grpc::timestamp_from_text(&c.created_at),
+            updated_at: crate::grpc::timestamp_from_text(&c.updated_at),
             id: c.id,
             site_id: c.site_id,
             name: c.name,
             slug: c.slug,
-            definition: c.definition,
             is_singleton: c.is_singleton,
-            created_at: c.created_at.clone(),
-            updated_at: c.updated_at.clone(),
-            definition_value,
-            created_at_timestamp: crate::grpc::timestamp_from_text(&c.created_at),
-            updated_at_timestamp: crate::grpc::timestamp_from_text(&c.updated_at),
         }
     }
 }

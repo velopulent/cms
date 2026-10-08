@@ -55,15 +55,7 @@ impl EntryService for EntryServiceImpl {
         )
         .await?;
 
-        let per_page = if req.page_size <= 0 {
-            if req.per_page <= 0 {
-                50
-            } else {
-                req.per_page.clamp(1, 200)
-            }
-        } else {
-            i64::from(req.page_size).clamp(1, 200)
-        };
+        let per_page = crate::grpc::page_size(req.page_size);
         let fingerprint = crate::utils::cursor::fingerprint(&(
             &site_id,
             &req.collection_id,
@@ -72,19 +64,7 @@ impl EntryService for EntryServiceImpl {
             req.include_drafts,
             per_page,
         ));
-        let page = if req.page_token.is_empty() {
-            req.page.max(1)
-        } else {
-            crate::utils::cursor::decode(&req.page_token, &self.config.token_index_key)
-                .map_err(|_| Status::invalid_argument("Invalid page_token"))
-                .and_then(|cursor| {
-                    if cursor.fingerprint == fingerprint {
-                        Ok(cursor.page)
-                    } else {
-                        Err(Status::invalid_argument("page_token does not match this query"))
-                    }
-                })?
-        };
+        let page = crate::grpc::resolve_page(&req.page_token, &fingerprint, &self.config.token_index_key)?;
         let params = ListEntriesParams {
             site_id: &site_id,
             collection_slug: None,
@@ -102,26 +82,16 @@ impl EntryService for EntryServiceImpl {
             .await
             .map_err(crate::grpc::service_error)?;
 
-        let has_next_page = result.page.saturating_mul(result.per_page) < result.total;
-        let next_page_token = if has_next_page {
-            crate::utils::cursor::encode(
-                &crate::utils::cursor::PageCursor {
-                    version: 1,
-                    page: result.page + 1,
-                    fingerprint,
-                },
-                &self.config.token_index_key,
-            )
-        } else {
-            String::new()
-        };
         let response = ListEntriesResponse {
-            items: result.items.into_iter().map(ProtoEntry::from).collect(),
-            total: result.total,
-            page: result.page,
-            per_page: result.per_page,
-            next_page_token,
+            next_page_token: crate::grpc::next_page_token(
+                result.page,
+                result.per_page,
+                result.total,
+                fingerprint,
+                &self.config.token_index_key,
+            ),
             total_size: result.total,
+            items: result.items.into_iter().map(ProtoEntry::from).collect(),
         };
 
         Ok(Response::new(response))
@@ -159,11 +129,11 @@ impl EntryService for EntryServiceImpl {
         let site_id = auth.resolve_site_id(&req.site_id)?;
         auth.require_action(&self.repository, &site_id, Action::ContentWrite)
             .await?;
-        let data = match req.data_value.as_ref() {
-            Some(value) => crate::grpc::struct_to_json(value)?,
-            None => serde_json::from_str(&req.data)
-                .map_err(|_| Status::invalid_argument("data must contain a JSON object"))?,
-        };
+        let data = crate::grpc::struct_to_json(
+            req.data
+                .as_ref()
+                .ok_or_else(|| Status::invalid_argument("data is required"))?,
+        )?;
 
         let entry = self
             .app_entry_service
@@ -184,14 +154,7 @@ impl EntryService for EntryServiceImpl {
             auth.require_action(&self.repository, &site_id, Action::ContentPublish)
                 .await?;
         }
-        let data = match req.data_value.as_ref() {
-            Some(value) => Some(crate::grpc::struct_to_json(value)?),
-            None => req
-                .data
-                .as_ref()
-                .map(|d| serde_json::from_str(d).map_err(|_| Status::invalid_argument("data must contain valid JSON")))
-                .transpose()?,
-        };
+        let data = req.data.as_ref().map(crate::grpc::struct_to_json).transpose()?;
 
         let entry = self
             .app_entry_service
@@ -229,14 +192,10 @@ impl EntryService for EntryServiceImpl {
             .await
             .map_err(crate::grpc::service_error)?;
 
-        Ok(Response::new(DeleteResponse {
-            success: deleted > 0,
-            message: if deleted > 0 {
-                "Entry deleted".to_string()
-            } else {
-                "Entry not found".to_string()
-            },
-        }))
+        if deleted == 0 {
+            return Err(Status::not_found("Entry not found"));
+        }
+        Ok(Response::new(DeleteResponse { deleted: true }))
     }
 
     async fn publish_entry(&self, mut request: Request<PublishEntryRequest>) -> Result<Response<ProtoEntry>, Status> {
@@ -293,26 +252,25 @@ impl EntryService for EntryServiceImpl {
             .map_err(crate::grpc::service_error)?
             .ok_or_else(|| Status::not_found("Entry not found"))?;
 
-        let page_val = req.page.max(1);
-        let per_page_val = if req.per_page <= 0 {
-            50
-        } else {
-            req.per_page.clamp(1, 200)
-        };
-
+        let per_page = crate::grpc::page_size(req.page_size);
+        let fingerprint = crate::utils::cursor::fingerprint(&(&site_id, &req.entry_id, per_page));
+        let page = crate::grpc::resolve_page(&req.page_token, &fingerprint, &self.config.token_index_key)?;
         let result = self
             .app_entry_service
-            .list_revisions(&req.entry_id, &site_id, page_val, per_page_val)
+            .list_revisions(&req.entry_id, &site_id, page, per_page)
             .await
             .map_err(crate::grpc::service_error)?;
 
         let response = ListEntryRevisionsResponse {
-            items: result.items.into_iter().map(ProtoEntryRevision::from).collect(),
-            total: result.total,
-            page: result.page,
-            per_page: result.per_page,
-            next_page_token: String::new(),
+            next_page_token: crate::grpc::next_page_token(
+                result.page,
+                result.per_page,
+                result.total,
+                fingerprint,
+                &self.config.token_index_key,
+            ),
             total_size: result.total,
+            items: result.items.into_iter().map(ProtoEntryRevision::from).collect(),
         };
 
         Ok(Response::new(response))
@@ -373,25 +331,18 @@ impl EntryService for EntryServiceImpl {
 
 impl From<Entry> for ProtoEntry {
     fn from(e: Entry) -> Self {
-        let data_value = serde_json::from_str::<serde_json::Value>(&e.data)
-            .ok()
-            .and_then(|value| crate::grpc::json_to_struct(&value));
         ProtoEntry {
+            data: crate::grpc::json_text_to_struct(&e.data),
+            created_at: crate::grpc::timestamp_from_text(&e.created_at),
+            updated_at: crate::grpc::timestamp_from_text(&e.updated_at),
+            published_at: e.published_at.as_deref().and_then(crate::grpc::timestamp_from_text),
             id: e.id,
             site_id: e.site_id,
             collection_id: e.collection_id,
-            data: e.data,
             slug: e.slug,
             status: e.status,
             singleton_collection_id: e.singleton_collection_id,
-            created_at: e.created_at.clone(),
-            updated_at: e.updated_at.clone(),
-            published_at: e.published_at.clone(),
-            data_value,
             version: e.version,
-            created_at_timestamp: crate::grpc::timestamp_from_text(&e.created_at),
-            updated_at_timestamp: crate::grpc::timestamp_from_text(&e.updated_at),
-            published_at_timestamp: e.published_at.as_deref().and_then(crate::grpc::timestamp_from_text),
         }
     }
 }
@@ -399,15 +350,13 @@ impl From<Entry> for ProtoEntry {
 impl From<EntryRevision> for ProtoEntryRevision {
     fn from(r: EntryRevision) -> Self {
         ProtoEntryRevision {
+            data: crate::grpc::json_to_struct(&r.data.0),
+            created_at: crate::grpc::timestamp_from_text(&r.created_at),
             id: r.id,
             entry_id: r.entry_id,
             revision_number: r.revision_number,
-            data: serde_json::to_string(&r.data.0).unwrap_or_default(),
             created_by: r.created_by,
-            created_at: r.created_at.clone(),
             change_summary: r.change_summary,
-            data_value: crate::grpc::json_to_struct(&r.data.0),
-            created_at_timestamp: crate::grpc::timestamp_from_text(&r.created_at),
         }
     }
 }

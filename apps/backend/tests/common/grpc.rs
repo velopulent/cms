@@ -131,7 +131,7 @@ impl GrpcTestContext {
             storage_registry.clone(),
             services.clone(),
             backup_service,
-            settings,
+            settings.clone(),
         );
 
         let (axum_shutdown_tx, axum_shutdown_rx) = tokio::sync::oneshot::channel::<()>();
@@ -163,6 +163,7 @@ impl GrpcTestContext {
             repository_arc.clone(),
             storage_registry.clone(),
             config.clone(),
+            settings,
         );
         let site_svc = SiteServiceImpl::new(services.site.clone(), repository_arc.clone());
 
@@ -354,4 +355,15 @@ pub fn auth_interceptor(token: &str) -> impl tonic::service::Interceptor + Clone
         );
         Ok(req)
     }
+}
+
+/// Parse a JSON object literal into the protobuf Struct used for content data.
+pub fn content(json: &str) -> Option<prost_types::Struct> {
+    let value: serde_json::Value = serde_json::from_str(json).expect("valid JSON object");
+    cms::grpc::json_to_struct(&value)
+}
+
+/// Content Struct back to JSON for assertions.
+pub fn content_json(value: &Option<prost_types::Struct>) -> serde_json::Value {
+    cms::grpc::struct_to_json(value.as_ref().expect("content present")).expect("valid content")
 }

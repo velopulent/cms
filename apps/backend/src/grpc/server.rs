@@ -14,6 +14,7 @@ use crate::grpc::services::file::FileServiceImpl;
 use crate::grpc::services::singleton::SingletonServiceImpl;
 use crate::repository::Repository;
 use crate::services::Services;
+use crate::services::settings::SettingsService;
 use crate::storage::StorageRegistry;
 
 /// Boxed, pinned future returned by [`spawn_grpc_server`] (the gRPC server task).
@@ -24,6 +25,7 @@ pub async fn start_grpc_server(
     repository: Arc<Repository>,
     config: Arc<Config>,
     storage_registry: Arc<StorageRegistry>,
+    settings: SettingsService,
     listener: tokio::net::TcpListener,
     shutdown: impl Future<Output = ()> + Send + 'static,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
@@ -36,6 +38,7 @@ pub async fn start_grpc_server(
         repository.clone(),
         storage_registry,
         config.clone(),
+        settings,
     );
     let site_svc = SiteServiceImpl::new(services.site.clone(), repository.clone());
 
@@ -100,6 +103,7 @@ pub fn spawn_grpc_server(
     repository: Arc<Repository>,
     config: Arc<Config>,
     storage_registry: Arc<StorageRegistry>,
+    settings: SettingsService,
     listener: tokio::net::TcpListener,
     shutdown: Pin<Box<dyn Future<Output = ()> + Send>>,
 ) -> GrpcServerFuture {
@@ -108,6 +112,7 @@ pub fn spawn_grpc_server(
         repository,
         config,
         storage_registry,
+        settings,
         listener,
         shutdown,
     ))
