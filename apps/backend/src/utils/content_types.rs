@@ -48,17 +48,6 @@ pub const ARCHIVE_TYPES: &[&str] = &[
     "application/x-rar-compressed",
 ];
 
-pub fn all_allowed() -> Vec<&'static str> {
-    IMAGE_TYPES
-        .iter()
-        .chain(VIDEO_TYPES)
-        .chain(AUDIO_TYPES)
-        .chain(DOCUMENT_TYPES)
-        .chain(ARCHIVE_TYPES)
-        .copied()
-        .collect()
-}
-
 pub const CATEGORIES: &[&str] = &["image", "video", "audio", "document", "archive"];
 
 pub fn types_for_category(category: &str) -> &'static [&'static str] {
@@ -98,10 +87,6 @@ pub fn category_of(mime: &str) -> &'static str {
 
 pub fn is_file_type_category(category: &str) -> bool {
     CATEGORIES.contains(&category)
-}
-
-pub fn filter_for_category(category: &str) -> Vec<String> {
-    types_for_category(category).iter().map(|s| s.to_string()).collect()
 }
 
 #[cfg(test)]

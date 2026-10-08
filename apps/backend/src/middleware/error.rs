@@ -1,10 +1,6 @@
 use axum::{Json, http::StatusCode};
 use serde::Serialize;
 
-pub fn unauthorized_error(message: &str) -> (StatusCode, String) {
-    (StatusCode::UNAUTHORIZED, message.to_string())
-}
-
 #[derive(Debug, Clone, Serialize)]
 pub struct AuthError {
     pub error: String,

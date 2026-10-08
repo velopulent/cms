@@ -6,19 +6,12 @@
 //! English-stemmed tokens (so "running" matches "run"). Typo tolerance is left as a
 //! follow-up: Tantivy's fuzzy queries score by constant, which would flatten ranking.
 //!
-//! ## Single writer, many readers, cross-process sync
+//! ## Single writer, durable queue
 //!
-//! Tantivy permits one `IndexWriter` per directory. Rather than let that limit who
-//! can search, we split the roles:
-//!
-//! - **Reading** needs no lock. Any process opens the index [read-only]
-//!   ([`SearchService::open_read_only`]) and gets full ranked search — including a
-//!   separate `vcms mcp stdio` process running alongside the server.
-//! - **Writing** goes through a durable database queue ([`queue`]) instead of the
-//!   index directly. Any process enqueues on a content change; the one running
-//!   server owns the writer ([`SearchService::open`]) and is the sole consumer
-//!   ([`indexer`]) that drains the queue into the index. This makes sync work across
-//!   processes and survive restarts, while keeping the embedded single-writer model.
+//! Tantivy permits one `IndexWriter` per directory, owned by the running server
+//! ([`SearchService::open`]). Content writes go through a durable database queue
+//! ([`queue`]) instead of the index directly; the server's [`indexer`] is the sole
+//! consumer and drains it into the index, so pending updates survive restarts.
 //!
 //! [Tantivy]: https://github.com/quickwit-oss/tantivy
 
@@ -61,8 +54,6 @@ pub enum SearchError {
     Repository(String),
     #[error("queue db error: {0}")]
     Db(String),
-    #[error("search index is read-only in this process")]
-    ReadOnly,
     #[error("Search pagination exceeds the 10000-result window")]
     PaginationLimit,
 }
@@ -86,16 +77,10 @@ pub struct SearchHits {
 }
 
 /// Embedded full-text search engine for entries.
-///
-/// Read-write when opened with [`open`](Self::open) (the running server), read-only
-/// when opened with [`open_read_only`](Self::open_read_only) (e.g. `vcms mcp stdio`).
-/// Read-only instances can [`search_entries`](Self::search_entries) but return
-/// [`SearchError::ReadOnly`] from any write/commit/rebuild call.
 pub struct SearchService {
     index: Index,
     reader: IndexReader,
-    /// `Some` only for the writer-owning process; `None` for read-only openers.
-    writer: Option<Mutex<IndexWriter>>,
+    writer: Mutex<IndexWriter>,
     fields: EntryFields,
 }
 
@@ -116,29 +101,7 @@ impl SearchService {
         Ok(Self {
             index,
             reader,
-            writer: Some(Mutex::new(writer)),
-            fields,
-        })
-    }
-
-    /// Open the index read-only (no writer, no directory lock). Fails if the index
-    /// does not exist yet. Used by processes that only search — they can run
-    /// concurrently with the writer-owning server. The reader auto-reloads on the
-    /// server's commits so results stay fresh.
-    pub fn open_read_only(index_path: &Path) -> Result<Self, SearchError> {
-        let dir = MmapDirectory::open(index_path)?;
-        let index = Index::open(dir)?;
-        schema::register_tokenizers(&index);
-        let fields = schema::fields_from(&index.schema())?;
-        let reader = index
-            .reader_builder()
-            .reload_policy(ReloadPolicy::OnCommitWithDelay)
-            .try_into()?;
-
-        Ok(Self {
-            index,
-            reader,
-            writer: None,
+            writer: Mutex::new(writer),
             fields,
         })
     }
@@ -148,12 +111,8 @@ impl SearchService {
         self.reader.searcher().num_docs() == 0
     }
 
-    /// Lock the writer, or fail if this instance is read-only.
     fn writer_guard(&self) -> Result<std::sync::MutexGuard<'_, IndexWriter>, SearchError> {
-        self.writer
-            .as_ref()
-            .ok_or(SearchError::ReadOnly)
-            .map(|m| m.lock().expect("search writer poisoned"))
+        Ok(self.writer.lock().expect("search writer poisoned"))
     }
 
     /// Stage an upsert of one entry without committing (the indexer batches commits).
@@ -509,24 +468,6 @@ mod tests {
         put(&svc, &entry("e1", "s1", "c1", "draft", "a", r#"{"title":"second"}"#));
         assert!(search(&svc, "s1", "first").is_empty());
         assert_eq!(search(&svc, "s1", "second"), vec!["e1"]);
-    }
-
-    #[test]
-    fn read_only_cannot_write() {
-        let dir = tempfile::tempdir().expect("temp dir");
-        // Create the index first (read_only fails on a nonexistent index).
-        {
-            let svc = SearchService::open(dir.path()).unwrap();
-            put(&svc, &entry("e1", "s1", "c1", "draft", "a", r#"{"title":"hello"}"#));
-        }
-        let ro = SearchService::open_read_only(dir.path()).unwrap();
-        // Reads work…
-        assert_eq!(search(&ro, "s1", "hello"), vec!["e1"]);
-        // …writes are rejected.
-        assert!(matches!(
-            ro.index_doc(&entry("e2", "s1", "c1", "draft", "b", r#"{"title":"x"}"#)),
-            Err(SearchError::ReadOnly)
-        ));
     }
 
     #[test]

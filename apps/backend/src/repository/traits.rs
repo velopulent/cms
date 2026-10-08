@@ -107,12 +107,6 @@ pub trait CollectionRepository: Send + Sync {
         expected_definition: &str,
     ) -> Result<Collection, RepositoryError>;
     async fn delete(&self, site_id: &str, slug: &str) -> Result<u64, RepositoryError>;
-    async fn get_content_for_migration(&self, collection_id: &str) -> Result<Vec<Entry>, RepositoryError>;
-    async fn migrate_content_field_renames(
-        &self,
-        content_items: &[Entry],
-        rename_map: &std::collections::HashMap<String, String>,
-    ) -> Result<(), RepositoryError>;
 }
 
 pub struct CreateEntryParams<'a> {
@@ -213,12 +207,6 @@ pub trait EntryRepository: Send + Sync {
         revision_number: i64,
         created_by: Option<&str>,
     ) -> Result<Entry, RepositoryError>;
-    async fn migrate_singleton_field_renames(
-        &self,
-        site_id: &str,
-        collection_id: &str,
-        rename_map: &std::collections::HashMap<String, String>,
-    ) -> Result<(), RepositoryError>;
 }
 
 #[derive(Clone)]
@@ -295,7 +283,6 @@ pub trait FileRepository: Send + Sync {
     async fn get_by_ids(&self, site_id: &str, ids: &[String]) -> Result<Vec<File>, RepositoryError>;
     async fn get_deleted_by_ids(&self, site_id: &str, ids: &[String]) -> Result<Vec<File>, RepositoryError>;
     async fn batch_permanent_delete(&self, site_id: &str, ids: &[String]) -> Result<u64, RepositoryError>;
-    async fn get_references(&self, file_id: &str) -> Result<Vec<FileReference>, RepositoryError>;
     async fn get_references_for_site(
         &self,
         file_id: &str,

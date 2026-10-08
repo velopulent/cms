@@ -2,7 +2,6 @@ use async_trait::async_trait;
 use sqlx::SqlitePool;
 
 use crate::models::collection::Collection;
-use crate::models::entry::Entry;
 use crate::repository::error::RepositoryError;
 use crate::repository::traits::CollectionRepository;
 
@@ -157,47 +156,5 @@ impl CollectionRepository for SqliteCollectionRepository {
             .await?;
 
         Ok(result.rows_affected())
-    }
-
-    async fn get_content_for_migration(&self, collection_id: &str) -> Result<Vec<Entry>, RepositoryError> {
-        let result = sqlx::query_as::<_, Entry>(
-            "SELECT id, site_id, collection_id, data, slug, status, singleton_collection_id, created_at, updated_at, CAST(version AS TEXT) AS version, published_at FROM entries WHERE collection_id = ?",
-        )
-        .bind(collection_id)
-        .fetch_all(&self.pool)
-        .await?;
-
-        Ok(result)
-    }
-
-    async fn migrate_content_field_renames(
-        &self,
-        entry_items: &[Entry],
-        rename_map: &std::collections::HashMap<String, String>,
-    ) -> Result<(), RepositoryError> {
-        // One transaction for the whole migration: per-statement commit overhead
-        // dominated this loop, and a partial rename is never left behind.
-        let mut tx = self.pool.begin_with("BEGIN IMMEDIATE").await?;
-        for entry in entry_items {
-            if let Ok(mut data) = serde_json::from_str::<serde_json::Value>(&entry.data)
-                && let Some(obj) = data.as_object_mut()
-            {
-                let mut renamed = serde_json::Map::new();
-                for (key, value) in obj.iter() {
-                    let new_key = rename_map.get(key).cloned().unwrap_or_else(|| key.clone());
-                    renamed.insert(new_key, value.clone());
-                }
-                let new_data_str =
-                    serde_json::to_string(&serde_json::Value::Object(renamed)).unwrap_or_else(|_| entry.data.clone());
-
-                sqlx::query("UPDATE entries SET data = ?, updated_at = datetime('now') WHERE id = ?")
-                    .bind(&new_data_str)
-                    .bind(&entry.id)
-                    .execute(&mut *tx)
-                    .await?;
-            }
-        }
-        tx.commit().await?;
-        Ok(())
     }
 }

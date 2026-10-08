@@ -38,12 +38,10 @@ pub struct Services {
     pub storage_profile: Arc<storage_profile::StorageProfileService>,
     /// Full-text search engine used for **reads** (ranked queries). `None` when
     /// search is disabled or the index couldn't be opened — callers then fall back
-    /// to the SQL `LIKE` path. Read-write in the server process, read-only in
-    /// `vcms mcp stdio`.
+    /// to the SQL `LIKE` path.
     pub search: Option<Arc<SearchService>>,
     /// Durable queue used for **writes**: content changes enqueue here and the
-    /// server's indexer applies them. Present whenever search is enabled, even in
-    /// read-only processes (so their writes still reach the server's index).
+    /// server's indexer applies them. Present whenever search is enabled.
     pub search_queue: Option<Arc<SearchQueue>>,
 }
 
@@ -51,24 +49,7 @@ impl Services {
     /// Build services for the running server: opens the search index **read-write**
     /// (this process owns the single writer and runs the indexer).
     pub fn new(repository: Arc<Repository>, pool: &DbPool, config: &Config) -> Self {
-        let search = build_search(config, IndexAccess::ReadWrite);
-        Self::assemble(repository, pool, config, search)
-    }
-
-    /// Build services for an auxiliary process (e.g. `vcms mcp stdio`): opens the
-    /// index **read-only** so it can search without contending for the writer lock.
-    /// Its writes still enqueue for the server to index.
-    pub fn new_read_only(repository: Arc<Repository>, pool: &DbPool, config: &Config) -> Self {
-        let search = build_search(config, IndexAccess::ReadOnly);
-        Self::assemble(repository, pool, config, search)
-    }
-
-    fn assemble(
-        repository: Arc<Repository>,
-        pool: &DbPool,
-        config: &Config,
-        search: Option<Arc<SearchService>>,
-    ) -> Self {
+        let search = build_search(config);
         let config = Arc::new(config.clone());
 
         let search_queue = if config.search_enabled {
@@ -128,20 +109,14 @@ impl Services {
     }
 }
 
-enum IndexAccess {
-    ReadWrite,
-    ReadOnly,
-}
-
 fn search_index_path(config: &Config) -> Option<PathBuf> {
     config.search_index_path.clone().map(PathBuf::from)
 }
 
-/// Open the search index for queries. Returns `None` when search is disabled or the
-/// index can't be opened, so the app degrades to the SQL `LIKE` fallback rather than
-/// failing to start. A missing index in read-only mode is expected (the server
-/// hasn't built it yet) and logged softly.
-fn build_search(config: &Config, access: IndexAccess) -> Option<Arc<SearchService>> {
+/// Open the search index read-write: the server owns the single writer and runs
+/// the indexer. Returns `None` when search is disabled or the index can't be
+/// opened, so the app degrades to the SQL `LIKE` fallback instead of failing.
+fn build_search(config: &Config) -> Option<Arc<SearchService>> {
     if !config.search_enabled {
         return None;
     }
@@ -149,27 +124,14 @@ fn build_search(config: &Config, access: IndexAccess) -> Option<Arc<SearchServic
         tracing::error!("Full-text search disabled: runtime search path is missing");
         return None;
     };
-    let opened = match access {
-        IndexAccess::ReadWrite => SearchService::open(&path),
-        IndexAccess::ReadOnly => SearchService::open_read_only(&path),
-    };
-    match opened {
-        Ok(svc) => Some(Arc::new(svc)),
-        Err(e) => {
-            match access {
-                IndexAccess::ReadWrite => {
-                    tracing::error!(
-                        "Full-text search disabled: failed to open index at {}: {}",
-                        path.display(),
-                        e
-                    )
-                }
-                IndexAccess::ReadOnly => tracing::warn!(
-                    "Read-only search index unavailable at {} ({}); using SQL LIKE fallback",
-                    path.display(),
-                    e
-                ),
-            }
+    match SearchService::open(&path) {
+        Ok(search) => Some(Arc::new(search)),
+        Err(error) => {
+            tracing::error!(
+                "Full-text search disabled: failed to open index at {}: {}",
+                path.display(),
+                error
+            );
             None
         }
     }

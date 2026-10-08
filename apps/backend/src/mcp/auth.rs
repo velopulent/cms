@@ -40,10 +40,6 @@ pub fn ok_result(data: &impl serde::Serialize) -> Result<CallToolResult, ErrorDa
     Ok(result)
 }
 
-pub fn text_result(message: impl Into<String>) -> CallToolResult {
-    CallToolResult::success(vec![ContentBlock::text(message.into())])
-}
-
 pub fn map_err(e: impl Into<crate::services::error::ServiceError>) -> ErrorData {
     service_error_to_mcp(e.into())
 }

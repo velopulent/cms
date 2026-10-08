@@ -311,27 +311,6 @@ impl FileRepository for PostgresFileRepository {
         Ok(result.rows_affected())
     }
 
-    async fn get_references(&self, file_id: &str) -> Result<Vec<FileReference>, RepositoryError> {
-        let rows: Vec<(String, String, String)> = sqlx::query_as(
-            "SELECT DISTINCT e.id, col.name, efr.field_name FROM entry_file_references efr
-             JOIN entries e ON efr.entry_id = e.id
-             JOIN collections col ON e.collection_id = col.id
-             WHERE efr.file_id = $1",
-        )
-        .bind(file_id)
-        .fetch_all(&self.pool)
-        .await?;
-
-        Ok(rows
-            .into_iter()
-            .map(|(entry_id, collection_name, field_name)| FileReference {
-                entry_id,
-                collection_name,
-                field_name,
-            })
-            .collect())
-    }
-
     async fn get_references_for_site(
         &self,
         file_id: &str,

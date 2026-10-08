@@ -598,44 +598,6 @@ impl EntryRepository for PostgresEntryRepository {
             Ok(entry)
         }
     }
-
-    async fn migrate_singleton_field_renames(
-        &self,
-        site_id: &str,
-        collection_id: &str,
-        rename_map: &std::collections::HashMap<String, String>,
-    ) -> Result<(), RepositoryError> {
-        let mut tx = self.pool.begin().await?;
-
-        let existing: Option<(String, String)> =
-            sqlx::query_as("SELECT id, data::text FROM entries WHERE singleton_collection_id = $1 AND site_id = $2")
-                .bind(collection_id)
-                .bind(site_id)
-                .fetch_optional(&mut *tx)
-                .await?;
-
-        if let Some((id, data_str)) = existing
-            && let Ok(mut data) = serde_json::from_str::<serde_json::Value>(&data_str)
-            && let Some(obj) = data.as_object_mut()
-        {
-            let mut renamed = serde_json::Map::new();
-            for (key, value) in obj.iter() {
-                let new_key = rename_map.get(key).cloned().unwrap_or_else(|| key.clone());
-                renamed.insert(new_key, value.clone());
-            }
-            let new_data_str =
-                serde_json::to_string(&serde_json::Value::Object(renamed)).unwrap_or_else(|_| data_str.clone());
-
-            sqlx::query("UPDATE entries SET data = $1::jsonb, updated_at = NOW() WHERE id = $2")
-                .bind(&new_data_str)
-                .bind(&id)
-                .execute(&mut *tx)
-                .await?;
-        }
-
-        tx.commit().await?;
-        Ok(())
-    }
 }
 
 pub use crate::utils::file_references::{extract_file_ids_from_value, extract_file_references_from_value};

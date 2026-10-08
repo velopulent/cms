@@ -44,15 +44,6 @@ impl TokenScope {
 }
 
 pub type TokenScopes = BTreeSet<TokenScope>;
-pub fn scopes_can_write(scopes: &TokenScopes) -> bool {
-    scopes.iter().any(|scope| {
-        matches!(
-            scope,
-            TokenScope::ContentWrite | TokenScope::ContentPublish | TokenScope::FilesWrite
-        )
-    })
-}
-
 pub fn encode_scopes(scopes: &TokenScopes) -> Result<String, serde_json::Error> {
     serde_json::to_string(scopes)
 }

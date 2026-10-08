@@ -328,35 +328,6 @@ impl StorageProfileService {
         }?;
         Ok(())
     }
-    pub async fn assign_site(&self, site: &str, profile: &str) -> Result<(), String> {
-        let p = self
-            .list()
-            .await?
-            .into_iter()
-            .find(|v| v.id == profile && v.enabled)
-            .ok_or("storage_profile_not_found")?;
-        match &self.pool {
-            DbPool::Sqlite(db) => sqlx::query("UPDATE sites SET storage_profile_id=?,storage_provider=? WHERE id=?")
-                .bind(profile)
-                .bind(&p.kind)
-                .bind(site)
-                .execute(db)
-                .await
-                .map(|_| ())
-                .map_err(|e| e.to_string()),
-            DbPool::Postgres(db) => {
-                sqlx::query("UPDATE sites SET storage_profile_id=$1,storage_provider=$2 WHERE id=$3")
-                    .bind(profile)
-                    .bind(&p.kind)
-                    .bind(site)
-                    .execute(db)
-                    .await
-                    .map(|_| ())
-                    .map_err(|e| e.to_string())
-            }
-        }?;
-        Ok(())
-    }
     pub async fn register_all(&self, registry: &StorageRegistry) -> Result<(), String> {
         if let Some(local) = registry.get("filesystem") {
             registry.register("local-filesystem", local);

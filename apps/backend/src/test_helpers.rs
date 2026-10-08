@@ -46,11 +46,6 @@ impl InMemoryUserRepository {
         by_id.insert(user.id.clone(), user.id.clone());
         users.push(user);
     }
-
-    pub fn with_user(&self, user: User) -> Self {
-        self.add_user(user.clone());
-        self.clone()
-    }
 }
 
 impl Default for InMemoryUserRepository {
@@ -281,11 +276,6 @@ impl InMemorySiteRepository {
 
     pub fn add_site(&self, site: Site) {
         let mut sites = self.sites.lock().unwrap();
-        sites.push(site);
-    }
-
-    pub fn add_site_with_role(&self, site: SiteWithRole) {
-        let mut sites = self.site_with_roles.lock().unwrap();
         sites.push(site);
     }
 
@@ -523,18 +513,6 @@ impl CollectionRepository for InMemoryCollectionRepository {
         let len = collections.len();
         collections.retain(|c| !(c.site_id == site_id && c.slug == slug));
         Ok((len - collections.len()) as u64)
-    }
-
-    async fn get_content_for_migration(&self, _collection_id: &str) -> Result<Vec<Entry>, RepositoryError> {
-        Ok(Vec::new())
-    }
-
-    async fn migrate_content_field_renames(
-        &self,
-        _content_items: &[Entry],
-        _rename_map: &std::collections::HashMap<String, String>,
-    ) -> Result<(), RepositoryError> {
-        Ok(())
     }
 }
 
@@ -923,15 +901,6 @@ impl EntryRepository for InMemoryEntryRepository {
 
         Ok(entry)
     }
-
-    async fn migrate_singleton_field_renames(
-        &self,
-        _site_id: &str,
-        _collection_id: &str,
-        _rename_map: &std::collections::HashMap<String, String>,
-    ) -> Result<(), RepositoryError> {
-        Ok(())
-    }
 }
 
 #[derive(Clone)]
@@ -1110,10 +1079,6 @@ impl FileRepository for InMemoryFileRepository {
         Ok((len - files.len()) as u64)
     }
 
-    async fn get_references(&self, _file_id: &str) -> Result<Vec<FileReference>, RepositoryError> {
-        Ok(Vec::new())
-    }
-
     async fn get_references_for_site(
         &self,
         _file_id: &str,
@@ -1164,11 +1129,6 @@ impl InMemoryAccessTokenRepository {
             personal_tokens: Arc::new(Mutex::new(Vec::new())),
             personal_hmacs: Arc::new(Mutex::new(std::collections::HashMap::new())),
         }
-    }
-
-    pub fn add_token(&self, token: AccessToken) {
-        let mut tokens = self.tokens.lock().unwrap();
-        tokens.push(token);
     }
 }
 
