@@ -34,7 +34,7 @@ async fn entry_workflow_uses_modern_tools_and_structured_output() {
         &token,
         &site_id,
         "list_entries",
-        serde_json::json!({"published_only": false}),
+        serde_json::json!({"include_drafts": true}),
     )
     .await;
     assert_eq!(mcp_tool_json(&listed)["items"].as_array().unwrap().len(), 1);

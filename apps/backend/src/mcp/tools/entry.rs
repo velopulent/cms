@@ -24,7 +24,8 @@ fn public_entry(entry: crate::models::entry::Entry) -> Result<PublicEntry, McpEr
 pub struct ListEntriesParams {
     pub site_id: String,
     pub collection_slug: Option<String>,
-    pub published_only: Option<bool>,
+    /// Include drafts; requires content.preview.read.
+    pub include_drafts: Option<bool>,
     pub status: Option<String>,
     pub page: Option<i64>,
     pub per_page: Option<i64>,
@@ -38,7 +39,7 @@ pub async fn list_entries(
     params: Parameters<ListEntriesParams>,
 ) -> Result<CallToolResult, McpError> {
     let site_id = params.0.site_id.clone();
-    let published_only = params.0.published_only.unwrap_or(true);
+    let published_only = !params.0.include_drafts.unwrap_or(false);
     if let Err(e) = authorization
         .require_site_action(
             actor,

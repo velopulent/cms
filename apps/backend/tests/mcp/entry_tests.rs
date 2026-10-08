@@ -405,7 +405,7 @@ async fn test_list_entries_filter_by_collection() {
         &token,
         &site_id,
         "list_entries",
-        serde_json::json!({"collection_slug": "posts", "published_only": false}),
+        serde_json::json!({"collection_slug": "posts", "include_drafts": true}),
     )
     .await;
     let data = mcp_tool_json(&result);
@@ -446,7 +446,7 @@ async fn test_list_entries_with_search() {
         &token,
         &site_id,
         "list_entries",
-        serde_json::json!({"search": "Unique", "published_only": false}),
+        serde_json::json!({"search": "Unique", "include_drafts": true}),
     )
     .await;
     let data = mcp_tool_json(&result);
