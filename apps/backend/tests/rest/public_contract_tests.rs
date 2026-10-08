@@ -609,5 +609,46 @@ async fn expiring_tokens_and_bearer_scheme_case_work_across_http_protocols() {
         .unwrap();
     assert_eq!(response.status(), 200, "Future token rejected by MCP");
     let body: Value = response.json().await.unwrap();
-    assert_eq!(body["result"]["supportedVersions"][0], "2026-07-28");
+    assert!(
+        body["result"]["supportedVersions"]
+            .as_array()
+            .unwrap()
+            .contains(&json!("2026-07-28"))
+    );
+}
+
+#[tokio::test]
+async fn public_lists_reject_unknown_collections_and_bad_cursors_with_actionable_errors() {
+    let server = TestServer::start().await;
+    let (session, csrf, site) = setup(&server).await;
+    let client = reqwest::Client::new();
+    let created = client
+        .post(format!("{}/api/dashboard/sites/{site}/collections", server.base_url))
+        .headers(auth_header(&session, &csrf))
+        .json(&json!({"name":"Posts","slug":"posts","definition":{"fields":[{"name":"title","type":"text"}]}}))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(created.status(), 201);
+    let reader = token(&server, &site, &session, &csrf, &["content.read", "files.read"]).await;
+    let base = format!("{}/api/v1/sites/{site}", server.base_url);
+    let get = |path: String| client.get(format!("{base}{path}")).bearer_auth(&reader).send();
+
+    assert_eq!(get("/collections/missing/entries".into()).await.unwrap().status(), 404);
+    for path in ["/collections/posts/entries?cursor=garbage", "/files?cursor=garbage"] {
+        let response = get(path.into()).await.unwrap();
+        assert_eq!(response.status(), 400, "{path}");
+        let body: Value = response.json().await.unwrap();
+        assert!(body["detail"].as_str().unwrap().contains("Cursor"), "{path}: {body}");
+    }
+
+    let response = get("/collections/posts/entries?include_drafts=true".into())
+        .await
+        .unwrap();
+    assert_eq!(response.status(), 403);
+    let body: Value = response.json().await.unwrap();
+    assert!(
+        body["detail"].as_str().unwrap().contains("content.preview.read"),
+        "403 must name the missing scope: {body}"
+    );
 }

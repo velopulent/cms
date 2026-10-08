@@ -21,21 +21,10 @@ impl AuthorizationService {
                 if site_id != k.site_id {
                     return Err(ServiceError::Forbidden("Token is not authorized for this site".into()));
                 }
-                if site_id == k.site_id
-                    && !Authorizer::token_hard_denied(action)
-                    && scopes_allow_action(&k.scopes, action)
-                {
-                    Ok(())
-                } else if site_id != k.site_id {
-                    Err(ServiceError::Forbidden("Token is not authorized for this site".into()))
-                } else {
-                    Err(ServiceError::InsufficientPermission("token scope".into()))
-                }
+                require_token_scope(&k.scopes, action)
             }
             Actor::PersonalToken(token) => {
-                if Authorizer::token_hard_denied(action) || !scopes_allow_action(&token.scopes, action) {
-                    return Err(ServiceError::InsufficientPermission("token scope".into()));
-                }
+                require_token_scope(&token.scopes, action)?;
                 self.check_site_access(&token.user_id, site_id, action).await
             }
             Actor::User(user) => self.check_site_access(&user.user_id, site_id, action).await,
@@ -86,6 +75,18 @@ impl AuthorizationService {
             None => Err(ServiceError::NotFound("Site not found".into())),
         }
     }
+}
+
+/// Scope gate shared by every token-authenticated adapter.
+fn require_token_scope(scopes: &crate::models::access_token::TokenScopes, action: Action) -> Result<(), ServiceError> {
+    if Authorizer::token_hard_denied(action) {
+        return Err(ServiceError::SiteTokenDenied);
+    }
+    if scopes_allow_action(scopes, action) {
+        return Ok(());
+    }
+    let scope = crate::middleware::auth::scope_for_action(action).map_or("unavailable", |scope| scope.as_str());
+    Err(ServiceError::InsufficientPermission(scope.into()))
 }
 
 #[cfg(test)]

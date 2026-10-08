@@ -26,6 +26,23 @@ pub enum TokenScope {
     McpUse,
 }
 
+impl TokenScope {
+    /// Wire name, identical to the serde representation.
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            TokenScope::SiteRead => "site.read",
+            TokenScope::ContentRead => "content.read",
+            TokenScope::ContentPreviewRead => "content.preview.read",
+            TokenScope::ContentWrite => "content.write",
+            TokenScope::ContentPublish => "content.publish",
+            TokenScope::FilesRead => "files.read",
+            TokenScope::FilesWrite => "files.write",
+            TokenScope::SchemaRead => "schema.read",
+            TokenScope::McpUse => "mcp.use",
+        }
+    }
+}
+
 pub type TokenScopes = BTreeSet<TokenScope>;
 pub fn scopes_can_write(scopes: &TokenScopes) -> bool {
     scopes.iter().any(|scope| {
@@ -128,4 +145,26 @@ pub struct PersonalAccessTokenResponse {
     #[serde(flatten)]
     pub token_info: PersonalAccessTokenView,
     pub token: String,
+}
+
+#[cfg(test)]
+mod scope_name_tests {
+    use super::TokenScope;
+
+    #[test]
+    fn scope_names_match_their_wire_format() {
+        for scope in [
+            TokenScope::SiteRead,
+            TokenScope::ContentRead,
+            TokenScope::ContentPreviewRead,
+            TokenScope::ContentWrite,
+            TokenScope::ContentPublish,
+            TokenScope::FilesRead,
+            TokenScope::FilesWrite,
+            TokenScope::SchemaRead,
+            TokenScope::McpUse,
+        ] {
+            assert_eq!(serde_json::to_value(scope).unwrap(), scope.as_str());
+        }
+    }
 }

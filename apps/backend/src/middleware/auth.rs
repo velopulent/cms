@@ -349,16 +349,23 @@ pub async fn require_site_action(
             if !Authorizer::token_hard_denied(action) && scopes_allow_action(&key.scopes, action) {
                 Ok(())
             } else {
-                Err(AuthError::insufficient_permission("token scope"))
+                Err(token_scope_denied(action))
             }
         }
         Actor::PersonalToken(token) => {
             if Authorizer::token_hard_denied(action) || !scopes_allow_action(&token.scopes, action) {
-                return Err(AuthError::insufficient_permission("token scope"));
+                return Err(token_scope_denied(action));
             }
             check_site_action_repo(repository, &token.user_id, &ctx.site_id, action).await
         }
         Actor::User(user) => check_site_action_repo(repository, &user.user_id, &ctx.site_id, action).await,
+    }
+}
+
+fn token_scope_denied(action: Action) -> (StatusCode, Json<AuthError>) {
+    match scope_for_action(action) {
+        Some(scope) if !Authorizer::token_hard_denied(action) => AuthError::insufficient_permission(scope.as_str()),
+        _ => AuthError::site_token_denied(),
     }
 }
 

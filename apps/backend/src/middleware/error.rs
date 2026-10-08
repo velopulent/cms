@@ -37,7 +37,7 @@ impl AuthError {
             StatusCode::FORBIDDEN,
             Json(Self {
                 error: "insufficient_permission".into(),
-                message: format!("Token requires '{}' permission.", permission),
+                message: format!("Token requires the '{}' scope.", permission),
             }),
         )
     }

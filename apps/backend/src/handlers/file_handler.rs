@@ -41,7 +41,6 @@ pub struct FileListParams {
 #[derive(Deserialize, utoipa::IntoParams)]
 pub struct PublicFileListParams {
     pub cursor: Option<String>,
-    pub page: Option<i64>,
     pub search: Option<String>,
     pub r#type: Option<String>,
     pub include_total: Option<bool>,
@@ -62,17 +61,6 @@ fn get_storage_for_site(
         .ok_or(StatusCode::INTERNAL_SERVER_ERROR)
 }
 
-#[utoipa::path(
-    get,
-    path = "/api/v1/sites/{site_id}/files",
-    params(FileListParams),
-    responses(
-        (status = 200, description = "List of files"),
-        (status = 401, description = "Unauthorized"),
-    ),
-    security(("bearer" = []), ("access_token" = [])),
-    tag = "files"
-)]
 #[instrument(skip(repository, services, ctx, params, storage_registry))]
 pub async fn list_files(
     ctx: RequestContext,
@@ -151,18 +139,10 @@ pub async fn list_public_files(
     }
     let per_page = 50_i64;
     let fingerprint = crate::utils::cursor::fingerprint(&(&ctx.site_id, &params.search, &params.r#type, per_page));
-    let page = match params.cursor.as_deref() {
-        Some(cursor) => match crate::utils::cursor::decode(cursor, &config.token_index_key) {
-            Ok(cursor) if cursor.fingerprint == fingerprint => cursor.page,
-            _ => {
-                return (
-                    StatusCode::BAD_REQUEST,
-                    Json(json!({"error": "invalid_cursor", "message": "Cursor does not match this query"})),
-                )
-                    .into_response();
-            }
-        },
-        None => params.page.unwrap_or(1).max(1),
+    let page = match crate::utils::cursor::resolve_page(params.cursor.as_deref(), &fingerprint, &config.token_index_key)
+    {
+        Ok(page) => page,
+        Err(message) => return crate::utils::cursor::invalid_cursor_response(message),
     };
     let storage_provider = match services.file.get_storage_provider(&ctx.site_id).await {
         Ok(provider) => provider,
@@ -781,17 +761,6 @@ pub async fn restore_file(
     }
 }
 
-#[utoipa::path(
-    post,
-    path = "/api/v1/files/batch-delete",
-    request_body = BatchFileIds,
-    responses(
-        (status = 200, description = "Files soft-deleted"),
-        (status = 400, description = "Bad request"),
-    ),
-    security(("bearer" = []), ("access_token" = [])),
-    tag = "files"
-)]
 #[instrument(skip(repository, services, ctx, body))]
 pub async fn batch_delete_files(
     ctx: RequestContext,
@@ -813,17 +782,6 @@ pub async fn batch_delete_files(
     }
 }
 
-#[utoipa::path(
-    post,
-    path = "/api/v1/files/batch-restore",
-    request_body = BatchFileIds,
-    responses(
-        (status = 200, description = "Files restored"),
-        (status = 400, description = "Bad request"),
-    ),
-    security(("bearer" = []), ("access_token" = [])),
-    tag = "files"
-)]
 #[instrument(skip(repository, services, ctx, body))]
 pub async fn batch_restore_files(
     ctx: RequestContext,
@@ -845,17 +803,6 @@ pub async fn batch_restore_files(
     }
 }
 
-#[utoipa::path(
-    post,
-    path = "/api/v1/files/batch-permanent-delete",
-    request_body = BatchFileIds,
-    responses(
-        (status = 200, description = "Files permanently deleted"),
-        (status = 400, description = "Bad request"),
-    ),
-    security(("bearer" = []), ("access_token" = [])),
-    tag = "files"
-)]
 #[instrument(skip(repository, services, ctx, body, storage_registry))]
 pub async fn batch_permanent_delete_files(
     ctx: RequestContext,

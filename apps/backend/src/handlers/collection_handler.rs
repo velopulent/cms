@@ -15,20 +15,10 @@ pub struct CollectionSlug {
 
 use crate::middleware::auth::{RequestContext, require_site_action};
 use crate::models::authorization::Action;
-use crate::models::collection::{Collection, CreateCollection, PublicCollection, UpdateCollection};
+use crate::models::collection::{CreateCollection, PublicCollection, UpdateCollection};
 use crate::repository::Repository;
 use crate::services::Services;
 
-#[utoipa::path(
-    get,
-    path = "/api/v1/sites/{site_id}/collections",
-    responses(
-        (status = 200, description = "List of collections", body = Vec<Collection>),
-        (status = 401, description = "Unauthorized"),
-    ),
-    security(("bearer" = []), ("access_token" = [])),
-    tag = "collections"
-)]
 #[instrument(skip(repository, services, ctx))]
 pub async fn list_collections(
     ctx: RequestContext,
@@ -77,18 +67,6 @@ pub async fn list_public_collections(
     }
 }
 
-#[utoipa::path(
-    get,
-    path = "/api/v1/sites/{site_id}/collections/{collection_slug}",
-    params(("collection_slug" = String, Path, description = "Collection slug")),
-    responses(
-        (status = 200, description = "Collection details", body = Collection),
-        (status = 401, description = "Unauthorized"),
-        (status = 404, description = "Collection not found"),
-    ),
-    security(("bearer" = []), ("access_token" = [])),
-    tag = "collections"
-)]
 #[instrument(skip(repository, services, ctx))]
 pub async fn get_collection(
     ctx: RequestContext,
@@ -139,19 +117,6 @@ pub async fn get_public_collection(
     }
 }
 
-#[utoipa::path(
-    post,
-    path = "/api/v1/collections",
-    request_body = CreateCollection,
-    responses(
-        (status = 201, description = "Collection created", body = Collection),
-        (status = 401, description = "Unauthorized"),
-        (status = 403, description = "Insufficient permissions"),
-        (status = 409, description = "Collection name or slug already exists"),
-    ),
-    security(("bearer" = []), ("access_token" = [])),
-    tag = "collections"
-)]
 #[instrument(skip(repository, services, ctx, payload))]
 pub async fn create_collection(
     ctx: RequestContext,
@@ -182,19 +147,6 @@ pub async fn create_collection(
     }
 }
 
-#[utoipa::path(
-    put,
-    path = "/api/v1/collections/{collection_slug}",
-    params(("collection_slug" = String, Path, description = "Collection slug")),
-    request_body = UpdateCollection,
-    responses(
-        (status = 200, description = "Collection updated", body = Collection),
-        (status = 401, description = "Unauthorized"),
-        (status = 403, description = "Insufficient permissions"),
-    ),
-    security(("bearer" = []), ("access_token" = [])),
-    tag = "collections"
-)]
 #[instrument(skip(repository, services, ctx, payload))]
 pub async fn update_collection(
     ctx: RequestContext,
@@ -225,18 +177,6 @@ pub async fn update_collection(
     }
 }
 
-#[utoipa::path(
-    delete,
-    path = "/api/v1/collections/{collection_slug}",
-    params(("collection_slug" = String, Path, description = "Collection slug")),
-    responses(
-        (status = 204, description = "Collection deleted"),
-        (status = 401, description = "Unauthorized"),
-        (status = 403, description = "Insufficient permissions"),
-    ),
-    security(("bearer" = []), ("access_token" = [])),
-    tag = "collections"
-)]
 #[instrument(skip(repository, services, ctx))]
 pub async fn delete_collection(
     ctx: RequestContext,

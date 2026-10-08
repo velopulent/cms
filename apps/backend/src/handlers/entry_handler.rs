@@ -22,11 +22,9 @@ pub struct RevisionId {
 }
 
 use crate::error::AppError;
-use crate::middleware::auth::{Actor, RequestContext, require_site_action};
+use crate::middleware::auth::{RequestContext, require_site_action};
 use crate::models::authorization::Action;
-use crate::models::entry::{
-    CreateEntry, Entry, EntryRevisionResponse, PublicEntry, RevisionsListResponse, UpdateEntry,
-};
+use crate::models::entry::{CreateEntry, EntryRevisionResponse, PublicEntry, RevisionsListResponse, UpdateEntry};
 use crate::repository::Repository;
 use crate::repository::traits::ListEntriesParams;
 use crate::services::Services;
@@ -40,6 +38,14 @@ pub struct ListParams {
     pub status: Option<String>,
     pub search: Option<String>,
     pub page: Option<i64>,
+    pub per_page: Option<i64>,
+}
+
+/// Public collection entry query. Continuation is cursor-only.
+#[derive(Deserialize, utoipa::IntoParams)]
+pub struct CollectionEntriesQuery {
+    pub status: Option<String>,
+    pub search: Option<String>,
     pub per_page: Option<i64>,
     pub include_drafts: Option<bool>,
     pub cursor: Option<String>,
@@ -108,17 +114,6 @@ fn get_storage_for_site(
         .ok_or(AppError::Internal("Storage provider not found".into()))
 }
 
-#[utoipa::path(
-    get,
-    path = "/api/v1/entries",
-    params(ListParams),
-    responses(
-        (status = 200, description = "List of entries"),
-        (status = 401, description = "Unauthorized"),
-    ),
-    security(("bearer" = []), ("access_token" = [])),
-    tag = "entries"
-)]
 #[instrument(skip(repository, services, ctx, params))]
 pub async fn list_entries(
     ctx: RequestContext,
@@ -126,16 +121,11 @@ pub async fn list_entries(
     Extension(repository): Extension<Repository>,
     Extension(services): Extension<Services>,
 ) -> Response {
-    let revision_read_action = if matches!(ctx.auth.actor, Actor::User(_)) {
-        Action::ContentRead
-    } else {
-        Action::ContentPreviewRead
-    };
-    if let Err((status, err)) = require_site_action(&ctx, &repository, revision_read_action).await {
+    // Dashboard route: only interactive sessions reach it, and they see drafts.
+    if let Err((status, err)) = require_site_action(&ctx, &repository, Action::ContentRead).await {
         return (status, err).into_response();
     }
-
-    let published_only = matches!(ctx.auth.actor, Actor::ApiKey(_));
+    let published_only = false;
     let page = params.page.unwrap_or(1).max(1);
     let per_page = params.per_page.unwrap_or(50).clamp(1, 200);
 
@@ -143,11 +133,7 @@ pub async fn list_entries(
         site_id: &ctx.site_id,
         collection_slug: params.r#type.as_deref(),
         collection_id: None,
-        status: if matches!(ctx.auth.actor, Actor::User(_)) {
-            params.status.as_deref()
-        } else {
-            None
-        },
+        status: params.status.as_deref(),
         search: params.search.as_deref(),
         published_only,
         page,
@@ -178,7 +164,7 @@ pub async fn list_entries(
 #[utoipa::path(
     get,
     path = "/api/v1/sites/{site_id}/collections/{collection_slug}/entries",
-    params(CollectionEntryPath, ListParams),
+    params(CollectionEntryPath, CollectionEntriesQuery),
     responses((status = 200, description = "Entries in a collection")),
     security(("access_token" = [])),
     tag = "entries"
@@ -186,7 +172,7 @@ pub async fn list_entries(
 pub async fn list_collection_entries(
     ctx: RequestContext,
     Path(CollectionEntryPath { collection_slug }): Path<CollectionEntryPath>,
-    Query(params): Query<ListParams>,
+    Query(params): Query<CollectionEntriesQuery>,
     Extension(repository): Extension<Repository>,
     Extension(services): Extension<Services>,
     Extension(config): Extension<Config>,
@@ -205,6 +191,12 @@ pub async fn list_collection_entries(
         return (status, err).into_response();
     }
 
+    match services.collection.get_collection(&ctx.site_id, &collection_slug).await {
+        Ok(Some(collection)) if !collection.is_singleton => {}
+        Ok(_) => return (StatusCode::NOT_FOUND, Json(json!({"error": "Collection not found"}))).into_response(),
+        Err(error) => return error.into_response(),
+    }
+
     let include_drafts = params.include_drafts.unwrap_or(false) || params.status.as_deref() == Some("draft");
     let fingerprint = crate::utils::cursor::fingerprint(&(
         &ctx.site_id,
@@ -214,18 +206,10 @@ pub async fn list_collection_entries(
         include_drafts,
         params.per_page.unwrap_or(50).clamp(1, 200),
     ));
-    let page = match params.cursor.as_deref() {
-        Some(cursor) => match crate::utils::cursor::decode(cursor, &config.token_index_key) {
-            Ok(cursor) if cursor.fingerprint == fingerprint => cursor.page,
-            _ => {
-                return (
-                    StatusCode::BAD_REQUEST,
-                    Json(json!({"error": "invalid_cursor", "message": "Cursor does not match this query"})),
-                )
-                    .into_response();
-            }
-        },
-        None => params.page.unwrap_or(1).max(1),
+    let page = match crate::utils::cursor::resolve_page(params.cursor.as_deref(), &fingerprint, &config.token_index_key)
+    {
+        Ok(page) => page,
+        Err(message) => return crate::utils::cursor::invalid_cursor_response(message),
     };
     let per_page = params.per_page.unwrap_or(50).clamp(1, 200);
     let result = services
@@ -283,18 +267,6 @@ pub async fn list_collection_entries(
     }
 }
 
-#[utoipa::path(
-    get,
-    path = "/api/v1/entries/{id}",
-    params(("id" = String, Path, description = "Entry ID")),
-    responses(
-        (status = 200, description = "Entry", body = Entry),
-        (status = 401, description = "Unauthorized"),
-        (status = 404, description = "Entry not found"),
-    ),
-    security(("bearer" = []), ("access_token" = [])),
-    tag = "entries"
-)]
 #[instrument(skip(repository, services, ctx, storage_registry))]
 pub async fn get_entry(
     ctx: RequestContext,
@@ -303,16 +275,11 @@ pub async fn get_entry(
     Extension(services): Extension<Services>,
     Extension(storage_registry): Extension<Arc<StorageRegistry>>,
 ) -> Response {
-    let revision_read_action = if matches!(ctx.auth.actor, Actor::User(_)) {
-        Action::ContentRead
-    } else {
-        Action::ContentPreviewRead
-    };
-    if let Err((status, err)) = require_site_action(&ctx, &repository, revision_read_action).await {
+    // Dashboard route: only interactive sessions reach it, and they see drafts.
+    if let Err((status, err)) = require_site_action(&ctx, &repository, Action::ContentRead).await {
         return (status, err).into_response();
     }
-
-    let published_only = matches!(ctx.auth.actor, Actor::ApiKey(_));
+    let published_only = false;
 
     match services.entry.get_entry(&id, &ctx.site_id, published_only).await {
         Ok(Some(item)) => {
@@ -336,19 +303,6 @@ pub async fn get_entry(
     }
 }
 
-#[utoipa::path(
-    post,
-    path = "/api/v1/entries",
-    request_body = CreateEntry,
-    responses(
-        (status = 201, description = "Entry created", body = Entry),
-        (status = 401, description = "Unauthorized"),
-        (status = 403, description = "Insufficient permissions"),
-        (status = 409, description = "Slug already exists"),
-    ),
-    security(("bearer" = []), ("access_token" = [])),
-    tag = "entries"
-)]
 #[instrument(skip(repository, services, ctx, payload))]
 pub async fn create_entry(
     ctx: RequestContext,
@@ -588,19 +542,6 @@ pub async fn unpublish_public_entry(
     }
 }
 
-#[utoipa::path(
-    put,
-    path = "/api/v1/sites/{site_id}/entries/{id}",
-    params(("id" = String, Path, description = "Entry ID")),
-    request_body = UpdateEntry,
-    responses(
-        (status = 200, description = "Entry updated", body = Entry),
-        (status = 401, description = "Unauthorized"),
-        (status = 403, description = "Insufficient permissions"),
-    ),
-    security(("bearer" = []), ("access_token" = [])),
-    tag = "entries"
-)]
 #[instrument(skip(repository, services, ctx, payload))]
 pub async fn update_entry(
     ctx: RequestContext,
@@ -662,19 +603,6 @@ pub async fn delete_entry(
     }
 }
 
-#[utoipa::path(
-    post,
-    path = "/api/v1/sites/{site_id}/entries/{id}/publish",
-    params(("id" = String, Path, description = "Entry ID")),
-    responses(
-        (status = 200, description = "Entry published", body = Entry),
-        (status = 401, description = "Unauthorized"),
-        (status = 403, description = "Insufficient permissions"),
-        (status = 404, description = "Entry not found"),
-    ),
-    security(("bearer" = []), ("access_token" = [])),
-    tag = "entries"
-)]
 #[instrument(skip(repository, services, ctx))]
 pub async fn publish_entry(
     ctx: RequestContext,
@@ -692,19 +620,6 @@ pub async fn publish_entry(
     }
 }
 
-#[utoipa::path(
-    post,
-    path = "/api/v1/sites/{site_id}/entries/{id}/unpublish",
-    params(("id" = String, Path, description = "Entry ID")),
-    responses(
-        (status = 200, description = "Entry unpublished", body = Entry),
-        (status = 401, description = "Unauthorized"),
-        (status = 403, description = "Insufficient permissions"),
-        (status = 404, description = "Entry not found"),
-    ),
-    security(("bearer" = []), ("access_token" = [])),
-    tag = "entries"
-)]
 #[instrument(skip(repository, services, ctx))]
 pub async fn unpublish_entry(
     ctx: RequestContext,
@@ -824,22 +739,6 @@ pub async fn get_entry_revision(
     }
 }
 
-#[utoipa::path(
-    post,
-    path = "/api/v1/sites/{site_id}/entries/{id}/revisions/{number}/restore",
-    params(
-        ("id" = String, Path, description = "Entry ID"),
-        ("number" = i64, Path, description = "Revision number"),
-    ),
-    responses(
-        (status = 200, description = "Entry restored", body = Entry),
-        (status = 401, description = "Unauthorized"),
-        (status = 403, description = "Insufficient permissions"),
-        (status = 404, description = "Revision not found"),
-    ),
-    security(("bearer" = []), ("access_token" = [])),
-    tag = "entries"
-)]
 #[instrument(skip(repository, services, ctx))]
 pub async fn restore_entry_revision(
     ctx: RequestContext,

@@ -42,6 +42,29 @@ pub fn decode(value: &str, secret: &str) -> Result<PageCursor, &'static str> {
     Ok(cursor)
 }
 
+/// Resolve the page a public list request starts on: page 1 without a cursor,
+/// otherwise the page carried by a valid cursor issued for this exact query.
+pub fn resolve_page(cursor: Option<&str>, fingerprint: &str, secret: &str) -> Result<i64, &'static str> {
+    let Some(cursor) = cursor else {
+        return Ok(1);
+    };
+    let cursor = decode(cursor, secret).map_err(|_| "Cursor is malformed or was not issued by this server")?;
+    if cursor.fingerprint != fingerprint {
+        return Err("Cursor does not match this query");
+    }
+    Ok(cursor.page)
+}
+
+/// 400 response for a cursor that `resolve_page` rejected.
+pub fn invalid_cursor_response(message: &str) -> axum::response::Response {
+    use axum::response::IntoResponse;
+    (
+        axum::http::StatusCode::BAD_REQUEST,
+        axum::Json(serde_json::json!({"error": "invalid_cursor", "message": message})),
+    )
+        .into_response()
+}
+
 fn constant_time_eq(left: &[u8], right: &[u8]) -> bool {
     if left.len() != right.len() {
         return false;
