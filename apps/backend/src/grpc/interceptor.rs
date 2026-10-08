@@ -2,6 +2,7 @@ use std::sync::Arc;
 
 use crate::config::Config;
 use crate::middleware::auth::Actor;
+use crate::middleware::rate_limit::{ApiRateLimiter, RateLimiter};
 use crate::models::authorization::Action;
 use crate::repository::Repository;
 use crate::services::authorization::AuthorizationService;
@@ -56,19 +57,27 @@ impl GrpcAuthContext {
     }
 }
 
+/// Rate-limits each call by client address, then captures its bearer token.
 #[derive(Clone)]
 pub struct AuthInterceptor {
     config: Arc<Config>,
+    limiter: RateLimiter,
 }
 
 impl AuthInterceptor {
     pub fn new(config: Arc<Config>) -> Self {
-        Self { config }
+        let ApiRateLimiter(limiter) = ApiRateLimiter::from_config(&config);
+        Self { config, limiter }
     }
 }
 
 impl tonic::service::Interceptor for AuthInterceptor {
     fn call(&mut self, mut request: tonic::Request<()>) -> Result<tonic::Request<()>, tonic::Status> {
+        if !self.limiter.check(&self.limiter.grpc_client_key(&request)) {
+            return Err(tonic::Status::resource_exhausted(
+                "Too many requests. Please try again later.",
+            ));
+        }
         let token = request
             .metadata()
             .get("authorization")

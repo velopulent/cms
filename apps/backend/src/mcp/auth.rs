@@ -185,7 +185,10 @@ pub async fn mcp_rate_limit_middleware(request: Request<Body>, next: Next) -> Re
     if request.uri().path() != "/mcp" && !request.uri().path().starts_with("/mcp/") {
         return next.run(request).await;
     }
-    let Some(limiter) = request.extensions().get::<crate::middleware::rate_limit::RateLimiter>() else {
+    let Some(crate::middleware::rate_limit::ApiRateLimiter(limiter)) = request
+        .extensions()
+        .get::<crate::middleware::rate_limit::ApiRateLimiter>(
+    ) else {
         return auth_response(StatusCode::INTERNAL_SERVER_ERROR, "MCP rate limiter unavailable");
     };
     let key = limiter.client_key(&request);

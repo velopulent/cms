@@ -37,7 +37,7 @@ use crate::handlers::site_handler::{get_current_site, list_public_sites};
 use crate::middleware::api_auth::api_auth_middleware;
 use crate::middleware::authz::authz_middleware;
 use crate::middleware::dashboard_auth::dashboard_auth_middleware;
-use crate::middleware::rate_limit::{RateLimiter, rate_limit_middleware};
+use crate::middleware::rate_limit::{ApiRateLimiter, RateLimiter, api_rate_limit_middleware};
 use crate::middleware::site_resolver::{api_site_resolver, dashboard_site_resolver};
 use crate::repository::Repository;
 use crate::services::Services;
@@ -61,7 +61,7 @@ fn public_api_v1_routes(max_upload_bytes: usize) -> Router {
         .layer(from_fn(api_site_resolver))
         // Outer — runs first (validates Bearer vcms_site_* token)
         .layer(from_fn(api_auth_middleware))
-        .layer(from_fn(rate_limit_middleware));
+        .layer(from_fn(api_rate_limit_middleware));
 
     Router::new()
         .nest("/api/v1/sites/{site_id}", site_routes)
@@ -71,13 +71,13 @@ fn public_api_v1_routes(max_upload_bytes: usize) -> Router {
                 .layer(from_fn(authz_middleware))
                 .layer(from_fn(api_site_resolver))
                 .layer(from_fn(api_auth_middleware))
-                .layer(from_fn(rate_limit_middleware)),
+                .layer(from_fn(api_rate_limit_middleware)),
         )
         .route(
             "/api/v1/sites",
             get(list_public_sites)
                 .layer(from_fn(api_auth_middleware))
-                .layer(from_fn(rate_limit_middleware)),
+                .layer(from_fn(api_rate_limit_middleware)),
         )
 }
 
@@ -145,7 +145,7 @@ pub fn create_router(
                 .layer(from_fn(dashboard_auth_middleware)),
         )
         // ── GraphQL (custom auth in handler) ──
-        .merge(graphql::graphql_routes(config.production))
+        .merge(graphql::graphql_routes(config.production).layer(from_fn(api_rate_limit_middleware)))
         // ── Docs ──
         .merge(docs::docs_routes())
         // ── Dashboard SPA ──
@@ -182,6 +182,7 @@ pub fn create_router(
         .layer(Extension(mcp_repository))
         .layer(Extension(mcp_config))
         .layer(Extension(rate_limiter))
+        .layer(Extension(ApiRateLimiter::from_config(&config)))
         .layer(from_fn_with_state(settings, dynamic_runtime_policy))
         .layer(from_fn(trace_request));
 
