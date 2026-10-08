@@ -22,7 +22,7 @@ impl FileRepository for SqliteFileRepository {
         if expires_at <= now {
             return Ok(false);
         }
-        let mut transaction = self.pool.begin().await?;
+        let mut transaction = self.pool.begin_with("BEGIN IMMEDIATE").await?;
         sqlx::query("DELETE FROM signed_upload_uses WHERE expires_at <= ?")
             .bind(now)
             .execute(&mut *transaction)

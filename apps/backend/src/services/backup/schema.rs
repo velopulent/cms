@@ -403,7 +403,7 @@ pub async fn apply_restore(pool: &DbPool, plan: &RestorePlan) -> Result<(), Back
 
     match pool {
         DbPool::Sqlite(p) => {
-            let mut tx = p.begin().await.map_err(|e| BackupError::Db(e.to_string()))?;
+            let mut tx = p.begin_with("BEGIN IMMEDIATE").await.map_err(|e| BackupError::Db(e.to_string()))?;
             exec!(tx);
             tx.commit().await.map_err(|e| BackupError::Db(e.to_string()))?;
         }

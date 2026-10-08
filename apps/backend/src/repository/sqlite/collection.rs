@@ -96,7 +96,7 @@ impl CollectionRepository for SqliteCollectionRepository {
         rename_map: &std::collections::HashMap<String, String>,
         expected_definition: &str,
     ) -> Result<Collection, RepositoryError> {
-        let mut transaction = self.pool.begin().await?;
+        let mut transaction = self.pool.begin_with("BEGIN IMMEDIATE").await?;
         let changed = sqlx::query(
             "UPDATE collections SET name = ?, slug = ?, definition = ?, updated_at = datetime('now') WHERE id = ? AND definition = ?",
         )
@@ -177,7 +177,7 @@ impl CollectionRepository for SqliteCollectionRepository {
     ) -> Result<(), RepositoryError> {
         // One transaction for the whole migration: per-statement commit overhead
         // dominated this loop, and a partial rename is never left behind.
-        let mut tx = self.pool.begin().await?;
+        let mut tx = self.pool.begin_with("BEGIN IMMEDIATE").await?;
         for entry in entry_items {
             if let Ok(mut data) = serde_json::from_str::<serde_json::Value>(&entry.data)
                 && let Some(obj) = data.as_object_mut()

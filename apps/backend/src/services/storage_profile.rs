@@ -76,7 +76,7 @@ impl StorageProfileService {
         )?;
         let profile = match &self.pool {
             DbPool::Sqlite(pool) => {
-                let mut transaction = pool.begin().await.map_err(|error| error.to_string())?;
+                let mut transaction = pool.begin_with("BEGIN IMMEDIATE").await.map_err(|error| error.to_string())?;
                 let profile = sqlx::query_as(
                     "INSERT INTO storage_profiles(id,name,kind,endpoint,region,bucket,public_url,credentials_encrypted,created_by) \
                      VALUES(?,?,'s3',?,?,?,?,?,?) \
@@ -188,7 +188,7 @@ impl StorageProfileService {
         };
         let profile = match &self.pool {
             DbPool::Sqlite(pool) => {
-                let mut transaction = pool.begin().await.map_err(|error| error.to_string())?;
+                let mut transaction = pool.begin_with("BEGIN IMMEDIATE").await.map_err(|error| error.to_string())?;
                 let profile = sqlx::query_as(
                     "UPDATE storage_profiles SET name=?,endpoint=?,region=?,bucket=?,public_url=?,enabled=?, \
                      credentials_encrypted=COALESCE(?,credentials_encrypted),updated_at=datetime('now') WHERE id=? \

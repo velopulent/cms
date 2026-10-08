@@ -272,7 +272,7 @@ impl EntryRepository for SqliteEntryRepository {
             created_by,
             expected_definition,
         } = params;
-        let mut tx = self.pool.begin().await?;
+        let mut tx = self.pool.begin_with("BEGIN IMMEDIATE").await?;
 
         lock_definition_tx(&mut tx, collection_id, site_id, expected_definition).await?;
         sqlx::query("INSERT INTO entries (id, site_id, collection_id, data, slug) VALUES (?, ?, ?, ?, ?)")
@@ -315,7 +315,7 @@ impl EntryRepository for SqliteEntryRepository {
             change_summary,
             expected_version,
         } = params;
-        let mut tx = self.pool.begin().await?;
+        let mut tx = self.pool.begin_with("BEGIN IMMEDIATE").await?;
 
         let collection_id: Option<String> =
             sqlx::query_scalar("SELECT collection_id FROM entries WHERE id=? AND site_id=?")
@@ -407,7 +407,7 @@ impl EntryRepository for SqliteEntryRepository {
     }
 
     async fn sync_file_references(&self, entry_id: &str, site_id: &str, data: &Value) -> Result<(), RepositoryError> {
-        let mut tx = self.pool.begin().await?;
+        let mut tx = self.pool.begin_with("BEGIN IMMEDIATE").await?;
         sync_references_tx(&mut tx, entry_id, site_id, data).await?;
         tx.commit().await?;
         Ok(())
@@ -466,7 +466,7 @@ impl EntryRepository for SqliteEntryRepository {
         revision_number: i64,
         created_by: Option<&str>,
     ) -> Result<Entry, RepositoryError> {
-        let mut tx = self.pool.begin().await?;
+        let mut tx = self.pool.begin_with("BEGIN IMMEDIATE").await?;
 
         let revision: Option<EntryRevision> = sqlx::query_as(
             "SELECT id, entry_id, revision_number, data, created_by, created_at, change_summary
@@ -542,7 +542,7 @@ impl EntryRepository for SqliteEntryRepository {
             change_summary,
             expected_definition,
         } = params;
-        let mut tx = self.pool.begin().await?;
+        let mut tx = self.pool.begin_with("BEGIN IMMEDIATE").await?;
 
         lock_definition_tx(&mut tx, collection_id, site_id, expected_definition).await?;
         // Serialize first creation and revision allocation on the owning collection.
@@ -633,7 +633,7 @@ impl EntryRepository for SqliteEntryRepository {
         collection_id: &str,
         rename_map: &std::collections::HashMap<String, String>,
     ) -> Result<(), RepositoryError> {
-        let mut tx = self.pool.begin().await?;
+        let mut tx = self.pool.begin_with("BEGIN IMMEDIATE").await?;
 
         let existing: Option<(String, String)> =
             sqlx::query_as("SELECT id, data FROM entries WHERE singleton_collection_id = ? AND site_id = ?")
