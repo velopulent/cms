@@ -35,9 +35,7 @@ impl GrpcAuthContext {
     }
 
     pub fn require_scope(&self, scope: TokenScope) -> Result<(), tonic::Status> {
-        if self.scopes.contains(&scope)
-            || (scope == TokenScope::SiteRead && self.scopes.contains(&TokenScope::SiteSettingsRead))
-        {
+        if self.scopes.contains(&scope) {
             Ok(())
         } else {
             Err(tonic::Status::permission_denied(
@@ -289,21 +287,5 @@ mod tests {
         };
 
         assert!(!ctx.can_write());
-    }
-
-    #[test]
-    fn site_settings_read_satisfies_site_read() {
-        let ctx = GrpcAuthContext {
-            token_id: "token789".to_string(),
-            site_id: "site789".to_string(),
-            scopes: [TokenScope::SiteSettingsRead].into_iter().collect(),
-            actor: crate::middleware::auth::Actor::ApiKey(crate::middleware::auth::ApiKeyActor {
-                token_id: "token789".to_string(),
-                site_id: "site789".to_string(),
-                scopes: [TokenScope::SiteSettingsRead].into_iter().collect(),
-            }),
-        };
-
-        assert!(ctx.require_scope(TokenScope::SiteRead).is_ok());
     }
 }

@@ -29,11 +29,7 @@ impl SiteServiceImpl {
 impl SiteService for SiteServiceImpl {
     async fn list_sites(&self, mut request: Request<ListSitesRequest>) -> Result<Response<ListSitesResponse>, Status> {
         let auth = get_auth_context(&mut request, &self.repository).await?;
-        if !auth.scopes.contains(&crate::models::access_token::TokenScope::SiteRead)
-            && !auth
-                .scopes
-                .contains(&crate::models::access_token::TokenScope::SiteSettingsRead)
-        {
+        if !auth.scopes.contains(&crate::models::access_token::TokenScope::SiteRead) {
             return Err(Status::permission_denied("Token scope does not permit this operation"));
         }
         let sites = self

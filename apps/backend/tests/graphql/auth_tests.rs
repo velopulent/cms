@@ -346,10 +346,7 @@ async fn test_viewer_personal_token_cannot_write() {
             "scopes": [
                 "site.read",
                 "content.read",
-                "content.write",
-                "webhooks.read",
-                "deployments.read",
-                "deployments.trigger"
+                "content.write"
             ],
             "expires_at": null
         }))

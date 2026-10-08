@@ -8,10 +8,6 @@ use utoipa::ToSchema;
 pub enum TokenScope {
     #[serde(rename = "site.read")]
     SiteRead,
-    #[serde(rename = "site.settings.read")]
-    SiteSettingsRead,
-    #[serde(rename = "site.settings.write")]
-    SiteSettingsWrite,
     #[serde(rename = "content.read")]
     ContentRead,
     #[serde(rename = "content.preview.read")]
@@ -26,20 +22,6 @@ pub enum TokenScope {
     FilesWrite,
     #[serde(rename = "schema.read")]
     SchemaRead,
-    #[serde(rename = "schema.write")]
-    SchemaWrite,
-    #[serde(rename = "webhooks.read")]
-    WebhooksRead,
-    #[serde(rename = "webhooks.write")]
-    WebhooksWrite,
-    #[serde(rename = "webhooks.trigger")]
-    WebhooksTrigger,
-    #[serde(rename = "deployments.read")]
-    DeploymentsRead,
-    #[serde(rename = "deployments.write")]
-    DeploymentsWrite,
-    #[serde(rename = "deployments.trigger")]
-    DeploymentsTrigger,
     #[serde(rename = "mcp.use")]
     McpUse,
 }
@@ -49,15 +31,7 @@ pub fn scopes_can_write(scopes: &TokenScopes) -> bool {
     scopes.iter().any(|scope| {
         matches!(
             scope,
-            TokenScope::SiteSettingsWrite
-                | TokenScope::ContentWrite
-                | TokenScope::ContentPublish
-                | TokenScope::FilesWrite
-                | TokenScope::SchemaWrite
-                | TokenScope::WebhooksWrite
-                | TokenScope::WebhooksTrigger
-                | TokenScope::DeploymentsWrite
-                | TokenScope::DeploymentsTrigger
+            TokenScope::ContentWrite | TokenScope::ContentPublish | TokenScope::FilesWrite
         )
     })
 }

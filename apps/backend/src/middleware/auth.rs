@@ -365,50 +365,31 @@ pub async fn require_site_action(
 pub const fn scope_for_action(action: Action) -> Option<TokenScope> {
     Some(match action {
         Action::SiteRead => TokenScope::SiteRead,
-        Action::SiteManage => TokenScope::SiteSettingsWrite,
         Action::ContentRead => TokenScope::ContentRead,
         Action::ContentPreviewRead => TokenScope::ContentPreviewRead,
         Action::ContentWrite => TokenScope::ContentWrite,
         Action::ContentPublish => TokenScope::ContentPublish,
         Action::SchemaRead => TokenScope::SchemaRead,
-        Action::SchemaWrite => TokenScope::SchemaWrite,
         Action::FilesRead => TokenScope::FilesRead,
         Action::FilesWrite => TokenScope::FilesWrite,
-        Action::WebhooksRead => TokenScope::WebhooksRead,
-        Action::WebhooksWrite => TokenScope::WebhooksWrite,
-        Action::WebhooksTrigger => TokenScope::WebhooksTrigger,
-        Action::DeploymentsRead => TokenScope::DeploymentsRead,
-        Action::DeploymentsWrite => TokenScope::DeploymentsWrite,
-        Action::DeploymentsTrigger => TokenScope::DeploymentsTrigger,
         _ => return None,
     })
 }
 
 pub fn scopes_allow_action(scopes: &TokenScopes, action: Action) -> bool {
-    match action {
-        Action::SiteRead => scopes.contains(&TokenScope::SiteRead) || scopes.contains(&TokenScope::SiteSettingsRead),
-        _ => scope_for_action(action).is_some_and(|scope| scopes.contains(&scope)),
-    }
+    scope_for_action(action).is_some_and(|scope| scopes.contains(&scope))
 }
 
 pub const fn action_for_scope(scope: TokenScope) -> Option<Action> {
     Some(match scope {
-        TokenScope::SiteRead | TokenScope::SiteSettingsRead => Action::SiteRead,
-        TokenScope::SiteSettingsWrite => Action::SiteManage,
+        TokenScope::SiteRead => Action::SiteRead,
         TokenScope::ContentRead => Action::ContentRead,
         TokenScope::ContentPreviewRead => Action::ContentPreviewRead,
         TokenScope::ContentWrite => Action::ContentWrite,
         TokenScope::ContentPublish => Action::ContentPublish,
         TokenScope::SchemaRead => Action::SchemaRead,
-        TokenScope::SchemaWrite => Action::SchemaWrite,
         TokenScope::FilesRead => Action::FilesRead,
         TokenScope::FilesWrite => Action::FilesWrite,
-        TokenScope::WebhooksRead => Action::WebhooksRead,
-        TokenScope::WebhooksWrite => Action::WebhooksWrite,
-        TokenScope::WebhooksTrigger => Action::WebhooksTrigger,
-        TokenScope::DeploymentsRead => Action::DeploymentsRead,
-        TokenScope::DeploymentsWrite => Action::DeploymentsWrite,
-        TokenScope::DeploymentsTrigger => Action::DeploymentsTrigger,
         TokenScope::McpUse => return None,
     })
 }
@@ -565,24 +546,17 @@ mod tests {
     #[test]
     fn editor_token_scope_ceiling_follows_site_rbac() {
         for scope in [
-            TokenScope::WebhooksRead,
-            TokenScope::DeploymentsRead,
-            TokenScope::DeploymentsTrigger,
+            TokenScope::ContentPreviewRead,
             TokenScope::ContentWrite,
+            TokenScope::ContentPublish,
             TokenScope::FilesWrite,
             TokenScope::McpUse,
         ] {
             assert!(site_role_allows_token_scope(SiteRole::Editor, scope), "{scope:?}");
         }
 
-        for scope in [
-            TokenScope::SiteSettingsWrite,
-            TokenScope::SchemaWrite,
-            TokenScope::WebhooksWrite,
-            TokenScope::WebhooksTrigger,
-            TokenScope::DeploymentsWrite,
-        ] {
-            assert!(!site_role_allows_token_scope(SiteRole::Editor, scope), "{scope:?}");
+        for scope in [TokenScope::ContentPreviewRead, TokenScope::ContentWrite, TokenScope::ContentPublish] {
+            assert!(!site_role_allows_token_scope(SiteRole::Viewer, scope), "{scope:?}");
         }
     }
 }
