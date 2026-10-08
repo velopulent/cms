@@ -97,10 +97,7 @@ impl Services {
                 repository.access_token.clone(),
                 config.token_index_key.clone(),
             )),
-            collection: Arc::new(collection::CollectionService::new(
-                repository.collection.clone(),
-                repository.entry.clone(),
-            )),
+            collection: Arc::new(collection::CollectionService::new(repository.collection.clone())),
             entry: Arc::new(
                 entry::EntryService::new(
                     repository.entry.clone(),

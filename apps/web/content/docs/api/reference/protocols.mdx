@@ -6,7 +6,7 @@ description: Choose the VCMS interface that fits each consumer.
 | Protocol | Endpoint | Best fit | Canonical schema |
 | --- | --- | --- | --- |
 | REST | `/api/v1/*` | Web builds, scripts, broad HTTP tooling | `/api/v1/docs` |
-| GraphQL | `/api/graphql` | Clients choosing response fields | GraphiQL introspection |
+| GraphQL | `/api/graphql` | Clients choosing response fields | Authenticated schema introspection |
 | gRPC | port `50051` | Typed service-to-service clients | `cms.proto` |
 | MCP | `/mcp` | AI agents and tool clients | `tools/list`, `resources/list` |
 

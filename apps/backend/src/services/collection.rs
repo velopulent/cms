@@ -9,12 +9,11 @@ use uuid::Uuid;
 
 use crate::models::collection::Collection;
 use crate::repository::error::RepositoryError;
-use crate::repository::traits::{CollectionRepository, EntryRepository};
+use crate::repository::traits::CollectionRepository;
 
 #[derive(Clone)]
 pub struct CollectionService {
     collection_repo: Arc<dyn CollectionRepository>,
-    entry_repo: Arc<dyn EntryRepository>,
 }
 
 #[derive(Error, Debug)]
@@ -24,6 +23,9 @@ pub enum CollectionError {
 
     #[error("Collection with this name or slug already exists")]
     AlreadyExists,
+
+    #[error("Schema changed while the update was being prepared")]
+    PreconditionFailed,
 
     #[error("Invalid definition: {0}")]
     InvalidDefinition(String),
@@ -40,19 +42,23 @@ impl CollectionError {
                 StatusCode::CONFLICT,
                 Json(json!({"error": "Collection with this name or slug already exists"})),
             ),
+            CollectionError::PreconditionFailed => (
+                StatusCode::PRECONDITION_FAILED,
+                Json(json!({"error":"Schema changed; refresh and retry"})),
+            ),
             CollectionError::InvalidDefinition(msg) => (StatusCode::BAD_REQUEST, Json(json!({"error": msg}))),
-            CollectionError::DatabaseError(msg) => (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": msg}))),
+            CollectionError::DatabaseError(_) => (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({"error": "internal_error", "message": "Internal server error"})),
+            ),
         };
         (status, body).into_response()
     }
 }
 
 impl CollectionService {
-    pub fn new(collection_repo: Arc<dyn CollectionRepository>, entry_repo: Arc<dyn EntryRepository>) -> Self {
-        Self {
-            collection_repo,
-            entry_repo,
-        }
+    pub fn new(collection_repo: Arc<dyn CollectionRepository>) -> Self {
+        Self { collection_repo }
     }
 
     pub async fn list_collections(&self, site_id: &str) -> Result<Vec<Collection>, CollectionError> {
@@ -188,53 +194,38 @@ impl CollectionService {
             name_changed, slug_changed, definition_changed
         );
 
-        if let Some(new_def) = definition {
-            debug!("Processing definition changes for migration");
-            let old_def: Option<serde_json::Value> = serde_json::from_str(&existing.definition).ok();
-            let new_def_parsed: Option<serde_json::Value> = serde_json::from_str(new_def).ok();
-
-            if let (Some(old_d), Some(new_d)) = (old_def, new_def_parsed) {
-                let rename_map = compute_field_rename_map(&old_d, &new_d);
-
-                if !rename_map.is_empty() {
-                    info!("Field renames detected: {:?}", rename_map);
-                    if existing.is_singleton {
-                        debug!("Migrating singleton field renames via entry repo");
-                        match self
-                            .entry_repo
-                            .migrate_singleton_field_renames(&existing.site_id, &existing.id, &rename_map)
-                            .await
-                        {
-                            Ok(_) => debug!("Singleton field renames completed"),
-                            Err(e) => error!("Failed to migrate singleton field renames: error={}", e),
-                        }
-                    } else if let Ok(items) = self.collection_repo.get_content_for_migration(&existing.id).await {
-                        debug!("Migrating content field renames for {} items", items.len());
-                        match self
-                            .collection_repo
-                            .migrate_content_field_renames(&items, &rename_map)
-                            .await
-                        {
-                            Ok(_) => debug!("Content field renames completed"),
-                            Err(e) => error!("Failed to migrate content field renames: error={}", e),
-                        }
-                    }
-                } else {
-                    debug!("No field renames detected");
-                }
-            }
-        }
+        let rename_map = if definition.is_some() {
+            let old: serde_json::Value = serde_json::from_str(&existing.definition)
+                .map_err(|error| CollectionError::DatabaseError(error.to_string()))?;
+            let new: serde_json::Value = serde_json::from_str(&definition_str)
+                .map_err(|error| CollectionError::InvalidDefinition(error.to_string()))?;
+            compute_field_rename_map(&old, &new)
+        } else {
+            HashMap::new()
+        };
 
         debug!("Updating collection in repository: id={}", existing.id);
         self.collection_repo
-            .update(&existing.id, name, new_slug, &definition_str)
+            .update(
+                &existing.id,
+                name,
+                new_slug,
+                &definition_str,
+                &rename_map,
+                &existing.definition,
+            )
             .await
             .map_err(|e| {
                 error!(
                     "Failed to update collection in repository: id={}, error={}",
                     existing.id, e
                 );
-                CollectionError::DatabaseError(e.to_string())
+                match e {
+                    RepositoryError::UniqueViolation(_) => CollectionError::AlreadyExists,
+                    RepositoryError::PreconditionFailed => CollectionError::PreconditionFailed,
+                    RepositoryError::NotFound => CollectionError::NotFound,
+                    _ => CollectionError::DatabaseError(e.to_string()),
+                }
             })?;
 
         info!(
@@ -282,7 +273,19 @@ pub fn compute_field_rename_map(old_def: &serde_json::Value, new_def: &serde_jso
     let mut used_old = vec![false; old_fields.len()];
     let mut used_new = vec![false; new_fields.len()];
 
+    // Names that survive are the same field regardless of display order or
+    // changed validation. Matching positions first rotated data on reorder.
+    for (old_index, old) in old_fields.iter().enumerate() {
+        if let Some(new_index) = new_fields.iter().position(|new| new["name"] == old["name"]) {
+            used_old[old_index] = true;
+            used_new[new_index] = true;
+        }
+    }
+
     for i in 0..old_fields.len().min(new_fields.len()) {
+        if used_old[i] || used_new[i] {
+            continue;
+        }
         let of = &old_fields[i];
         let nf = &new_fields[i];
         if of["name"] != nf["name"]
@@ -326,6 +329,7 @@ pub fn compute_field_rename_map(old_def: &serde_json::Value, new_def: &serde_jso
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::repository::traits::EntryRepository;
     use crate::test_helpers::{InMemoryCollectionRepository, InMemoryEntryRepository};
     use std::sync::Arc;
 
@@ -338,7 +342,7 @@ mod tests {
     }
 
     fn make_service() -> CollectionService {
-        CollectionService::new(test_repo(), test_entry_repo())
+        CollectionService::new(test_repo())
     }
 
     fn create_test_collection() -> Collection {
@@ -418,7 +422,7 @@ mod tests {
     async fn test_update_collection_success() {
         let repo = test_repo();
         repo.add_collection(create_test_collection());
-        let service = CollectionService::new(repo, test_entry_repo());
+        let service = CollectionService::new(repo);
 
         let result = service
             .update_collection("site-123", "test-collection", Some("Updated"), None, None)
@@ -441,7 +445,7 @@ mod tests {
     async fn test_update_collection_with_slug_change() {
         let repo = test_repo();
         repo.add_collection(create_test_collection());
-        let service = CollectionService::new(repo, test_entry_repo());
+        let service = CollectionService::new(repo);
 
         let result = service
             .update_collection("site-123", "test-collection", None, Some("new-slug"), None)
@@ -454,7 +458,7 @@ mod tests {
     async fn test_update_collection_with_definition_change() {
         let repo = test_repo();
         repo.add_collection(create_test_collection());
-        let service = CollectionService::new(repo, test_entry_repo());
+        let service = CollectionService::new(repo);
 
         let new_def = r#"{"fields": [{"name": "new_title", "type": "text"}]}"#;
         let result = service
@@ -467,7 +471,7 @@ mod tests {
     async fn test_delete_collection_success() {
         let repo = test_repo();
         repo.add_collection(create_test_collection());
-        let service = CollectionService::new(repo, test_entry_repo());
+        let service = CollectionService::new(repo);
 
         let result = service.delete_collection("site-123", "test-collection").await;
         assert!(result.is_ok());
@@ -490,18 +494,33 @@ mod tests {
         let mut collection = create_test_collection();
         collection.is_singleton = true;
         repo.add_collection(collection.clone());
-        let service = CollectionService::new(repo, entry_repo);
-
-        let result = service
-            .entry_repo
-            .upsert_singleton_entry(
+        let service = crate::services::singleton::SingletonService::new(
+            repo,
+            entry_repo.clone(),
+            Arc::new(crate::test_helpers::InMemoryFileRepository::new()),
+        );
+        let response = service
+            .update_singleton(
                 "site-123",
-                &collection.id,
                 "test-collection",
-                r#"{"title":"Hello"}"#,
+                &serde_json::json!({"title":"Hello"}),
+                None,
                 None,
                 None,
             )
+            .await
+            .unwrap();
+        assert_eq!(response.data.unwrap()["title"], "Hello");
+        let result = entry_repo
+            .upsert_singleton_entry(crate::repository::traits::UpsertSingletonParams {
+                site_id: "site-123",
+                collection_id: &collection.id,
+                slug: "test-collection",
+                data: r#"{"title":"Hello"}"#,
+                created_by: None,
+                change_summary: None,
+                expected_definition: None,
+            })
             .await;
         assert!(result.is_ok());
     }
@@ -510,9 +529,24 @@ mod tests {
     async fn test_update_singleton_data_creates_entry() {
         let entry_repo = test_entry_repo();
         let result = entry_repo
-            .upsert_singleton_entry("site-123", "col-123", "x", r#"{"title":"Hello"}"#, None, None)
+            .upsert_singleton_entry(crate::repository::traits::UpsertSingletonParams {
+                site_id: "site-123",
+                collection_id: "col-123",
+                slug: "x",
+                data: r#"{"title":"Hello"}"#,
+                created_by: None,
+                change_summary: None,
+                expected_definition: None,
+            })
             .await;
         assert!(result.is_ok());
+    }
+
+    #[test]
+    fn field_reordering_and_validation_changes_never_rename_surviving_names() {
+        let old = serde_json::json!({"fields":[{"name":"first","type":"text"},{"name":"second","type":"text"}]});
+        let reordered = serde_json::json!({"fields":[{"name":"second","type":"text"},{"name":"first","type":"text","required":true}]});
+        assert!(compute_field_rename_map(&old, &reordered).is_empty());
     }
 
     #[test]

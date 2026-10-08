@@ -74,7 +74,10 @@ impl SiteError {
                 StatusCode::BAD_REQUEST,
                 Json(json!({"error": "Instance operators already have full access and cannot be added as members"})),
             ),
-            SiteError::DatabaseError(msg) => (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": msg}))),
+            SiteError::DatabaseError(_) => (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({"error": "internal_error", "message": "Internal server error"})),
+            ),
         };
         (status, body).into_response()
     }

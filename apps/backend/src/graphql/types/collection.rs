@@ -1,4 +1,4 @@
-use async_graphql::{ComplexObject, InputObject, SimpleObject};
+use async_graphql::{ComplexObject, SimpleObject};
 
 use super::entry::Entry;
 use super::json::Json;
@@ -18,6 +18,7 @@ pub struct Collection {
 
 #[ComplexObject]
 impl Collection {
+    #[graphql(complexity = "200 * child_complexity")]
     async fn entry(
         &self,
         ctx: &async_graphql::Context<'_>,
@@ -27,12 +28,23 @@ impl Collection {
         use async_graphql::dataloader::DataLoader;
 
         let gql_ctx = ctx.data::<crate::graphql::context::GqlContext>()?;
-        let published_only = gql_ctx.site_id.is_some();
+        gql_ctx
+            .require_site_action_for(
+                &self.site_id,
+                if status.as_deref() == Some("draft") {
+                    crate::models::authorization::Action::ContentPreviewRead
+                } else {
+                    crate::models::authorization::Action::ContentRead
+                },
+            )
+            .await?;
+        let published_only = status.as_deref() != Some("draft");
 
         // Batched via DataLoader to avoid an N+1 across multiple collections.
         let loader = ctx.data::<DataLoader<EntryLoader>>()?;
         let items = loader
             .load_one(EntriesByCollection {
+                site_id: self.site_id.clone(),
                 collection_id: self.id.clone(),
                 status: status.clone(),
                 published_only,
@@ -45,19 +57,31 @@ impl Collection {
     }
 }
 
-#[derive(InputObject)]
-pub struct CreateCollectionInput {
+#[derive(SimpleObject)]
+pub struct SingletonGraphql {
+    pub id: String,
+    pub site_id: String,
     pub name: String,
     pub slug: String,
     pub definition: Json,
-    pub is_singleton: Option<bool>,
+    pub data: Option<Json>,
+    pub entry_id: Option<String>,
+    pub created_at: String,
+    pub updated_at: String,
 }
 
-#[derive(InputObject)]
-pub struct UpdateCollectionInput {
-    pub name: Option<String>,
-    pub slug: Option<String>,
-    pub definition: Option<Json>,
+pub fn singleton_to_gql(value: crate::models::collection::SingletonResponse) -> SingletonGraphql {
+    SingletonGraphql {
+        id: value.id,
+        site_id: value.site_id,
+        name: value.name,
+        slug: value.slug,
+        definition: Json(value.definition),
+        data: value.data.map(Json),
+        entry_id: value.entry_id,
+        created_at: value.created_at,
+        updated_at: value.updated_at,
+    }
 }
 
 pub fn db_collection_to_gql(c: crate::models::collection::Collection) -> Collection {

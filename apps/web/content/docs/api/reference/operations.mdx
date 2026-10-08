@@ -5,27 +5,26 @@ description: Find supported resource groups and their live field-level reference
 
 ## REST resources
 
-Public `/api/v1` routes cover the current site, collections, entries and revisions, singletons, webhooks and deliveries, and files. File delivery uses `/api/files`; signed uploads use `/api/v1/files/upload/{token}`.
+Public `/api/v1/sites/{site_id}` routes cover schema discovery, entries and revisions, singletons, and files. `GET /api/v1/sites` discovers accessible sites. Management uses `/api/dashboard/*`. Binary delivery uses `/api/files/{id}`; signed uploads use `/api/v1/files/upload/{token}`.
 
-Open `/api/v1/docs` on the running server for methods, request bodies, and response schemas.
+Open `/api/v1/docs` or `/api/v1/openapi.json` for the installed contract. Entry and singleton updates use PATCH; publication uses separate POST operations.
 
 ## GraphQL
 
-Queries expose site content resources. Mutations cover collection, entry, file, and webhook workflows supported by the current schema. Open `/api/graphql` and use introspection for the installed version.
+Queries expose `sites`, `site(id:)`, and site-scoped content. Entry, singleton, publication, revision restore, file metadata, and upload-URL mutations require explicit `siteId`. Legacy root content queries remain for site keys or personal tokens using `X-VCMS-Site`. Collection and webhook management mutations are absent. Authenticated introspection is the field-level reference; production mode disables GraphiQL.
 
 ## gRPC services
 
 | Service | Operations |
 | --- | --- |
-| CollectionService | List, get, create, update, delete |
+| CollectionService | List and get schema |
 | EntryService | List, get, create, update, delete, publish, unpublish, revisions |
-| SingletonService | Get and update |
-| FileService | List, get, trash, restore, batch trash and restore |
-| SiteService | Get and update |
-| WebhookService | List, get, create, update, delete, trigger, deliveries |
+| SingletonService | List, get, update |
+| FileService | List, get, references, client-streaming upload, trash, restore |
+| SiteService | List and get |
 
-Use `cms.proto` for message fields.
+Use `cms.proto` for message fields. Legacy text/page fields coexist with typed content and page-token fields.
 
 ## MCP
 
-MCP tools cover accessible sites, collections, entries, publication, revisions, singletons, files, signed upload URLs, and webhooks. A site-schema resource describes each accessible site's current model. Call `tools/list` and `resources/list`; do not hard-code tool schemas from this page.
+Tools cover site discovery, entries, publication, revisions, singletons, files, and signed upload URLs. Collection and singleton schemas are resources. Call `tools/list`, `resources/list`, and `resources/templates/list` for the installed surface. Provision a bearer token with `mcp.use` and the action scopes required by each workflow.

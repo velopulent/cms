@@ -39,7 +39,7 @@ async fn test_upload_file() {
     let form = reqwest::multipart::Form::new().part("file", part);
 
     let resp = client
-        .post(format!("{}/files", server.base_url))
+        .post(format!("{}/api/v1/sites/{}/files", server.base_url, site_id))
         .headers(api_key_header(&api_key))
         .multipart(form)
         .send()
@@ -67,7 +67,7 @@ async fn test_list_files() {
     let form = reqwest::multipart::Form::new().part("file", part);
 
     let resp = client
-        .post(format!("{}/files", server.base_url))
+        .post(format!("{}/api/v1/sites/{}/files", server.base_url, site_id))
         .headers(api_key_header(&api_key))
         .multipart(form)
         .send()
@@ -81,7 +81,10 @@ async fn test_list_files() {
     );
 
     let resp = client
-        .get(format!("{}/files", server.base_url))
+        .get(format!(
+            "{}/api/v1/sites/{}/files?include_total=true",
+            server.base_url, site_id
+        ))
         .headers(api_key_header(&api_key))
         .send()
         .await
@@ -107,7 +110,7 @@ async fn test_get_file() {
     let form = reqwest::multipart::Form::new().part("file", part);
 
     let upload_resp = client
-        .post(format!("{}/files", server.base_url))
+        .post(format!("{}/api/v1/sites/{}/files", server.base_url, site_id))
         .headers(api_key_header(&api_key))
         .multipart(form)
         .send()
@@ -117,7 +120,10 @@ async fn test_get_file() {
     let file_id = uploaded["id"].as_str().unwrap();
 
     let resp = client
-        .get(format!("{}/files/{}", server.base_url, file_id))
+        .get(format!(
+            "{}/api/v1/sites/{}/files/{}",
+            server.base_url, site_id, file_id
+        ))
         .headers(api_key_header(&api_key))
         .send()
         .await
@@ -142,7 +148,7 @@ async fn test_delete_file() {
     let form = reqwest::multipart::Form::new().part("file", part);
 
     let upload_resp = client
-        .post(format!("{}/files", server.base_url))
+        .post(format!("{}/api/v1/sites/{}/files", server.base_url, site_id))
         .headers(api_key_header(&api_key))
         .multipart(form)
         .send()
@@ -152,7 +158,10 @@ async fn test_delete_file() {
     let file_id = uploaded["id"].as_str().unwrap();
 
     let resp = client
-        .delete(format!("{}/files/{}", server.base_url, file_id))
+        .delete(format!(
+            "{}/api/v1/sites/{}/files/{}",
+            server.base_url, site_id, file_id
+        ))
         .headers(api_key_header(&api_key))
         .send()
         .await
@@ -175,7 +184,7 @@ async fn test_get_file_references() {
     let form = reqwest::multipart::Form::new().part("file", part);
 
     let upload_resp = client
-        .post(format!("{}/files", server.base_url))
+        .post(format!("{}/api/v1/sites/{}/files", server.base_url, site_id))
         .headers(api_key_header(&api_key))
         .multipart(form)
         .send()
@@ -185,7 +194,10 @@ async fn test_get_file_references() {
     let file_id = uploaded["id"].as_str().unwrap();
 
     let resp = client
-        .get(format!("{}/files/{}/references", server.base_url, file_id))
+        .get(format!(
+            "{}/api/v1/sites/{}/files/{}/references",
+            server.base_url, site_id, file_id
+        ))
         .headers(api_key_header(&api_key))
         .send()
         .await
@@ -195,7 +207,7 @@ async fn test_get_file_references() {
 }
 
 #[tokio::test]
-async fn test_batch_delete_files() {
+async fn test_public_batch_delete_is_not_exposed() {
     let server = TestServer::start().await;
     let (token, csrf, site_id) = setup(&server).await;
     let api_key = get_api_key(&server, &token, &csrf, &site_id).await;
@@ -210,7 +222,7 @@ async fn test_batch_delete_files() {
         let form = reqwest::multipart::Form::new().part("file", part);
 
         let resp = client
-            .post(format!("{}/files", server.base_url))
+            .post(format!("{}/api/v1/sites/{}/files", server.base_url, site_id))
             .headers(api_key_header(&api_key))
             .multipart(form)
             .send()
@@ -221,16 +233,17 @@ async fn test_batch_delete_files() {
     }
 
     let resp = client
-        .post(format!("{}/files/batch-delete", server.base_url))
+        .post(format!(
+            "{}/api/v1/sites/{}/files/batch-delete",
+            server.base_url, site_id
+        ))
         .headers(api_key_header(&api_key))
         .json(&json!({"ids": ids}))
         .send()
         .await
         .unwrap();
 
-    assert_eq!(resp.status(), 200);
-    let body: Value = resp.json().await.unwrap();
-    assert_eq!(body["deleted"], 3);
+    assert_eq!(resp.status(), 405);
 }
 
 /// Regression: a file larger than the global 10MB body limit but within the
@@ -253,7 +266,7 @@ async fn test_upload_file_above_global_body_limit() {
     let form = reqwest::multipart::Form::new().part("file", part);
 
     let resp = client
-        .post(format!("{}/files", server.base_url))
+        .post(format!("{}/api/v1/sites/{}/files", server.base_url, site_id))
         .headers(api_key_header(&api_key))
         .multipart(form)
         .send()
@@ -288,7 +301,7 @@ async fn test_upload_file_exceeds_max_size() {
     let form = reqwest::multipart::Form::new().part("file", part);
 
     let result = client
-        .post(format!("{}/files", server.base_url))
+        .post(format!("{}/api/v1/sites/{}/files", server.base_url, site_id))
         .headers(api_key_header(&api_key))
         .multipart(form)
         .send()
@@ -326,7 +339,7 @@ async fn test_upload_file_invalid_mime_type() {
     let form = reqwest::multipart::Form::new().part("file", part);
 
     let resp = client
-        .post(format!("{}/files", server.base_url))
+        .post(format!("{}/api/v1/sites/{}/files", server.base_url, site_id))
         .headers(api_key_header(&api_key))
         .multipart(form)
         .send()
@@ -543,7 +556,7 @@ async fn test_multipart_upload_magic_byte_mismatch() {
     let form = reqwest::multipart::Form::new().part("file", part);
 
     let resp = client
-        .post(format!("{}/files", server.base_url))
+        .post(format!("{}/api/v1/sites/{}/files", server.base_url, site_id))
         .headers(api_key_header(&api_key))
         .multipart(form)
         .send()

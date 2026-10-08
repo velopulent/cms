@@ -6,6 +6,7 @@ use crate::grpc::interceptor::compute_key_hmac;
 #[derive(Clone, Debug)]
 pub struct AuthContext {
     pub hmac: String,
+    pub personal: bool,
 }
 
 /// Returned when a raw Bearer token fails format validation.
@@ -16,16 +17,22 @@ pub struct InvalidToken;
 ///
 /// Returns an `AuthContext` on success, or `InvalidToken` on any validation failure.
 pub fn parse_token(token: &str, config: &Config) -> Result<AuthContext, InvalidToken> {
-    if !token.starts_with("vcms_site_") {
+    let personal = token.starts_with("vcms_pat_");
+    if !personal && !token.starts_with("vcms_site_") {
         return Err(InvalidToken);
     }
 
-    if token.len() <= "vcms_site_".len() {
+    let prefix_len = if personal {
+        "vcms_pat_".len()
+    } else {
+        "vcms_site_".len()
+    };
+    if token.len() <= prefix_len {
         return Err(InvalidToken);
     }
     let hmac = compute_key_hmac(token, &config.token_index_key);
 
-    Ok(AuthContext { hmac })
+    Ok(AuthContext { hmac, personal })
 }
 
 #[cfg(test)]

@@ -2,6 +2,9 @@ use thiserror::Error;
 
 #[derive(Debug, Error)]
 pub enum RepositoryError {
+    #[error("Version precondition failed")]
+    PreconditionFailed,
+
     #[error("Record not found")]
     NotFound,
 

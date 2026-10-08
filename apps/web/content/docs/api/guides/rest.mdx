@@ -3,32 +3,31 @@ title: Use the REST API
 description: Read and change site resources through `/api/v1`.
 ---
 
-REST serves site-scoped resources under `/api/v1`. A site key supplies the site context.
+REST serves site-scoped resources under `/api/v1/sites/{site_id}`. Both site keys and personal tokens require this explicit site path.
 
 ## Read a singleton
 
 ```bash
-curl http://127.0.0.1:3000/api/v1/singletons/site-settings \
+curl http://127.0.0.1:3000/api/v1/sites/$VCMS_SITE_ID/singletons/site-settings \
   -H "Authorization: Bearer $VCMS_TOKEN"
 ```
 
 ## Get one entry
 
 ```bash
-curl http://127.0.0.1:3000/api/v1/entries/ENTRY_ID \
+curl http://127.0.0.1:3000/api/v1/sites/$VCMS_SITE_ID/entries/ENTRY_ID \
   -H "Authorization: Bearer $VCMS_TOKEN"
 ```
 
 ## Create an entry
 
-Use a write key and the collection ID returned by the collections endpoint.
+Use a token with `content.write` and the collection slug. Creation produces a draft; reading drafts requires `include_drafts=true` and `content.preview.read`.
 
 ```bash
-curl -X POST http://127.0.0.1:3000/api/v1/entries \
+curl -X POST http://127.0.0.1:3000/api/v1/sites/$VCMS_SITE_ID/collections/posts/entries \
   -H "Authorization: Bearer $VCMS_WRITE_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
-    "collection_id": "COLLECTION_ID",
     "slug": "api-created-post",
     "data": {"title": "Created through REST"}
   }'
@@ -36,8 +35,10 @@ curl -X POST http://127.0.0.1:3000/api/v1/entries \
 
 ## Publish an entry
 
+Publication requires `content.publish`.
+
 ```bash
-curl -X POST http://127.0.0.1:3000/api/v1/entries/ENTRY_ID/publish \
+curl -X POST http://127.0.0.1:3000/api/v1/sites/$VCMS_SITE_ID/entries/ENTRY_ID/publish \
   -H "Authorization: Bearer $VCMS_WRITE_TOKEN"
 ```
 

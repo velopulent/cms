@@ -17,34 +17,36 @@ Use a shell-local variable. Do not commit the token.
 
 ```bash
 export VCMS_TOKEN='vcms_site_replace_me'
+export VCMS_SITE_ID='replace_site_id'
 ```
 
 PowerShell:
 
 ```powershell
 $env:VCMS_TOKEN = "vcms_site_replace_me"
+$env:VCMS_SITE_ID = "replace_site_id"
 ```
 
 ### Inspect the current site
 
 ```bash
-curl http://127.0.0.1:3000/api/v1/site \
+curl http://127.0.0.1:3000/api/v1/sites/$VCMS_SITE_ID \
   -H "Authorization: Bearer $VCMS_TOKEN"
 ```
 
-The site key identifies its site, so public REST resource paths do not need a site ID.
+All site-scoped REST paths require a site ID, including requests made with site keys. Use `GET /api/v1/sites` to discover accessible sites.
 
 ### Find the Posts collection
 
 ```bash
-curl http://127.0.0.1:3000/api/v1/collections/posts \
+curl http://127.0.0.1:3000/api/v1/sites/$VCMS_SITE_ID/collections/posts \
   -H "Authorization: Bearer $VCMS_TOKEN"
 ```
 
 ### List published posts
 
 ```bash
-curl "http://127.0.0.1:3000/api/v1/entries?type=posts&status=published" \
+curl "http://127.0.0.1:3000/api/v1/sites/$VCMS_SITE_ID/collections/posts/entries" \
   -H "Authorization: Bearer $VCMS_TOKEN"
 ```
 

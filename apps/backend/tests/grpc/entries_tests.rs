@@ -1,9 +1,8 @@
-use cms::grpc::cms::v1::collection_service_client::CollectionServiceClient;
 use cms::grpc::cms::v1::entry_service_client::EntryServiceClient;
 use cms::grpc::cms::v1::{
-    CreateCollectionRequest, CreateEntryRequest, DeleteEntryRequest, GetEntryRequest, GetEntryRevisionRequest,
-    ListEntriesRequest, ListEntriesResponse, ListEntryRevisionsRequest, PublishEntryRequest,
-    RestoreEntryRevisionRequest, UnpublishEntryRequest, UpdateEntryRequest,
+    CreateEntryRequest, DeleteEntryRequest, GetEntryRequest, GetEntryRevisionRequest, ListEntriesRequest,
+    ListEntriesResponse, ListEntryRevisionsRequest, PublishEntryRequest, RestoreEntryRevisionRequest,
+    UnpublishEntryRequest, UpdateEntryRequest,
 };
 
 use crate::common::{GrpcTestContext, grpc::auth_interceptor};
@@ -12,21 +11,17 @@ async fn setup() -> (GrpcTestContext, String, String, String) {
     let ctx = GrpcTestContext::start().await;
     let (site_id, token) = ctx.setup_site_and_token().await;
 
-    let channel = ctx.connect().await;
-    let mut client = CollectionServiceClient::with_interceptor(channel, auth_interceptor(&token));
+    let collection = ctx
+        .create_collection(
+            &site_id,
+            "Posts",
+            "posts",
+            serde_json::json!({"fields":[{"name":"title","type":"text"}]}),
+            false,
+        )
+        .await;
 
-    let collection = client
-        .create_collection(tonic::Request::new(CreateCollectionRequest {
-            name: "Posts".into(),
-            slug: "posts".into(),
-            definition: r#"{"fields":[{"name":"title","type":"text"}]}"#.into(),
-            is_singleton: false,
-        }))
-        .await
-        .unwrap()
-        .into_inner();
-
-    (ctx, site_id, token, collection.id)
+    (ctx, site_id, token, collection["id"].as_str().unwrap().to_string())
 }
 
 async fn wait_for_search<I>(
@@ -46,6 +41,7 @@ where
                 search: Some(search.to_owned()),
                 page: 1,
                 per_page: 10,
+                ..Default::default()
             }))
             .await
             .unwrap()
@@ -70,6 +66,7 @@ async fn test_create_entry() {
             collection_id: collection_id.clone(),
             data: r#"{"title":"Hello World"}"#.into(),
             slug: "hello-world".into(),
+            ..Default::default()
         }))
         .await
         .unwrap()
@@ -92,13 +89,18 @@ async fn test_get_entry() {
             collection_id: collection_id.clone(),
             data: r#"{"title":"Test"}"#.into(),
             slug: "test-entry".into(),
+            ..Default::default()
         }))
         .await
         .unwrap()
         .into_inner();
 
     let fetched = client
-        .get_entry(tonic::Request::new(GetEntryRequest { id: created.id.clone() }))
+        .get_entry(tonic::Request::new(GetEntryRequest {
+            id: created.id.clone(),
+            include_drafts: true,
+            ..Default::default()
+        }))
         .await
         .unwrap()
         .into_inner();
@@ -119,6 +121,7 @@ async fn test_list_entries() {
                 collection_id: collection_id.clone(),
                 data: format!(r#"{{"title":"Entry {}"}}"#, i),
                 slug: format!("entry-{}", i),
+                ..Default::default()
             }))
             .await
             .unwrap();
@@ -131,6 +134,8 @@ async fn test_list_entries() {
             search: None,
             page: 1,
             per_page: 10,
+            include_drafts: true,
+            ..Default::default()
         }))
         .await
         .unwrap()
@@ -151,13 +156,17 @@ async fn test_list_entries_with_search() {
             collection_id: collection_id.clone(),
             data: r#"{"title":"Unique Title"}"#.into(),
             slug: "searchable".into(),
+            ..Default::default()
         }))
         .await
         .unwrap()
         .into_inner();
 
     let _published = client
-        .publish_entry(tonic::Request::new(PublishEntryRequest { id: created.id.clone() }))
+        .publish_entry(tonic::Request::new(PublishEntryRequest {
+            id: created.id.clone(),
+            ..Default::default()
+        }))
         .await
         .unwrap();
 
@@ -192,12 +201,16 @@ async fn test_search_indexes_are_isolated_across_concurrent_contexts() {
                 collection_id,
                 data: r#"{"title":"Running"}"#.into(),
                 slug: slug.into(),
+                ..Default::default()
             }))
             .await
             .unwrap()
             .into_inner();
         client
-            .publish_entry(tonic::Request::new(PublishEntryRequest { id: created.id }))
+            .publish_entry(tonic::Request::new(PublishEntryRequest {
+                id: created.id,
+                ..Default::default()
+            }))
             .await
             .unwrap();
     }
@@ -227,6 +240,7 @@ async fn test_update_entry() {
             collection_id: collection_id.clone(),
             data: r#"{"title":"Old"}"#.into(),
             slug: "update-me".into(),
+            ..Default::default()
         }))
         .await
         .unwrap()
@@ -239,6 +253,7 @@ async fn test_update_entry() {
             slug: None,
             status: None,
             change_summary: Some("Updated title".into()),
+            ..Default::default()
         }))
         .await
         .unwrap()
@@ -258,13 +273,17 @@ async fn test_delete_entry() {
             collection_id: collection_id.clone(),
             data: r#"{"title":"Delete Me"}"#.into(),
             slug: "delete-me".into(),
+            ..Default::default()
         }))
         .await
         .unwrap()
         .into_inner();
 
     let resp = client
-        .delete_entry(tonic::Request::new(DeleteEntryRequest { id: created.id }))
+        .delete_entry(tonic::Request::new(DeleteEntryRequest {
+            id: created.id,
+            ..Default::default()
+        }))
         .await
         .unwrap()
         .into_inner();
@@ -274,6 +293,7 @@ async fn test_delete_entry() {
     let result = client
         .get_entry(tonic::Request::new(GetEntryRequest {
             id: "nonexistent".into(),
+            ..Default::default()
         }))
         .await;
     assert!(result.is_err());
@@ -290,6 +310,7 @@ async fn test_publish_entry() {
             collection_id: collection_id.clone(),
             data: r#"{"title":"Publish Me"}"#.into(),
             slug: "publish-me".into(),
+            ..Default::default()
         }))
         .await
         .unwrap()
@@ -298,7 +319,10 @@ async fn test_publish_entry() {
     assert_eq!(created.status, "draft");
 
     let published = client
-        .publish_entry(tonic::Request::new(PublishEntryRequest { id: created.id }))
+        .publish_entry(tonic::Request::new(PublishEntryRequest {
+            id: created.id,
+            ..Default::default()
+        }))
         .await
         .unwrap()
         .into_inner();
@@ -318,18 +342,25 @@ async fn test_unpublish_entry() {
             collection_id: collection_id.clone(),
             data: r#"{"title":"Unpublish Me"}"#.into(),
             slug: "unpublish-me".into(),
+            ..Default::default()
         }))
         .await
         .unwrap()
         .into_inner();
 
     let _published = client
-        .publish_entry(tonic::Request::new(PublishEntryRequest { id: created.id.clone() }))
+        .publish_entry(tonic::Request::new(PublishEntryRequest {
+            id: created.id.clone(),
+            ..Default::default()
+        }))
         .await
         .unwrap();
 
     let unpublished = client
-        .unpublish_entry(tonic::Request::new(UnpublishEntryRequest { id: created.id }))
+        .unpublish_entry(tonic::Request::new(UnpublishEntryRequest {
+            id: created.id,
+            ..Default::default()
+        }))
         .await
         .unwrap()
         .into_inner();
@@ -349,6 +380,7 @@ async fn test_list_entry_revisions() {
             collection_id: collection_id.clone(),
             data: r#"{"title":"V1"}"#.into(),
             slug: "revision-test".into(),
+            ..Default::default()
         }))
         .await
         .unwrap()
@@ -361,6 +393,7 @@ async fn test_list_entry_revisions() {
             slug: None,
             status: None,
             change_summary: Some("Updated to V2".into()),
+            ..Default::default()
         }))
         .await
         .unwrap();
@@ -370,6 +403,7 @@ async fn test_list_entry_revisions() {
             entry_id: created.id,
             page: 1,
             per_page: 10,
+            ..Default::default()
         }))
         .await
         .unwrap()
@@ -390,6 +424,7 @@ async fn test_get_entry_revision() {
             collection_id: collection_id.clone(),
             data: r#"{"title":"V1"}"#.into(),
             slug: "get-revision".into(),
+            ..Default::default()
         }))
         .await
         .unwrap()
@@ -402,6 +437,7 @@ async fn test_get_entry_revision() {
             slug: None,
             status: None,
             change_summary: None,
+            ..Default::default()
         }))
         .await
         .unwrap();
@@ -410,6 +446,7 @@ async fn test_get_entry_revision() {
         .get_entry_revision(tonic::Request::new(GetEntryRevisionRequest {
             entry_id: created.id,
             revision_number: 1,
+            ..Default::default()
         }))
         .await
         .unwrap()
@@ -430,6 +467,7 @@ async fn test_restore_entry_revision() {
             collection_id: collection_id.clone(),
             data: r#"{"title":"Original"}"#.into(),
             slug: "restore-revision".into(),
+            ..Default::default()
         }))
         .await
         .unwrap()
@@ -442,6 +480,7 @@ async fn test_restore_entry_revision() {
             slug: None,
             status: None,
             change_summary: None,
+            ..Default::default()
         }))
         .await
         .unwrap();
@@ -450,10 +489,142 @@ async fn test_restore_entry_revision() {
         .restore_entry_revision(tonic::Request::new(RestoreEntryRevisionRequest {
             entry_id: created.id,
             revision_number: 1,
+            ..Default::default()
         }))
         .await
         .unwrap()
         .into_inner();
 
     assert!(restored.data.contains("Original"));
+}
+
+#[tokio::test]
+async fn typed_values_and_versions_fail_without_mutating_entries() {
+    let (ctx, site_id, token, collection_id) = setup().await;
+    let mut client = EntryServiceClient::with_interceptor(ctx.connect().await, auth_interceptor(&token));
+    for kind in [
+        None,
+        Some(prost_types::value::Kind::NumberValue(f64::NAN)),
+        Some(prost_types::value::Kind::NullValue(7)),
+    ] {
+        let error = client
+            .create_entry(CreateEntryRequest {
+                site_id: site_id.clone(),
+                collection_id: collection_id.clone(),
+                slug: "invalid".into(),
+                data_value: Some(prost_types::Struct {
+                    fields: [("title".into(), prost_types::Value { kind })].into_iter().collect(),
+                }),
+                ..Default::default()
+            })
+            .await
+            .unwrap_err();
+        assert_eq!(error.code(), tonic::Code::InvalidArgument);
+    }
+    let created = client
+        .create_entry(CreateEntryRequest {
+            site_id: site_id.clone(),
+            collection_id: collection_id.clone(),
+            slug: "versioned".into(),
+            data: r#"{"title":"Original"}"#.into(),
+            ..Default::default()
+        })
+        .await
+        .unwrap()
+        .into_inner();
+    let error = client
+        .update_entry(UpdateEntryRequest {
+            site_id: site_id.clone(),
+            id: created.id.clone(),
+            data: Some(r#"{"title":"Lost"}"#.into()),
+            expected_version: "stale".into(),
+            ..Default::default()
+        })
+        .await
+        .unwrap_err();
+    assert_eq!(error.code(), tonic::Code::FailedPrecondition);
+    let fetched = client
+        .get_entry(GetEntryRequest {
+            site_id: site_id.clone(),
+            id: created.id,
+            include_drafts: true,
+        })
+        .await
+        .unwrap()
+        .into_inner();
+    assert_eq!(fetched.data, r#"{"title":"Original"}"#);
+    let page = client
+        .list_entries(ListEntriesRequest {
+            site_id,
+            collection_id: Some(collection_id),
+            page_size: 1,
+            include_drafts: true,
+            ..Default::default()
+        })
+        .await
+        .unwrap()
+        .into_inner();
+    assert_eq!(page.total_size, 1);
+    assert!(
+        page.next_page_token.is_empty(),
+        "exactly full final page must terminate"
+    );
+}
+
+#[tokio::test]
+async fn update_status_requires_publish_scope() {
+    let (ctx, site_id, token, collection_id) = setup().await;
+    let http = crate::common::client::http_client();
+    let response = http
+        .post(format!("{}/api/auth/login", ctx.rest_base_url))
+        .json(&serde_json::json!({"email":"admin@cms.local","password":"admin"}))
+        .send()
+        .await
+        .unwrap();
+    let (session, csrf) = crate::common::auth::extract_cookies(&response);
+    let response = http
+        .post(format!("{}/api/dashboard/sites/{site_id}/tokens", ctx.rest_base_url))
+        .headers(crate::common::auth::auth_header(&session, &csrf))
+        .json(&serde_json::json!({"name":"writer","scopes":["content.write"]}))
+        .send()
+        .await
+        .unwrap();
+    assert!(response.status().is_success());
+    let credential: serde_json::Value = response.json().await.unwrap();
+    let mut writer = EntryServiceClient::with_interceptor(
+        ctx.connect().await,
+        auth_interceptor(credential["token"].as_str().unwrap()),
+    );
+    let created = writer
+        .create_entry(CreateEntryRequest {
+            site_id: site_id.clone(),
+            collection_id,
+            slug: "draft".into(),
+            data: r#"{"title":"Draft"}"#.into(),
+            ..Default::default()
+        })
+        .await
+        .unwrap()
+        .into_inner();
+    let error = writer
+        .update_entry(UpdateEntryRequest {
+            site_id: site_id.clone(),
+            id: created.id.clone(),
+            status: Some("published".into()),
+            ..Default::default()
+        })
+        .await
+        .unwrap_err();
+    assert_eq!(error.code(), tonic::Code::PermissionDenied);
+    let mut reader = EntryServiceClient::with_interceptor(ctx.connect().await, auth_interceptor(&token));
+    let fetched = reader
+        .get_entry(GetEntryRequest {
+            site_id,
+            id: created.id,
+            include_drafts: true,
+        })
+        .await
+        .unwrap()
+        .into_inner();
+    assert_eq!(fetched.status, "draft");
 }

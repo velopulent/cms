@@ -2,7 +2,10 @@ use std::sync::Arc;
 
 use chrono::Utc;
 use rmcp::ErrorData as McpError;
-use rmcp::model::{Annotations, ListResourcesResult, ReadResourceResult, Resource, ResourceContents};
+use rmcp::model::{
+    Annotations, CacheScope, ListResourceTemplatesResult, ListResourcesResult, ReadResourceResult, Resource,
+    ResourceContents, ResourceTemplate,
+};
 
 use crate::middleware::auth::Actor;
 use crate::models::authorization::Action;
@@ -25,6 +28,27 @@ fn make_resource(uri: &str, name: &str, title: &str, description: &str) -> Resou
         .with_description(description)
         .with_mime_type("application/json")
         .with_annotations(Annotations::for_resource(0.5, Utc::now()))
+}
+
+pub async fn list_resource_templates(
+    _authorization: &Arc<AuthorizationService>,
+    _actor: &Actor,
+) -> Result<ListResourceTemplatesResult, McpError> {
+    Ok(ListResourceTemplatesResult {
+        resource_templates: vec![
+            ResourceTemplate::new("cms://{site_id}/collections/{collection_slug}", "collection-schema")
+                .with_title("Collection schema")
+                .with_description("Read a collection's schema before querying or writing entries")
+                .with_mime_type("application/json"),
+            ResourceTemplate::new("cms://{site_id}/singletons/{singleton_slug}", "singleton-schema")
+                .with_title("Singleton schema")
+                .with_description("Read a singleton's schema")
+                .with_mime_type("application/json"),
+        ],
+        ..Default::default()
+    }
+    .with_ttl_ms(10_000)
+    .with_cache_scope(CacheScope::Private))
 }
 
 fn collection_to_schema_value(c: &Collection) -> serde_json::Value {
@@ -55,12 +79,12 @@ pub async fn list_resources(
         .map(|cursor| {
             cursor
                 .parse::<usize>()
-                .map_err(|_| McpError::invalid_request("Invalid resources/list cursor", None))
+                .map_err(|_| McpError::invalid_params("Invalid resources/list cursor", None))
         })
         .transpose()?
         .unwrap_or(0);
     if offset > sites.len() {
-        return Err(McpError::invalid_request("Invalid resources/list cursor", None));
+        return Err(McpError::invalid_params("Invalid resources/list cursor", None));
     }
     let page_end = (offset + SITE_PAGE_SIZE).min(sites.len());
     let mut resources = Vec::new();
@@ -79,21 +103,33 @@ pub async fn list_resources(
             &format!("Content schema for {}", site_name),
             &format!("Full content schema for {}", site_name),
         ));
-        for collection in services.collection.list_collections(site_id).await.map_err(map_err)? {
-            resources.push(make_resource(
-                &resource_uri(site_id, &format!("/collections/{}", collection.slug)),
-                &format!("{}/{}", site_name, collection.name),
-                &format!("Collection: {}", collection.name),
-                &format!("Schema for {} collection", collection.name),
-            ));
+        if authorization
+            .require_site_action(actor, site_id, Action::SchemaRead)
+            .await
+            .is_ok()
+        {
+            for collection in services.collection.list_collections(site_id).await.map_err(map_err)? {
+                resources.push(make_resource(
+                    &resource_uri(site_id, &format!("/collections/{}", collection.slug)),
+                    &format!("{}/{}", site_name, collection.name),
+                    &format!("Collection: {}", collection.name),
+                    &format!("Schema for {} collection", collection.name),
+                ));
+            }
         }
-        for singleton in services.singleton.list_singletons(site_id).await.map_err(map_err)? {
-            resources.push(make_resource(
-                &resource_uri(site_id, &format!("/singletons/{}", singleton.slug)),
-                &format!("{}/{}", site_name, singleton.name),
-                &format!("Singleton: {}", singleton.name),
-                &format!("Schema for {} singleton", singleton.name),
-            ));
+        if authorization
+            .require_site_action(actor, site_id, Action::SchemaRead)
+            .await
+            .is_ok()
+        {
+            for singleton in services.singleton.list_singletons(site_id).await.map_err(map_err)? {
+                resources.push(make_resource(
+                    &resource_uri(site_id, &format!("/singletons/{}", singleton.slug)),
+                    &format!("{}/{}", site_name, singleton.name),
+                    &format!("Singleton: {}", singleton.name),
+                    &format!("Schema for {} singleton", singleton.name),
+                ));
+            }
         }
     }
 
@@ -102,7 +138,9 @@ pub async fn list_resources(
         meta: None,
         next_cursor: (page_end < sites.len()).then(|| page_end.to_string()),
         ..Default::default()
-    })
+    }
+    .with_ttl_ms(10_000)
+    .with_cache_scope(CacheScope::Private))
 }
 
 pub async fn read_resource(
@@ -113,11 +151,11 @@ pub async fn read_resource(
 ) -> Result<ReadResourceResult, McpError> {
     let remainder = uri
         .strip_prefix("cms://")
-        .ok_or_else(|| McpError::invalid_request("Invalid resource URI", None))?;
+        .ok_or_else(|| McpError::resource_not_found("Resource not found", Some(serde_json::json!({"uri": uri}))))?;
 
     let (site_id, path) = remainder
         .split_once('/')
-        .ok_or_else(|| McpError::invalid_request("Invalid resource URI", None))?;
+        .ok_or_else(|| McpError::resource_not_found("Resource not found", Some(serde_json::json!({"uri": uri}))))?;
 
     authorization
         .require_site_action(actor, site_id, Action::SiteRead)
@@ -125,16 +163,33 @@ pub async fn read_resource(
         .map_err(map_err)?;
 
     match path {
-        "schema" => read_schema_resource(services, site_id, uri).await,
+        "schema" => {
+            authorization
+                .require_site_action(actor, site_id, Action::SchemaRead)
+                .await
+                .map_err(map_err)?;
+            read_schema_resource(services, site_id, uri).await
+        }
         p if p.starts_with("collections/") => {
+            authorization
+                .require_site_action(actor, site_id, Action::SchemaRead)
+                .await
+                .map_err(map_err)?;
             let slug = &p["collections/".len()..];
             read_collection_resource(services, site_id, slug, uri).await
         }
         p if p.starts_with("singletons/") => {
+            authorization
+                .require_site_action(actor, site_id, Action::SchemaRead)
+                .await
+                .map_err(map_err)?;
             let slug = &p["singletons/".len()..];
             read_singleton_resource(services, site_id, slug, uri).await
         }
-        _ => Err(McpError::invalid_request("Unknown resource path", None)),
+        _ => Err(McpError::resource_not_found(
+            "Resource not found",
+            Some(serde_json::json!({"uri": uri})),
+        )),
     }
 }
 
@@ -148,12 +203,26 @@ async fn read_schema_resource(
         .get_site(site_id)
         .await
         .map_err(map_err)?
-        .ok_or_else(|| McpError::invalid_request("Site not found", None))?;
+        .ok_or_else(|| McpError::resource_not_found("Resource not found", Some(serde_json::json!({"uri": uri}))))?;
 
     let collections = services.collection.list_collections(site_id).await.map_err(map_err)?;
     let singletons = services.singleton.list_singletons(site_id).await.map_err(map_err)?;
 
     let collections_json: Vec<serde_json::Value> = collections.iter().map(collection_to_schema_value).collect();
+    let singletons_json: Vec<serde_json::Value> = singletons
+        .iter()
+        .map(|singleton| {
+            serde_json::json!({
+                "id": singleton.id,
+                "site_id": singleton.site_id,
+                "name": singleton.name,
+                "slug": singleton.slug,
+                "definition": singleton.definition,
+                "created_at": singleton.created_at,
+                "updated_at": singleton.updated_at,
+            })
+        })
+        .collect();
 
     let schema = serde_json::json!({
         "site": {
@@ -161,7 +230,7 @@ async fn read_schema_resource(
             "name": site.name,
         },
         "collections": collections_json,
-        "singletons": singletons,
+        "singletons": singletons_json,
         "field_types": [
             {"type": "text", "label": "Text"},
             {"type": "textarea", "label": "Text Area"},
@@ -196,7 +265,9 @@ async fn read_schema_resource(
         mime_type: Some("application/json".to_string()),
         text: schema_json,
         meta: None,
-    }]))
+    }])
+    .with_ttl_ms(10_000)
+    .with_cache_scope(CacheScope::Private))
 }
 
 async fn read_collection_resource(
@@ -210,7 +281,7 @@ async fn read_collection_resource(
         .get_collection(site_id, slug)
         .await
         .map_err(map_err)?
-        .ok_or_else(|| McpError::invalid_request("Collection not found", None))?;
+        .ok_or_else(|| McpError::resource_not_found("Resource not found", Some(serde_json::json!({"uri": uri}))))?;
 
     let value = collection_to_schema_value(&collection);
     let json = serde_json::to_string_pretty(&value)
@@ -221,7 +292,9 @@ async fn read_collection_resource(
         mime_type: Some("application/json".to_string()),
         text: json,
         meta: None,
-    }]))
+    }])
+    .with_ttl_ms(10_000)
+    .with_cache_scope(CacheScope::Private))
 }
 
 async fn read_singleton_resource(
@@ -235,9 +308,15 @@ async fn read_singleton_resource(
     let singleton = singletons
         .iter()
         .find(|s| s.slug == slug)
-        .ok_or_else(|| McpError::invalid_request("Singleton not found", None))?;
+        .ok_or_else(|| McpError::resource_not_found("Resource not found", Some(serde_json::json!({"uri": uri}))))?;
 
-    let json = serde_json::to_string_pretty(singleton)
+    let schema = serde_json::json!({
+        "id": singleton.id, "site_id": singleton.site_id,
+        "name": singleton.name, "slug": singleton.slug,
+        "definition": singleton.definition,
+        "created_at": singleton.created_at, "updated_at": singleton.updated_at,
+    });
+    let json = serde_json::to_string_pretty(&schema)
         .map_err(|e| McpError::internal_error(format!("Failed to serialize: {}", e), None))?;
 
     Ok(ReadResourceResult::new(vec![ResourceContents::TextResourceContents {
@@ -245,7 +324,9 @@ async fn read_singleton_resource(
         mime_type: Some("application/json".to_string()),
         text: json,
         meta: None,
-    }]))
+    }])
+    .with_ttl_ms(10_000)
+    .with_cache_scope(CacheScope::Private))
 }
 
 #[cfg(test)]

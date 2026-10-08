@@ -14,8 +14,12 @@ pub enum TokenScope {
     SiteSettingsWrite,
     #[serde(rename = "content.read")]
     ContentRead,
+    #[serde(rename = "content.preview.read")]
+    ContentPreviewRead,
     #[serde(rename = "content.write")]
     ContentWrite,
+    #[serde(rename = "content.publish")]
+    ContentPublish,
     #[serde(rename = "files.read")]
     FilesRead,
     #[serde(rename = "files.write")]
@@ -47,6 +51,7 @@ pub fn scopes_can_write(scopes: &TokenScopes) -> bool {
             scope,
             TokenScope::SiteSettingsWrite
                 | TokenScope::ContentWrite
+                | TokenScope::ContentPublish
                 | TokenScope::FilesWrite
                 | TokenScope::SchemaWrite
                 | TokenScope::WebhooksWrite

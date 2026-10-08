@@ -1,8 +1,8 @@
 use std::sync::Arc;
 
-use axum::{Extension, Router, middleware};
+use axum::{Extension, Router};
 use rmcp::transport::streamable_http_server::{
-    StreamableHttpServerConfig, StreamableHttpService, session::local::LocalSessionManager,
+    StreamableHttpServerConfig, StreamableHttpService, session::never::NeverSessionManager,
 };
 use tokio_util::sync::CancellationToken;
 
@@ -21,6 +21,7 @@ pub fn mcp_router(
 ) -> Router {
     let server_config = StreamableHttpServerConfig::default()
         .with_legacy_session_mode(false)
+        .with_stateless_protocol_metadata_required(true)
         .with_json_response(true)
         .with_allowed_hosts(config.mcp_allowed_hosts.clone())
         .with_allowed_origins(config.mcp_allowed_origins.clone())
@@ -38,16 +39,12 @@ pub fn mcp_router(
                 service_config.clone(),
             ))
         },
-        LocalSessionManager::default().into(),
+        NeverSessionManager::default().into(),
         server_config,
     );
 
     Router::new()
         .nest_service("/mcp", mcp_service)
-        // `route_layer` (not `layer`) so MCP auth wraps only the matched `/mcp` routes
-        // and never the router's fallback — otherwise, once merged into the main router,
-        // this fallback would authenticate every unmatched path (e.g. `/dashboard/`).
-        .route_layer(middleware::from_fn(crate::mcp::auth::authenticate_mcp_request))
         .layer(Extension(repository.clone()))
         .layer(Extension(config.clone()))
 }

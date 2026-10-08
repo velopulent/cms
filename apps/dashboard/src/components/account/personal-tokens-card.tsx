@@ -36,19 +36,13 @@ import {
 
 const SCOPES = [
   "site.read",
-  "site.settings.read",
+  "schema.read",
   "content.read",
+  "content.preview.read",
   "content.write",
+  "content.publish",
   "files.read",
   "files.write",
-  "schema.read",
-  "schema.write",
-  "webhooks.read",
-  "webhooks.write",
-  "webhooks.trigger",
-  "deployments.read",
-  "deployments.write",
-  "deployments.trigger",
   "mcp.use",
 ];
 
@@ -61,13 +55,9 @@ export function PersonalTokensCard() {
   const [name, setName] = useState("");
   const [scopes, setScopes] = useState<string[]>([
     "site.read",
-    "content.read",
-    "content.write",
-    "files.read",
-    "files.write",
     "schema.read",
-    "deployments.read",
-    "deployments.trigger",
+    "content.read",
+    "files.read",
     "mcp.use",
   ]);
   const [secret, setSecret] = useState<string | null>(null);

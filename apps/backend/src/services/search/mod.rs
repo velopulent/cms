@@ -44,6 +44,8 @@ use schema::EntryFields;
 const WRITER_HEAP_BYTES: usize = 50_000_000;
 /// Page size used when scanning the database during a full rebuild.
 const REBUILD_PAGE_SIZE: i64 = 500;
+/// Bound the heap used by ranked offset collection until search-after cursors exist.
+pub const MAX_SEARCH_WINDOW: i64 = 10_000;
 
 #[derive(Debug, thiserror::Error)]
 pub enum SearchError {
@@ -61,6 +63,8 @@ pub enum SearchError {
     Db(String),
     #[error("search index is read-only in this process")]
     ReadOnly,
+    #[error("Search pagination exceeds the 10000-result window")]
+    PaginationLimit,
 }
 
 /// Filters + pagination for a search query. Mirrors the relevant subset of
@@ -192,19 +196,23 @@ impl SearchService {
         if let Some(cid) = params.collection_id {
             clauses.push((Occur::Must, term_query(self.fields.collection_id, cid)));
         }
-        // `published_only` is the stricter constraint; otherwise honor an explicit status.
-        let status_filter = if params.published_only {
-            Some("published")
-        } else {
-            params.status
-        };
-        if let Some(status) = status_filter {
+        if params.published_only {
+            clauses.push((Occur::Must, term_query(self.fields.status, "published")));
+        }
+        if let Some(status) = params.status {
             clauses.push((Occur::Must, term_query(self.fields.status, status)));
         }
         let query = BooleanQuery::new(clauses);
 
-        let per_page = params.per_page.max(1) as usize;
-        let offset = ((params.page.max(1) - 1) * params.per_page.max(1)) as usize;
+        let per_page = params.per_page.max(1);
+        let window = params
+            .page
+            .max(1)
+            .checked_mul(per_page)
+            .filter(|window| *window <= MAX_SEARCH_WINDOW)
+            .ok_or(SearchError::PaginationLimit)?;
+        let offset = (window - per_page) as usize;
+        let per_page = per_page as usize;
         let top_docs = TopDocs::with_limit(per_page).and_offset(offset).order_by_score();
         let (top, total) = searcher.search(&query, &(top_docs, Count))?;
 
@@ -392,6 +400,7 @@ mod tests {
             singleton_collection_id: None,
             created_at: "2026-01-01 00:00:00".to_string(),
             updated_at: "2026-01-01 00:00:00".to_string(),
+            version: "2026-01-01 00:00:00".to_string(),
             published_at: None,
         }
     }
@@ -425,6 +434,22 @@ mod tests {
         })
         .expect("search")
         .ids
+    }
+
+    #[test]
+    fn extreme_pagination_is_rejected_without_unbounded_heap_or_overflow() {
+        let directory = tempfile::tempdir().unwrap();
+        let search = SearchService::open(directory.path()).unwrap();
+        let result = search.search_entries(&SearchParams {
+            site_id: "site",
+            collection_id: None,
+            status: None,
+            published_only: true,
+            query: "test",
+            page: i64::MAX,
+            per_page: 200,
+        });
+        assert!(matches!(result, Err(SearchError::PaginationLimit)));
     }
 
     #[test]

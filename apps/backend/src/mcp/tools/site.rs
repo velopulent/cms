@@ -37,28 +37,3 @@ pub async fn get_site(
         Err(e) => Ok(tool_error(e)),
     }
 }
-
-#[derive(Debug, Deserialize, JsonSchema)]
-pub struct UpdateSiteParams {
-    pub site_id: String,
-    pub name: Option<String>,
-}
-
-pub async fn update_site(
-    authorization: &Arc<AuthorizationService>,
-    services: &Arc<Services>,
-    actor: &Actor,
-    params: Parameters<UpdateSiteParams>,
-) -> Result<CallToolResult, McpError> {
-    let site_id = params.0.site_id.clone();
-    if let Err(e) = authorization
-        .require_site_action(actor, &site_id, Action::SiteManage)
-        .await
-    {
-        return Ok(tool_error(e));
-    }
-    match services.site.update_site(&site_id, params.0.name.as_deref()).await {
-        Ok(site) => ok_result(&site),
-        Err(e) => Ok(tool_error(e)),
-    }
-}

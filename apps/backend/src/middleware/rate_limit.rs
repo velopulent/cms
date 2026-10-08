@@ -70,7 +70,7 @@ impl RateLimiter {
     /// otherwise the TCP peer IP (via `ConnectInfo`) is used so clients cannot
     /// spoof their bucket. Never keys on the `Authorization` header, which would
     /// leak bearer tokens into server state and let a stolen token grief its owner.
-    fn extract_client_key(&self, req: &Request) -> String {
+    pub(crate) fn client_key(&self, req: &Request) -> String {
         if self.trust_proxy_headers {
             if let Some(ip) = req
                 .headers()
@@ -106,7 +106,7 @@ pub async fn rate_limit_middleware(
     req: Request,
     next: Next,
 ) -> Response {
-    let key = limiter.extract_client_key(&req);
+    let key = limiter.client_key(&req);
 
     if limiter.check(&key) {
         next.run(req).await

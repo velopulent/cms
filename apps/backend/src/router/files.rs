@@ -5,23 +5,21 @@ use axum::{
 };
 
 use crate::handlers::file_handler::{
-    batch_delete_files, batch_permanent_delete_files, batch_restore_files, delete_file_handler, get_file,
-    get_file_references, list_files, restore_file, serve_file, serve_file_thumbnail, upload_file,
-    upload_via_signed_url,
+    batch_delete_files, batch_permanent_delete_files, batch_restore_files, create_file_upload_url, delete_file_handler,
+    get_file, get_file_references, list_files, list_public_files, restore_file, serve_file, serve_file_thumbnail,
+    upload_file, upload_via_signed_url,
 };
 
 /// Public API CRUD routes (mounted at /api/v1)
 pub fn public_routes(_max_upload_bytes: usize) -> Router {
     Router::new()
-        .route("/files", get(list_files))
+        .route("/files", get(list_public_files))
+        .route("/files/upload-url", post(create_file_upload_url))
         .merge(
             Router::new()
                 .route("/files", post(upload_file))
                 .layer(DefaultBodyLimit::disable()),
         )
-        .route("/files/batch-delete", post(batch_delete_files))
-        .route("/files/batch-restore", post(batch_restore_files))
-        .route("/files/batch-permanent-delete", post(batch_permanent_delete_files))
         .route("/files/{id}", get(get_file))
         .route("/files/{id}", delete(delete_file_handler))
         .route("/files/{id}/references", get(get_file_references))

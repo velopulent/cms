@@ -7,7 +7,7 @@ VCMS Server exposes Streamable HTTP at `/mcp`. MCP must remain enabled in instan
 
 ## Direct HTTP
 
-Configure an MCP client for `http://127.0.0.1:3000/mcp` and send a bearer site key or personal token with the `mcp.use` scope. During initialization, the server authenticates the caller and echoes the requested protocol version.
+Configure an MCP client for `http://127.0.0.1:3000/mcp` and send a bearer site key or personal token with the `mcp.use` scope. Use `server/discover`; this server supports only MCP `2026-07-28` and does not create sessions.
 
 ## Stdio proxy
 
@@ -30,4 +30,4 @@ The proxy opens no database or search index. It forwards JSON-RPC to the running
 
 Use `tools/list` for current tool names and input schemas. Use `resources/list` to discover accessible site-schema resources, then `resources/read` for one schema. Every site-specific tool requires an explicit `site_id`, except `list_sites`.
 
-Tools cover sites, collections, entries, revisions, singletons, files, signed upload URLs, and webhooks. Credential scopes and role policy still apply.
+Tools cover sites, entries, revisions, singletons, files, signed upload URLs, and publication lifecycle. Collection and singleton schemas are resources, not CRUD tools. Credential scopes and role policy still apply. OAuth metadata is intentionally not advertised; provision a VCMS bearer token explicitly.

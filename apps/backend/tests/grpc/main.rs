@@ -6,4 +6,3 @@ mod entries_tests;
 mod files_tests;
 mod singletons_tests;
 mod sites_tests;
-mod webhooks_tests;

@@ -5,13 +5,13 @@ description: Fetch published content during a frontend build and trigger rebuild
 
 ## Store the credential
 
-Create a read-only site key and save it in your host's build-time secret store as `VCMS_TOKEN`. Save the server's public URL as `VCMS_URL`.
+Create a read-only site key and save it in your host's build-time secret store as `VCMS_TOKEN`. Save the server's public URL as `VCMS_URL` and site ID as `VCMS_SITE_ID`.
 
 ## Fetch during build
 
 ```ts
 const response = await fetch(
-  `${process.env.VCMS_URL}/api/v1/entries?type=posts&status=published&per_page=100`,
+  `${process.env.VCMS_URL}/api/v1/sites/${process.env.VCMS_SITE_ID}/collections/posts/entries?per_page=100`,
   {
     headers: {
       Authorization: `Bearer ${process.env.VCMS_TOKEN}`,
@@ -23,7 +23,8 @@ if (!response.ok) {
   throw new Error(`VCMS request failed: ${response.status}`);
 }
 
-const { items: posts } = await response.json();
+const { items: posts, page_info: pageInfo } = await response.json();
+// Continue with ?cursor=pageInfo.next_cursor while pageInfo.has_next_page.
 ```
 
 Keep this code on the build server. Shipping the bearer token to browser JavaScript exposes it.

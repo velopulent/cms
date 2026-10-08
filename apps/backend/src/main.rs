@@ -82,7 +82,7 @@ async fn run_mcp_stdio() -> Result<(), Box<dyn Error>> {
     }
     let base = std::env::var("VCMS_MCP_URL").unwrap_or_else(|_| "http://127.0.0.1:3000".to_owned());
     let endpoint = format!("{}/mcp", base.trim_end_matches('/'));
-    info!(%endpoint, "Starting MCP stdio proxy");
+    info!("Starting MCP stdio proxy");
     cms::mcp::transports::stdio::serve(endpoint, token).await
 }
 

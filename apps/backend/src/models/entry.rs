@@ -13,7 +13,48 @@ pub struct Entry {
     pub singleton_collection_id: Option<String>,
     pub created_at: String,
     pub updated_at: String,
+    /// Opaque optimistic-concurrency version; changes on every database update.
+    pub version: String,
     pub published_at: Option<String>,
+}
+
+/// Stable public representation. Database rows keep JSON text for backend
+/// portability, but external APIs must never expose serialized JSON strings.
+#[derive(Serialize, ToSchema, Clone)]
+pub struct PublicEntry {
+    pub id: String,
+    pub site_id: String,
+    pub collection_id: String,
+    pub data: serde_json::Value,
+    pub slug: String,
+    pub status: String,
+    pub singleton_collection_id: Option<String>,
+    pub created_at: String,
+    pub updated_at: String,
+    pub version: String,
+    pub published_at: Option<String>,
+}
+
+impl TryFrom<Entry> for PublicEntry {
+    type Error = String;
+
+    fn try_from(entry: Entry) -> Result<Self, Self::Error> {
+        let data =
+            serde_json::from_str(&entry.data).map_err(|error| format!("stored entry data is invalid JSON: {error}"))?;
+        Ok(Self {
+            id: entry.id,
+            site_id: entry.site_id,
+            collection_id: entry.collection_id,
+            data,
+            slug: entry.slug,
+            status: entry.status,
+            singleton_collection_id: entry.singleton_collection_id,
+            created_at: entry.created_at,
+            updated_at: entry.updated_at,
+            version: entry.version.clone(),
+            published_at: entry.published_at,
+        })
+    }
 }
 
 #[derive(Deserialize, ToSchema)]
@@ -29,6 +70,7 @@ pub struct UpdateEntry {
     pub slug: Option<String>,
     pub status: Option<String>,
     pub change_summary: Option<String>,
+    pub expected_version: Option<String>,
 }
 
 #[derive(Serialize, FromRow, Clone)]

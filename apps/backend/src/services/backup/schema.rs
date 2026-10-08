@@ -129,6 +129,7 @@ pub static TABLES: &[TableSpec] = &[
             col("slug", Text),
             col("status", Text),
             col("singleton_collection_id", Text),
+            col("version", Int),
             col("created_at", Timestamp),
             col("updated_at", Timestamp),
             col("published_at", Timestamp),
@@ -157,7 +158,12 @@ pub static TABLES: &[TableSpec] = &[
     TableSpec {
         name: "entry_file_references",
         site_where: SiteWhere::SiteId,
-        columns: &[col("entry_id", Text), col("file_id", Text), col("site_id", Text)],
+        columns: &[
+            col("entry_id", Text),
+            col("file_id", Text),
+            col("site_id", Text),
+            col("field_name", Text),
+        ],
     },
     TableSpec {
         name: "entry_revisions",
@@ -433,6 +439,7 @@ mod registry_tests {
     #[test]
     fn backup_registry_excludes_tokens_and_encrypted_credentials() {
         assert!(table_spec("access_tokens").is_none());
+        assert!(table_spec("signed_upload_uses").is_none());
         let settings = table_spec("instance_settings").unwrap();
         assert!(
             !settings

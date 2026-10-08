@@ -1,6 +1,5 @@
-use cms::grpc::cms::v1::collection_service_client::CollectionServiceClient;
 use cms::grpc::cms::v1::singleton_service_client::SingletonServiceClient;
-use cms::grpc::cms::v1::{CreateCollectionRequest, GetSingletonRequest, UpdateSingletonRequest};
+use cms::grpc::cms::v1::{GetSingletonRequest, UpdateSingletonRequest};
 
 use crate::common::{GrpcTestContext, grpc::auth_interceptor};
 
@@ -8,18 +7,14 @@ async fn setup() -> (GrpcTestContext, String, String) {
     let ctx = GrpcTestContext::start().await;
     let (site_id, token) = ctx.setup_site_and_token().await;
 
-    let channel = ctx.connect().await;
-    let mut client = CollectionServiceClient::with_interceptor(channel, auth_interceptor(&token));
-
-    client
-        .create_collection(tonic::Request::new(CreateCollectionRequest {
-            name: "Settings".into(),
-            slug: "settings".into(),
-            definition: r#"{"fields":[{"name":"site_name","type":"text"}]}"#.into(),
-            is_singleton: true,
-        }))
-        .await
-        .unwrap();
+    ctx.create_collection(
+        &site_id,
+        "Settings",
+        "settings",
+        serde_json::json!({"fields":[{"name":"site_name","type":"text"}]}),
+        true,
+    )
+    .await;
 
     (ctx, site_id, token)
 }
@@ -32,7 +27,9 @@ async fn test_get_singleton() {
 
     let resp = client
         .get_singleton(tonic::Request::new(GetSingletonRequest {
+            include_drafts: true,
             slug: "settings".into(),
+            ..Default::default()
         }))
         .await
         .unwrap()
@@ -54,6 +51,7 @@ async fn test_update_singleton() {
             slug: "settings".into(),
             data: r#"{"site_name":"My Site"}"#.into(),
             change_summary: None,
+            ..Default::default()
         }))
         .await
         .unwrap()

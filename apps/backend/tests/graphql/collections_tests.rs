@@ -67,40 +67,26 @@ async fn gql(server: &TestServer, token: &str, query: &str) -> Value {
     resp.json().await.unwrap()
 }
 
-async fn gql_with_vars(server: &TestServer, token: &str, query: &str, variables: Value) -> Value {
-    let client = reqwest::Client::builder().build().unwrap();
-    let resp = client
-        .post(format!("{}/api/graphql", server.base_url))
-        .header("Authorization", format!("Bearer {}", token))
-        .json(&json!({"query": query, "variables": variables}))
+async fn create_collection(server: &TestServer, site_id: &str, name: &str, slug: &str) {
+    let client = reqwest::Client::new();
+    let login = server.login_user(&client, "admin@cms.local", "admin").await;
+    let (session, csrf) = crate::common::auth::extract_cookies(&login);
+    let response = client
+        .post(format!("{}/api/dashboard/sites/{site_id}/collections", server.base_url))
+        .headers(crate::common::auth::auth_header(&session, &csrf))
+        .json(&json!({"name":name,"slug":slug,"definition":{"fields":[{"name":"title","type":"text"}]}}))
         .send()
         .await
         .unwrap();
-    resp.json().await.unwrap()
-}
-
-async fn create_collection(server: &TestServer, token: &str, name: &str, slug: &str) -> Value {
-    let query = r#"mutation CreateCollection($input: CreateCollectionInput!) {
-        createCollection(input: $input) { id name slug }
-    }"#;
-    let vars = json!({"input": {"name": name, "slug": slug, "definition": json!({"fields": [{"name": "title", "type": "text"}]})}});
-    gql_with_vars(server, token, query, vars).await
-}
-
-async fn create_singleton_collection(server: &TestServer, token: &str, name: &str, slug: &str) -> Value {
-    let query = r#"mutation CreateCollection($input: CreateCollectionInput!) {
-        createCollection(input: $input) { id name slug isSingleton }
-    }"#;
-    let vars = json!({"input": {"name": name, "slug": slug, "definition": json!({"fields": [{"name": "title", "type": "text"}]}), "isSingleton": true}});
-    gql_with_vars(server, token, query, vars).await
+    assert_eq!(response.status(), 201);
 }
 
 #[tokio::test]
 async fn test_collections_query() {
     let server = TestServer::start().await;
-    let (_, token) = setup(&server).await;
+    let (site_id, token) = setup(&server).await;
 
-    create_collection(&server, &token, "Posts", "posts").await;
+    create_collection(&server, &site_id, "Posts", "posts").await;
 
     let body = gql(&server, &token, "{ collections { id name slug } }").await;
     assert!(body["errors"].is_null());
@@ -111,9 +97,9 @@ async fn test_collections_query() {
 #[tokio::test]
 async fn test_collection_by_slug() {
     let server = TestServer::start().await;
-    let (_, token) = setup(&server).await;
+    let (site_id, token) = setup(&server).await;
 
-    create_collection(&server, &token, "Pages", "pages").await;
+    create_collection(&server, &site_id, "Pages", "pages").await;
 
     let body = gql(&server, &token, r#"{ collection(slug: "pages") { id name slug } }"#).await;
     assert!(body["errors"].is_null());
@@ -132,98 +118,28 @@ async fn test_collection_not_found() {
 }
 
 #[tokio::test]
-async fn test_create_collection_mutation() {
+async fn management_mutations_are_absent_from_public_schema() {
     let server = TestServer::start().await;
     let (_, token) = setup(&server).await;
-
-    let body = create_collection(&server, &token, "New Col", "new-col").await;
-    assert!(body["errors"].is_null());
-    assert_eq!(body["data"]["createCollection"]["name"].as_str().unwrap(), "New Col");
-    assert_eq!(body["data"]["createCollection"]["slug"].as_str().unwrap(), "new-col");
-}
-
-#[tokio::test]
-async fn test_update_collection_mutation() {
-    let server = TestServer::start().await;
-    let (_, token) = setup(&server).await;
-
-    create_collection(&server, &token, "Old Name", "old-name").await;
-
-    let query = r#"mutation { updateCollection(slug: "old-name", input: {name: "New Name", slug: "new-name"}) { id name slug } }"#;
-    let body = gql(&server, &token, query).await;
-    assert!(body["errors"].is_null());
-    assert_eq!(body["data"]["updateCollection"]["name"].as_str().unwrap(), "New Name");
-    assert_eq!(body["data"]["updateCollection"]["slug"].as_str().unwrap(), "new-name");
-}
-
-#[tokio::test]
-async fn test_delete_collection_mutation() {
-    let server = TestServer::start().await;
-    let (_, token) = setup(&server).await;
-
-    create_collection(&server, &token, "To Delete", "to-delete").await;
-
-    let body = gql(&server, &token, r#"mutation { deleteCollection(slug: "to-delete") }"#).await;
-    assert!(body["errors"].is_null());
-    assert!(body["data"]["deleteCollection"].as_bool().unwrap());
-}
-
-#[tokio::test]
-async fn test_create_singleton_collection() {
-    let server = TestServer::start().await;
-    let (_, token) = setup(&server).await;
-
-    let body = create_singleton_collection(&server, &token, "Settings", "settings").await;
-    assert!(body["errors"].is_null(), "errors: {:?}", body["errors"]);
-    assert_eq!(body["data"]["createCollection"]["name"].as_str().unwrap(), "Settings");
-    assert_eq!(body["data"]["createCollection"]["slug"].as_str().unwrap(), "settings");
-    assert!(body["data"]["createCollection"]["isSingleton"].as_bool().unwrap());
-}
-
-#[tokio::test]
-async fn test_create_collection_invalid_field_type() {
-    let server = TestServer::start().await;
-    let (_, token) = setup(&server).await;
-
-    let query = r#"mutation CreateCollection($input: CreateCollectionInput!) {
-        createCollection(input: $input) { id name }
-    }"#;
-    let vars = json!({"input": {"name": "Bad", "slug": "bad", "definition": json!({"fields": [{"name": "title", "type": "string"}]})}});
-    let body = gql_with_vars(&server, &token, query, vars).await;
-
-    assert!(body["errors"].is_array());
-    let msg = body["errors"][0]["message"].as_str().unwrap();
-    assert!(
-        msg.contains("Invalid definition") || msg.contains("invalid type"),
-        "Expected validation error: {}",
-        msg
-    );
-}
-
-#[tokio::test]
-async fn test_create_collection_duplicate_slug() {
-    let server = TestServer::start().await;
-    let (_, token) = setup(&server).await;
-
-    create_collection(&server, &token, "Posts", "dup-slug").await;
-
-    let query = r#"mutation CreateCollection($input: CreateCollectionInput!) {
-        createCollection(input: $input) { id }
-    }"#;
-    let vars = json!({"input": {"name": "Posts Again", "slug": "dup-slug", "definition": json!({"fields": [{"name": "title", "type": "text"}]})}});
-    let body = gql_with_vars(&server, &token, query, vars).await;
-
-    assert!(body["errors"].is_array());
-}
-
-#[tokio::test]
-async fn test_collection_not_singleton() {
-    let server = TestServer::start().await;
-    let (_, token) = setup(&server).await;
-
-    create_collection(&server, &token, "Regular", "regular").await;
-
-    let body = gql(&server, &token, r#"{ collection(slug: "regular") { id isSingleton } }"#).await;
-    assert!(body["errors"].is_null(), "errors: {:?}", body["errors"]);
-    assert!(!body["data"]["collection"]["isSingleton"].as_bool().unwrap());
+    let body = gql(&server, &token, "{ __schema { mutationType { fields { name } } } }").await;
+    assert!(body["errors"].is_null(), "{body}");
+    let names = body["data"]["__schema"]["mutationType"]["fields"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|field| field["name"].as_str().unwrap())
+        .collect::<Vec<_>>();
+    for name in [
+        "createCollection",
+        "updateCollection",
+        "deleteCollection",
+        "createWebhook",
+        "updateWebhook",
+        "deleteWebhook",
+        "batchDeleteFiles",
+        "batchRestoreFiles",
+    ] {
+        assert!(!names.contains(&name), "Public management mutation exposed: {name}");
+    }
+    assert!(names.contains(&"createEntry"));
 }

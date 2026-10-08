@@ -31,6 +31,9 @@ pub enum SingletonError {
     #[error("Validation failed: {0}")]
     ValidationFailed(String),
 
+    #[error("Version precondition failed")]
+    PreconditionFailed,
+
     #[error("Database error: {0}")]
     DatabaseError(String),
 }
@@ -47,9 +50,13 @@ impl SingletonError {
                 Json(json!({"error": "Singleton not found"})),
             ),
             SingletonError::ValidationFailed(msg) => (axum::http::StatusCode::BAD_REQUEST, Json(json!({"error": msg}))),
-            SingletonError::DatabaseError(msg) => (
+            SingletonError::PreconditionFailed => (
+                axum::http::StatusCode::PRECONDITION_FAILED,
+                Json(json!({"error": "precondition_failed", "message": "The singleton changed since it was read"})),
+            ),
+            SingletonError::DatabaseError(_) => (
                 axum::http::StatusCode::INTERNAL_SERVER_ERROR,
-                Json(json!({"error": msg})),
+                Json(json!({"error": "internal_error", "message": "Internal server error"})),
             ),
         };
         (status, body).into_response()
@@ -141,6 +148,24 @@ impl SingletonService {
         Ok(())
     }
 
+    async fn validate_file_references(&self, site_id: &str, data: &Value) -> Result<(), SingletonError> {
+        let ids = self.extract_file_ids_from_value(data);
+        if ids.is_empty() {
+            return Ok(());
+        }
+        let files = self
+            .file_repo
+            .get_by_ids(site_id, &ids)
+            .await
+            .map_err(|error| SingletonError::DatabaseError(error.to_string()))?;
+        if files.len() != ids.len() || files.iter().any(|file| file.deleted_at.is_some()) {
+            return Err(SingletonError::ValidationFailed(
+                "Singleton references a missing, deleted, or cross-site file".into(),
+            ));
+        }
+        Ok(())
+    }
+
     fn build_response(c: &Collection, entry: Option<&crate::models::entry::Entry>) -> SingletonResponse {
         let definition: Value = serde_json::from_str(&c.definition).unwrap_or(json!({"fields": []}));
         let data = entry.and_then(|e| serde_json::from_str(&e.data).ok());
@@ -153,6 +178,7 @@ impl SingletonService {
             definition,
             data,
             entry_id: entry.map(|e| e.id.clone()),
+            version: entry.map(|e| e.version.clone()),
             created_at: c.created_at.clone(),
             updated_at: entry
                 .map(|e| e.updated_at.clone())
@@ -161,6 +187,14 @@ impl SingletonService {
     }
 
     pub async fn list_singletons(&self, site_id: &str) -> Result<Vec<SingletonResponse>, SingletonError> {
+        self.list_singletons_visible(site_id, false).await
+    }
+
+    pub async fn list_singletons_visible(
+        &self,
+        site_id: &str,
+        published_only: bool,
+    ) -> Result<Vec<SingletonResponse>, SingletonError> {
         let collections = self
             .collection_repo
             .list_singletons_only(site_id)
@@ -174,7 +208,10 @@ impl SingletonService {
                 .get_singleton_entry(site_id, &c.slug)
                 .await
                 .map_err(|e| SingletonError::DatabaseError(e.to_string()))?;
-            out.push(Self::build_response(c, entry.as_ref()));
+            out.push(Self::build_response(
+                c,
+                entry.as_ref().filter(|e| !published_only || e.status == "published"),
+            ));
         }
         Ok(out)
     }
@@ -184,6 +221,16 @@ impl SingletonService {
         site_id: &str,
         slug: &str,
         storage: Arc<dyn StorageProvider>,
+    ) -> Result<SingletonResponse, SingletonError> {
+        self.get_singleton_visible(site_id, slug, storage, false).await
+    }
+
+    pub async fn get_singleton_visible(
+        &self,
+        site_id: &str,
+        slug: &str,
+        storage: Arc<dyn StorageProvider>,
+        published_only: bool,
     ) -> Result<SingletonResponse, SingletonError> {
         debug!("Fetching singleton: site_id={}, slug={}", site_id, slug);
 
@@ -214,6 +261,7 @@ impl SingletonService {
             .await
             .map_err(|e| SingletonError::DatabaseError(e.to_string()))?;
 
+        let entry = entry.filter(|e| !published_only || e.status == "published");
         let mut response = Self::build_response(&collection, entry.as_ref());
 
         if let (Some(entry), Some(data)) = (entry.as_ref(), response.data.as_ref()) {
@@ -236,6 +284,7 @@ impl SingletonService {
         data: &Value,
         created_by: Option<&str>,
         change_summary: Option<&str>,
+        expected_version: Option<&str>,
     ) -> Result<SingletonResponse, SingletonError> {
         debug!("Updating singleton: site_id={}, slug={}", site_id, slug);
 
@@ -268,19 +317,48 @@ impl SingletonService {
             }
             self.validate_relations(site_id, fields, data).await?;
         }
+        self.validate_file_references(site_id, data).await?;
 
         let data_str = data.to_string();
         debug!("Upserting singleton entry for collection: id={}", collection.id);
 
-        let entry = self
-            .entry_repo
-            .upsert_singleton_entry(site_id, &collection.id, slug, &data_str, created_by, change_summary)
-            .await
-            .map_err(|e| {
-                error!("Failed to upsert singleton entry: id={}, error={}", collection.id, e);
-                SingletonError::DatabaseError(e.to_string())
-            })?;
-
+        let result = if let Some(version) = expected_version {
+            let existing = self
+                .entry_repo
+                .get_singleton_entry(site_id, slug)
+                .await
+                .map_err(|e| SingletonError::DatabaseError(e.to_string()))?
+                .ok_or(SingletonError::PreconditionFailed)?;
+            self.entry_repo
+                .update(crate::repository::traits::UpdateEntryParams {
+                    expected_definition: Some(&collection.definition),
+                    id: &existing.id,
+                    site_id,
+                    data: &data_str,
+                    slug,
+                    status: &existing.status,
+                    created_by,
+                    change_summary,
+                    expected_version: Some(version),
+                })
+                .await
+        } else {
+            self.entry_repo
+                .upsert_singleton_entry(crate::repository::traits::UpsertSingletonParams {
+                    site_id,
+                    collection_id: &collection.id,
+                    slug,
+                    data: &data_str,
+                    created_by,
+                    change_summary,
+                    expected_definition: Some(&collection.definition),
+                })
+                .await
+        };
+        let entry = result.map_err(|e| match e {
+            crate::repository::error::RepositoryError::PreconditionFailed => SingletonError::PreconditionFailed,
+            _ => SingletonError::DatabaseError(e.to_string()),
+        })?;
         // Enqueue for the server's indexer (best-effort; the index is rebuildable).
         if let Some(queue) = &self.search_queue
             && let Err(e) = queue.enqueue(&entry.id, &entry.site_id, OP_INDEX).await
@@ -303,7 +381,7 @@ impl SingletonService {
         if !file_ids.is_empty()
             && let Ok(file_items) = self.file_repo.get_by_ids(site_id, &file_ids).await
         {
-            for f in file_items {
+            for f in file_items.into_iter().filter(|file| file.deleted_at.is_none()) {
                 let url = storage.url(&f.storage_key, &f.id);
 
                 file_map.insert(
@@ -331,11 +409,7 @@ impl SingletonService {
     }
 
     fn extract_file_ids_from_value(&self, data: &Value) -> Vec<String> {
-        let re = regex::Regex::new(r"/api/files/([a-f0-9-]+)").unwrap();
-        let json_str = data.to_string();
-        re.captures_iter(&json_str)
-            .filter_map(|cap| cap.get(1).map(|m| m.as_str().to_string()))
-            .collect()
+        crate::utils::file_references::extract_file_ids_from_value(data)
     }
 }
 
@@ -421,7 +495,15 @@ mod tests {
         let coll = create_test_collection();
         collection_repo.add_collection(coll.clone());
         entry_repo
-            .upsert_singleton_entry("site-123", &coll.id, &coll.slug, r#"{"title":"Hello"}"#, None, None)
+            .upsert_singleton_entry(crate::repository::traits::UpsertSingletonParams {
+                site_id: "site-123",
+                collection_id: &coll.id,
+                slug: &coll.slug,
+                data: r#"{"title":"Hello"}"#,
+                created_by: None,
+                change_summary: None,
+                expected_definition: None,
+            })
             .await
             .unwrap();
 
@@ -439,7 +521,14 @@ mod tests {
     async fn test_update_singleton_not_found() {
         let service = make_service();
         let result = service
-            .update_singleton("site-123", "nonexistent", &json!({"title": "Updated"}), None, None)
+            .update_singleton(
+                "site-123",
+                "nonexistent",
+                &json!({"title": "Updated"}),
+                None,
+                None,
+                None,
+            )
             .await;
         assert!(matches!(result, Err(SingletonError::NotFound)));
     }
@@ -451,7 +540,7 @@ mod tests {
         let service = SingletonService::new(collection_repo, test_entry_repo(), test_file_repo());
 
         let result = service
-            .update_singleton("site-123", "regular", &json!({"title": "Updated"}), None, None)
+            .update_singleton("site-123", "regular", &json!({"title": "Updated"}), None, None, None)
             .await;
         assert!(matches!(result, Err(SingletonError::NotASingleton)));
     }
@@ -470,6 +559,7 @@ mod tests {
                 &json!({"title": "Updated Title"}),
                 Some("user-1"),
                 Some("initial write"),
+                None,
             )
             .await;
         assert!(result.is_ok());
@@ -484,14 +574,15 @@ mod tests {
         let coll = create_test_collection();
         collection_repo.add_collection(coll.clone());
         entry_repo
-            .upsert_singleton_entry(
-                "site-123",
-                &coll.id,
-                &coll.slug,
-                r#"{"title":"v1"}"#,
-                Some("user-1"),
-                Some("v1"),
-            )
+            .upsert_singleton_entry(crate::repository::traits::UpsertSingletonParams {
+                site_id: "site-123",
+                collection_id: &coll.id,
+                slug: &coll.slug,
+                data: r#"{"title":"v1"}"#,
+                created_by: Some("user-1"),
+                change_summary: Some("v1"),
+                expected_definition: None,
+            })
             .await
             .unwrap();
 
@@ -503,6 +594,7 @@ mod tests {
                 &json!({"title": "v2"}),
                 Some("user-1"),
                 Some("v2"),
+                None,
             )
             .await;
         assert!(result.is_ok());
@@ -523,6 +615,7 @@ mod tests {
                 &json!({"title": "v1"}),
                 Some("user-1"),
                 Some("v1"),
+                None,
             )
             .await
             .unwrap();
@@ -541,6 +634,7 @@ mod tests {
                 &json!({"title": "v2"}),
                 Some("user-1"),
                 Some("v2"),
+                None,
             )
             .await
             .unwrap();
@@ -566,7 +660,7 @@ mod tests {
             "images": ["/api/files/abc-123-def/image.png", "/api/files/456-789-abc/image.png"]
         });
         let ids = service.extract_file_ids_from_value(&data);
-        assert_eq!(ids, vec!["abc-123-def", "456-789-abc"]);
+        assert_eq!(ids, vec!["456-789-abc", "abc-123-def"]);
     }
 
     #[test]

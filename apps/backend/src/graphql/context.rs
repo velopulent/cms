@@ -1,3 +1,4 @@
+use crate::config::Config;
 use crate::middleware::auth::{Actor, verify_access_token};
 use crate::models::authorization::Action;
 use crate::repository::Repository;
@@ -9,6 +10,7 @@ pub struct GqlContext {
     pub services: Services,
     pub actor: Option<Actor>,
     pub site_id: Option<String>,
+    pub config: Config,
 }
 
 impl GqlContext {
@@ -18,24 +20,24 @@ impl GqlContext {
         auth_header: Option<&str>,
         requested_site: Option<&str>,
         hmac_secret: &str,
+        config: Config,
     ) -> Self {
         let mut actor = None;
         let mut site_id = None;
 
         if let Some(header) = auth_header
-            && let Some(token) = header.strip_prefix("Bearer ")
+            && let Some(token) = crate::middleware::auth::parse_bearer_header(header)
             && (token.starts_with("vcms_site_") || token.starts_with("vcms_pat_"))
             && let Ok(auth_actor) = verify_access_token(token, &repository, hmac_secret).await
         {
             if let Actor::ApiKey(k) = &auth_actor {
                 site_id = Some(k.site_id.clone());
             } else if let Actor::PersonalToken(_) = &auth_actor
-                && let Some(requested_site) = requested_site
-                && AuthorizationService::new(repository.user.clone())
-                    .require_site_action(&auth_actor, requested_site, Action::SiteRead)
-                    .await
-                    .is_ok()
+                && let Some(requested_site) = requested_site.map(str::trim).filter(|site| !site.is_empty())
             {
+                // Context selection is not authority. Each resolver checks its
+                // actual action and live role, just like REST's site resolver.
+                // Requiring site.read here broke content-only PAT/site-key parity.
                 site_id = Some(requested_site.to_owned());
             }
             actor = Some(auth_actor);
@@ -46,6 +48,7 @@ impl GqlContext {
             services,
             actor,
             site_id,
+            config,
         }
     }
 
@@ -67,9 +70,46 @@ impl GqlContext {
             .map_err(|_| async_graphql::Error::new(message))
     }
 
+    pub async fn require_site_action_for(&self, site_id: &str, action: Action) -> async_graphql::Result<()> {
+        let actor = self
+            .actor
+            .as_ref()
+            .ok_or_else(|| async_graphql::Error::new("Authentication required"))?;
+        AuthorizationService::new(self.repository.user.clone())
+            .require_site_action(actor, site_id, action)
+            .await
+            .map_err(|error| crate::graphql::service_error("authorization", error))
+    }
+
     pub async fn require_read(&self, action: Action) -> async_graphql::Result<()> {
         self.require_action(action, "Access token does not have required permission")
             .await
+    }
+
+    pub fn require_token_scope(&self, action: Action) -> async_graphql::Result<()> {
+        let actor = self
+            .actor
+            .as_ref()
+            .ok_or_else(|| async_graphql::Error::new("Authentication required"))?;
+        match actor {
+            Actor::ApiKey(key) if crate::middleware::auth::scopes_allow_action(&key.scopes, action) => Ok(()),
+            Actor::PersonalToken(token) if crate::middleware::auth::scopes_allow_action(&token.scopes, action) => {
+                Ok(())
+            }
+            Actor::User(_) => Ok(()),
+            _ => Err(async_graphql::Error::new(
+                "Access token does not have required permission",
+            )),
+        }
+    }
+
+    pub async fn require_content_read(&self, include_drafts: bool) -> async_graphql::Result<()> {
+        let action = if include_drafts {
+            Action::ContentPreviewRead
+        } else {
+            Action::ContentRead
+        };
+        self.require_read(action).await
     }
 
     pub async fn require_write(&self, action: Action) -> async_graphql::Result<()> {

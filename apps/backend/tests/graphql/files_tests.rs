@@ -67,19 +67,7 @@ async fn gql(server: &TestServer, token: &str, query: &str) -> Value {
     resp.json().await.unwrap()
 }
 
-async fn gql_with_vars(server: &TestServer, token: &str, query: &str, variables: Value) -> Value {
-    let client = reqwest::Client::builder().build().unwrap();
-    let resp = client
-        .post(format!("{}/api/graphql", server.base_url))
-        .header("Authorization", format!("Bearer {}", token))
-        .json(&json!({"query": query, "variables": variables}))
-        .send()
-        .await
-        .unwrap();
-    resp.json().await.unwrap()
-}
-
-async fn upload_file_via_rest(server: &TestServer, token: &str) -> String {
+async fn upload_file_via_rest(server: &TestServer, token: &str, site_id: &str) -> String {
     let client = reqwest::Client::builder().build().unwrap();
     let part = reqwest::multipart::Part::bytes(b"test content".to_vec())
         .file_name("test.txt")
@@ -88,7 +76,7 @@ async fn upload_file_via_rest(server: &TestServer, token: &str) -> String {
     let form = reqwest::multipart::Form::new().part("file", part);
 
     let resp = client
-        .post(format!("{}/files", server.base_url))
+        .post(format!("{}/api/v1/sites/{site_id}/files", server.base_url))
         .header("Authorization", format!("Bearer {}", token))
         .multipart(form)
         .send()
@@ -101,9 +89,9 @@ async fn upload_file_via_rest(server: &TestServer, token: &str) -> String {
 #[tokio::test]
 async fn test_files_query() {
     let server = TestServer::start().await;
-    let (_, token) = setup(&server).await;
+    let (site_id, token) = setup(&server).await;
 
-    upload_file_via_rest(&server, &token).await;
+    upload_file_via_rest(&server, &token, &site_id).await;
 
     let body = gql(
         &server,
@@ -119,9 +107,9 @@ async fn test_files_query() {
 #[tokio::test]
 async fn test_file_by_id() {
     let server = TestServer::start().await;
-    let (_, token) = setup(&server).await;
+    let (site_id, token) = setup(&server).await;
 
-    let file_id = upload_file_via_rest(&server, &token).await;
+    let file_id = upload_file_via_rest(&server, &token, &site_id).await;
 
     let query = format!(r#"{{ file(id: "{}") {{ id filename url thumbnailUrl }} }}"#, file_id);
     let body = gql(&server, &token, &query).await;
@@ -144,30 +132,50 @@ async fn test_file_not_found() {
 #[tokio::test]
 async fn test_file_references_query() {
     let server = TestServer::start().await;
-    let (_, token) = setup(&server).await;
+    let (site_id, token) = setup(&server).await;
 
-    let file_id = upload_file_via_rest(&server, &token).await;
+    let file_id = upload_file_via_rest(&server, &token, &site_id).await;
 
+    let client = reqwest::Client::new();
+    let login = server.login_user(&client, "admin@cms.local", "admin").await;
+    let (session, csrf) = crate::common::auth::extract_cookies(&login);
+    let response = client.post(format!("{}/api/dashboard/sites/{site_id}/collections",server.base_url))
+        .headers(crate::common::auth::auth_header(&session,&csrf))
+        .json(&json!({"name":"Media","slug":"media","definition":{"fields":[{"name":"hero","type":"file"},{"name":"gallery","type":"file","multiple":true}]}}))
+        .send().await.unwrap();
+    assert_eq!(response.status(), 201);
+    let collection: Value = response.json().await.unwrap();
+    let response = client.post(format!("{}/api/v1/sites/{site_id}/collections/media/entries",server.base_url))
+        .bearer_auth(&token).json(&json!({"slug":"media","data":{"hero":format!("/api/files/{file_id}"),"gallery":[format!("/api/files/{file_id}/thumbnail")]}}))
+        .send().await.unwrap();
+    assert_eq!(response.status(), 201, "duplicate file references must validate");
+    let entry: Value = response.json().await.unwrap();
     let query = format!(
         r#"{{ fileReferences(fileId: "{}") {{ entryId collectionName fieldName }} }}"#,
         file_id
     );
     let body = gql(&server, &token, &query).await;
     assert!(body["errors"].is_null());
-    let _ = body["data"]["fileReferences"].as_array().unwrap();
-    // TODO: we should create some entries that reference the file and verify they are returned here, but for now just check the structure of the response
-    // let refs = body["data"]["fileReferences"].as_array().unwrap();
-    // assert!(!refs.is_empty(), "expected file references");
+    let refs = body["data"]["fileReferences"].as_array().unwrap();
+    assert_eq!(refs.len(), 2);
+    assert!(refs.iter().all(|reference| reference["entryId"] == entry["id"]));
+    let mut fields = refs
+        .iter()
+        .map(|reference| reference["fieldName"].as_str().unwrap())
+        .collect::<Vec<_>>();
+    fields.sort();
+    assert_eq!(fields, ["gallery[0]", "hero"]);
+    assert_eq!(entry["collection_id"], collection["id"]);
 }
 
 #[tokio::test]
 async fn test_delete_file_mutation() {
     let server = TestServer::start().await;
-    let (_, token) = setup(&server).await;
+    let (site_id, token) = setup(&server).await;
 
-    let file_id = upload_file_via_rest(&server, &token).await;
+    let file_id = upload_file_via_rest(&server, &token, &site_id).await;
 
-    let query = format!(r#"mutation {{ deleteFile(id: "{}") }}"#, file_id);
+    let query = format!(r#"mutation {{ deleteFile(siteId: "{site_id}", id: "{}") }}"#, file_id);
     let body = gql(&server, &token, &query).await;
     assert!(body["errors"].is_null());
     assert!(body["data"]["deleteFile"].as_bool().unwrap());
@@ -176,14 +184,14 @@ async fn test_delete_file_mutation() {
 #[tokio::test]
 async fn test_restore_file_mutation() {
     let server = TestServer::start().await;
-    let (_, token) = setup(&server).await;
+    let (site_id, token) = setup(&server).await;
 
-    let file_id = upload_file_via_rest(&server, &token).await;
+    let file_id = upload_file_via_rest(&server, &token, &site_id).await;
 
     let del_body = gql(
         &server,
         &token,
-        &format!(r#"mutation {{ deleteFile(id: "{}") }}"#, file_id),
+        &format!(r#"mutation {{ deleteFile(siteId: "{site_id}", id: "{}") }}"#, file_id),
     )
     .await;
     assert!(
@@ -192,51 +200,8 @@ async fn test_restore_file_mutation() {
         del_body["errors"]
     );
 
-    let query = format!(r#"mutation {{ restoreFile(id: "{}") }}"#, file_id);
+    let query = format!(r#"mutation {{ restoreFile(siteId: "{site_id}", id: "{}") }}"#, file_id);
     let body = gql(&server, &token, &query).await;
     assert!(body["errors"].is_null());
     assert!(body["data"]["restoreFile"].as_bool().unwrap());
-}
-
-#[tokio::test]
-async fn test_batch_delete_files_mutation() {
-    let server = TestServer::start().await;
-    let (_, token) = setup(&server).await;
-
-    let mut ids = Vec::new();
-    for _ in 0..3 {
-        ids.push(upload_file_via_rest(&server, &token).await);
-    }
-
-    let query = r#"mutation BatchDelete($ids: [String!]!) { batchDeleteFiles(ids: $ids) }"#;
-    let vars = json!({"ids": ids});
-    let body = gql_with_vars(&server, &token, query, vars).await;
-    assert!(body["errors"].is_null());
-    assert_eq!(body["data"]["batchDeleteFiles"].as_i64().unwrap(), 3);
-}
-
-#[tokio::test]
-async fn test_batch_restore_files_mutation() {
-    let server = TestServer::start().await;
-    let (_, token) = setup(&server).await;
-
-    let mut ids = Vec::new();
-    for _ in 0..2 {
-        ids.push(upload_file_via_rest(&server, &token).await);
-    }
-
-    for id in &ids {
-        let del_body = gql(&server, &token, &format!(r#"mutation {{ deleteFile(id: "{}") }}"#, id)).await;
-        assert!(
-            del_body["errors"].is_null(),
-            "deleteFile should succeed: {:?}",
-            del_body["errors"]
-        );
-    }
-
-    let query = r#"mutation BatchRestore($ids: [String!]!) { batchRestoreFiles(ids: $ids) }"#;
-    let vars = json!({"ids": ids});
-    let body = gql_with_vars(&server, &token, query, vars).await;
-    assert!(body["errors"].is_null());
-    assert_eq!(body["data"]["batchRestoreFiles"].as_i64().unwrap(), 2);
 }

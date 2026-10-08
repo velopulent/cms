@@ -3,9 +3,9 @@ use std::sync::Arc;
 use tonic::{Request, Response, Status};
 
 use crate::grpc::cms::v1::site_service_server::SiteService;
-use crate::grpc::cms::v1::{GetSiteRequest, Site as ProtoSite, UpdateSiteRequest};
-use crate::grpc::interceptor::{GrpcAuthContext, get_auth_context};
-use crate::models::access_token::TokenScope;
+use crate::grpc::cms::v1::{GetSiteRequest, ListSitesRequest, ListSitesResponse, Site as ProtoSite};
+use crate::grpc::interceptor::get_auth_context;
+use crate::models::authorization::Action;
 use crate::models::site::Site;
 use crate::repository::Repository;
 use crate::services::site::SiteService as AppSiteService;
@@ -25,45 +25,66 @@ impl SiteServiceImpl {
     }
 }
 
-fn ensure_same_site(auth: &GrpcAuthContext, site_id: &str) -> Result<(), Status> {
-    if auth.require_site_id()? == site_id {
-        Ok(())
-    } else {
-        Err(Status::permission_denied(
-            "Site token does not have access to this site",
-        ))
-    }
-}
-
 #[tonic::async_trait]
 impl SiteService for SiteServiceImpl {
+    async fn list_sites(&self, mut request: Request<ListSitesRequest>) -> Result<Response<ListSitesResponse>, Status> {
+        let auth = get_auth_context(&mut request, &self.repository).await?;
+        if !auth.scopes.contains(&crate::models::access_token::TokenScope::SiteRead)
+            && !auth
+                .scopes
+                .contains(&crate::models::access_token::TokenScope::SiteSettingsRead)
+        {
+            return Err(Status::permission_denied("Token scope does not permit this operation"));
+        }
+        let sites = self
+            .app_site_service
+            .list_sites_for_actor(&auth.actor)
+            .await
+            .map_err(crate::grpc::service_error)?
+            .into_iter()
+            .filter_map(|site| {
+                Some(ProtoSite {
+                    id: site.get("id")?.as_str()?.to_owned(),
+                    name: site.get("name")?.as_str()?.to_owned(),
+                    storage_provider: site
+                        .get("storage_provider")
+                        .and_then(|value| value.as_str())
+                        .unwrap_or_default()
+                        .to_owned(),
+                    created_by: site
+                        .get("created_by")
+                        .and_then(|value| value.as_str())
+                        .unwrap_or_default()
+                        .to_owned(),
+                    created_at: site.get("created_at")?.as_str()?.to_owned(),
+                    updated_at: site.get("updated_at")?.as_str()?.to_owned(),
+                    created_at_timestamp: site
+                        .get("created_at")
+                        .and_then(|value| value.as_str())
+                        .and_then(crate::grpc::timestamp_from_text),
+                    updated_at_timestamp: site
+                        .get("updated_at")
+                        .and_then(|value| value.as_str())
+                        .and_then(crate::grpc::timestamp_from_text),
+                })
+            })
+            .collect();
+        Ok(Response::new(ListSitesResponse { sites }))
+    }
+
     async fn get_site(&self, mut request: Request<GetSiteRequest>) -> Result<Response<ProtoSite>, Status> {
         let auth = get_auth_context(&mut request, &self.repository).await?;
-        auth.require_scope(TokenScope::SiteRead)?;
         let site_id = request.into_inner().site_id;
-        ensure_same_site(&auth, &site_id)?;
+        let site_id = auth.resolve_site_id(&site_id)?;
+        auth.require_action(&self.repository, &site_id, Action::SiteRead)
+            .await?;
 
         let site = self
             .app_site_service
             .get_site(&site_id)
             .await
-            .map_err(|e| Status::internal(format!("Error: {}", e)))?
+            .map_err(crate::grpc::service_error)?
             .ok_or_else(|| Status::not_found("Site not found"))?;
-
-        Ok(Response::new(ProtoSite::from(site)))
-    }
-
-    async fn update_site(&self, mut request: Request<UpdateSiteRequest>) -> Result<Response<ProtoSite>, Status> {
-        let auth = get_auth_context(&mut request, &self.repository).await?;
-        auth.require_scope(TokenScope::SiteSettingsWrite)?;
-        let req = request.into_inner();
-        ensure_same_site(&auth, &req.site_id)?;
-
-        let site = self
-            .app_site_service
-            .update_site(&req.site_id, req.name.as_deref())
-            .await
-            .map_err(|e| Status::internal(format!("Error: {}", e)))?;
 
         Ok(Response::new(ProtoSite::from(site)))
     }
@@ -76,8 +97,10 @@ impl From<Site> for ProtoSite {
             name: site.name,
             storage_provider: site.storage_provider,
             created_by: site.created_by,
-            created_at: site.created_at,
-            updated_at: site.updated_at,
+            created_at: site.created_at.clone(),
+            updated_at: site.updated_at.clone(),
+            created_at_timestamp: crate::grpc::timestamp_from_text(&site.created_at),
+            updated_at_timestamp: crate::grpc::timestamp_from_text(&site.updated_at),
         }
     }
 }

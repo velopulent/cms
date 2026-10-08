@@ -15,7 +15,7 @@ async fn gql(server: &TestServer, token: Option<&str>, query: &str) -> reqwest::
     req.send().await.unwrap()
 }
 
-async fn setup_site_token(server: &TestServer) -> (reqwest::Client, String) {
+async fn setup_site_token(server: &TestServer) -> (String, String) {
     let client = reqwest::Client::builder().build().unwrap();
 
     let resp = server.login_user(&client, "admin@cms.local", "admin").await;
@@ -65,7 +65,7 @@ async fn setup_site_token(server: &TestServer) -> (reqwest::Client, String) {
     let token_val: Value = resp.json().await.unwrap();
     let api_key = token_val["token"].as_str().unwrap().to_string();
 
-    (client, api_key)
+    (site_id.to_owned(), api_key)
 }
 
 async fn setup_read_token(server: &TestServer) -> String {
@@ -145,13 +145,13 @@ async fn test_read_token_cannot_write() {
     let resp = gql(
         &server,
         Some(&token),
-        r#"mutation { createCollection(input: {name: "Test", slug: "test", definition: "{}"}) { id } }"#,
+        r#"mutation { createEntry(siteId: "unavailable", input: {collectionId: "unavailable", slug: "test", data: {title: "Test"}}) { id } }"#,
     )
     .await;
     let body: Value = resp.json().await.unwrap();
     assert!(body["errors"].is_array());
     let msg = body["errors"][0]["message"].as_str().unwrap();
-    assert!(msg.contains("write") || msg.contains("permission"));
+    assert_eq!(body["errors"][0]["extensions"]["code"], "FORBIDDEN", "{msg}");
 }
 
 #[tokio::test]
@@ -217,12 +217,12 @@ async fn test_wrong_site_token() {
     let token_val: Value = resp.json().await.unwrap();
     let token_a = token_val["token"].as_str().unwrap();
 
-    let query = format!(r#"{{ webhooks(siteId: "{}") {{ id label }} }}"#, site_b_id);
+    let query = format!(r#"{{ site(id: "{}") {{ id name }} }}"#, site_b_id);
     let resp = gql(&server, Some(token_a), &query).await;
     let body: Value = resp.json().await.unwrap();
     assert!(body["errors"].is_array());
     let msg = body["errors"][0]["message"].as_str().unwrap();
-    assert!(msg.contains("access") || msg.contains("site"));
+    assert_eq!(body["errors"][0]["extensions"]["code"], "FORBIDDEN", "{msg}");
 }
 
 #[tokio::test]
@@ -268,17 +268,27 @@ async fn test_valid_read_token_query() {
 #[tokio::test]
 async fn test_valid_write_token_mutation() {
     let server = TestServer::start().await;
-    let (_, token) = setup_site_token(&server).await;
-
-    let resp = gql(
-        &server,
-        Some(&token),
-        r#"mutation { createCollection(input: {name: "Test", slug: "test-mut", definition: "{}"}) { id name } }"#,
-    )
-    .await;
-    let body: Value = resp.json().await.unwrap();
-    assert!(body["data"].is_object());
-    assert!(body["data"]["createCollection"]["name"].as_str().unwrap() == "Test");
+    let (site_id, token) = setup_site_token(&server).await;
+    let client = reqwest::Client::new();
+    let login = server.login_user(&client, "admin@cms.local", "admin").await;
+    let (session, csrf) = extract_cookies(&login);
+    let collection: Value = client
+        .post(format!("{}/api/dashboard/sites/{site_id}/collections", server.base_url))
+        .headers(crate::common::auth::auth_header(&session, &csrf))
+        .json(&json!({"name":"Posts","slug":"posts","definition":{"fields":[{"name":"title","type":"text"}]}}))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    let query = format!(
+        "mutation {{ createEntry(siteId:\"{site_id}\",input:{{collectionId:\"{}\",slug:\"test\",data:{{title:\"Test\"}}}}) {{ id data }} }}",
+        collection["id"].as_str().unwrap()
+    );
+    let body: Value = gql(&server, Some(&token), &query).await.json().await.unwrap();
+    assert!(body["errors"].is_null(), "{body}");
+    assert_eq!(body["data"]["createEntry"]["data"]["title"], "Test");
 }
 
 #[tokio::test]
@@ -355,7 +365,7 @@ async fn test_viewer_personal_token_cannot_write() {
         .header("Authorization", format!("Bearer {personal_token}"))
         .header("X-VCMS-Site", site_id)
         .json(&json!({
-            "query": r#"mutation { createCollection(input: {name: "Forbidden", slug: "forbidden", definition: "{}"}) { id } }"#
+            "query": format!("mutation {{ createEntry(siteId:\"{site_id}\",input:{{collectionId:\"unavailable\",slug:\"forbidden\",data:{{title:\"Test\"}}}}) {{ id }} }}")
         }))
         .send()
         .await
@@ -366,9 +376,5 @@ async fn test_viewer_personal_token_cannot_write() {
         body["errors"].is_array(),
         "viewer PAT unexpectedly wrote through GraphQL: {body}"
     );
-    assert!(
-        body["errors"][0]["message"]
-            .as_str()
-            .is_some_and(|message| message.contains("write") || message.contains("permission"))
-    );
+    assert_eq!(body["errors"][0]["extensions"]["code"], "FORBIDDEN");
 }

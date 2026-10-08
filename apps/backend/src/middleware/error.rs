@@ -12,6 +12,16 @@ pub struct AuthError {
 }
 
 impl AuthError {
+    pub fn internal() -> (StatusCode, Json<AuthError>) {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(Self {
+                error: "internal_error".into(),
+                message: "Internal server error".into(),
+            }),
+        )
+    }
+
     pub fn site_token_required() -> (StatusCode, Json<AuthError>) {
         (
             StatusCode::UNAUTHORIZED,

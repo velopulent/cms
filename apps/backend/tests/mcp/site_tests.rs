@@ -13,24 +13,6 @@ async fn test_get_site() {
 }
 
 #[tokio::test]
-async fn test_update_site_name() {
-    let server = start_mcp_server().await;
-    let (site_id, token) = setup_site_token(&server).await;
-
-    let result = mcp_call_site_tool(
-        &server.base_url,
-        &token,
-        &site_id,
-        "update_site",
-        serde_json::json!({"name": "Updated Site"}),
-    )
-    .await;
-    let site = mcp_tool_json(&result);
-
-    assert_eq!(site["name"].as_str().unwrap(), "Updated Site");
-}
-
-#[tokio::test]
 async fn test_get_site_works_with_read_token() {
     let server = start_mcp_server().await;
     let (site_id, token) = setup_site_read_token(&server).await;
@@ -43,17 +25,21 @@ async fn test_get_site_works_with_read_token() {
 }
 
 #[tokio::test]
-async fn test_update_site_requires_admin() {
+async fn site_management_tools_are_not_exposed() {
     let server = start_mcp_server().await;
-    let (site_id, token) = setup_site_read_token(&server).await;
-
-    let result = mcp_call_site_tool(
-        &server.base_url,
-        &token,
-        &site_id,
+    let (_, token) = setup_site_read_token(&server).await;
+    let tools = mcp_list_tools(&server.base_url, &token).await;
+    assert!(tools.iter().any(|tool| tool["name"] == "get_site"));
+    for name in [
         "update_site",
-        serde_json::json!({"name": "Should Fail"}),
-    )
-    .await;
-    assert!(mcp_is_error(&result), "update_site should fail with read-only token");
+        "create_collection",
+        "update_collection",
+        "delete_collection",
+        "create_webhook",
+    ] {
+        assert!(
+            !tools.iter().any(|tool| tool["name"] == name),
+            "Public management tool exposed: {name}"
+        );
+    }
 }

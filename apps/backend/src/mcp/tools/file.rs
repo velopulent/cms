@@ -7,7 +7,7 @@ use schemars::JsonSchema;
 use serde::Deserialize;
 
 use crate::config::Config;
-use crate::mcp::auth::{ok_result, text_result, tool_error};
+use crate::mcp::auth::{ok_result, tool_error};
 use crate::middleware::auth::Actor;
 use crate::models::authorization::Action;
 use crate::services::{Services, authorization::AuthorizationService};
@@ -99,12 +99,8 @@ pub async fn get_file(
 pub struct CreateUploadUrlParams {
     pub site_id: String,
     pub filename: String,
-    #[serde(default = "default_content_type")]
+    /// MIME type accepted by the CMS upload whitelist.
     pub content_type: String,
-}
-
-fn default_content_type() -> String {
-    "application/octet-stream".to_string()
 }
 
 pub async fn create_upload_url(
@@ -121,6 +117,10 @@ pub async fn create_upload_url(
         .await
     {
         return Ok(tool_error(e));
+    }
+
+    if let Err(error) = crate::services::file::FileService::validate_filename(&params.0.filename) {
+        return Ok(tool_error(error));
     }
 
     // Fail fast at mint time instead of returning a URL doomed to a 400 PUT.
@@ -202,7 +202,10 @@ pub async fn delete_file(
     }
 
     match services.file.soft_delete(&params.0.file_id, &site_id).await {
-        Ok(_) => Ok(text_result("File deleted")),
+        Ok(n) if n > 0 => ok_result(&serde_json::json!({"deleted": true})),
+        Ok(_) => Ok(tool_error(crate::services::error::ServiceError::NotFound(
+            "File not found".into(),
+        ))),
         Err(e) => Ok(tool_error(e)),
     }
 }
@@ -230,7 +233,7 @@ pub async fn restore_file(
     match services.file.restore(&params.0.file_id, &site_id).await {
         Ok(n) => {
             if n > 0 {
-                Ok(text_result("File restored"))
+                ok_result(&serde_json::json!({"restored": true}))
             } else {
                 Ok(tool_error(crate::services::error::ServiceError::NotFound(
                     "File not found or not deleted".into(),

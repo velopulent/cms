@@ -7,7 +7,7 @@ VCMS Server listens on `127.0.0.1:50051` by default. Generate a client from `lib
 
 ## Services
 
-The schema defines Collection, Entry, Singleton, File, Site, and Webhook services. Entry operations include publishing, unpublishing, and revisions. File operations include trash and restore.
+The schema defines Collection, Entry, Singleton, File, and Site services. Collection and Site services expose discovery only; management remains dashboard-only. Entry operations include publishing, unpublishing, and revisions. File operations include trash and restore.
 
 ## Authentication
 
@@ -15,14 +15,17 @@ Attach the bearer credential as gRPC metadata:
 
 ```text
 authorization: Bearer vcms_site_…
+# Personal tokens (vcms_pat_…) are also accepted.
 ```
+
+Include `site_id` on site-scoped requests. Typed `Struct` fields carry dynamic content; legacy JSON text fields remain during migration. Draft reads require `include_drafts` and `content.preview.read`.
 
 ## Inspect with grpcurl
 
 When your environment supports server reflection, list services with:
 
 ```bash
-grpcurl -H "authorization: Bearer $VCMS_TOKEN" \
+grpcurl -plaintext -H "authorization: Bearer $VCMS_TOKEN" \
   127.0.0.1:50051 list
 ```
 
@@ -31,3 +34,5 @@ Otherwise pass the proto file explicitly. Treat that file as the field-level ref
 ## Network placement
 
 The default listener accepts local connections only. Change `[server].grpc_address` in `config.toml` or place a compatible proxy in front of it when remote clients need access. Protect remote gRPC traffic with TLS at the service or proxy boundary.
+
+Health and reflection endpoints are unauthenticated. Keep the listener within a controlled network boundary. Content responses currently populate both legacy JSON and typed fields; large responses may require a higher client decoding limit than the generated client's 4 MiB default.

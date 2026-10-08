@@ -17,6 +17,28 @@ impl PostgresFileRepository {
 
 #[async_trait]
 impl FileRepository for PostgresFileRepository {
+    async fn claim_signed_upload(&self, file_id: &str, expires_at: i64) -> Result<bool, RepositoryError> {
+        let now = chrono::Utc::now().timestamp();
+        if expires_at <= now {
+            return Ok(false);
+        }
+        let mut transaction = self.pool.begin().await?;
+        sqlx::query("DELETE FROM signed_upload_uses WHERE expires_at <= $1")
+            .bind(now)
+            .execute(&mut *transaction)
+            .await?;
+        let claimed =
+            sqlx::query("INSERT INTO signed_upload_uses(file_id, expires_at) VALUES ($1, $2) ON CONFLICT DO NOTHING")
+                .bind(file_id)
+                .bind(expires_at)
+                .execute(&mut *transaction)
+                .await?
+                .rows_affected()
+                > 0;
+        transaction.commit().await?;
+        Ok(claimed)
+    }
+
     async fn get_by_id(&self, id: &str, site_id: &str) -> Result<Option<File>, RepositoryError> {
         let result = sqlx::query_as::<_, File>(
             "SELECT id, site_id, filename, original_name, mime_type, size, storage_provider, storage_key, thumbnail_key, width, height, deleted_at::text as deleted_at, created_by, created_at::text as created_at
@@ -101,7 +123,7 @@ impl FileRepository for PostgresFileRepository {
 
         let count_bindings = bindings.clone();
 
-        let offset = (params.page - 1) * params.per_page;
+        let offset = params.page.saturating_sub(1).saturating_mul(params.per_page);
         let per_page = params.per_page;
         query.push_str(&format!(
             " ORDER BY created_at DESC LIMIT ${} OFFSET ${}",
@@ -290,8 +312,8 @@ impl FileRepository for PostgresFileRepository {
     }
 
     async fn get_references(&self, file_id: &str) -> Result<Vec<FileReference>, RepositoryError> {
-        let rows: Vec<(String, String)> = sqlx::query_as(
-            "SELECT DISTINCT e.id, col.name FROM entry_file_references efr
+        let rows: Vec<(String, String, String)> = sqlx::query_as(
+            "SELECT DISTINCT e.id, col.name, efr.field_name FROM entry_file_references efr
              JOIN entries e ON efr.entry_id = e.id
              JOIN collections col ON e.collection_id = col.id
              WHERE efr.file_id = $1",
@@ -302,10 +324,10 @@ impl FileRepository for PostgresFileRepository {
 
         Ok(rows
             .into_iter()
-            .map(|(entry_id, collection_name)| FileReference {
+            .map(|(entry_id, collection_name, field_name)| FileReference {
                 entry_id,
                 collection_name,
-                field_name: String::new(),
+                field_name,
             })
             .collect())
     }
@@ -315,8 +337,8 @@ impl FileRepository for PostgresFileRepository {
         file_id: &str,
         site_id: &str,
     ) -> Result<Vec<FileReference>, RepositoryError> {
-        let rows: Vec<(String, String)> = sqlx::query_as(
-            "SELECT DISTINCT e.id, col.name FROM entry_file_references efr
+        let rows: Vec<(String, String, String)> = sqlx::query_as(
+            "SELECT DISTINCT e.id, col.name, efr.field_name FROM entry_file_references efr
              JOIN entries e ON efr.entry_id = e.id
              JOIN collections col ON e.collection_id = col.id
              WHERE efr.file_id = $1 AND e.site_id = $2",
@@ -328,10 +350,10 @@ impl FileRepository for PostgresFileRepository {
 
         Ok(rows
             .into_iter()
-            .map(|(entry_id, collection_name)| FileReference {
+            .map(|(entry_id, collection_name, field_name)| FileReference {
                 entry_id,
                 collection_name,
-                field_name: String::new(),
+                field_name,
             })
             .collect())
     }

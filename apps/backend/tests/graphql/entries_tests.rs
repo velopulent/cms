@@ -79,36 +79,52 @@ async fn gql_with_vars(server: &TestServer, token: &str, query: &str, variables:
     resp.json().await.unwrap()
 }
 
-async fn create_collection(server: &TestServer, token: &str, name: &str, slug: &str) -> String {
-    let query = r#"mutation CreateCollection($input: CreateCollectionInput!) {
-        createCollection(input: $input) { id }
-    }"#;
-    let vars = json!({"input": {"name": name, "slug": slug, "definition": json!({"fields": [{"name": "title", "type": "text"}]})}});
-    let body = gql_with_vars(server, token, query, vars).await;
-    body["data"]["createCollection"]["id"].as_str().unwrap().to_string()
+async fn create_collection(server: &TestServer, site_id: &str, name: &str, slug: &str) -> String {
+    let client = reqwest::Client::new();
+    let login = server.login_user(&client, "admin@cms.local", "admin").await;
+    let (session, csrf) = crate::common::auth::extract_cookies(&login);
+    let response = client
+        .post(format!("{}/api/dashboard/sites/{site_id}/collections", server.base_url))
+        .headers(crate::common::auth::auth_header(&session, &csrf))
+        .json(&json!({"name": name, "slug": slug, "definition":{"fields":[{"name":"title","type":"text"}]}}))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(response.status(), 201);
+    response.json::<Value>().await.unwrap()["id"]
+        .as_str()
+        .unwrap()
+        .to_owned()
 }
 
-async fn create_entry(server: &TestServer, token: &str, collection_id: &str, slug: &str, data: Value) -> Value {
-    let query = r#"mutation CreateEntry($input: CreateEntryInput!) {
-        createEntry(input: $input) { id slug status collectionId }
+async fn create_entry(
+    server: &TestServer,
+    token: &str,
+    site_id: &str,
+    collection_id: &str,
+    slug: &str,
+    data: Value,
+) -> Value {
+    let query = r#"mutation CreateEntry($siteId: String!, $input: CreateEntryInput!) {
+        createEntry(siteId: $siteId, input: $input) { id slug status collectionId }
     }"#;
-    let vars = json!({"input": {"collectionId": collection_id, "slug": slug, "data": data}});
+    let vars = json!({"siteId":site_id, "input": {"collectionId": collection_id, "slug": slug, "data": data}});
     gql_with_vars(server, token, query, vars).await
 }
 
 #[tokio::test]
 async fn test_entries_query() {
     let server = TestServer::start().await;
-    let (_, token) = setup(&server).await;
-    let col_id = create_collection(&server, &token, "Posts", "posts").await;
+    let (site_id, token) = setup(&server).await;
+    let col_id = create_collection(&server, &site_id, "Posts", "posts").await;
 
-    let created = create_entry(&server, &token, &col_id, "entry-1", json!({"title": "First"})).await;
+    let created = create_entry(&server, &token, &site_id, &col_id, "entry-1", json!({"title": "First"})).await;
     let entry_id = created["data"]["createEntry"]["id"].as_str().unwrap();
 
     let pub_body = gql(
         &server,
         &token,
-        &format!(r#"mutation {{ publishEntry(id: "{}") {{ id }} }}"#, entry_id),
+        &format!(r#"mutation {{ publishEntry: setEntryPublication(siteId: "{site_id}", published: true, id: "{}") {{ id }} }}"#, entry_id),
     )
     .await;
     assert!(
@@ -126,48 +142,74 @@ async fn test_entries_query() {
 #[tokio::test]
 async fn test_entries_with_status_filter() {
     let server = TestServer::start().await;
-    let (_, token) = setup(&server).await;
-    let col_id = create_collection(&server, &token, "Posts", "posts").await;
+    let (site_id, token) = setup(&server).await;
+    let col_id = create_collection(&server, &site_id, "Posts", "posts").await;
 
-    create_entry(&server, &token, &col_id, "draft-entry", json!({"title": "Draft"})).await;
+    create_entry(
+        &server,
+        &token,
+        &site_id,
+        &col_id,
+        "draft-entry",
+        json!({"title": "Draft"}),
+    )
+    .await;
 
     let body = gql(&server, &token, r#"{ entries(status: "draft") { id slug status } }"#).await;
     assert!(body["errors"].is_null());
     let entries = body["data"]["entries"].as_array().unwrap();
+    assert_eq!(entries.len(), 1);
     assert!(entries.iter().all(|e| e["status"].as_str().unwrap() == "draft"));
 }
 
 #[tokio::test]
 async fn test_entries_with_collection_id_filter() {
     let server = TestServer::start().await;
-    let (_, token) = setup(&server).await;
-    let col_id = create_collection(&server, &token, "Posts", "posts").await;
+    let (site_id, token) = setup(&server).await;
+    let col_id = create_collection(&server, &site_id, "Posts", "posts").await;
 
-    create_entry(&server, &token, &col_id, "my-post", json!({"title": "My Post"})).await;
+    create_entry(
+        &server,
+        &token,
+        &site_id,
+        &col_id,
+        "my-post",
+        json!({"title": "My Post"}),
+    )
+    .await;
 
     let query = format!(
-        r#"{{ entries(collectionId: "{}") {{ id slug collectionId }} }}"#,
+        r#"{{ entries(includeDrafts: true, collectionId: "{}") {{ id slug collectionId }} }}"#,
         col_id
     );
     let body = gql(&server, &token, &query).await;
     assert!(body["errors"].is_null());
     let entries = body["data"]["entries"].as_array().unwrap();
+    assert_eq!(entries.len(), 1);
     assert!(entries.iter().all(|e| e["collectionId"].as_str().unwrap() == col_id));
 }
 
 #[tokio::test]
 async fn test_entries_with_search() {
     let server = TestServer::start().await;
-    let (_, token) = setup(&server).await;
-    let col_id = create_collection(&server, &token, "Posts", "posts").await;
+    let (site_id, token) = setup(&server).await;
+    let col_id = create_collection(&server, &site_id, "Posts", "posts").await;
 
-    let created = create_entry(&server, &token, &col_id, "searchable", json!({"title": "Unique Title"})).await;
+    let created = create_entry(
+        &server,
+        &token,
+        &site_id,
+        &col_id,
+        "searchable",
+        json!({"title": "Unique Title"}),
+    )
+    .await;
     let entry_id = created["data"]["createEntry"]["id"].as_str().unwrap();
 
     let pub_body = gql(
         &server,
         &token,
-        &format!(r#"mutation {{ publishEntry(id: "{}") {{ id }} }}"#, entry_id),
+        &format!(r#"mutation {{ publishEntry: setEntryPublication(siteId: "{site_id}", published: true, id: "{}") {{ id }} }}"#, entry_id),
     )
     .await;
     assert!(
@@ -190,13 +232,14 @@ async fn test_entries_with_search() {
 #[tokio::test]
 async fn test_entries_with_pagination() {
     let server = TestServer::start().await;
-    let (_, token) = setup(&server).await;
-    let col_id = create_collection(&server, &token, "Posts", "posts").await;
+    let (site_id, token) = setup(&server).await;
+    let col_id = create_collection(&server, &site_id, "Posts", "posts").await;
 
     for i in 0..5 {
         create_entry(
             &server,
             &token,
+            &site_id,
             &col_id,
             &format!("entry-{}", i),
             json!({"title": format!("Post {}", i)}),
@@ -204,22 +247,30 @@ async fn test_entries_with_pagination() {
         .await;
     }
 
-    let body = gql(&server, &token, "{ entries(page: 1, perPage: 2) { id } }").await;
+    let body = gql(
+        &server,
+        &token,
+        "{ entries(includeDrafts: true, page: 1, perPage: 2) { id } }",
+    )
+    .await;
     assert!(body["errors"].is_null());
     let entries = body["data"]["entries"].as_array().unwrap();
-    assert!(entries.len() <= 2);
+    assert_eq!(entries.len(), 2);
 }
 
 #[tokio::test]
 async fn test_entry_by_id() {
     let server = TestServer::start().await;
-    let (_, token) = setup(&server).await;
-    let col_id = create_collection(&server, &token, "Posts", "posts").await;
+    let (site_id, token) = setup(&server).await;
+    let col_id = create_collection(&server, &site_id, "Posts", "posts").await;
 
-    let created = create_entry(&server, &token, &col_id, "get-me", json!({"title": "Get Me"})).await;
+    let created = create_entry(&server, &token, &site_id, &col_id, "get-me", json!({"title": "Get Me"})).await;
     let entry_id = created["data"]["createEntry"]["id"].as_str().unwrap();
 
-    let query = format!(r#"{{ entry(id: "{}") {{ id slug data }} }}"#, entry_id);
+    let query = format!(
+        r#"{{ entry(id: "{}", includeDrafts: true) {{ id slug data }} }}"#,
+        entry_id
+    );
     let body = gql(&server, &token, &query).await;
     assert!(body["errors"].is_null());
     assert_eq!(body["data"]["entry"]["slug"].as_str().unwrap(), "get-me");
@@ -239,10 +290,10 @@ async fn test_entry_not_found() {
 #[tokio::test]
 async fn test_create_entry_mutation() {
     let server = TestServer::start().await;
-    let (_, token) = setup(&server).await;
-    let col_id = create_collection(&server, &token, "Posts", "posts").await;
+    let (site_id, token) = setup(&server).await;
+    let col_id = create_collection(&server, &site_id, "Posts", "posts").await;
 
-    let body = create_entry(&server, &token, &col_id, "new-entry", json!({"title": "New"})).await;
+    let body = create_entry(&server, &token, &site_id, &col_id, "new-entry", json!({"title": "New"})).await;
     assert!(body["errors"].is_null());
     assert_eq!(body["data"]["createEntry"]["slug"].as_str().unwrap(), "new-entry");
     assert_eq!(body["data"]["createEntry"]["status"].as_str().unwrap(), "draft");
@@ -251,25 +302,33 @@ async fn test_create_entry_mutation() {
 #[tokio::test]
 async fn test_create_entry_nonexistent_collection() {
     let server = TestServer::start().await;
-    let (_, token) = setup(&server).await;
+    let (site_id, token) = setup(&server).await;
 
-    let body = create_entry(&server, &token, "nonexistent", "fail", json!({"title": "Fail"})).await;
+    let body = create_entry(
+        &server,
+        &token,
+        &site_id,
+        "nonexistent",
+        "fail",
+        json!({"title": "Fail"}),
+    )
+    .await;
     assert!(body["errors"].is_array());
 }
 
 #[tokio::test]
 async fn test_update_entry_mutation() {
     let server = TestServer::start().await;
-    let (_, token) = setup(&server).await;
-    let col_id = create_collection(&server, &token, "Posts", "posts").await;
+    let (site_id, token) = setup(&server).await;
+    let col_id = create_collection(&server, &site_id, "Posts", "posts").await;
 
-    let created = create_entry(&server, &token, &col_id, "to-update", json!({"title": "Old"})).await;
+    let created = create_entry(&server, &token, &site_id, &col_id, "to-update", json!({"title": "Old"})).await;
     let entry_id = created["data"]["createEntry"]["id"].as_str().unwrap();
 
-    let query = r#"mutation UpdateEntry($id: String!, $input: UpdateEntryInput!) {
-        updateEntry(id: $id, input: $input) { id data }
+    let query = r#"mutation UpdateEntry($siteId: String!, $id: String!, $input: UpdateEntryInput!) {
+        updateEntry(siteId: $siteId, id: $id, input: $input) { id data }
     }"#;
-    let vars = json!({"id": entry_id, "input": {"data": json!({"title": "Updated"})}});
+    let vars = json!({"siteId":site_id, "id": entry_id, "input": {"data": json!({"title": "Updated"})}});
     let body = gql_with_vars(&server, &token, query, vars).await;
     assert!(body["errors"].is_null());
 }
@@ -277,13 +336,13 @@ async fn test_update_entry_mutation() {
 #[tokio::test]
 async fn test_delete_entry_mutation() {
     let server = TestServer::start().await;
-    let (_, token) = setup(&server).await;
-    let col_id = create_collection(&server, &token, "Posts", "posts").await;
+    let (site_id, token) = setup(&server).await;
+    let col_id = create_collection(&server, &site_id, "Posts", "posts").await;
 
-    let created = create_entry(&server, &token, &col_id, "to-delete", json!({"title": "Bye"})).await;
+    let created = create_entry(&server, &token, &site_id, &col_id, "to-delete", json!({"title": "Bye"})).await;
     let entry_id = created["data"]["createEntry"]["id"].as_str().unwrap();
 
-    let query = format!(r#"mutation {{ deleteEntry(id: "{}") }}"#, entry_id);
+    let query = format!(r#"mutation {{ deleteEntry(siteId: "{site_id}", id: "{}") }}"#, entry_id);
     let body = gql(&server, &token, &query).await;
     assert!(body["errors"].is_null());
     assert!(body["data"]["deleteEntry"].as_bool().unwrap());
@@ -292,13 +351,24 @@ async fn test_delete_entry_mutation() {
 #[tokio::test]
 async fn test_publish_entry_mutation() {
     let server = TestServer::start().await;
-    let (_, token) = setup(&server).await;
-    let col_id = create_collection(&server, &token, "Posts", "posts").await;
+    let (site_id, token) = setup(&server).await;
+    let col_id = create_collection(&server, &site_id, "Posts", "posts").await;
 
-    let created = create_entry(&server, &token, &col_id, "to-publish", json!({"title": "Draft"})).await;
+    let created = create_entry(
+        &server,
+        &token,
+        &site_id,
+        &col_id,
+        "to-publish",
+        json!({"title": "Draft"}),
+    )
+    .await;
     let entry_id = created["data"]["createEntry"]["id"].as_str().unwrap();
 
-    let query = format!(r#"mutation {{ publishEntry(id: "{}") {{ id status }} }}"#, entry_id);
+    let query = format!(
+        r#"mutation {{ publishEntry: setEntryPublication(siteId: "{site_id}", published: true, id: "{}") {{ id status }} }}"#,
+        entry_id
+    );
     let body = gql(&server, &token, &query).await;
     assert!(body["errors"].is_null());
     assert_eq!(body["data"]["publishEntry"]["status"].as_str().unwrap(), "published");
@@ -307,16 +377,24 @@ async fn test_publish_entry_mutation() {
 #[tokio::test]
 async fn test_unpublish_entry_mutation() {
     let server = TestServer::start().await;
-    let (_, token) = setup(&server).await;
-    let col_id = create_collection(&server, &token, "Posts", "posts").await;
+    let (site_id, token) = setup(&server).await;
+    let col_id = create_collection(&server, &site_id, "Posts", "posts").await;
 
-    let created = create_entry(&server, &token, &col_id, "to-unpublish", json!({"title": "Published"})).await;
+    let created = create_entry(
+        &server,
+        &token,
+        &site_id,
+        &col_id,
+        "to-unpublish",
+        json!({"title": "Published"}),
+    )
+    .await;
     let entry_id = created["data"]["createEntry"]["id"].as_str().unwrap();
 
     let pub_body = gql(
         &server,
         &token,
-        &format!(r#"mutation {{ publishEntry(id: "{}") {{ status }} }}"#, entry_id),
+        &format!(r#"mutation {{ publishEntry: setEntryPublication(siteId: "{site_id}", published: true, id: "{}") {{ status }} }}"#, entry_id),
     )
     .await;
     assert!(
@@ -325,7 +403,10 @@ async fn test_unpublish_entry_mutation() {
         pub_body["errors"]
     );
 
-    let query = format!(r#"mutation {{ unpublishEntry(id: "{}") {{ id status }} }}"#, entry_id);
+    let query = format!(
+        r#"mutation {{ unpublishEntry: setEntryPublication(siteId: "{site_id}", published: false, id: "{}") {{ id status }} }}"#,
+        entry_id
+    );
     let body = gql(&server, &token, &query).await;
     assert!(body["errors"].is_null());
     assert_eq!(body["data"]["unpublishEntry"]["status"].as_str().unwrap(), "draft");
@@ -334,22 +415,22 @@ async fn test_unpublish_entry_mutation() {
 #[tokio::test]
 async fn test_restore_revision_mutation() {
     let server = TestServer::start().await;
-    let (_, token) = setup(&server).await;
-    let col_id = create_collection(&server, &token, "Posts", "posts").await;
+    let (site_id, token) = setup(&server).await;
+    let col_id = create_collection(&server, &site_id, "Posts", "posts").await;
 
-    let created = create_entry(&server, &token, &col_id, "revisioned", json!({"title": "V1"})).await;
+    let created = create_entry(&server, &token, &site_id, &col_id, "revisioned", json!({"title": "V1"})).await;
     let entry_id = created["data"]["createEntry"]["id"].as_str().unwrap();
 
-    let update_query = r#"mutation UpdateEntry($id: String!, $input: UpdateEntryInput!) {
-        updateEntry(id: $id, input: $input) { id }
+    let update_query = r#"mutation UpdateEntry($siteId: String!, $id: String!, $input: UpdateEntryInput!) {
+        updateEntry(siteId: $siteId, id: $id, input: $input) { id }
     }"#;
-    let vars = json!({"id": entry_id, "input": {"data": json!({"title": "V2"})}});
+    let vars = json!({"siteId":site_id, "id": entry_id, "input": {"data": json!({"title": "V2"})}});
     let body = gql_with_vars(&server, &token, update_query, vars).await;
     assert!(body["errors"].is_null(), "update failed: {:?}", body["errors"]);
     assert_eq!(body["data"]["updateEntry"]["id"].as_str().unwrap(), entry_id);
 
     let restore_query = format!(
-        r#"mutation {{ restoreRevision(entryId: "{}", revisionNumber: 1) {{ id data }} }}"#,
+        r#"mutation {{ restoreRevision(siteId: "{site_id}", entryId: "{}", revisionNumber: 1) {{ id data }} }}"#,
         entry_id
     );
     let body = gql(&server, &token, &restore_query).await;
@@ -359,14 +440,14 @@ async fn test_restore_revision_mutation() {
 #[tokio::test]
 async fn test_entry_revisions_query() {
     let server = TestServer::start().await;
-    let (_, token) = setup(&server).await;
-    let col_id = create_collection(&server, &token, "Posts", "posts").await;
+    let (site_id, token) = setup(&server).await;
+    let col_id = create_collection(&server, &site_id, "Posts", "posts").await;
 
-    let created = create_entry(&server, &token, &col_id, "rev-test", json!({"title": "V1"})).await;
+    let created = create_entry(&server, &token, &site_id, &col_id, "rev-test", json!({"title": "V1"})).await;
     let entry_id = created["data"]["createEntry"]["id"].as_str().unwrap();
 
-    let update_query = r#"mutation { updateEntry(id: "%ID%", input: {data: {title: "V2"}}) { id } }"#;
-    let update_query = update_query.replace("%ID%", entry_id);
+    let update_query = r#"mutation { updateEntry(siteId: "%SITE%", id: "%ID%", input: {data: {title: "V2"}}) { id } }"#;
+    let update_query = update_query.replace("%ID%", entry_id).replace("%SITE%", &site_id);
     let update_body = gql(&server, &token, &update_query).await;
     assert!(
         update_body["errors"].is_null(),
@@ -387,10 +468,10 @@ async fn test_entry_revisions_query() {
 #[tokio::test]
 async fn test_entry_revision_query() {
     let server = TestServer::start().await;
-    let (_, token) = setup(&server).await;
-    let col_id = create_collection(&server, &token, "Posts", "posts").await;
+    let (site_id, token) = setup(&server).await;
+    let col_id = create_collection(&server, &site_id, "Posts", "posts").await;
 
-    let created = create_entry(&server, &token, &col_id, "rev-single", json!({"title": "V1"})).await;
+    let created = create_entry(&server, &token, &site_id, &col_id, "rev-single", json!({"title": "V1"})).await;
     let entry_id = created["data"]["createEntry"]["id"].as_str().unwrap();
 
     let query = format!(
@@ -405,14 +486,14 @@ async fn test_entry_revision_query() {
 #[tokio::test]
 async fn test_entry_revision_with_diff() {
     let server = TestServer::start().await;
-    let (_, token) = setup(&server).await;
-    let col_id = create_collection(&server, &token, "Posts", "posts").await;
+    let (site_id, token) = setup(&server).await;
+    let col_id = create_collection(&server, &site_id, "Posts", "posts").await;
 
-    let created = create_entry(&server, &token, &col_id, "diff-test", json!({"title": "V1"})).await;
+    let created = create_entry(&server, &token, &site_id, &col_id, "diff-test", json!({"title": "V1"})).await;
     let entry_id = created["data"]["createEntry"]["id"].as_str().unwrap();
 
-    let update_query = r#"mutation { updateEntry(id: "%ID%", input: {data: {title: "V2"}}) { id } }"#;
-    let update_query = update_query.replace("%ID%", entry_id);
+    let update_query = r#"mutation { updateEntry(siteId: "%SITE%", id: "%ID%", input: {data: {title: "V2"}}) { id } }"#;
+    let update_query = update_query.replace("%ID%", entry_id).replace("%SITE%", &site_id);
     let update_body = gql(&server, &token, &update_query).await;
     assert!(
         update_body["errors"].is_null(),
@@ -432,12 +513,12 @@ async fn test_entry_revision_with_diff() {
 #[tokio::test]
 async fn test_create_entry_with_invalid_collection_id() {
     let server = TestServer::start().await;
-    let (_, token) = setup(&server).await;
+    let (site_id, token) = setup(&server).await;
 
-    let query = r#"mutation CreateEntry($input: CreateEntryInput!) {
-        createEntry(input: $input) { id }
+    let query = r#"mutation CreateEntry($siteId: String!, $input: CreateEntryInput!) {
+        createEntry(siteId: $siteId, input: $input) { id }
     }"#;
-    let vars = json!({"input": {"collectionId": "nonexistent", "slug": "orphan", "data": json!({"title": "Hello"})}});
+    let vars = json!({"siteId":site_id, "input": {"collectionId": "nonexistent", "slug": "orphan", "data": json!({"title": "Hello"})}});
     let body = gql_with_vars(&server, &token, query, vars).await;
 
     assert!(body["errors"].is_array());

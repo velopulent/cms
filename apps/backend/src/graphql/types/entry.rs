@@ -13,6 +13,7 @@ pub struct Entry {
     pub singleton_collection_id: Option<String>,
     pub created_at: String,
     pub updated_at: String,
+    pub version: String,
     pub published_at: Option<String>,
 }
 
@@ -29,6 +30,7 @@ pub struct UpdateEntryInput {
     pub slug: Option<String>,
     pub status: Option<String>,
     pub change_summary: Option<String>,
+    pub expected_version: Option<String>,
 }
 
 #[derive(SimpleObject)]
@@ -51,6 +53,34 @@ pub struct RevisionsListResult {
     pub per_page: i64,
 }
 
+#[derive(SimpleObject)]
+pub struct PageInfo {
+    pub has_next_page: bool,
+    pub has_previous_page: bool,
+    pub start_cursor: Option<String>,
+    pub end_cursor: Option<String>,
+}
+
+#[derive(SimpleObject)]
+pub struct EntryConnection {
+    pub nodes: Vec<Entry>,
+    pub page_info: PageInfo,
+    pub total_count: i64,
+}
+
+#[derive(InputObject, Default)]
+pub struct EntryFilterInput {
+    pub status: Option<String>,
+    pub slug: Option<String>,
+    pub search: Option<String>,
+}
+
+#[derive(InputObject, Default)]
+pub struct EntryOrderInput {
+    pub field: Option<String>,
+    pub direction: Option<String>,
+}
+
 pub fn db_entry_to_gql(e: crate::models::entry::Entry) -> Entry {
     let data = serde_json::from_str(&e.data).unwrap_or(serde_json::Value::Null);
     Entry {
@@ -63,6 +93,7 @@ pub fn db_entry_to_gql(e: crate::models::entry::Entry) -> Entry {
         singleton_collection_id: e.singleton_collection_id,
         created_at: e.created_at,
         updated_at: e.updated_at,
+        version: e.version,
         published_at: e.published_at,
     }
 }

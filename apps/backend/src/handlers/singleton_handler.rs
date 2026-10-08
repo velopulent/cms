@@ -1,7 +1,7 @@
 use axum::{
     Json,
-    extract::{Extension, Path},
-    http::StatusCode,
+    extract::{Extension, Path, Query},
+    http::{HeaderMap, StatusCode},
     response::{IntoResponse, Response},
 };
 use serde::Deserialize;
@@ -14,7 +14,7 @@ pub struct SingletonSlug {
 }
 
 use crate::error::AppError;
-use crate::middleware::auth::{RequestContext, require_site_action};
+use crate::middleware::auth::{Actor, RequestContext, require_site_action};
 use crate::models::authorization::Action;
 use crate::models::collection::{SingletonResponse, UpdateSingletonData};
 use crate::repository::Repository;
@@ -32,7 +32,7 @@ fn get_storage_for_site(
 
 #[utoipa::path(
     get,
-    path = "/api/v1/singletons",
+    path = "/api/v1/sites/{site_id}/singletons",
     responses(
         (status = 200, description = "List of singletons", body = Vec<SingletonResponse>),
         (status = 401, description = "Unauthorized"),
@@ -43,14 +43,34 @@ fn get_storage_for_site(
 #[instrument(skip(repository, services, ctx))]
 pub async fn list_singletons(
     ctx: RequestContext,
+    Query(preview): Query<crate::handlers::entry_handler::PreviewQuery>,
     Extension(repository): Extension<Repository>,
     Extension(services): Extension<Services>,
 ) -> Response {
-    if let Err((status, err)) = require_site_action(&ctx, &repository, Action::ContentRead).await {
+    if let Err((status, err)) = require_site_action(
+        &ctx,
+        &repository,
+        if preview.include_drafts.unwrap_or(false) {
+            Action::ContentPreviewRead
+        } else {
+            Action::ContentRead
+        },
+    )
+    .await
+    {
         return (status, err).into_response();
     }
 
-    match services.singleton.list_singletons(&ctx.site_id).await {
+    match services
+        .singleton
+        .list_singletons_visible(
+            &ctx.site_id,
+            !preview
+                .include_drafts
+                .unwrap_or(matches!(ctx.auth.actor, Actor::User(_))),
+        )
+        .await
+    {
         Ok(items) => (StatusCode::OK, Json(items)).into_response(),
         Err(e) => e.into_response(),
     }
@@ -58,7 +78,7 @@ pub async fn list_singletons(
 
 #[utoipa::path(
     get,
-    path = "/api/v1/singletons/{slug}",
+    path = "/api/v1/sites/{site_id}/singletons/{slug}",
     params(("slug" = String, Path, description = "Singleton slug")),
     responses(
         (status = 200, description = "Singleton with data", body = SingletonResponse),
@@ -71,12 +91,23 @@ pub async fn list_singletons(
 #[instrument(skip(repository, services, ctx, storage_registry))]
 pub async fn get_singleton(
     ctx: RequestContext,
+    Query(preview): Query<crate::handlers::entry_handler::PreviewQuery>,
     Path(SingletonSlug { slug }): Path<SingletonSlug>,
     Extension(repository): Extension<Repository>,
     Extension(services): Extension<Services>,
     Extension(storage_registry): Extension<Arc<StorageRegistry>>,
 ) -> Response {
-    if let Err((status, err)) = require_site_action(&ctx, &repository, Action::ContentRead).await {
+    if let Err((status, err)) = require_site_action(
+        &ctx,
+        &repository,
+        if preview.include_drafts.unwrap_or(false) {
+            Action::ContentPreviewRead
+        } else {
+            Action::ContentRead
+        },
+    )
+    .await
+    {
         return (status, err).into_response();
     }
 
@@ -89,15 +120,33 @@ pub async fn get_singleton(
         Err(e) => return e.into_response(),
     };
 
-    match services.singleton.get_singleton(&ctx.site_id, &slug, storage).await {
-        Ok(response) => (StatusCode::OK, Json(response)).into_response(),
+    match services
+        .singleton
+        .get_singleton_visible(
+            &ctx.site_id,
+            &slug,
+            storage,
+            !preview
+                .include_drafts
+                .unwrap_or(matches!(ctx.auth.actor, Actor::User(_))),
+        )
+        .await
+    {
+        Ok(response) => {
+            let version = response.version.clone();
+            let response = (StatusCode::OK, Json(response)).into_response();
+            match version {
+                Some(version) => crate::handlers::entry_handler::with_etag(response, &version),
+                None => response,
+            }
+        }
         Err(e) => e.into_response(),
     }
 }
 
 #[utoipa::path(
-    put,
-    path = "/api/v1/singletons/{slug}",
+    patch,
+    path = "/api/v1/sites/{site_id}/singletons/{slug}",
     params(("slug" = String, Path, description = "Singleton slug")),
     request_body = UpdateSingletonData,
     responses(
@@ -112,6 +161,7 @@ pub async fn get_singleton(
 #[instrument(skip(repository, services, ctx, payload))]
 pub async fn update_singleton(
     ctx: RequestContext,
+    headers: HeaderMap,
     Path(SingletonSlug { slug }): Path<SingletonSlug>,
     Extension(repository): Extension<Repository>,
     Extension(services): Extension<Services>,
@@ -121,6 +171,10 @@ pub async fn update_singleton(
         return (status, err).into_response();
     }
 
+    let expected_version = match crate::handlers::entry_handler::if_match_version(&headers) {
+        Ok(version) => version.or(payload.expected_version.as_deref()),
+        Err(error) => return error.into_response(),
+    };
     match services
         .singleton
         .update_singleton(
@@ -129,10 +183,18 @@ pub async fn update_singleton(
             &payload.data,
             ctx.auth.actor.user_id(),
             payload.change_summary.as_deref(),
+            expected_version,
         )
         .await
     {
-        Ok(response) => (StatusCode::OK, Json(response)).into_response(),
+        Ok(response) => {
+            let version = response.version.clone();
+            let response = (StatusCode::OK, Json(response)).into_response();
+            match version {
+                Some(version) => crate::handlers::entry_handler::with_etag(response, &version),
+                None => response,
+            }
+        }
         Err(e) => e.into_response(),
     }
 }

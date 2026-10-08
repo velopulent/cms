@@ -16,6 +16,7 @@ use crate::storage::StorageRegistry;
 #[derive(Debug, Deserialize, JsonSchema)]
 pub struct ListSingletonsParams {
     pub site_id: String,
+    pub include_drafts: Option<bool>,
 }
 
 pub async fn list_singletons(
@@ -26,12 +27,24 @@ pub async fn list_singletons(
 ) -> Result<CallToolResult, McpError> {
     let site_id = params.0.site_id;
     if let Err(e) = authorization
-        .require_site_action(actor, &site_id, Action::ContentRead)
+        .require_site_action(
+            actor,
+            &site_id,
+            if params.0.include_drafts.unwrap_or(false) {
+                Action::ContentPreviewRead
+            } else {
+                Action::ContentRead
+            },
+        )
         .await
     {
         return Ok(tool_error(e));
     }
-    match services.singleton.list_singletons(&site_id).await {
+    match services
+        .singleton
+        .list_singletons_visible(&site_id, !params.0.include_drafts.unwrap_or(false))
+        .await
+    {
         Ok(singletons) => ok_result(&singletons),
         Err(e) => Ok(tool_error(e)),
     }
@@ -40,6 +53,7 @@ pub async fn list_singletons(
 #[derive(Debug, Deserialize, JsonSchema)]
 pub struct GetSingletonParams {
     pub site_id: String,
+    pub include_drafts: Option<bool>,
     pub slug: String,
 }
 
@@ -52,7 +66,15 @@ pub async fn get_singleton(
 ) -> Result<CallToolResult, McpError> {
     let site_id = params.0.site_id.clone();
     if let Err(e) = authorization
-        .require_site_action(actor, &site_id, Action::ContentRead)
+        .require_site_action(
+            actor,
+            &site_id,
+            if params.0.include_drafts.unwrap_or(false) {
+                Action::ContentPreviewRead
+            } else {
+                Action::ContentRead
+            },
+        )
         .await
     {
         return Ok(tool_error(e));
@@ -74,7 +96,12 @@ pub async fn get_singleton(
 
     match services
         .singleton
-        .get_singleton(&site_id, &params.0.slug, storage)
+        .get_singleton_visible(
+            &site_id,
+            &params.0.slug,
+            storage,
+            !params.0.include_drafts.unwrap_or(false),
+        )
         .await
     {
         Ok(singleton) => ok_result(&singleton),
@@ -89,6 +116,7 @@ pub struct UpdateSingletonParams {
     #[schemars(with = "ArbitraryJson")]
     pub data: serde_json::Value,
     pub change_summary: Option<String>,
+    pub expected_version: Option<String>,
 }
 
 pub async fn update_singleton(
@@ -114,6 +142,7 @@ pub async fn update_singleton(
             &params.0.data,
             created_by,
             params.0.change_summary.as_deref(),
+            params.0.expected_version.as_deref(),
         )
         .await
     {

@@ -17,7 +17,7 @@ pub struct SiteIdParam {
     site_id: String,
 }
 
-pub async fn api_site_resolver(mut request: Request, next: Next) -> Response {
+pub async fn api_site_resolver(request: Request, next: Next) -> Response {
     let actor = match request.extensions().get::<Actor>() {
         Some(actor) => actor.clone(),
         None => {
@@ -29,55 +29,32 @@ pub async fn api_site_resolver(mut request: Request, next: Next) -> Response {
         }
     };
 
-    let site_id = match &actor {
-        Actor::ApiKey(k) => k.site_id.clone(),
-        Actor::PersonalToken(_) => match request
-            .headers()
-            .get("x-vcms-site")
-            .and_then(|value| value.to_str().ok())
-            .map(str::trim)
-        {
-            Some(value) if !value.is_empty() => value.to_string(),
-            _ => {
-                return (
-                    StatusCode::BAD_REQUEST,
-                    Json(serde_json::json!({
-                        "error": "missing_site_context",
-                        "message": "X-VCMS-Site is required for personal tokens"
-                    })),
-                )
-                    .into_response();
-            }
-        },
+    let (mut parts, body) = request.into_parts();
+    let site_id = match Path::<SiteIdParam>::from_request_parts(&mut parts, &()).await {
+        Ok(params) if !params.site_id.trim().is_empty() => params.site_id.clone(),
         _ => {
             return (
-                StatusCode::FORBIDDEN,
+                StatusCode::BAD_REQUEST,
                 Json(serde_json::json!({
-                    "error": "forbidden",
-                    "message": "Public API requires API key authentication"
+                    "error": "missing_site_context",
+                    "message": "site_id is required in the public API path"
                 })),
             )
                 .into_response();
         }
     };
 
-    if let Actor::PersonalToken(token) = &actor {
-        let repository = match request.extensions().get::<Repository>() {
-            Some(value) => value.clone(),
-            None => {
-                return (
-                    StatusCode::INTERNAL_SERVER_ERROR,
-                    Json(serde_json::json!({"error":"internal_error"})),
-                )
-                    .into_response();
-            }
-        };
-        if let Err((status, error)) =
-            crate::middleware::auth::check_site_action_repo(&repository, &token.user_id, &site_id, Action::SiteRead)
-                .await
-        {
-            return (status, error).into_response();
-        }
+    if let Actor::ApiKey(key) = &actor
+        && key.site_id != site_id
+    {
+        return (
+            StatusCode::FORBIDDEN,
+            Json(serde_json::json!({
+                "error": "site_scope_mismatch",
+                "message": "Token is not authorized for this site"
+            })),
+        )
+            .into_response();
     }
 
     let auth_method = if matches!(actor, Actor::PersonalToken(_)) {
@@ -88,8 +65,8 @@ pub async fn api_site_resolver(mut request: Request, next: Next) -> Response {
     let auth = AuthContext { actor, auth_method };
 
     let ctx = RequestContext { site_id, auth };
-    request.extensions_mut().insert(ctx);
-    next.run(request).await
+    parts.extensions.insert(ctx);
+    next.run(Request::from_parts(parts, body)).await
 }
 
 pub async fn dashboard_site_resolver(request: Request, next: Next) -> Response {

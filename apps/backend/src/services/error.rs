@@ -1,5 +1,4 @@
-use axum::{Json, http::StatusCode, response::IntoResponse};
-use serde_json::json;
+use axum::{http::StatusCode, response::IntoResponse};
 use thiserror::Error;
 
 use crate::services::access_token::TokenError;
@@ -88,6 +87,7 @@ impl ServiceError {
             ServiceError::Collection(e) => match e {
                 CollectionError::NotFound => StatusCode::NOT_FOUND,
                 CollectionError::AlreadyExists => StatusCode::CONFLICT,
+                CollectionError::PreconditionFailed => StatusCode::PRECONDITION_FAILED,
                 CollectionError::InvalidDefinition(_) => StatusCode::BAD_REQUEST,
                 CollectionError::DatabaseError(_) => StatusCode::INTERNAL_SERVER_ERROR,
             },
@@ -95,6 +95,7 @@ impl ServiceError {
                 EntryError::NotFound => StatusCode::NOT_FOUND,
                 EntryError::RevisionNotFound => StatusCode::NOT_FOUND,
                 EntryError::AlreadyExists => StatusCode::CONFLICT,
+                EntryError::PreconditionFailed => StatusCode::PRECONDITION_FAILED,
                 EntryError::ValidationFailed(_) => StatusCode::BAD_REQUEST,
                 EntryError::DatabaseError(_) => StatusCode::INTERNAL_SERVER_ERROR,
             },
@@ -103,7 +104,7 @@ impl ServiceError {
                 FileError::NotFoundOrNotDeleted => StatusCode::NOT_FOUND,
                 FileError::NoFileProvided => StatusCode::BAD_REQUEST,
                 FileError::FileTooLarge(_) => StatusCode::PAYLOAD_TOO_LARGE,
-                FileError::InvalidContentType(_) => StatusCode::BAD_REQUEST,
+                FileError::InvalidContentType(_) | FileError::InvalidFilename(_) => StatusCode::BAD_REQUEST,
                 FileError::StorageError(_) => StatusCode::INTERNAL_SERVER_ERROR,
                 FileError::NoStorageConfigured => StatusCode::INTERNAL_SERVER_ERROR,
                 FileError::DatabaseError(_) => StatusCode::INTERNAL_SERVER_ERROR,
@@ -113,6 +114,7 @@ impl ServiceError {
             ServiceError::Singleton(e) => match e {
                 SingletonError::NotFound | SingletonError::NotASingleton => StatusCode::NOT_FOUND,
                 SingletonError::ValidationFailed(_) => StatusCode::BAD_REQUEST,
+                SingletonError::PreconditionFailed => StatusCode::PRECONDITION_FAILED,
                 SingletonError::DatabaseError(_) => StatusCode::INTERNAL_SERVER_ERROR,
             },
             ServiceError::Webhook(e) => match e {
@@ -130,6 +132,9 @@ impl ServiceError {
     }
 
     pub fn error_message(&self) -> String {
+        if self.status_code().is_server_error() {
+            return "Internal server error".into();
+        }
         match self {
             ServiceError::Unauthorized(msg) => msg.clone(),
             ServiceError::Forbidden(msg) => msg.clone(),
@@ -154,18 +159,40 @@ impl ServiceError {
 impl IntoResponse for ServiceError {
     fn into_response(self) -> axum::response::Response {
         // Log full error details server-side
-        if matches!(self, ServiceError::Internal(_)) {
+        if self.status_code().is_server_error() {
             tracing::error!("Internal error: {}", self);
         }
         let status = self.status_code();
         let message = self.error_message();
-        (status, Json(json!({"error": message}))).into_response()
+        let code = match status {
+            StatusCode::UNAUTHORIZED => "unauthorized",
+            StatusCode::FORBIDDEN => "forbidden",
+            StatusCode::NOT_FOUND => "not_found",
+            StatusCode::CONFLICT => "conflict",
+            StatusCode::BAD_REQUEST => "invalid_request",
+            StatusCode::PAYLOAD_TOO_LARGE => "payload_too_large",
+            StatusCode::PRECONDITION_FAILED => "precondition_failed",
+            _ => "internal_error",
+        };
+        crate::error::problem_response(status, code, message)
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn nested_infrastructure_errors_never_reach_public_messages() {
+        for error in [
+            ServiceError::Site(SiteError::DatabaseError("password=secret".into())),
+            ServiceError::Entry(EntryError::DatabaseError("private query".into())),
+            ServiceError::File(FileError::StorageError("private bucket credentials".into())),
+        ] {
+            assert!(error.status_code().is_server_error());
+            assert_eq!(error.error_message(), "Internal server error");
+        }
+    }
 
     #[test]
     fn test_status_code_mapping() {

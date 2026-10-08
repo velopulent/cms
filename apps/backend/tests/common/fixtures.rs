@@ -40,8 +40,10 @@ pub fn site_key_scopes(access: &str) -> Vec<&'static str> {
     ];
     if access == "write" {
         scopes.extend([
+            "content.preview.read",
             "site.settings.write",
             "content.write",
+            "content.publish",
             "files.write",
             "schema.write",
             "webhooks.write",

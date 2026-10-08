@@ -495,9 +495,20 @@ impl CollectionRepository for InMemoryCollectionRepository {
         Ok(collection)
     }
 
-    async fn update(&self, id: &str, name: &str, slug: &str, definition: &str) -> Result<Collection, RepositoryError> {
+    async fn update(
+        &self,
+        id: &str,
+        name: &str,
+        slug: &str,
+        definition: &str,
+        _rename_map: &std::collections::HashMap<String, String>,
+        expected_definition: &str,
+    ) -> Result<Collection, RepositoryError> {
         let mut collections = self.collections.lock().unwrap();
         if let Some(col) = collections.iter_mut().find(|c| c.id == id) {
+            if col.definition != expected_definition {
+                return Err(RepositoryError::PreconditionFailed);
+            }
             col.name = name.to_string();
             col.slug = slug.to_string();
             col.definition = definition.to_string();
@@ -628,15 +639,16 @@ impl EntryRepository for InMemoryEntryRepository {
             .collect())
     }
 
-    async fn create(
-        &self,
-        id: &str,
-        site_id: &str,
-        collection_id: &str,
-        data: &str,
-        slug: &str,
-        created_by: Option<&str>,
-    ) -> Result<Entry, RepositoryError> {
+    async fn create(&self, params: crate::repository::traits::CreateEntryParams<'_>) -> Result<Entry, RepositoryError> {
+        let crate::repository::traits::CreateEntryParams {
+            id,
+            site_id,
+            collection_id,
+            data,
+            slug,
+            created_by,
+            expected_definition: _,
+        } = params;
         let mut entries = self.entries.lock().unwrap();
         let entry = Entry {
             id: id.to_string(),
@@ -648,6 +660,7 @@ impl EntryRepository for InMemoryEntryRepository {
             singleton_collection_id: None,
             created_at: now_timestamp(),
             updated_at: now_timestamp(),
+            version: now_timestamp(),
             published_at: None,
         };
         entries.push(entry.clone());
@@ -669,6 +682,7 @@ impl EntryRepository for InMemoryEntryRepository {
 
     async fn update(&self, params: UpdateEntryParams<'_>) -> Result<Entry, RepositoryError> {
         let UpdateEntryParams {
+            expected_definition: _,
             id,
             site_id,
             data,
@@ -676,9 +690,14 @@ impl EntryRepository for InMemoryEntryRepository {
             status,
             created_by,
             change_summary,
+            expected_version,
         } = params;
         let mut entries = self.entries.lock().unwrap();
         if let Some(entry) = entries.iter_mut().find(|e| e.id == id && e.site_id == site_id) {
+            if expected_version.is_some_and(|version| version != entry.version) {
+                return Err(RepositoryError::PreconditionFailed);
+            }
+            entry.version = uuid::Uuid::now_v7().to_string();
             entry.data = data.to_string();
             entry.slug = slug.to_string();
             entry.status = status.to_string();
@@ -833,13 +852,17 @@ impl EntryRepository for InMemoryEntryRepository {
 
     async fn upsert_singleton_entry(
         &self,
-        site_id: &str,
-        collection_id: &str,
-        slug: &str,
-        data: &str,
-        created_by: Option<&str>,
-        change_summary: Option<&str>,
+        params: crate::repository::traits::UpsertSingletonParams<'_>,
     ) -> Result<Entry, RepositoryError> {
+        let crate::repository::traits::UpsertSingletonParams {
+            site_id,
+            collection_id,
+            slug,
+            data,
+            created_by,
+            change_summary,
+            expected_definition: _,
+        } = params;
         let mut entries = self.entries.lock().unwrap();
         if let Some(entry) = entries
             .iter_mut()
@@ -881,6 +904,7 @@ impl EntryRepository for InMemoryEntryRepository {
             singleton_collection_id: Some(collection_id.to_string()),
             created_at: now_timestamp(),
             updated_at: now_timestamp(),
+            version: now_timestamp(),
             published_at: None,
         };
         entries.push(entry.clone());
@@ -913,12 +937,14 @@ impl EntryRepository for InMemoryEntryRepository {
 #[derive(Clone)]
 pub struct InMemoryFileRepository {
     files: Arc<Mutex<Vec<File>>>,
+    signed_upload_uses: Arc<Mutex<std::collections::HashMap<String, i64>>>,
 }
 
 impl InMemoryFileRepository {
     pub fn new() -> Self {
         Self {
             files: Arc::new(Mutex::new(Vec::new())),
+            signed_upload_uses: Arc::new(Mutex::new(std::collections::HashMap::new())),
         }
     }
 
@@ -936,12 +962,22 @@ impl Default for InMemoryFileRepository {
 
 #[async_trait]
 impl FileRepository for InMemoryFileRepository {
+    async fn claim_signed_upload(&self, file_id: &str, expires_at: i64) -> Result<bool, RepositoryError> {
+        if expires_at <= chrono::Utc::now().timestamp() {
+            return Ok(false);
+        }
+        let mut uses = self.signed_upload_uses.lock().unwrap();
+        uses.retain(|_, expiry| *expiry > chrono::Utc::now().timestamp());
+        if uses.contains_key(file_id) {
+            return Ok(false);
+        }
+        uses.insert(file_id.to_owned(), expires_at);
+        Ok(true)
+    }
+
     async fn get_by_id(&self, id: &str, site_id: &str) -> Result<Option<File>, RepositoryError> {
         let files = self.files.lock().unwrap();
-        Ok(files
-            .iter()
-            .find(|f| f.id == id && f.site_id == site_id && f.deleted_at.is_none())
-            .cloned())
+        Ok(files.iter().find(|f| f.id == id && f.site_id == site_id).cloned())
     }
 
     async fn get_by_id_any(&self, id: &str) -> Result<Option<File>, RepositoryError> {
@@ -1354,12 +1390,13 @@ impl crate::repository::traits::WebhookRepository for InMemoryWebhookRepository 
     async fn update(
         &self,
         id: &str,
+        site_id: &str,
         label: Option<&str>,
         url: Option<&str>,
         headers_encrypted: Option<&str>,
     ) -> Result<crate::models::webhook::SiteWebhook, RepositoryError> {
         let mut webhooks = self.webhooks.lock().unwrap();
-        if let Some(webhook) = webhooks.iter_mut().find(|w| w.id == id) {
+        if let Some(webhook) = webhooks.iter_mut().find(|w| w.id == id && w.site_id == site_id) {
             if let Some(l) = label {
                 webhook.label = l.to_string();
             }

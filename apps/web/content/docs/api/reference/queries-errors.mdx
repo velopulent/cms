@@ -9,13 +9,16 @@ The REST entry list accepts:
 
 | Parameter | Meaning |
 | --- | --- |
-| `type` | Collection slug |
+| Path collection slug | Collection to query |
 | `status` | Entry publication status |
 | `search` | Full-text search text |
-| `page` | One-based page number |
+| `cursor` | Signed query-bound continuation token |
+| `include_drafts` | Explicit draft access; requires `content.preview.read` |
+| `include_total` | Include total count |
+| `page` | Legacy one-based page number |
 | `per_page` | Results per page, from 1 through 200 |
 
-The default entry page contains 50 results. File lists use fixed pages of 30 and accept page, search, media type, and trash state through the current REST schema.
+The default entry page contains 50 results. Public file lists use fixed pages of 50 and accept cursor, search, and media type. Responses contain `items` and `page_info` with `next_cursor` and `has_next_page`. Continuations currently use offsets internally, so concurrent inserts/deletes may shift pages. Ranked Tantivy search is bounded to the first 10,000 results to limit heap usage; narrow the query for deeper content.
 
 ## Response failures
 
@@ -26,8 +29,10 @@ The default entry page contains 50 results. File lists use fixed pages of 30 and
 | `403` | Authenticated but not allowed | Token scopes, write mode, user role, site |
 | `404` | Resource or disabled surface absent | ID, slug, site context, MCP enabled state |
 | `409` | State conflict | Duplicate slug or conflicting resource state |
+| `412` | Stale expected version | Refresh the entry and retry the intended change |
+| `422` | Invalid JSON shape | Request field types |
 | `413` | Upload too large | Instance upload limit and body size |
 | `429` | Rate limit reached | Retry timing and request volume |
 | `500` | Server failure | Server logs, health, and `vcms doctor` |
 
-Error bodies include a machine-readable error or message where the handler can provide one. Log status, request path, and safe correlation details. Do not log bearer tokens or full request bodies containing secrets.
+Public REST failures use `application/problem+json` with `status`, `code`, `detail`, and `request_id`. Entry and singleton reads return an opaque version and ETag; updates accept `If-Match` or `expected_version`. Log status, request path, and safe correlation details. Do not log bearer tokens or full request bodies containing secrets.
