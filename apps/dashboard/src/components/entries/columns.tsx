@@ -1,8 +1,6 @@
 import { Link } from "@tanstack/react-router";
 import type { ColumnDef } from "@tanstack/react-table";
-import type { dataTableFeatures } from "@/components/ui/data-table";
 import { ArrowUpDown, Globe, GlobeLock, Pencil, Trash2 } from "lucide-react";
-
 import {
   AlertDialog,
   AlertDialogAction,
@@ -16,6 +14,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
+import type { dataTableFeatures } from "@/components/ui/data-table";
 import type { Entry } from "@/lib/api";
 
 function extractTitle(item: Entry): string {
